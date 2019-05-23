@@ -17,8 +17,9 @@ DESCRIPTION = 'Create property plots for engineering thermodynamics using CoolPr
 URL = 'https://github.com/CoolProp/CoolPlot'
 EMAIL = 'coolplot@jorrit.org'
 AUTHOR = 'Jorrit Wronski'
-REQUIRES_PYTHON = '>=3.4.0'
-VERSION = '0.1.0'
+REQUIRES_PYTHON = '>=3.6.0'
+#VERSION = '0.1.1'
+VERSION = False
 
 here = os.path.abspath(os.path.dirname(__file__))
 

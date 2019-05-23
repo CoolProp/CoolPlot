@@ -165,7 +165,7 @@ class Base2DObject(with_metaclass(ABCMeta), object):
 #     @property
 #     def PU(self): return CoolProp.iP*10     + CoolProp.iUmass
 
-    def __init__(self, x_type, y_type, state=None, small=None):
+    def __init__(self, x_type, y_type, state=None, small=None, **kwargs):
         self._x_index = _get_index(x_type)
         self._y_index = _get_index(y_type)
         self._critical_state = None
