@@ -1,0 +1,7 @@
+numpy
+matplotlib
+coolprop
+nose
+sphinx
+numpydoc
+nbsphinx

@@ -1,0 +1,23 @@
+# Disable sudo to speed up the build
+sudo: false
+
+# Set the build language to Python
+language: python
+
+# Set the python version
+python: 3.6
+
+# Install the pip dependencies
+install:
+  - make init
+  - make install
+
+# Run the unit test
+script:
+  - make test
+  #- make docs
+  #- coverage run tests.py
+
+# Push the results back to codecov
+#after_success:
+#- codecov

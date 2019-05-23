@@ -1,1 +1,0 @@
-ctypedef double CoolPropDbl
