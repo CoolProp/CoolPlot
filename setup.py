@@ -17,7 +17,7 @@ DESCRIPTION = 'Create property plots for engineering thermodynamics using CoolPr
 URL = 'https://github.com/CoolProp/CoolPlot'
 EMAIL = 'coolplot@jorrit.org'
 AUTHOR = 'Jorrit Wronski'
-REQUIRES_PYTHON = '>=3.6.0'
+REQUIRES_PYTHON = '>=3.4.0'
 VERSION = '0.1.0'
 
 here = os.path.abspath(os.path.dirname(__file__))
@@ -74,20 +74,23 @@ class UploadCommand(Command):
 
     def run(self):
         try:
-            self.status('Removing previous builds…')
+            self.status('Removing previous builds...')
             rmtree(os.path.join(here, 'dist'))
         except OSError:
             pass
 
-        self.status('Building Source and Wheel (universal) distribution…')
+        self.status('Building Source and Wheel (universal) distribution...')
         os.system('{0} setup.py sdist bdist_wheel --universal'.format(sys.executable))
 
-        self.status('Uploading the package to PyPI via Twine…')
+        #self.status('Uploading the package to the PyPI test repository using Twine...')
+        #os.system('twine upload --verbose --repository-url https://test.pypi.org/legacy/ dist/*')
+
+        self.status('Uploading the package to the PyPI repository using Twine...')
         os.system('twine upload dist/*')
 
-        self.status('Pushing git tags…')
-        os.system('git tag v{0}'.format(about['__version__']))
-        os.system('git push --tags')
+        #self.status('Pushing git tags…')
+        #os.system('git tag v{0}'.format(about['__version__']))
+        #os.system('git push --tags')
 
         sys.exit()
 
