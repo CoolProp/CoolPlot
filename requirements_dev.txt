@@ -5,3 +5,4 @@ nose
 sphinx
 numpydoc
 nbsphinx
+twine

@@ -35,6 +35,7 @@ bash ~/miniconda.sh -b -p $HOME/miniconda
 export PATH="$HOME/miniconda/bin:$PATH"
 rm ~/miniconda.sh
 conda create -n CoolPlot pip
+conda activate CoolPlot
 ```
 
 To Do
