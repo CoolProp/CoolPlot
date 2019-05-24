@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function, division
 
+import matplotlib
 import matplotlib.pyplot as plt
+
 import numpy as np
 from abc import ABCMeta
 from six import with_metaclass
@@ -451,9 +453,11 @@ class BasePlot(Base2DObject):
         # Process the plotting range based on T and p
         self.limits = tp_limits
         # Other properties
-        self.figure = kwargs.pop('figure', plt.figure(tight_layout=True))
-        self.axis = kwargs.pop('axis', self.figure.add_subplot(111))
-        self.props = kwargs.pop('props', None)
+        #self.figure = kwargs.pop('figure', plt.figure(tight_layout=True))
+
+        self.figure = kwargs.get('figure', matplotlib.figure.Figure(tight_layout=True))
+        self.axis = kwargs.get('axis', self.figure.add_subplot(111))
+        self.props = kwargs.get('props', None)
 
         # call the base class
         state = process_fluid_state(fluid_ref)
