@@ -14,66 +14,7 @@ from CoolProp.CoolProp import PropsSI, extract_backend, extract_fractions, PyCri
 
 from ..Util.Units import SIunits, KSIunits, EURunits
 from ..Util import is_string, _get_index
-
-
-def get_critical_point(state):
-    crit_state = PyCriticalState()
-    crit_state.T = np.nan
-    crit_state.p = np.nan
-    crit_state.rhomolar = np.nan
-    crit_state.rhomolar = np.nan
-    crit_state.stable = False
-    try:
-        crit_state.T = state.T_critical()
-        crit_state.p = state.p_critical()
-        crit_state.rhomolar = state.rhomolar_critical()
-        crit_state.stable = True
-    except:
-        try:
-            for crit_state_tmp in state.all_critical_points():
-                if crit_state_tmp.stable and (crit_state_tmp.T > crit_state.T or not np.isfinite(crit_state.T)):
-                    crit_state.T = crit_state_tmp.T
-                    crit_state.p = crit_state_tmp.p
-                    crit_state.rhomolar = crit_state_tmp.rhomolar
-                    crit_state.stable = crit_state_tmp.stable
-        except:
-            raise ValueError("Could not calculate the critical point data.")
-    new_state = AbstractState(state.backend_name(), '&'.join(state.fluid_names()))
-    masses = state.get_mass_fractions()
-    if len(masses) > 1:
-        new_state.set_mass_fractions(masses)  # Uses mass fraction to work with incompressibles
-        # try: new_state.build_phase_envelope("dummy")
-        # except: pass
-    msg = ""
-    if np.isfinite(crit_state.p) and np.isfinite(crit_state.T):
-        try:
-            new_state.specify_phase(CoolProp.iphase_critical_point)
-            new_state.update(CoolProp.PT_INPUTS, crit_state.p, crit_state.T)
-            return new_state
-        except Exception as e:
-            msg += str(e) + " - "
-            pass
-        try:
-            new_state.update(CoolProp.PT_INPUTS, crit_state.p, crit_state.T)
-            return new_state
-        except Exception as e:
-            msg += str(e) + " - "
-            pass
-    if np.isfinite(crit_state.rhomolar) and np.isfinite(crit_state.T):
-        try:
-            new_state.specify_phase(CoolProp.iphase_critical_point)
-            new_state.update(CoolProp.DmolarT_INPUTS, crit_state.rhomolar, crit_state.T)
-            return new_state
-        except Exception as e:
-            msg += str(e) + " - "
-            pass
-        try:
-            new_state.update(CoolProp.DmolarT_INPUTS, crit_state.rhomolar, crit_state.T)
-            return new_state
-        except Exception as e:
-            msg += str(e) + " - "
-            pass
-    raise ValueError("Could not calculate the critical point data. " + msg)
+from ..Util.EnhancedState import process_fluid_state, EnhancedState
 
 
 def interpolate_values_1d(x, y, x_points=None, kind='linear'):
@@ -94,31 +35,6 @@ def interpolate_values_1d(x, y, x_points=None, kind='linear'):
             return np.interp(x_points, x, y)
 
 
-def process_fluid_state(fluid_ref, fractions='mole'):
-    """Check input for state object or fluid string
-
-    Parameters
-    ----------
-        fluid_ref : str, CoolProp.AbstractState
-        fractions : str, switch to set mass, volu or mole fractions
-
-    Returns
-    -------
-        CoolProp.AbstractState
-    """
-    # Process the fluid and set self._state
-    if is_string(fluid_ref):
-        backend, fluids = extract_backend(fluid_ref)
-        fluids, fractions = extract_fractions(fluids)
-        state = AbstractState(backend, '&'.join(fluids))
-        if len(fluids) > 1 and len(fluids) == len(fractions):
-            if fractions == 'mass': state.set_mass_fractions(fractions)
-            elif fractions == 'volu': state.set_volu_fractions(fractions)
-            else: state.set_mole_fractions(fractions)
-        return state
-    elif isinstance(fluid_ref, AbstractState):
-        return fluid_ref
-    raise TypeError("Invalid fluid_ref input, expected a string or an abstract state instance.")
 
 
 class Base2DObject(with_metaclass(ABCMeta), object):
@@ -168,9 +84,10 @@ class Base2DObject(with_metaclass(ABCMeta), object):
     def __init__(self, x_type, y_type, state=None, small=None, **kwargs):
         self._x_index = _get_index(x_type)
         self._y_index = _get_index(y_type)
-        self._critical_state = None
+
         if small is not None: self._small = small
         else: self._small = 1e-7
+
         if state is not None: self.state = state
         else: self._state = None
 
@@ -183,9 +100,9 @@ class Base2DObject(with_metaclass(ABCMeta), object):
 
     @property
     def critical_state(self):
-        if self._critical_state is None and self._state is not None:
-            self._critical_state = get_critical_point(self._state)
-        return self._critical_state
+        if self.state is not None:
+            return self.state.critical_state
+        return None
 
     @property
     def state(self): return self._state
@@ -193,11 +110,6 @@ class Base2DObject(with_metaclass(ABCMeta), object):
     @state.setter
     def state(self, value):
         self._state = process_fluid_state(value)
-        # try: self._state.build_phase_envelope("dummy")
-        # except: pass
-        self._critical_state = None
-        #self._T_small = self._state.trivial_keyed_output(CoolProp.iT_critical)*self._small
-        #self._P_small = self._state.trivial_keyed_output(CoolProp.iP_critical)*self._small
         self._T_small = self.critical_state.keyed_output(CoolProp.iT) * self._small
         self._P_small = self.critical_state.keyed_output(CoolProp.iP) * self._small
 
@@ -208,18 +120,18 @@ class Base2DObject(with_metaclass(ABCMeta), object):
         generated. Returns a tuple containing (xmin, xmax)"""
 
         # TODO: REFPROP backend does not have ptriple.
-        T_triple = self._state.trivial_keyed_output(CoolProp.iT_triple)
+        T_triple = self.state.trivial_keyed_output(CoolProp.iT_triple)
         try:
-            T_min = self._state.trivial_keyed_output(CoolProp.iT_min)
+            T_min = self.state.trivial_keyed_output(CoolProp.iT_min)
         except:
             T_min = T_triple
-        self._state.update(CoolProp.QT_INPUTS, 0, max([T_triple, T_min]) + self._T_small)
+        self.state.update(CoolProp.QT_INPUTS, 0, max([T_triple, T_min]) + self._T_small)
         kind = _get_index(kind)
         if kind == CoolProp.iP:
-            fluid_min = self._state.keyed_output(CoolProp.iP) + self._P_small
+            fluid_min = self.state.keyed_output(CoolProp.iP) + self._P_small
             fluid_max = self.critical_state.keyed_output(CoolProp.iP) - self._P_small
         elif kind == CoolProp.iT:
-            fluid_min = self._state.keyed_output(CoolProp.iT) + self._T_small
+            fluid_min = self.state.keyed_output(CoolProp.iT) + self._T_small
             fluid_max = self.critical_state.keyed_output(CoolProp.iT) - self._T_small
         else:
             raise ValueError("Saturation boundaries have to be defined in T or P, but not in {0:s}".format(str(kind)))
@@ -711,13 +623,13 @@ consider replacing it with \"_get_sat_bounds\".",
         if P_hi is None: P_hi = 1e10
         elif P_hi < self.ID_FACTOR: P_hi *= Ps_hi
 
-        try: T_lo = np.nanmax([T_lo, self._state.trivial_keyed_output(CoolProp.iT_min)])
+        try: T_lo = np.nanmax([T_lo, self.state.trivial_keyed_output(CoolProp.iT_min)])
         except: pass
-        try: T_hi = np.nanmin([T_hi, self._state.trivial_keyed_output(CoolProp.iT_max)])
+        try: T_hi = np.nanmin([T_hi, self.state.trivial_keyed_output(CoolProp.iT_max)])
         except: pass
-        try: P_lo = np.nanmax([P_lo, self._state.trivial_keyed_output(CoolProp.iP_min)])
+        try: P_lo = np.nanmax([P_lo, self.state.trivial_keyed_output(CoolProp.iP_min)])
         except: pass
-        try: P_hi = np.nanmin([P_hi, self._state.trivial_keyed_output(CoolProp.iP_max)])
+        try: P_hi = np.nanmin([P_hi, self.state.trivial_keyed_output(CoolProp.iP_max)])
         except: pass
 
         return [T_lo, T_hi, P_lo, P_hi]
@@ -754,10 +666,10 @@ consider replacing it with \"_get_sat_bounds\".",
                 for P in [P_lo, P_hi]:
                     i += 1
                     try:
-                        self._state.update(CoolProp.PT_INPUTS, P, T)
+                        self.state.update(CoolProp.PT_INPUTS, P, T)
                         # TODO: include a check for P and T?
-                        X[i] = self._state.keyed_output(x_index)
-                        Y[i] = self._state.keyed_output(y_index)
+                        X[i] = self.state.keyed_output(x_index)
+                        Y[i] = self.state.keyed_output(y_index)
                     except:
                         X[i] = np.nan; Y[i] = np.nan
             # Figure out what to update
