@@ -4,8 +4,9 @@ import unittest
 
 try:
     from .context import CoolPlot
+    import CoolPlot.Util.Units
 except ImportError as ie:
-    pass
+    print(str(ie))
 
 #from CoolPlot.Util.Units import SIunits, KSIunits, EURunits
 
@@ -16,7 +17,7 @@ class UnitSystemTests(unittest.TestCase):
     def _systems_to_test(self):
         return CoolPlot.Util.Units.get_unit_system_cls()
 
-    def round_trip_tests(self):
+    def test_round_trip(self):
         #systems = [us() for us in self._systems_to_test()]
         systems = self._systems_to_test()
         for _us in systems:
@@ -29,6 +30,8 @@ class UnitSystemTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+    #tst = UnitSystemTests()
+    #tst.run()
 
 
 
