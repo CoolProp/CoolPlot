@@ -10,7 +10,7 @@ CoolPlot
 ========
 
 This repository contain code for a Python module to create property plots
-for engineering thermodynamics applications using CoolProp.
+for engineering thermodynamics applications using [CoolProp].
 
 It focusses on refrigeration and heat pumping applications and the enthalpy-
 pressure diagrams (logp,h) are considered to be more mature than others.
@@ -42,5 +42,6 @@ License
 This Python package is released under the terms of the MIT license. 
 
 
+  [CoolProp]: http://coolprop.sourceforge.net/
   [CoolProp repository]: https://github.com/CoolProp/CoolProp
   [PyPi]: https://docs.python.org/3/distutils/packageindex.html
