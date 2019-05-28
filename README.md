@@ -6,76 +6,41 @@
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/coolplot.svg)
 
 
-📦 setup.py (for humans)
-=======================
+CoolPlot
+========
 
-This repo exists to provide [an example setup.py] file, that can be used
-to bootstrap your next Python project. It includes some advanced
-patterns and best practices for `setup.py`, as well as some
-commented–out nice–to–haves.
+This repository contain code for a Python module to create property plots
+for engineering thermodynamics applications using CoolProp.
 
-For example, this `setup.py` provides a `$ python setup.py upload`
-command, which creates a *universal wheel* (and *sdist*) and uploads
-your package to [PyPi] using [Twine], without the need for an annoying
-`setup.cfg` file. It also creates/uploads a new git tag, automatically.
+It focusses on refrigeration and heat pumping applications and the enthalpy-
+pressure diagrams (logp,h) are considered to be more mature than others.
+However, entropy-temperature diagrams (T,s) have also been implemented and
+should work for most fluids.
 
-In short, `setup.py` files can be daunting to approach, when first
-starting out — even Guido has been heard saying, "everyone cargo cults
-thems". It's true — so, I want this repo to be the best place to
-copy–paste from :)
-
-[Check out the example!][an example setup.py]
-
-![image]
-
-Installation
------
-
-```bash
-cd your_project
-wget https://raw.githubusercontent.com/kennethreitz/setup.py/master/setup.py -O setup.py
-```
-
-```bash
-#wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O ~/miniconda.sh
-curl -o ~/miniconda.sh https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
-bash ~/miniconda.sh -b -p $HOME/miniconda
-export PATH="$HOME/miniconda/bin:$PATH"
-rm ~/miniconda.sh
-conda create -n CoolPlot pip
-conda activate CoolPlot
-```
-
-To Do
------
-
--   Tests via `$ setup.py test` (if it's concise).
+We are still in the process of separating the calculations from the plotting
+routines - expect some breaking changes until v1.0.0 is released. The code
+has been forked from the main [CoolProp repository] at v6.3.0 and the history
+was preserved, thus the old commits.
 
 Pull requests are encouraged!
 
-More Resources
---------------
 
--   [What is setup.py?] on Stack Overflow
--   [Official Python Packaging User Guide](https://packaging.python.org)
--   [The Hitchhiker's Guide to Packaging]
--   [Cookiecutter template for a Python package]
+Installation
+------------
+
+The project gets published on [PyPi] as `coolplot` and you can install it
+using pip
+
+```bash
+pip install coolplot
+```
+
 
 License
 -------
 
-This is free and unencumbered software released into the public domain.
+This Python package is released under the terms of the MIT license. 
 
-Anyone is free to copy, modify, publish, use, compile, sell, or
-distribute this software, either in source code form or as a compiled
-binary, for any purpose, commercial or non-commercial, and by any means.
 
-✨🍰✨
-
-  [an example setup.py]: https://github.com/kennethreitz/setup.py/blob/master/setup.py
+  [CoolProp repository]: https://github.com/CoolProp/CoolProp
   [PyPi]: https://docs.python.org/3/distutils/packageindex.html
-  [Twine]: https://pypi.python.org/pypi/twine
-  [image]: https://farm1.staticflickr.com/628/33173824932_58add34581_k_d.jpg
-  [What is setup.py?]: https://stackoverflow.com/questions/1471994/what-is-setup-py
-  [The Hitchhiker's Guide to Packaging]: https://the-hitchhikers-guide-to-packaging.readthedocs.io/en/latest/creation.html
-  [Cookiecutter template for a Python package]: https://github.com/audreyr/cookiecutter-pypackage
