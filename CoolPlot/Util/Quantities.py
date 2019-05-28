@@ -4,6 +4,7 @@ from __future__ import print_function, division
 from abc import ABCMeta
 from six import with_metaclass
 import warnings
+import numpy as np
 
 import CoolProp
 
@@ -45,9 +46,9 @@ class BaseQuantity(object):
     @off_SI.setter
     def off_SI(self, value): self._off_SI = value
 
-    def from_SI(self, value): return ((value + self.off_SI) * self.mul_SI) + self.add_SI
+    def from_SI(self, value): return ((np.asanyarray(value) + self.off_SI) * self.mul_SI) + self.add_SI
 
-    def to_SI(self, value): return (value - self.add_SI) / self.mul_SI - self.off_SI
+    def to_SI(self, value): return (np.asanyarray(value) - self.add_SI) / self.mul_SI - self.off_SI
 
 
 class BaseDimension(BaseQuantity):

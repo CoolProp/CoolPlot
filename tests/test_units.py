@@ -1,16 +1,46 @@
 # -*- coding: utf-8 -*-
 
-#from .context import CoolPlot
-from CoolPlot.Util.Units import SIunits, KSIunits, EURunits
+import unittest
 
+try:
+    from .context import CoolPlot
+except ImportError as ie:
+    pass
+
+#from CoolPlot.Util.Units import SIunits, KSIunits, EURunits
+
+
+class UnitSystemTests(unittest.TestCase):
+    """Tests for the unit systems"""
+
+    def _systems_to_test(self):
+        return CoolPlot.Util.Units.get_unit_system_cls()
+
+    def round_trip_tests(self):
+        #systems = [us() for us in self._systems_to_test()]
+        systems = self._systems_to_test()
+        for _us in systems:
+            us = _us()
+            for dim in us.dimensions.keys():
+                raw_value = 23.0
+                si_value = us[dim].to_SI(raw_value)
+                us_value = us[dim].from_SI(si_value)
+                self.assertAlmostEqual(raw_value, us_value)
 
 if __name__ == '__main__':
+    unittest.main()
 
-    for sys in [SIunits(), KSIunits(), EURunits()]:
-        print(sys.H.label)
-        print(sys.H.to_SI(20))
-        print(sys.P.label)
-        print(sys.P.to_SI(20))
+
+
+
+#if __name__ == '__main__':
+
+#    for from in [SIunits(), KSIunits(), EURunits()]:
+
+#        print(sys.H.label)
+#        print(sys.H.to_SI(20))
+#        print(sys.P.label)
+#        print(sys.P.to_SI(20))
 
     # # i_index, x_index, y_index, value=None, state=None)
     # iso = IsoLine('T', 'H', 'P')

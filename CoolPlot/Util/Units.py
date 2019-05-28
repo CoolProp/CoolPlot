@@ -35,3 +35,7 @@ class EURunits(KSIunits):
         self.P.unit = u'bar'
         self.T.add_SI = -273.15
         self.T.unit = u'deg C'
+
+
+def get_unit_system_cls():
+    return [SIunits, KSIunits, EURunits]

@@ -456,7 +456,9 @@ class BasePlot(Base2DObject):
         #self.figure = kwargs.pop('figure', plt.figure(tight_layout=True))
 
         self.figure = kwargs.get('figure', matplotlib.figure.Figure(tight_layout=True))
-        self.axis = kwargs.get('axis', self.figure.add_subplot(111))
+        if 'axis' in kwargs and 'axes' not in kwargs:
+            kwargs['axes'] = kwargs['axis']
+        self.axes = kwargs.get('axes', self.figure.add_subplot(111))
         self.props = kwargs.get('props', None)
 
         # call the base class
@@ -495,10 +497,20 @@ class BasePlot(Base2DObject):
     def figure(self, value): self._figure = value
 
     @property
-    def axis(self): return self._axis
+    def axis(self):
+        warnings.warn("You use the deprecated property \"axis\", please use \"axes\" instead", DeprecationWarning)
+        return self._axes
 
     @axis.setter
-    def axis(self, value): self._axis = value
+    def axis(self, value):
+        warnings.warn("You use the deprecated property \"axis\", please use \"axes\" instead", DeprecationWarning)
+        self._axes = value
+
+    @property
+    def axes(self): return self._axes
+
+    @axes.setter
+    def axes(self, value): self._axes = value
 
     @property
     def props(self): return self._props
@@ -554,39 +566,39 @@ consider replacing it with \"_get_sat_bounds\".",
 #             x_axis_id = self.graph_type[1:len(self.graph_type)]
 #
 #         tl_str = "%s - %s Graph for %s"
-#         if not self.axis.get_title():
-#             self.axis.set_title(tl_str % (self.AXIS_LABELS[self.unit_system][y_axis_id][0],
+#         if not self.axes.get_title():
+#             self.axes.set_title(tl_str % (self.AXIS_LABELS[self.unit_system][y_axis_id][0],
 #                                           self.AXIS_LABELS[self.unit_system][x_axis_id][0],
 #                                           filter_fluid_ref(self.fluid_ref)))
         if self._x_index in [CoolProp.iDmass, CoolProp.iP]:
-            self.axis.set_xscale('log')
+            self.axes.set_xscale('log')
         if self._y_index in [CoolProp.iDmass, CoolProp.iP]:
-            self.axis.set_yscale('log')
+            self.axes.set_yscale('log')
 
-        if not self.axis.get_xlabel():
+        if not self.axes.get_xlabel():
             dim = self._system[self._x_index]
             self.xlabel((dim.label + u" $" + dim.symbol + u"$ / " + dim.unit).strip())
-        if not self.axis.get_ylabel():
+        if not self.axes.get_ylabel():
             dim = self._system[self._y_index]
             self.ylabel((dim.label + u" $" + dim.symbol + u"$ / " + dim.unit).strip())
 
     def title(self, title):
-        self.axis.set_title(title)
+        self.axes.set_title(title)
 
     def xlabel(self, xlabel):
-        self.axis.set_xlabel(xlabel)
+        self.axes.set_xlabel(xlabel)
 
     def ylabel(self, ylabel):
-        self.axis.set_ylabel(ylabel)
+        self.axes.set_ylabel(ylabel)
 
     def grid(self, b=None, **kwargs):
         g_map = {'on': True, 'off': False}
         if b is not None:
             b = g_map[b.lower()]
         if not kwargs:  # len=0
-            self.axis.grid(b)
+            self.axes.grid(b)
         else:
-            self.axis.grid(kwargs)
+            self.axes.grid(kwargs)
 
     def set_Tp_limits(self, limits):
         """Set the limits for the graphs in temperature and pressure, based on
@@ -639,18 +651,18 @@ consider replacing it with \"_get_sat_bounds\".",
         return [T_lo, T_hi, P_lo, P_hi]
 
     def set_axis_limits(self, limits):
-        """Set the limits of the internal axis object based on the active units,
+        """Set the limits of the internal axes object based on the active units,
         takes [xmin, xmax, ymin, ymax]"""
-        self.axis.set_xlim([limits[0], limits[1]])
-        self.axis.set_ylim([limits[2], limits[3]])
+        self.axes.set_xlim([limits[0], limits[1]])
+        self.axes.set_ylim([limits[2], limits[3]])
 
     def _set_axis_limits(self, limits):
-        """Set the limits of the internal axis object based on SI units,
+        """Set the limits of the internal axes object based on SI units,
         takes [xmin, xmax, ymin, ymax]"""
         dim = self._system[self._x_index]
-        self.axis.set_xlim([dim.from_SI(limits[0]), dim.from_SI(limits[1])])
+        self.axes.set_xlim([dim.from_SI(limits[0]), dim.from_SI(limits[1])])
         dim = self._system[self._y_index]
-        self.axis.set_ylim([dim.from_SI(limits[2]), dim.from_SI(limits[3])])
+        self.axes.set_ylim([dim.from_SI(limits[2]), dim.from_SI(limits[3])])
 
     def get_axis_limits(self, x_index=None, y_index=None):
         """Returns the previously set limits or generates them and
@@ -660,7 +672,7 @@ consider replacing it with \"_get_sat_bounds\".",
         if y_index is None: y_index = self._y_index
 
         if x_index != self.x_index or y_index != self.y_index or \
-          self.axis.get_autoscalex_on() or self.axis.get_autoscaley_on():
+          self.axes.get_autoscalex_on() or self.axes.get_autoscaley_on():
             # One of them is not set or we work on a different set of axes
             T_lo, T_hi, P_lo, P_hi = self._get_Tp_limits()
 
@@ -683,23 +695,23 @@ consider replacing it with \"_get_sat_bounds\".",
             y_lim = [dim.from_SI(np.nanmin(Y)), dim.from_SI(np.nanmax(Y))]
             # Either update the axes limits or get them
             if x_index == self._x_index:
-                if self.axis.get_autoscalex_on():
-                    self.axis.set_xlim(x_lim)
+                if self.axes.get_autoscalex_on():
+                    self.axes.set_xlim(x_lim)
                 else:
-                    x_lim = self.axis.get_xlim()
+                    x_lim = self.axes.get_xlim()
             if y_index == self._y_index:
-                if self.axis.get_autoscaley_on():
-                    self.axis.set_ylim(y_lim)
+                if self.axes.get_autoscaley_on():
+                    self.axes.set_ylim(y_lim)
                 else:
-                    y_lim = self.axis.get_ylim()
+                    y_lim = self.axes.get_ylim()
         else:  # We only asked for the real axes limits and they are set already
-            x_lim = self.axis.get_xlim()
-            y_lim = self.axis.get_ylim()
+            x_lim = self.axes.get_xlim()
+            y_lim = self.axes.get_ylim()
 
         return [x_lim[0], x_lim[1], y_lim[0], y_lim[1]]
 
     def _get_axis_limits(self, x_index=None, y_index=None):
-        """Get the limits of the internal axis object in SI units
+        """Get the limits of the internal axes object in SI units
         Returns a list containing [xmin, xmax, ymin, ymax]"""
         if x_index is None: x_index = self._x_index
         if y_index is None: y_index = self._y_index
@@ -725,7 +737,7 @@ consider replacing it with \"_get_sat_bounds\".",
         DELTAY_axis = Aymax - Aymin
         width = self.figure.get_figwidth()
         height = self.figure.get_figheight()
-        pos = self.axis.get_position().get_points()
+        pos = self.axes.get_position().get_points()
         [[Fxmin, Fymin], [Fxmax, Fymax]] = pos
         DELTAX_fig = width * (Fxmax - Fxmin)
         DELTAY_fig = height * (Fymax - Fymin)
@@ -833,6 +845,13 @@ consider replacing it with \"_get_sat_bounds\".",
         x = dimx.from_SI(x)
         y = dimy.from_SI(y)
         return (x, y, rot)
+
+    def plot_SI(self, _x, _y, *args, **kwargs):
+        dimx = self._system[self._x_index]
+        x = dimx.from_SI(_x)
+        dimy = self._system[self._y_index]
+        y = dimy.from_SI(_y)
+        return self.axes.plot(x, y, *args, **kwargs)
 
     def show(self):
         plt.show()
