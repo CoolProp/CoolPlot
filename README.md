@@ -1,3 +1,11 @@
+
+![GitHub License](https://img.shields.io/github/license/coolprop/coolplot.svg)
+![Coverage - Codecov](https://img.shields.io/codecov/c/gh/CoolProp/CoolPlot.svg)
+![Coverage - Coveralls](https://img.shields.io/coveralls/github/CoolProp/CoolPlot.svg)
+![PyPI - Version](https://img.shields.io/pypi/v/coolplot.svg)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/coolplot.svg)
+
+
 📦 setup.py (for humans)
 =======================
 
