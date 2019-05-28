@@ -18,6 +18,10 @@ script:
   #- make docs
   #- coverage run tests.py
 
+after_success:
+  - codecov
+  - coveralls
+
 # Push the results back to codecov
 #after_success:
 #- codecov

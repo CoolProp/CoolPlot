@@ -30,7 +30,7 @@ if "%1" == "init" (
 )
 
 if "%1" == "test" (
-	nosetests tests
+	nosetests -v --with-coverage --cover-package=CoolPlot
 	goto end
 )
 

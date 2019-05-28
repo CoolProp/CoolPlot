@@ -1,7 +1,7 @@
 # Makefile for CoolPlot
 #
 
-.PHONY: init test install docs build upload
+.PHONY: init test coverage install docs build upload
 
 help:
 	@echo "Please use \`make <target>' where <target> is one of"
@@ -17,7 +17,7 @@ init:
 	pip install -r requirements_dev.txt
 
 test:
-	nosetests tests
+	nosetests -v --with-coverage --cover-package=CoolPlot
 
 install:
 	python setup.py install
