@@ -3,8 +3,6 @@ matplotlib
 coolprop
 nose
 coverage
-codecov
-coveralls
 sphinx
 numpydoc
 nbsphinx
