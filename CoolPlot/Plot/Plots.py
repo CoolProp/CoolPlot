@@ -149,7 +149,7 @@ class PropertyPlot(BasePlot):
             iso_range = self._plotRound(iso_range)
 
         # Limits are already in SI units
-        limits = self._get_axis_limits()
+        limits = self.get_axis_limits_SI()
 
         ixrange = self.generate_ranges(self._x_index, limits[0], limits[1], points)
         iyrange = self.generate_ranges(self._y_index, limits[2], limits[3], points)

@@ -656,7 +656,7 @@ consider replacing it with \"_get_sat_bounds\".",
         self.axes.set_xlim([limits[0], limits[1]])
         self.axes.set_ylim([limits[2], limits[3]])
 
-    def _set_axis_limits(self, limits):
+    def set_axis_limits_SI(self, limits):
         """Set the limits of the internal axes object based on SI units,
         takes [xmin, xmax, ymin, ymax]"""
         dim = self._system[self._x_index]
@@ -710,7 +710,7 @@ consider replacing it with \"_get_sat_bounds\".",
 
         return [x_lim[0], x_lim[1], y_lim[0], y_lim[1]]
 
-    def _get_axis_limits(self, x_index=None, y_index=None):
+    def get_axis_limits_SI(self, x_index=None, y_index=None):
         """Get the limits of the internal axes object in SI units
         Returns a list containing [xmin, xmax, ymin, ymax]"""
         if x_index is None: x_index = self._x_index
@@ -732,7 +732,7 @@ consider replacing it with \"_get_sat_bounds\".",
         return np.linspace(imin, imax, num=num)
 
     def _get_conversion_data(self):
-        [Axmin, Axmax, Aymin, Aymax] = self._get_axis_limits()
+        [Axmin, Axmax, Aymin, Aymax] = self.get_axis_limits_SI()
         DELTAX_axis = Axmax - Axmin
         DELTAY_axis = Aymax - Aymin
         width = self.figure.get_figwidth()
