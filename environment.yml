@@ -9,5 +9,5 @@ dependencies:
 - twine
 - pip
 - pip:
-  - coolprop==6.3.0
+  - coolprop
   - nbsphinx
