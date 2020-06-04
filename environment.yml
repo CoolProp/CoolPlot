@@ -1,0 +1,13 @@
+name: CoolPlot
+dependencies:
+- numpy
+- matplotlib
+- nose
+- coverage
+- sphinx
+- numpydoc
+- twine
+- pip
+- pip:
+  - coolprop==6.3.0
+  - nbsphinx
