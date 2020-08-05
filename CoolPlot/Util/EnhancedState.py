@@ -49,6 +49,12 @@ def get_critical_state(state: CoolProp.AbstractState) -> CoolProp.AbstractState:
         # Uses mass fraction to work with incompressible fluids
         # try: new_state.build_phase_envelope("dummy")
         # except: pass
+    # TODO: Remove this hack ASAP
+    # Avoid problems with https://github.com/CoolProp/CoolProp/issues/1962
+    BE = state.backend_name()
+    FL = '&'.join(state.fluid_names())
+    if BE == "HelmholtzEOSBackend" and FL == "Ammonia":
+        crit_state.T *= 1.001
     msg = ""
     if np.isfinite(crit_state.rhomolar) and np.isfinite(crit_state.T):
         try:
