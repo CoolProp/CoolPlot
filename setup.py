@@ -25,8 +25,14 @@ here = os.path.abspath(os.path.dirname(__file__))
 
 # What packages are required for this module to be executed?
 # Load the requirements from a file
-with open(os.path.join(here, 'requirements.txt')) as f:
-    REQUIRED = f.read().splitlines()
+#with open(os.path.join(here, 'requirements.txt')) as f:
+#    REQUIRED = f.read().splitlines()
+
+REQUIRED = [
+  'numpy',
+  'matplotlib',
+  'coolprop'
+]
 
 # What packages are optional?
 EXTRAS = {
