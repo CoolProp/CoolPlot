@@ -16,12 +16,11 @@ if "%1" == "help" (
 	goto end
 )
 
-if "%1" == "init" (
-	for /d %%i in (%BUILDDIR%\*) do rmdir /q /s %%i
-	del /q /s %BUILDDIR%\*
-	goto end
-)
-
+:: if "%1" == "init" (
+:: 	for /d %%i in (%BUILDDIR%\*) do rmdir /q /s %%i
+:: 	del /q /s %BUILDDIR%\*
+:: 	goto end
+:: )
 
 if "%1" == "init" (
 	pip install -r requirements.txt

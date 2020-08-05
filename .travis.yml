@@ -26,3 +26,11 @@ after_success:
 # Push the results back to codecov
 #after_success:
 #- codecov
+
+deploy:
+  provider: pypi
+  username: "__token__"
+  password: $PYPI_TOKEN
+  #distributions: "sdist bdist_wheel"
+  on:
+    tags: true
