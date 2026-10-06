@@ -1,8 +1,7 @@
-numpy
 matplotlib
-coolprop
-nose
-coverage
+six
+pytest
+pytest-cov
 sphinx
 numpydoc
 nbsphinx

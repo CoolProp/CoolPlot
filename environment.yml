@@ -2,7 +2,9 @@ name: CoolPlot
 dependencies:
 - numpy
 - matplotlib
-- nose
+- pytest
+- pytest-cov
+- six
 - coverage
 - sphinx
 - numpydoc

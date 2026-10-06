@@ -17,7 +17,7 @@ DESCRIPTION = 'Create property plots for engineering thermodynamics using CoolPr
 URL = 'https://github.com/CoolProp/CoolPlot'
 EMAIL = 'coolplot@jorrit.org'
 AUTHOR = 'Jorrit Wronski'
-REQUIRES_PYTHON = '>=3.6.0'
+REQUIRES_PYTHON = '>=3.10'
 #VERSION = '0.1.1'
 VERSION = False
 
@@ -29,8 +29,11 @@ with open(os.path.join(here, 'requirements.txt')) as f:
     REQUIRED = f.read().splitlines()
 
 # What packages are optional?
+# Plotting backends are optional, the core only needs numpy and CoolProp.
+# The legacy CoolPlot.Plot package needs the "legacy" extra.
 EXTRAS = {
-    # 'fancy feature': ['django'],
+    'matplotlib': ['matplotlib>=3.6'],
+    'legacy': ['matplotlib>=3.6', 'six'],
 }
 
 # The rest you shouldn't have to touch too much :)
@@ -90,7 +93,7 @@ class UploadCommand(Command):
         self.status('Uploading the package to the PyPI repository using Twine...')
         os.system('twine upload dist/*')
 
-        self.status('Pushing git tags…')
+        self.status('Pushing git tags...')
         os.system('git tag v{0}'.format(about['__version__']))
         os.system('git push --tags')
 
@@ -125,9 +128,8 @@ setup(
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: Implementation :: CPython',
-        'Programming Language :: Python :: Implementation :: PyPy'
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: Implementation :: CPython'
     ],
     # $ setup.py publish support.
     cmdclass={

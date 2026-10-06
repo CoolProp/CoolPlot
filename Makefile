@@ -17,7 +17,7 @@ init:
 	pip install -r requirements_dev.txt
 
 test:
-	nosetests -v --with-coverage --cover-package=CoolPlot
+	python -m pytest -v --cov=CoolPlot tests
 
 install:
 	python setup.py install
