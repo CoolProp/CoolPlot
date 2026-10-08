@@ -33,7 +33,7 @@ with open(os.path.join(here, 'requirements.txt')) as f:
 # The legacy CoolPlot.Plot package needs the "legacy" extra.
 EXTRAS = {
     'matplotlib': ['matplotlib>=3.8'],
-    'legacy': ['matplotlib>=3.8', 'six'],
+    'legacy': ['matplotlib>=3.8'],
 }
 
 # The rest you shouldn't have to touch too much :)

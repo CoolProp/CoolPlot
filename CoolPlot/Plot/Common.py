@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 from abc import ABCMeta
-from six import with_metaclass
 import warnings
 
 import CoolProp
@@ -21,7 +20,7 @@ from ..Util.EnhancedState import process_fluid_state, EnhancedState
 
 def interpolate_values_1d(x, y, x_points=None, kind='linear'):
     try:
-        from scipy.interpolate.interpolate import interp1d
+        from scipy.interpolate import interp1d
         if x_points is None:
             return interp1d(x, y, kind=kind)(x[np.isfinite(x)])
         else:
@@ -39,7 +38,7 @@ def interpolate_values_1d(x, y, x_points=None, kind='linear'):
 
 
 
-class Base2DObject(with_metaclass(ABCMeta), object):
+class Base2DObject(object, metaclass=ABCMeta):
     """A container for shared settings and constants for the
     isolines and the property plots."""
 
@@ -277,8 +276,8 @@ class IsoLine(Base2DObject):
             warnings.warn(
               "An error occurred for the critical inputs, skipping it.",
               UserWarning)
-            xcrit = np.NaN
-            ycrit = np.NaN
+            xcrit = np.nan
+            ycrit = np.nan
 
         X = np.empty_like(one)
         Y = np.empty_like(one)
@@ -302,8 +301,8 @@ class IsoLine(Base2DObject):
                 warnings.warn(
                   "An error occurred for inputs {0:f}, {1:f} with index {2:s}: {3:s}".format(one[index], two[index], str(index), str(e)),
                   UserWarning)
-                X[index] = np.NaN
-                Y[index] = np.NaN
+                X[index] = np.nan
+                Y[index] = np.nan
                 err = True
         self.x = X; self.y = Y
         return
@@ -361,9 +360,9 @@ class IsoLine(Base2DObject):
                 warnings.warn(
                   "An error occurred for inputs {0:f}, {1:f} with index {2:s}: {3:s}".format(vals[0][index], vals[1][index], str(index), str(e)),
                   UserWarning)
-                vals[2][index] = np.NaN
-                guesses.rhomolar = np.NaN
-                guesses.T = np.NaN
+                vals[2][index] = np.nan
+                guesses.rhomolar = np.nan
+                guesses.T = np.nan
                 err = True
 
         for i, v in enumerate(idxs):
@@ -455,10 +454,18 @@ class BasePlot(Base2DObject):
         # Other properties
         #self.figure = kwargs.pop('figure', plt.figure(tight_layout=True))
 
-        self.figure = kwargs.get('figure', matplotlib.figure.Figure(tight_layout=True))
+        # Only create a figure or axes when none were given. The defaults
+        # used to be evaluated eagerly, which added a stray subplot to a
+        # figure passed in by the caller. A new figure is created through
+        # pyplot so that show() can display it.
         if 'axis' in kwargs and 'axes' not in kwargs:
             kwargs['axes'] = kwargs['axis']
-        self.axes = kwargs.get('axes', self.figure.add_subplot(111))
+        axes = kwargs.get('axes')
+        figure = kwargs.get('figure')
+        if figure is None:
+            figure = axes.figure if axes is not None else plt.figure(tight_layout=True)
+        self.figure = figure
+        self.axes = axes if axes is not None else self.figure.add_subplot(111)
         self.props = kwargs.get('props', None)
 
         # call the base class
@@ -598,7 +605,7 @@ consider replacing it with \"_get_sat_bounds\".",
         if not kwargs:  # len=0
             self.axes.grid(b)
         else:
-            self.axes.grid(kwargs)
+            self.axes.grid(b, **kwargs)
 
     def set_Tp_limits(self, limits):
         """Set the limits for the graphs in temperature and pressure, based on
