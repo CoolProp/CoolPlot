@@ -146,3 +146,29 @@ def test_matplotlib_renderer_updates_artists_in_place():
     scene.remove("a")
     renderer.sync(scene)
     assert len(renderer.ax.lines) == 1
+
+
+def test_scene_validation():
+    with pytest.raises(ValueError):
+        Line(id="a", x=[0.0], y=[0.0], z_order=-1.0)
+    with pytest.raises(ValueError):
+        AxesSpec(x_limits=(0.0, float("nan")))
+    assert AxesSpec(x_limits=(10.0, 0.0)).x_limits == (0.0, 10.0)   # stored ascending
+
+
+def test_svg_survives_hostile_text_and_long_legends():
+    from xml.etree import ElementTree
+    long_text = "x" * 200
+    scene = Scene(AxesSpec(title="bad\x01title", x_limits=(0.0, 1.0), y_limits=(0.0, 1.0)), [
+        Line(id="a", x=[0.0, 1.0], y=[0.0, 1.0], legend=long_text),
+        Text(id="t", x=0.5, y=0.5, text="ctrl\x02char"),
+    ])
+    svg = SvgRenderer(width=400, height=300, id_prefix="1 bad id")
+    svg.sync(scene)
+    doc = svg.to_svg()
+    ElementTree.fromstring(doc)                       # still valid XML
+    assert svg.describe_item("t")["text"] == "ctrlchar"
+    assert svg.id_prefix[0].isalpha() and 'id="cp-1-bad-id-plot-area"' in doc
+    width_pt, height_pt = svg.describe_axes()["plot_size_pt"]
+    assert width_pt > 0.2 * 400 / (4.0 / 3.0)           # the legend did not eat the plot
+    assert svg.describe_axes()["legend"][0][0].endswith("...")

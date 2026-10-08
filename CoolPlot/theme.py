@@ -29,11 +29,12 @@ triggers a property calculation.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from types import MappingProxyType
 from typing import Mapping, Optional, Sequence, Tuple
 
 from .quantities import quantity_key
 from .style import (AxesStyle, Dash, Font, LegendStyle, LineStyle, MarkerStyle, TextStyle,
-                    parse_color, style_from_dict, style_to_dict)
+                    opaque_color, style_from_dict, style_to_dict)
 
 
 @dataclass(frozen=True)
@@ -82,14 +83,20 @@ class Theme:
     axes: AxesStyle = field(default_factory=AxesStyle)
 
     def __post_init__(self):
-        categorical = tuple(parse_color(c)[0] for c in self.categorical)
+        owner = "Theme {0!r}".format(self.name)
+        categorical = tuple(opaque_color(c, owner, "categorical") for c in self.categorical)
         if not categorical or None in categorical:
-            raise ValueError("Theme {0!r}: categorical needs at least one real colour.".format(self.name))
+            raise ValueError("{0}: categorical needs at least one real colour.".format(owner))
         object.__setattr__(self, "categorical", categorical)
-        object.__setattr__(self, "slot_dashes", tuple(self.slot_dashes) or ("solid",))
+        # Dash tuples come back from JSON as lists; normalise so that themes
+        # compare equal and stay hashable after a round trip.
+        dashes = tuple(d if isinstance(d, str) else tuple(float(v) for v in d) for d in self.slot_dashes)
+        object.__setattr__(self, "slot_dashes", dashes or ("solid",))
         if self.isoline_colors is not None:
-            pinned = {quantity_key(k): parse_color(v)[0] for k, v in dict(self.isoline_colors).items()}
-            object.__setattr__(self, "isoline_colors", pinned)
+            pinned = {quantity_key(k): opaque_color(v, owner, "isoline_colors")
+                      for k, v in dict(self.isoline_colors).items()}
+            # Read-only view, so a preset cannot be changed by accident.
+            object.__setattr__(self, "isoline_colors", MappingProxyType(pinned))
         if not self.processes or not self.state_points:
             raise ValueError("Theme {0!r}: give at least one process and one marker style.".format(self.name))
         object.__setattr__(self, "processes", tuple(self.processes))

@@ -44,6 +44,14 @@ def _num(value: float) -> str:
     return "0" if text in ("-0", "") else text
 
 
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def _xml_text(text: str) -> str:
+    """Escape text for XML; control characters (not allowed in XML) are dropped."""
+    return escape(_CONTROL.sub("", text))
+
+
 def _css_class(prefix: str, value: str) -> str:
     return prefix + re.sub(r"[^A-Za-z0-9_-]+", "-", value).strip("-")
 
@@ -61,6 +69,7 @@ def _text_attrs(style: TextStyle) -> str:
     if style.halo_color is not None and style.halo_width_pt > 0.0:
         attrs += ['stroke="{0}"'.format(style.halo_color),
                   'stroke-width="{0}"'.format(_px(2.0 * style.halo_width_pt)),
+                  'stroke-opacity="{0}"'.format(_num(style.alpha)),
                   'stroke-linejoin="round"', 'paint-order="stroke"']
     return " ".join(attrs)
 
@@ -116,6 +125,7 @@ class SvgRenderer(Renderer):
     capabilities = frozenset({"file_output", "css_classes"})
     default_suffix = ".svg"
     text_output = True
+    owns_canvas = True
 
     def __init__(self, width: int = 800, height: int = 600, margins=(80, 20, 40, 60),
                  id_prefix: str = "coolplot"):
@@ -123,7 +133,9 @@ class SvgRenderer(Renderer):
         self.width = width
         self.height = height
         self.margins = margins
-        self.id_prefix = re.sub(r"[^A-Za-z0-9_-]+", "-", id_prefix) or "coolplot"
+        prefix = re.sub(r"[^A-Za-z0-9_-]+", "-", id_prefix).strip("-")
+        # An XML id has to start with a letter or underscore
+        self.id_prefix = prefix if re.match(r"[A-Za-z_]", prefix or "") else "cp-" + prefix
         self._items: Dict[str, Item] = {}
         self._elements: Dict[str, str] = {}
         self._mapping_key = None
@@ -162,14 +174,23 @@ class SvgRenderer(Renderer):
     def _style(self) -> AxesStyle:
         return (self._axes or AxesSpec()).style
 
+    def _legend_chars(self) -> int:
+        """Longest legend text that fits: the legend may take at most 40 % of the width."""
+        size_px = self._legend_style.text.font.size_pt * PX_PER_PT
+        return max(4, int((0.4 * self.width - 44.0) / (0.6 * size_px)))
+
+    def _legend_text(self, text: str) -> str:
+        limit = self._legend_chars()
+        return text if len(text) <= limit else text[:limit - 3] + "..."
+
     def _legend_size(self) -> Tuple[float, float]:
         """Estimated (width, height) in px; text width is guessed from its length."""
         st = self._legend_style
         if st is None or not st.visible or not self._legend_entries:
             return 0.0, 0.0
         size_px = st.text.font.size_pt * PX_PER_PT
-        longest = max(len(text) for text, _ in self._legend_entries)
-        return 36.0 + 0.6 * size_px * longest, 8.0 + 1.6 * size_px * len(self._legend_entries)
+        longest = max(len(self._legend_text(text)) for text, _ in self._legend_entries)
+        return 44.0 + 0.6 * size_px * longest, 8.0 + 1.6 * size_px * len(self._legend_entries)
 
     @property
     def _box(self) -> Tuple[float, float, float, float]:
@@ -177,7 +198,9 @@ class SvgRenderer(Renderer):
         st = self._legend_style
         if st is not None and st.location == "outside right":
             right += self._legend_size()[0] + 12.0 if self._legend_size()[0] else 0.0
-        return left, top, self.width - left - right, self.height - top - bottom
+        # Never let margins and an outside legend eat the whole drawing
+        width = max(self.width - left - right, 0.25 * self.width)
+        return left, top, width, max(self.height - top - bottom, 0.25 * self.height)
 
     def _limits(self):
         axes = self._axes or AxesSpec()
@@ -351,7 +374,7 @@ class SvgRenderer(Renderer):
         baseline = {"bottom": "text-after-edge", "center": "central", "top": "text-before-edge"}[s.v_align]
         return (self._open(item) + '<text x="{0}" y="{1}" text-anchor="{2}" dominant-baseline="{3}" '
                 'transform="rotate({4} {0} {1})" {5}>{6}</text></g>').format(
-            _num(px), _num(py), anchor, baseline, _num(angle), _text_attrs(s), escape(item.text))
+            _num(px), _num(py), anchor, baseline, _num(angle), _text_attrs(s), _xml_text(item.text))
 
     # Axes decoration ---------------------------------------------------
     def _grid(self, to_px, axes: AxesSpec) -> List[str]:
@@ -400,14 +423,14 @@ class SvgRenderer(Renderer):
         out.append('<text class="cp-x-label" x="{0}" y="{1}" text-anchor="middle" '
                    'dominant-baseline="text-after-edge" {2}>{3}</text>'.format(
                        _num(bx + bw / 2.0), _num(self.height - 8.0), _text_attrs(st.axis_label),
-                       escape(axes.x_label)))
+                       _xml_text(axes.x_label)))
         out.append('<text class="cp-y-label" x="18" y="{0}" text-anchor="middle" dominant-baseline="central" '
                    'transform="rotate(-90 18 {0})" {1}>{2}</text>'.format(
-                       _num(by + bh / 2.0), _text_attrs(st.axis_label), escape(axes.y_label)))
+                       _num(by + bh / 2.0), _text_attrs(st.axis_label), _xml_text(axes.y_label)))
         if axes.title:
             out.append('<text class="cp-title" x="{0}" y="{1}" text-anchor="middle" '
                        'dominant-baseline="text-after-edge" {2}>{3}</text>'.format(
-                           _num(bx + bw / 2.0), _num(by - 8.0), _text_attrs(st.title), escape(axes.title)))
+                           _num(bx + bw / 2.0), _num(by - 8.0), _text_attrs(st.title), _xml_text(axes.title)))
         return out
 
     def _legend_elements(self) -> List[str]:
@@ -427,10 +450,12 @@ class SvgRenderer(Renderer):
                                       st.frame_color or "none")]
         for i, (text, items) in enumerate(self._legend_entries):
             cy = y + 4.0 + size_px * (1.6 * i + 0.8)
+            out.append('<g class="cp-legend-entry">')
             for item in items:
                 out.extend(self._legend_sample(item, x, cy))
             out.append('<text class="cp-legend-text" x="{0}" y="{1}" dominant-baseline="central" '
-                       '{2}>{3}</text>'.format(_num(x + 34.0), _num(cy), _text_attrs(st.text), escape(text)))
+                       '{2}>{3}</text></g>'.format(_num(x + 34.0), _num(cy), _text_attrs(st.text),
+                                                  _xml_text(self._legend_text(text))))
         out.append('</g>')
         return out
 
@@ -440,7 +465,7 @@ class SvgRenderer(Renderer):
         s = item.style
         if isinstance(item, Line):
             if s.casing_color is not None and s.casing_width_pt > 0.0:
-                out.append('<line x1="{0}" y1="{1}" x2="{2}" y2="{1}" {3}/>'.format(
+                out.append('<line class="cp-casing" x1="{0}" y1="{1}" x2="{2}" y2="{1}" {3}/>'.format(
                     _num(x + 6.0), _num(cy), _num(x + 28.0), _stroke_attrs(
                         s.casing_color, s.width_pt + 2.0 * s.casing_width_pt,
                         dash_pattern_pt(s.dash, s.width_pt), s.alpha, s.cap, s.join)))
@@ -449,12 +474,15 @@ class SvgRenderer(Renderer):
                     s.color, s.width_pt, dash_pattern_pt(s.dash, s.width_pt), s.alpha, s.cap, s.join)))
         elif isinstance(item, Markers):
             face = "none" if s.shape in ("x", "+") or s.face_color is None else s.face_color
-            out.append('<g fill="{0}" stroke="{1}" stroke-width="{2}" opacity="{3}">{4}</g>'.format(
-                face, s.edge_color or "none", _px(s.edge_width_pt), _num(s.alpha),
-                _marker_shape(s.shape, x + 17.0, cy, s.size_pt * PX_PER_PT / 2.0)))
+            out.append('<g class="cp-legend-marker" fill="{0}" stroke="{1}" stroke-width="{2}" '
+                       'opacity="{3}">{4}</g>'.format(
+                           face, s.edge_color or "none", _px(s.edge_width_pt), _num(s.alpha),
+                           _marker_shape(s.shape, x + 17.0, cy, s.size_pt * PX_PER_PT / 2.0)))
         return out
 
     # Read back ---------------------------------------------------------
+    # Everything below is parsed from the SVG text that to_svg() produces,
+    # so it reports what a browser would draw.
     def _document(self):
         if self._parsed is None:
             self._parsed = ElementTree.fromstring(self.to_svg())
@@ -470,71 +498,145 @@ class SvgRenderer(Renderer):
             return {"visible": False, "kind": kind}
         out = {"visible": True, "kind": kind, "draw_rank": groups.index(element)}
         if kind == "line":
-            ns = "{http://www.w3.org/2000/svg}"
-            paths = {p.get("class"): p for p in element.iter(ns + "path")}
+            paths = {p.get("class"): p for p in element.iter(_NS + "path")}
             main, casing = paths["cp-stroke"], paths.get("cp-casing")
-            width_pt = float(main.get("stroke-width")) / PX_PER_PT
-            dash = main.get("stroke-dasharray")
-            out.update(color=_color(main.get("stroke")), alpha=float(main.get("stroke-opacity")),
-                       width_pt=width_pt,
-                       dash_pt=tuple(float(v) / PX_PER_PT for v in dash.split(",")) if dash else (),
-                       cap=main.get("stroke-linecap"), join=main.get("stroke-linejoin"),
-                       casing_color=_color(casing.get("stroke")) if casing is not None else None,
-                       casing_width_pt=((float(casing.get("stroke-width")) / PX_PER_PT - width_pt) / 2.0
-                                        if casing is not None else 0.0),
-                       n_points=len(re.findall(r"[ML]", main.get("d") or "")))
+            out.update(_stroke_description(main), n_points=len(re.findall(r"[ML]", main.get("d") or "")))
+            if casing is not None:
+                cased = _stroke_description(casing)
+                out.update(casing_color=cased["color"], casing_width_pt=(cased["width_pt"] - out["width_pt"]) / 2.0,
+                           casing_dash_pt=cased["dash_pt"], casing_alpha=cased["alpha"])
+            else:
+                out.update(casing_color=None, casing_width_pt=0.0)
         elif kind == "markers":
-            out.update(shape=element.get("data-shape"), size_pt=float(element.get("data-size-pt")),
+            shapes = list(element)
+            out.update(shape=element.get("data-shape"),
+                       size_pt=_shape_width_px(shapes[0]) / PX_PER_PT if shapes else 0.0,
                        face_color=_color(element.get("fill")), edge_color=_color(element.get("stroke")),
                        edge_width_pt=float(element.get("stroke-width")) / PX_PER_PT,
-                       alpha=float(element.get("opacity")), n_points=len(list(element)))
+                       alpha=float(element.get("opacity")), n_points=len(shapes))
         else:
             text = next(iter(element))
             angle = float(re.match(r"rotate\(([-0-9.e]+)", text.get("transform")).group(1))
-            families = tuple(f.strip().strip("'") for f in text.get("font-family").split(","))
+            out.update(_text_description("", text))
             halo = text.get("stroke")
-            out.update(text=text.text or "", font_family=families,
-                       font_size_pt=float(text.get("font-size")) / PX_PER_PT,
-                       font_weight=text.get("font-weight"), font_style=text.get("font-style"),
-                       color=_color(text.get("fill")), alpha=float(text.get("fill-opacity")),
+            out.update(text=text.text or "",
                        h_align={"start": "left", "middle": "center", "end": "right"}[text.get("text-anchor")],
                        v_align={"text-after-edge": "bottom", "central": "center",
                                 "text-before-edge": "top"}[text.get("dominant-baseline")],
                        halo_color=_color(halo) if halo else None,
                        halo_width_pt=float(text.get("stroke-width")) / PX_PER_PT / 2.0 if halo else 0.0,
-                       screen_angle_deg=-angle)
+                       screen_angle_deg=-angle)   # SVG angles turn clockwise
+            out["alpha"] = float(text.get("fill-opacity"))
         return out
 
     def describe_axes(self) -> dict:
         root = self._document()
         by_class = {}
-        for el in root.iter():
+        order = {}
+        for index, el in enumerate(root.iter()):
+            order[id(el)] = index
             for c in (el.get("class") or "").split():
                 by_class.setdefault(c, []).append(el)
 
-        def text_of(cls):
+        def first(cls):
             found = by_class.get(cls)
-            return (found[0].text or "") if found else ""
+            return found[0] if found else None
 
-        frame = by_class["cp-frame"][0]
-        tick = by_class.get("cp-tick-x", [None])[0]
-        grid = by_class.get("cp-grid-major")
-        x_lim = tuple(float(v) for v in root.get("data-x-limits").split())
-        y_lim = tuple(float(v) for v in root.get("data-y-limits").split())
-        direction = None
-        if tick is not None:
-            direction = "out" if float(tick.get("y2")) > float(tick.get("y1")) else "in"
-        return dict(
-            x_label=text_of("cp-x-label"), y_label=text_of("cp-y-label"),
+        frame, background = first("cp-frame"), first("cp-background")
+        bw, bh = float(background.get("width")), float(background.get("height"))
+        out = dict(
             x_log=root.get("data-x-log") == "1", y_log=root.get("data-y-log") == "1",
-            x_limits=x_lim, y_limits=y_lim, title=text_of("cp-title"),
-            background=_color(by_class["cp-background"][0].get("fill")),
-            frame_color=_color(frame.get("stroke")),
-            frame_width_pt=float(frame.get("stroke-width")) / PX_PER_PT,
-            tick_direction=direction, tick_color=_color(tick.get("stroke")) if tick is not None else None,
-            grid_color=_color(grid[0].get("stroke")) if grid else None,
-            legend=[t.text or "" for t in by_class.get("cp-legend-text", [])],
+            x_limits=tuple(float(v) for v in root.get("data-x-limits").split()),
+            y_limits=tuple(float(v) for v in root.get("data-y-limits").split()),
+            x_label=(first("cp-x-label").text or ""), y_label=(first("cp-y-label").text or ""),
+            title=(first("cp-title").text or "") if first("cp-title") is not None else "",
+            background=_color(background.get("fill")), figure_background=_color(first("cp-figure").get("fill")),
+            frame_color=_color(frame.get("stroke")), frame_width_pt=float(frame.get("stroke-width")) / PX_PER_PT,
+            plot_size_pt=(bw / PX_PER_PT, bh / PX_PER_PT),
+            legend=self._legend_description(by_class),
         )
+        tick = first("cp-tick-x")
+        if tick is not None:
+            length = float(tick.get("y2")) - float(tick.get("y1"))
+            out.update(tick_direction="out" if length > 0 else "in", tick_color=_color(tick.get("stroke")),
+                       tick_length_pt=abs(length) / PX_PER_PT,
+                       tick_width_pt=float(tick.get("stroke-width")) / PX_PER_PT)
+        major, minor = by_class.get("cp-grid-major"), by_class.get("cp-grid-minor")
+        out["grid_color"] = _color(major[0].get("stroke")) if major else None
+        out["grid_minor_color"] = _color(minor[0].get("stroke")) if minor else None
+        if major:
+            grid = _stroke_description(major[0])
+            items = [order[id(g)] for g in root.iter() if g.get("data-item") is not None]
+            out.update(grid_width_pt=grid["width_pt"], grid_dash_pt=grid["dash_pt"], grid_lines=len(major),
+                       grid_below_items=not items or max(order[id(g)] for g in major + (minor or [])) < min(items))
+        box = first("cp-legend-box")
+        if box is not None:
+            out["legend_location"] = self._legend_location(box, background)
+        out.update(_text_description("x_label", first("cp-x-label")))
+        out.update(_text_description("y_label", first("cp-y-label")))
+        if first("cp-title") is not None:
+            out.update(_text_description("title", first("cp-title")))
+        labels = by_class.get("cp-tick-label")
+        if labels:
+            described = _text_description("tick_label", labels[0])
+            out.update({k: v for k, v in described.items() if not k.endswith(("weight", "style"))})
+        return out
+
+    @staticmethod
+    def _legend_description(by_class):
+        rows = []
+        for entry in by_class.get("cp-legend-entry", []):
+            colors = set()
+            for el in entry.iter():
+                cls = el.get("class") or ""
+                if el.tag == _NS + "line" and "cp-casing" not in cls:
+                    colors.add(_color(el.get("stroke")))
+                elif "cp-legend-marker" in cls:
+                    colors.add(_color(el.get("stroke")) or _color(el.get("fill")))
+            text = next(el for el in entry.iter() if "cp-legend-text" in (el.get("class") or ""))
+            rows.append((text.text or "", tuple(sorted(colors - {None}))))
+        return rows
+
+    @staticmethod
+    def _legend_location(box, plot):
+        bx, by = float(box.get("x")), float(box.get("y"))
+        bw, bh = float(box.get("width")), float(box.get("height"))
+        px, py = float(plot.get("x")), float(plot.get("y"))
+        pw, ph = float(plot.get("width")), float(plot.get("height"))
+        if bx >= px + pw - 0.5:
+            return "outside right"
+        vertical = "upper" if by + bh / 2.0 < py + ph / 2.0 else "lower"   # screen y points down
+        horizontal = "right" if bx + bw / 2.0 > px + pw / 2.0 else "left"
+        return vertical + " " + horizontal
+
+
+_NS = "{http://www.w3.org/2000/svg}"
+
+
+def _stroke_description(el) -> dict:
+    width_pt = float(el.get("stroke-width")) / PX_PER_PT
+    dash = el.get("stroke-dasharray")
+    return dict(color=_color(el.get("stroke")), alpha=float(el.get("stroke-opacity", 1.0)), width_pt=width_pt,
+                dash_pt=tuple(float(v) / PX_PER_PT for v in dash.split(",")) if dash else (),
+                cap=el.get("stroke-linecap"), join=el.get("stroke-linejoin"))
+
+
+def _text_description(prefix, el) -> dict:
+    p = prefix + "_" if prefix else ""
+    families = tuple(f.strip().strip("'") for f in el.get("font-family").split(","))
+    return {p + "font_family": families, p + "font_size_pt": float(el.get("font-size")) / PX_PER_PT,
+            p + "font_weight": el.get("font-weight"), p + "font_style": el.get("font-style"),
+            p + "color": _color(el.get("fill"))}
+
+
+def _shape_width_px(el) -> float:
+    """Width of one drawn marker, from its geometry."""
+    if el.tag == _NS + "circle":
+        return 2.0 * float(el.get("r"))
+    if el.tag == _NS + "rect":
+        return float(el.get("width"))
+    xs = [float(v) for v in re.findall(r"[ML](-?[0-9.]+),", el.get("d"))]
+    return max(xs) - min(xs)
 
 
 def _color(value: Optional[str]) -> Optional[str]:

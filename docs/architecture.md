@@ -228,8 +228,15 @@ Summary of `docs/backends.md`:
   step by step (restyle, hide, restack, reorder, remove, new axes, legend,
   clear) and checks both the result and that only affected items were
   touched. For file backends it also checks deterministic, ASCII output.
-* The SVG and matplotlib backends pass the kit. Planted bugs (dropped
-  dashes, missing halos, no restacking, wrong marker shape) are caught.
+* The SVG and matplotlib backends pass the kit. Read-back comes from the
+  drawn geometry (marker size from the shape, text angle checked against
+  the plot size in points, legend position from its bounding box), so a
+  backend cannot pass by echoing the scene.
+* `tests/test_backend_conformance.py` plants 25 defects one at a time
+  (casing without dash or alpha, grid above the items, ignored fonts or
+  tick sizes, legend in the wrong place or without samples, text angle in
+  data space or upside down, hidden items in autoscale, markers of the
+  wrong size, no restacking, ...) and checks that the kit catches each.
 
 What a change costs today:
 

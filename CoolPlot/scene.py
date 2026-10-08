@@ -21,6 +21,7 @@ This module imports neither CoolProp nor any plotting library.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field, fields
 from typing import Dict, Iterable, Iterator, Optional, Tuple
 
@@ -75,6 +76,13 @@ class Item:
     visible: bool = True
     z_order: float = 1.0
 
+    def __post_init__(self):
+        # Backends reserve the space below zero for the grid and background.
+        z = float(self.z_order)
+        if not (z >= 0.0 and math.isfinite(z)):
+            raise ValueError("Item '{0}': z_order has to be finite and >= 0, not {1}.".format(self.id, z))
+        object.__setattr__(self, "z_order", z)
+
 
 @dataclass(frozen=True, eq=False, kw_only=True)
 class Line(Item):
@@ -84,6 +92,7 @@ class Line(Item):
     style: LineStyle = field(default_factory=LineStyle)
 
     def __post_init__(self):
+        super().__post_init__()
         object.__setattr__(self, "x", _frozen_array(self.x))
         object.__setattr__(self, "y", _frozen_array(self.y))
         if self.x.shape != self.y.shape:
@@ -98,6 +107,7 @@ class Markers(Item):
     style: MarkerStyle = field(default_factory=MarkerStyle)
 
     def __post_init__(self):
+        super().__post_init__()
         object.__setattr__(self, "x", _frozen_array(self.x))
         object.__setattr__(self, "y", _frozen_array(self.y))
         if self.x.shape != self.y.shape:
@@ -161,6 +171,16 @@ class AxesSpec:
     y_limits: Optional[Tuple[float, float]] = None
     title: str = ""
     style: AxesStyle = field(default_factory=AxesStyle)
+
+    def __post_init__(self):
+        # Limits are stored ascending; inverted axes are not supported.
+        for name in ("x_limits", "y_limits"):
+            limits = getattr(self, name)
+            if limits is not None:
+                lo, hi = (float(v) for v in limits)
+                if not (math.isfinite(lo) and math.isfinite(hi)):
+                    raise ValueError("AxesSpec: {0} have to be finite, not {1}.".format(name, limits))
+                object.__setattr__(self, name, (min(lo, hi), max(lo, hi)))
 
 
 class Scene:

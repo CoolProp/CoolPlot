@@ -24,6 +24,8 @@ RULES = {
     "CoolPlot.style": PURE | {"CoolPlot.scene", "CoolPlot.render", "CoolPlot.theme"},
     "CoolPlot.theme": PURE | {"CoolPlot.scene", "CoolPlot.render"},
     "CoolPlot.scene": PURE | {"CoolPlot.render", "CoolPlot.theme"},
+    # The render package itself never imports a backend; users pick one.
+    "CoolPlot.render": PURE | {"CoolPlot.theme", "CoolPlot.render.mpl", "CoolPlot.render.svg"},
     "CoolPlot.render.base": PURE | {"CoolPlot.theme"},
     "CoolPlot.render.svg": PURE | {"CoolPlot.theme"},
     "CoolPlot.render.testing": PURE | {"CoolPlot.theme", "CoolPlot.render.mpl"},

@@ -32,9 +32,15 @@ Rules that hold everywhere:
 
 * **Colours** are CSS colour names or hex codes (`#rgb`, `#rgba`,
   `#rrggbb`, `#rrggbbaa`); `"none"` means no paint. They are normalised to
-  `#rrggbb` when the style is created, and an alpha inside the colour is
-  multiplied into `alpha`. A typo fails immediately, not later in one
-  backend.
+  `#rrggbb` when the style is created. A typo fails immediately, not later
+  in one backend.
+* **Transparency** belongs to the `alpha` fields. An alpha written into
+  a `color` field ("#ff000080") is multiplied into that style's `alpha`,
+  also when copying with `.with_(color=...)`, so it compounds. Colour
+  fields without an alpha of their own (backgrounds, frame, ticks, marker
+  edges and faces, casing, halo, theme palette) accept only opaque
+  colours; a fully transparent one ("#ffffff00") means no paint, a partly
+  transparent one is refused.
 * **Lengths** are typographic points (1/72 inch): line widths, marker
   sizes, font sizes, dash lengths, casing and halo widths.
 * **Dashes** are `"solid"`, `"dashed"`, `"dotted"`, `"dashdot"`, or a tuple
@@ -72,7 +78,11 @@ with a colour vision deficiency. Of the eight hues in the default palette,
 only three pass that test for all pairs (worst pair: CVD Delta E 9.2,
 normal vision 24.0 in OKLab x100, light surface). Every diagram type offers
 exactly three coloured isoline families (plus quality, drawn in ink, and
-the rarely used internal energy), so three are enough:
+the rarely used internal energy), so three are enough. On the dark
+surface the stepped hues give a worst pair of CVD Delta E 9.4 (deuteranopia
+and protanopia) and 20.9 for normal vision. Tritanopia, which is very
+rare, separates blue and aqua less well in the dark theme (Delta E 4.0);
+labels or the dash-based `print` theme cover that case.
 
 | Slot | Light | Dark | Families that land here |
 |------|-------|------|-------------------------|

@@ -32,8 +32,8 @@ with open(os.path.join(here, 'requirements.txt')) as f:
 # Plotting backends are optional, the core only needs numpy and CoolProp.
 # The legacy CoolPlot.Plot package needs the "legacy" extra.
 EXTRAS = {
-    'matplotlib': ['matplotlib>=3.6'],
-    'legacy': ['matplotlib>=3.6', 'six'],
+    'matplotlib': ['matplotlib>=3.8'],
+    'legacy': ['matplotlib>=3.8', 'six'],
 }
 
 # The rest you shouldn't have to touch too much :)

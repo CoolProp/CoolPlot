@@ -18,6 +18,7 @@ This module imports neither CoolProp nor a plotting library.
 """
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field, fields, replace
 from typing import Optional, Tuple, Union
@@ -110,27 +111,47 @@ def _check_alpha(alpha: float, owner: str) -> float:
 
 def _check_length(value: float, owner: str, name: str) -> float:
     value = float(value)
-    if not value >= 0.0:
-        raise ValueError("{0}: {1} has to be zero or positive, not {2}.".format(owner, name, value))
+    if not (value >= 0.0 and math.isfinite(value)):
+        raise ValueError("{0}: {1} has to be a finite length >= 0, not {2}.".format(owner, name, value))
     return value
+
+
+def opaque_color(value, owner: str, name: str) -> Optional[str]:
+    """Parse a colour for a field that has no alpha of its own.
+
+    A fully transparent colour means no paint (None). A partly transparent
+    one is refused rather than silently drawn opaque.
+    """
+    hex_color, alpha = parse_color(value)
+    if hex_color is None or alpha == 0.0:
+        return None
+    if alpha < 1.0:
+        raise ValueError("{0}: {1} cannot be partly transparent ({2!r}); this field has no "
+                         "alpha of its own.".format(owner, name, value))
+    return hex_color
 
 
 class _Normalising:
     """Mixin for frozen style dataclasses that normalise their colours.
 
     Fields whose name ends in "color" are parsed with :func:`parse_color`.
-    An alpha given inside the colour ("#ff000080") is multiplied into the
-    alpha field if there is one, so backends only ever see "#rrggbb".
+    For the field named ``color`` an alpha inside the colour ("#ff000080")
+    is multiplied into the ``alpha`` field, so backends only ever see
+    "#rrggbb". Other colour fields have no alpha of their own and accept
+    only opaque colours or "none" (see :func:`opaque_color`).
     """
 
     def _normalise_colors(self, owner: str):
         for f in fields(self):
             if not f.name.endswith("color"):
                 continue
-            hex_color, alpha = parse_color(getattr(self, f.name))
-            object.__setattr__(self, f.name, hex_color)
-            if hex_color is not None and alpha < 1.0 and hasattr(self, "alpha") and f.name == "color":
-                object.__setattr__(self, "alpha", self.alpha * alpha)
+            if f.name == "color" and hasattr(self, "alpha"):
+                hex_color, alpha = parse_color(getattr(self, f.name))
+                object.__setattr__(self, f.name, hex_color)
+                if hex_color is not None and alpha < 1.0:
+                    object.__setattr__(self, "alpha", self.alpha * alpha)
+            else:
+                object.__setattr__(self, f.name, opaque_color(getattr(self, f.name), owner, f.name))
 
     def with_(self, **changes):
         """Copy with some fields changed, e.g. style.with_(color="red")."""
@@ -193,8 +214,9 @@ class LineStyle(_Normalising):
                                  "in points.".format(self.dash, sorted(DASH_NAMES)))
         else:
             dash = tuple(float(v) for v in self.dash)
-            if len(dash) % 2 or any(v < 0.0 for v in dash) or (dash and sum(dash) <= 0.0):
-                raise ValueError("A dash tuple needs an even number of non-negative lengths.")
+            if (len(dash) % 2 or any(not (v >= 0.0 and math.isfinite(v)) for v in dash)
+                    or (dash and sum(dash) <= 0.0)):
+                raise ValueError("A dash tuple needs an even number of finite, non-negative lengths.")
             object.__setattr__(self, "dash", dash)
         if self.cap not in ("butt", "round", "square"):
             raise ValueError("Unknown line cap {0!r}.".format(self.cap))
@@ -322,7 +344,7 @@ class LegendStyle(_Normalising):
     text: TextStyle = field(default_factory=TextStyle)
 
     def __post_init__(self):
-        object.__setattr__(self, "background", parse_color(self.background)[0])
+        object.__setattr__(self, "background", opaque_color(self.background, "LegendStyle", "background"))
         self._normalise_colors("LegendStyle")
         if self.location not in LEGEND_LOCATIONS:
             raise ValueError("Unknown legend location {0!r}, expected one of {1}.".format(
@@ -352,8 +374,9 @@ class AxesStyle(_Normalising):
     legend: LegendStyle = field(default_factory=LegendStyle)
 
     def __post_init__(self):
-        object.__setattr__(self, "background", parse_color(self.background)[0])
-        object.__setattr__(self, "figure_background", parse_color(self.figure_background)[0])
+        object.__setattr__(self, "background", opaque_color(self.background, "AxesStyle", "background"))
+        object.__setattr__(self, "figure_background",
+                           opaque_color(self.figure_background, "AxesStyle", "figure_background"))
         self._normalise_colors("AxesStyle")
         _check_length(self.frame_width_pt, "AxesStyle", "frame_width_pt")
         _check_length(self.tick_length_pt, "AxesStyle", "tick_length_pt")
@@ -399,13 +422,18 @@ def _convert(hint, value):
     origin = typing.get_origin(hint)
     args = typing.get_args(hint)
     if origin is Union:
-        for arg in args:
-            if arg is type(None):
-                continue
-            try:
+        # Optional[X]: pick the member that matches the shape of the value
+        # and let its errors through; never keep a raw dict or list.
+        members = [a for a in args if a is not type(None)]
+        for arg in members:
+            if isinstance(value, dict) and hasattr(arg, "__dataclass_fields__"):
                 return _convert(arg, value)
-            except (TypeError, ValueError, AttributeError):
-                continue
+            if isinstance(value, dict) and getattr(typing.get_origin(arg), "__name__", "") in ("Mapping", "dict"):
+                return dict(value)
+            if isinstance(value, (list, tuple)) and typing.get_origin(arg) in (tuple, Tuple):
+                return _convert(arg, value)
+        if isinstance(value, (dict, list)):
+            raise TypeError("Unexpected {0} for {1}.".format(type(value).__name__, hint))
         return value
     if hasattr(hint, "__dataclass_fields__"):
         if not isinstance(value, dict):

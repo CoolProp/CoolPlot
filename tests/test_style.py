@@ -113,3 +113,33 @@ def test_switching_theme_recomputes_nothing():
     assert d.update_scene()["iso/T/273.15"].style.width_pt == 2.0
     d.set_isoline_style("T")
     assert d.update_scene()["iso/T/273.15"].style.width_pt == DARK.isoline.width_pt
+
+
+def test_theme_loading_is_strict():
+    for bad in ({"axes": {"grid_major": {"colour": "red"}}},
+                {"axes": {"grid_major": {"color": "blurple"}}},
+                {"processes": [{"width_pt": -1.0}]}):
+        with pytest.raises((TypeError, ValueError)):
+            Theme.from_dict(bad)
+
+
+def test_presets_cannot_be_changed_by_accident():
+    with pytest.raises(TypeError):
+        CLASSIC.isoline_colors["T"] = "red"
+    custom = DEFAULT.with_(slot_dashes=((4, 2), "dashed"))
+    again = Theme.from_dict(json.loads(json.dumps(custom.to_dict())))
+    assert again == custom and hash(again) == hash(custom)
+
+
+def test_colour_fields_without_alpha_refuse_partial_transparency():
+    assert AxesStyle(background="#ffffff00").background is None     # fully transparent = no paint
+    with pytest.raises(ValueError):
+        AxesStyle(background="#ffffff80")
+    with pytest.raises(ValueError):
+        MarkerStyle(edge_color="#00000080")
+    with pytest.raises(ValueError):
+        Theme(categorical=("#2a78d680",))
+    with pytest.raises(ValueError):
+        LineStyle(width_pt=float("inf"))
+    with pytest.raises(ValueError):
+        LineStyle(dash=(float("nan"), 1.0))

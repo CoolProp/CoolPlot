@@ -6,10 +6,13 @@ failures, where ``factory()`` creates a fresh renderer. The kit draws a
 reference scene that uses every style feature, then reads back what the
 backend actually drew through ``describe_item`` and ``describe_axes`` and
 compares it with what the scene asked for. It then changes the scene step
-by step (restyle, hide, restack, remove, change axes, legend, clear) and
-checks both the result and that only the affected items were touched.
+by step (restyle, hide, restack, reorder, change an item's type, remove,
+change axes, grids and legend, autoscale, clear) and checks both the
+result and that only the affected items were touched.
 
-docs/backends.md explains each requirement; the failure messages name it.
+docs/backends.md explains each requirement; every failure message ends
+with the tag of the section it refers to. Requirements the kit cannot
+check are marked "(manual)" there.
 
 Usage in a test suite::
 
@@ -37,6 +40,8 @@ from ..style import (AxesStyle, Font, GENERIC_FONTS, LegendStyle, LineStyle, Mar
 #: which is far below anything visible.
 REL_TOL = 1e-6
 ABS_TOL = 0.005
+#: Text angles are compared with this tolerance in degrees.
+ANGLE_TOL = 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -52,9 +57,10 @@ def conformance_axes(x_log=False, y_log=True) -> AxesSpec:
             frame_width_pt=0.8, tick_color="#c3c2b7", tick_length_pt=4.0, tick_width_pt=0.6,
             tick_direction="out",
             tick_label=TextStyle(font=Font(size_pt=8.0), color="#52514e"),
-            axis_label=TextStyle(font=Font(size_pt=9.5), color="#0b0b0b"),
-            title=TextStyle(font=Font(size_pt=11.0, weight="bold"), color="#0b0b0b"),
-            grid_major=LineStyle(color="#e1e0d9", width_pt=0.5),
+            axis_label=TextStyle(font=Font(family=("DejaVu Serif", "serif"), size_pt=9.5, style="italic"),
+                                 color="#0b0b0b"),
+            title=TextStyle(font=Font(size_pt=11.0, weight="bold"), color="#2a78d6"),
+            grid_major=LineStyle(color="#e1e0d9", width_pt=0.5, dash="dotted"),
             legend=LegendStyle(location="upper right", background="#fcfcfb",
                                text=TextStyle(font=Font(size_pt=8.0), color="#52514e")),
         ))
@@ -73,7 +79,7 @@ def conformance_scene() -> Scene:
         Line(id="line/dashdot", role="isoline", group="lines", x=x, y=np.geomspace(0.5, 80.0, 20),
              style=LineStyle(color="#eda100", width_pt=2.0, dash="dashdot", join="bevel", cap="square")),
         Line(id="line/custom", role="process", group="lines", x=x, y=np.geomspace(0.6, 90.0, 20),
-             style=LineStyle(color="#0b0b0b", width_pt=2.0, dash=(5.0, 2.0, 1.0, 2.0),
+             style=LineStyle(color="#0b0b0b", width_pt=2.0, dash=(5.0, 2.0, 1.0, 2.0), alpha=0.7,
                              casing_color="#fcfcfb", casing_width_pt=1.5)),
         # NaN splits a line; non-positive values cannot be shown on a log axis
         Line(id="line/gaps", role="saturation", x=[1.0, 2.0, np.nan, 4.0, 5.0, 6.0, 7.0],
@@ -101,7 +107,10 @@ def conformance_scene() -> Scene:
                              color="#52514e", alpha=0.8, h_align="left", v_align="bottom",
                              halo_color="#fcfcfb", halo_width_pt=2.0)),
         Text(id="text/down", role="isoline_label", x=7.0, y=30.0, text="falling", z_order=4.0,
-             direction=(1.0, -1.0), style=TextStyle(h_align="right", v_align="top")),
+             direction=(1.0, -0.5), style=TextStyle(h_align="right", v_align="top")),
+        # Leftward directions have to come out upright
+        Text(id="text/left-down", x=2.0, y=20.0, text="left down", z_order=4.0, direction=(-1.0, -10.0)),
+        Text(id="text/left-up", x=8.0, y=0.5, text="left up", z_order=4.0, direction=(-2.0, 0.1)),
         Text(id="text/nan", x=float("nan"), y=1.0, text="nowhere"),
     ]
     return Scene(conformance_axes(), items)
@@ -110,15 +119,33 @@ def conformance_scene() -> Scene:
 # ---------------------------------------------------------------------------
 # What the backend should report
 # ---------------------------------------------------------------------------
-def _n_drawable(item, axes: AxesSpec) -> int:
-    x = np.asarray(item.x, dtype=float)
-    y = np.asarray(item.y, dtype=float)
+def _ok_mask(x, y, axes: AxesSpec):
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
     ok = np.isfinite(x) & np.isfinite(y)
     if axes.x_log:
         ok &= x > 0.0
     if axes.y_log:
         ok &= y > 0.0
-    return int(np.sum(ok))
+    return ok
+
+
+def _sample_colors(item):
+    """Colours a legend sample of this item shows: line colour or marker edge (else face)."""
+    if isinstance(item, Line):
+        return {item.style.color} - {None}
+    if isinstance(item, Markers):
+        return {item.style.edge_color or item.style.face_color} - {None}
+    return set()
+
+
+def safe_limits(limits, log):
+    """The limits a backend has to use: a log axis cannot start at or below zero."""
+    lo, hi = limits
+    if log and not lo > 0.0:
+        hi = hi if hi > 0.0 else 10.0
+        lo = hi * 1e-3
+    return lo, hi
 
 
 def expected_item(item, axes: AxesSpec) -> dict:
@@ -126,17 +153,20 @@ def expected_item(item, axes: AxesSpec) -> dict:
     out = {"visible": item.visible}
     s = item.style
     if isinstance(item, Line):
+        cased = s.casing_color is not None and s.casing_width_pt > 0.0
         out.update(kind="line", color=s.color, alpha=s.alpha, width_pt=s.width_pt,
                    dash_pt=dash_pattern_pt(s.dash, s.width_pt), cap=s.cap, join=s.join,
-                   casing_color=s.casing_color if s.casing_width_pt > 0 else None,
-                   casing_width_pt=s.casing_width_pt if s.casing_color else 0.0,
-                   n_points=_n_drawable(item, axes))
+                   casing_color=s.casing_color if cased else None,
+                   casing_width_pt=s.casing_width_pt if cased else 0.0,
+                   n_points=int(np.sum(_ok_mask(item.x, item.y, axes))))
+        if cased:
+            out.update(casing_dash_pt=dash_pattern_pt(s.dash, s.width_pt), casing_alpha=s.alpha)
     elif isinstance(item, Markers):
         has_face = item.style.shape not in ("x", "+")
         out.update(kind="markers", shape=s.shape, size_pt=s.size_pt,
                    face_color=s.face_color if has_face else None,
                    edge_color=s.edge_color, edge_width_pt=s.edge_width_pt, alpha=s.alpha,
-                   n_points=_n_drawable(item, axes))
+                   n_points=int(np.sum(_ok_mask(item.x, item.y, axes))))
     elif isinstance(item, Text):
         drawable = math.isfinite(item.x) and math.isfinite(item.y)
         out.update(kind="text", text=item.text, font_family=tuple(s.font.family),
@@ -149,20 +179,72 @@ def expected_item(item, axes: AxesSpec) -> dict:
     return out
 
 
-def expected_axes(scene: Scene) -> dict:
+def _font_keys(prefix, style: TextStyle, full=True) -> dict:
+    out = {prefix + "_font_family": tuple(style.font.family),
+           prefix + "_font_size_pt": style.font.size_pt, prefix + "_color": style.color}
+    if full:
+        out.update({prefix + "_font_weight": style.font.weight, prefix + "_font_style": style.font.style})
+    return out
+
+
+def expected_axes(scene: Scene, owns_canvas: bool) -> dict:
     a = scene.axes
     st = a.style
-    legend = [text for text, _ in scene.legend_entries()] if st.legend.visible else []
-    return dict(x_label=a.x_label, y_label=a.y_label, x_log=a.x_log, y_log=a.y_log,
-                x_limits=a.x_limits, y_limits=a.y_limits, title=a.title,
-                background=st.background, frame_color=st.frame_color,
-                frame_width_pt=st.frame_width_pt, tick_direction=st.tick_direction,
-                tick_color=st.tick_color,
-                grid_color=st.grid_major.color if st.grid_major is not None else None,
-                legend=legend)
+    legend_shown = bool(st.legend.visible and scene.legend_entries())
+    out = dict(x_label=a.x_label, y_label=a.y_label, x_log=a.x_log, y_log=a.y_log, title=a.title,
+               background=st.background, frame_color=st.frame_color,
+               frame_width_pt=st.frame_width_pt, tick_direction=st.tick_direction,
+               tick_color=st.tick_color, tick_length_pt=st.tick_length_pt, tick_width_pt=st.tick_width_pt,
+               grid_color=st.grid_major.color if st.grid_major is not None else None,
+               grid_minor_color=st.grid_minor.color if st.grid_minor is not None else None,
+               legend=[(text, tuple(sorted(set().union(*(_sample_colors(i) for i in items)))))
+                       for text, items in scene.legend_entries()] if legend_shown else [])
+    if a.x_limits is not None:
+        out["x_limits"] = safe_limits(a.x_limits, a.x_log)
+    if a.y_limits is not None:
+        out["y_limits"] = safe_limits(a.y_limits, a.y_log)
+    if st.grid_major is not None:
+        g = st.grid_major
+        out.update(grid_width_pt=g.width_pt, grid_dash_pt=dash_pattern_pt(g.dash, g.width_pt),
+                   grid_below_items=True)
+    if legend_shown:
+        out["legend_location"] = st.legend.location
+    if owns_canvas:
+        out["figure_background"] = st.figure_background
+    out.update(_font_keys("x_label", st.axis_label))
+    out.update(_font_keys("y_label", st.axis_label))
+    out.update(_font_keys("title", st.title))
+    out.update(_font_keys("tick_label", st.tick_label, full=False))
+    return out
+
+
+def expected_screen_angle(item: Text, axes: AxesSpec, plot_size_pt, limits) -> float:
+    """Counter-clockwise screen angle of a direction given in data coordinates, kept upright."""
+    if item.direction is None:
+        return 0.0
+    (x0, x1), (y0, y1) = limits
+    width, height = plot_size_pt
+
+    def frac(v, lo, hi, log):
+        if log:
+            return (math.log10(v) - math.log10(lo)) / (math.log10(hi) - math.log10(lo))
+        return (v - lo) / (hi - lo)
+
+    dx, dy = item.direction
+    eps = 1e-6
+    fx = frac(item.x + dx * eps, x0, x1, axes.x_log) - frac(item.x, x0, x1, axes.x_log)
+    fy = frac(item.y + dy * eps, y0, y1, axes.y_log) - frac(item.y, y0, y1, axes.y_log)
+    angle = math.degrees(math.atan2(fy * height, fx * width))
+    if angle > 90.0:
+        angle -= 180.0
+    elif angle <= -90.0:
+        angle += 180.0
+    return angle
 
 
 def _same(a, b) -> bool:
+    if isinstance(a, bool) or isinstance(b, bool):
+        return a == b
     if isinstance(a, float) or isinstance(b, float):
         if a is None or b is None:
             return a is b
@@ -187,18 +269,29 @@ def _fonts_ok(requested, reported) -> bool:
 
 def _compare(where: str, expected: dict, actual: dict, failures: List[str]):
     for key, want in expected.items():
-        if key == "font_family" and key in actual:
-            if not _fonts_ok(want, actual[key]):
-                failures.append("{0}: font_family {1!r} does not honour {2!r} [style]".format(
-                    where, actual[key], want))
-            continue
         if key not in actual:
             failures.append("{0}: backend does not report '{1}' [read-back]".format(where, key))
+        elif key.endswith("font_family"):
+            if not _fonts_ok(want, actual[key]):
+                failures.append("{0}: {1} {2!r} does not honour {3!r} [style]".format(
+                    where, key, actual[key], want))
         elif not _same(want, actual[key]):
             failures.append("{0}: {1} is {2!r}, expected {3!r} [style]".format(where, key, actual[key], want))
 
 
 def _check_scene(renderer, scene: Scene, failures: List[str], label: str):
+    try:
+        axes_actual = renderer.describe_axes()
+    except Exception as e:
+        failures.append("{0}: describe_axes failed: {1!r} [read-back]".format(label, e))
+        return
+    owns = bool(getattr(renderer, "owns_canvas", True))
+    _compare(label + ": axes", expected_axes(scene, owns), axes_actual, failures)
+    if scene.axes.style.grid_major is not None and axes_actual.get("grid_lines", 0) < 4:
+        failures.append("{0}: only {1} major grid lines [style]".format(label, axes_actual.get("grid_lines")))
+    if "plot_size_pt" not in axes_actual:
+        failures.append("{0}: backend does not report 'plot_size_pt' [read-back]".format(label))
+
     visible_order = [i for i in scene.draw_order() if expected_item(scene[i], scene.axes)["visible"]]
     for item in scene:
         where = "{0}: {1}".format(label, item.id)
@@ -216,21 +309,13 @@ def _check_scene(renderer, scene: Scene, failures: List[str], label: str):
         if actual.get("draw_rank") != visible_order.index(item.id):
             failures.append("{0}: drawn at rank {1}, expected {2} [order]".format(
                 where, actual.get("draw_rank"), visible_order.index(item.id)))
-        if want["kind"] == "text":
+        if want["kind"] == "text" and "plot_size_pt" in axes_actual:
             angle = actual.get("screen_angle_deg")
-            if angle is None:
-                failures.append("{0}: no screen_angle_deg [text direction]".format(where))
-            elif item.direction is None and abs(angle) > 1e-6:
-                failures.append("{0}: unrotated text drawn at {1} deg [text direction]".format(where, angle))
-            elif item.direction is not None:
-                rising = item.direction[0] * item.direction[1] > 0
-                if not (0.0 < angle < 90.0 if rising else -90.0 < angle < 0.0):
-                    failures.append("{0}: direction {1} drawn at {2} deg [text direction]".format(
-                        where, item.direction, angle))
-    try:
-        _compare(label + ": axes", expected_axes(scene), renderer.describe_axes(), failures)
-    except Exception as e:
-        failures.append("{0}: describe_axes failed: {1!r} [read-back]".format(label, e))
+            limits = (axes_actual.get("x_limits"), axes_actual.get("y_limits"))
+            target = expected_screen_angle(item, scene.axes, axes_actual["plot_size_pt"], limits)
+            if angle is None or abs(angle - target) > ANGLE_TOL:
+                failures.append("{0}: drawn at {1} deg, expected {2:.2f} deg [text direction]".format(
+                    where, angle, target))
 
 
 # ---------------------------------------------------------------------------
@@ -271,27 +356,35 @@ def run_conformance(factory: Callable[[], object]) -> List[str]:
             failures.append("an untouched line got a new backend object [selective update]")
     _check_scene(renderer, scene, failures, "restyled")
 
-    # 4. Hide and show, restack, move data
+    # 4. Hide, restack, move data, minor grid
     scene.put(replace(scene["markers/o"], visible=False))
     scene.put(replace(scene["line/dotted"], z_order=10.0))
     scene.put(replace(scene["line/dashed"], y=np.geomspace(1.0, 99.0, 20)))
+    scene.set_axes(replace(scene.axes, style=replace(
+        scene.axes.style, grid_minor=LineStyle(color="#f0efec", width_pt=0.3))))
     renderer.sync(scene)
     _check_scene(renderer, scene, failures, "hidden+restacked")
 
     # 5. Same z order, new scene order: drawing order follows the scene
     items = list(scene)
-    reordered = [items[1], items[0]] + items[2:]
-    scene.replace_all(reordered)
+    scene.replace_all([items[1], items[0]] + items[2:])
     report = renderer.sync(scene)
     if not report.reordered:
         failures.append("swapping two items of equal z order was not reported as reordered [order]")
     _check_scene(renderer, scene, failures, "reordered")
 
-    # 6. Remove an item, change the axes and the legend
+    # 6. An item changes its type under the same id
+    first = list(scene)[0]
+    scene.put(Markers(id=first.id, x=[2.0, 3.0], y=[2.0, 3.0], z_order=first.z_order))
+    renderer.sync(scene)
+    _check_scene(renderer, scene, failures, "type change")
+
+    # 7. Remove an item, change the axes and the legend
     scene.remove("line/custom")
     scene.set_axes(replace(scene.axes, x_log=True, y_log=False, x_limits=(0.5, 20.0),
                            y_limits=(-5.0, 120.0), title="Changed",
-                           style=replace(scene.axes.style, grid_major=None,
+                           style=replace(scene.axes.style, grid_major=None, grid_minor=None,
+                                         tick_direction="in",
                                          legend=replace(scene.axes.style.legend, location="lower left"))))
     report = renderer.sync(scene)
     if report.removed != ["line/custom"]:
@@ -305,12 +398,18 @@ def run_conformance(factory: Callable[[], object]) -> List[str]:
         failures.append("describe_item of a removed item raised {0!r} instead of KeyError [read-back]".format(e))
     _check_scene(renderer, scene, failures, "new axes")
 
+    for location in ("upper left", "lower right", "outside right"):
+        scene.set_axes(replace(scene.axes, style=replace(scene.axes.style, legend=replace(
+            scene.axes.style.legend, location=location))))
+        renderer.sync(scene)
+        _check_scene(renderer, scene, failures, "legend " + location)
+
     scene.set_axes(replace(scene.axes, style=replace(scene.axes.style, legend=replace(
         scene.axes.style.legend, visible=False))))
     renderer.sync(scene)
     _check_scene(renderer, scene, failures, "legend off")
 
-    # 7. Clear and draw again
+    # 8. Clear and draw again
     renderer.clear()
     for item_id in scene.ids():
         try:
@@ -324,7 +423,10 @@ def run_conformance(factory: Callable[[], object]) -> List[str]:
         failures.append("sync after clear() did not add everything [clear]")
     _check_scene(renderer, scene, failures, "after clear")
 
-    # 8. File output: valid, ASCII, no NaN, deterministic
+    # 9. Log axis with a lower limit at zero, and autoscaling
+    failures.extend(_check_limits(factory))
+
+    # 10. File output: valid, ASCII, no NaN, deterministic
     if "file_output" in getattr(renderer, "capabilities", ()):
         failures.extend(_check_file_output(factory))
     return failures
@@ -333,6 +435,40 @@ def run_conformance(factory: Callable[[], object]) -> List[str]:
 def _backend_object(renderer, item_id):
     getter = getattr(renderer, "backend_object", None)
     return getter(item_id) if getter is not None else None
+
+
+def _check_limits(factory) -> List[str]:
+    failures = []
+    # A log axis cannot start at zero: the backend uses upper / 1000
+    scene = conformance_scene()
+    scene.set_axes(replace(scene.axes, y_limits=(0.0, 100.0)))
+    renderer = factory()
+    renderer.sync(scene)
+    _check_scene(renderer, scene, failures, "log limit at zero")
+
+    # Autoscale covers visible data only
+    scene = Scene(AxesSpec(y_log=True), [
+        Line(id="a", x=[1.0, 2.0, 3.0], y=[0.5, 5.0, 50.0]),
+        Markers(id="b", x=[4.0], y=[np.nan]),
+        Line(id="hidden", visible=False, x=[-100.0, 1000.0], y=[1e-6, 1e9]),
+    ])
+    renderer = factory()
+    renderer.sync(scene)
+    (x_lo, x_hi), (y_lo, y_hi) = renderer.describe_axes()["x_limits"], renderer.describe_axes()["y_limits"]
+    if not (x_lo <= 1.0 and x_hi >= 3.0 and y_lo <= 0.5 and y_hi >= 50.0):
+        failures.append("autoscaled limits {0} do not cover the visible data [robustness]".format(
+            ((x_lo, x_hi), (y_lo, y_hi))))
+    if x_hi >= 1000.0 or x_lo <= -100.0 or y_hi >= 1e9 or y_lo <= 1e-6 or not y_lo > 0.0:
+        failures.append("autoscaled limits {0} include hidden items or non-positive log values "
+                        "[robustness]".format(((x_lo, x_hi), (y_lo, y_hi))))
+    # A single point: the span is padded, never zero
+    scene = Scene(AxesSpec(), [Markers(id="p", x=[2.0], y=[3.0])])
+    renderer = factory()
+    renderer.sync(scene)
+    (x_lo, x_hi), (y_lo, y_hi) = renderer.describe_axes()["x_limits"], renderer.describe_axes()["y_limits"]
+    if not (x_lo < 2.0 < x_hi and y_lo < 3.0 < y_hi):
+        failures.append("a single point gave limits {0} [robustness]".format(((x_lo, x_hi), (y_lo, y_hi))))
+    return failures
 
 
 def _check_file_output(factory) -> List[str]:
