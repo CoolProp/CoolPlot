@@ -90,7 +90,9 @@ def get_critical_state(state: CoolProp.AbstractState) -> CoolProp.AbstractState:
 class EnhancedState(CoolProp.AbstractState):
 
     def __init__(self, backend: str, fluid: str):
-        CoolProp.AbstractState.__init__(backend, fluid)
+        # The arguments have to be passed on with self; CoolProp 8 (pybind11)
+        # rejects the call without it, older Cython versions ignored it.
+        CoolProp.AbstractState.__init__(self, backend, fluid)
         self._critical_state = None
         self._T_critical = None
         self._rhomass_critical = None

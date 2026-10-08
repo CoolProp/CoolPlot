@@ -2,7 +2,6 @@
 from __future__ import print_function, division
 
 from abc import ABCMeta
-from six import with_metaclass
 import warnings
 import numpy as np
 
@@ -81,7 +80,7 @@ class BaseDimension(BaseQuantity):
     def unit(self, value): self._unit = value
 
 
-class PropertyDict(with_metaclass(ABCMeta), object):
+class PropertyDict(object, metaclass=ABCMeta):
     """A collection of dimensions for all the required quantities"""
 
     def __init__(self):

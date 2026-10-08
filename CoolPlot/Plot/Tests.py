@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function, division, absolute_import
 
-from CoolProp.Plots import PropertyPlot  # TODO: Change to absolute import
+from .Plots import PropertyPlot
 
 
 def main():

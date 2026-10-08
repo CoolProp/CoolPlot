@@ -209,14 +209,21 @@ class PropertyPlot(BasePlot):
                         (filter_x(dew.x[dew_filter][-1]) - filter_x(bub.x[bub_filter][-1])) < 0.050 * filter_x(dx) or
                         (filter_y(dew.y[dew_filter][-1]) - filter_y(bub.y[bub_filter][-1])) < 0.010 * filter_y(dy)):
                         x = np.linspace(bub.x[bub_filter][-1], dew.x[dew_filter][-1], 11)
-                        y = interpolate_values_1d(
-                          np.append(bub.x[bub_filter], dew.x[dew_filter][::-1]),
-                          np.append(bub.y[bub_filter], dew.y[dew_filter][::-1]),
-                          x_points=x,
-                          kind='cubic')
-                        self.axis.plot(dimx.from_SI(x), dimy.from_SI(y), **sat_props)
-                        warnings.warn("Detected an incomplete phase envelope, fixing it numerically.")
-                        xcrit = x[5]; ycrit = y[5]
+                        try:
+                            y = interpolate_values_1d(
+                              np.append(bub.x[bub_filter], dew.x[dew_filter][::-1]),
+                              np.append(bub.y[bub_filter], dew.y[dew_filter][::-1]),
+                              x_points=x,
+                              kind='cubic')
+                        except ValueError:
+                            # Bubble and dew line share x values (they coincide
+                            # in a p-T chart of a pure fluid), so there is no gap
+                            # to close and nothing to interpolate across.
+                            y = None
+                        if y is not None:
+                            self.axes.plot(dimx.from_SI(x), dimy.from_SI(y), **sat_props)
+                            warnings.warn("Detected an incomplete phase envelope, fixing it numerically.")
+                            xcrit = x[5]; ycrit = y[5]
                         #Tcrit = self.state.trivial_keyed_output(CoolProp.iT_critical)
                         #Dcrit = self.state.trivial_keyed_output(CoolProp.irhomass_critical)
                         # try:

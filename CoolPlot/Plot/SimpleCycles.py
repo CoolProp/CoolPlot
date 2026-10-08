@@ -8,7 +8,9 @@ import numpy as np
 
 import CoolProp
 from CoolProp.CoolProp import PropsSI
-from CoolProp.Plots.Common import BasePlot, PropertyDict, SIunits
+from .Common import BasePlot
+from ..Util.Quantities import PropertyDict
+from ..Util.Units import SIunits
 
 
 def SimpleCycle(Ref, Te, Tc, DTsh, DTsc, eta_a, Ts_Ph='Ph', **kwargs):
@@ -36,7 +38,7 @@ def SimpleCycle(Ref, Te, Tc, DTsh, DTsc, eta_a, Ts_Ph='Ph', **kwargs):
     for i in kwargs:
         warnings.warn("This function has been deprecated, your input \"{0}: {1}\" will be ignored".format(i, kwargs[i]), DeprecationWarning)
 
-    from CoolProp.Plots import SimpleCompressionCycle
+    from .SimpleCyclesCompression import SimpleCompressionCycle
     cycle = SimpleCompressionCycle(fluid_ref=Ref, graph_type=Ts_Ph)
     cycle.simple_solve_dt(Te, Tc, DTsh, DTsc, eta_a, SI=True)
     print(cycle.COP_cooling(), cycle.COP_heating())
@@ -75,8 +77,8 @@ def TwoStage(Ref, Q, Te, Tc, DTsh, DTsc, eta_oi, f_p, Tsat_ic, DTsh_ic, Ts_Ph='P
     p = np.zeros_like(T)
     s = np.zeros_like(T)
     rho = np.zeros_like(T)
-    T[0] = np.NAN
-    s[0] = np.NAN
+    T[0] = np.nan
+    s[0] = np.nan
     T[1] = Te + DTsh
     pe = PropsSI('P', 'T', Te, 'Q', 1.0, Ref)
     pc = PropsSI('P', 'T', Tc, 'Q', 1.0, Ref)
@@ -219,8 +221,8 @@ def EconomizedCycle(Ref, Qin, Te, Tc, DTsh, DTsc, eta_oi, f_p, Ti, Ts_Ph='Ts', s
     s = np.zeros_like(T)
     rho = np.zeros_like(T)
 
-    T[0] = np.NAN
-    s[0] = np.NAN
+    T[0] = np.nan
+    s[0] = np.nan
     T[1] = Te + DTsh
     pe = PropsSI('P', 'T', Te, 'Q', 1.0, Ref)
     pc = PropsSI('P', 'T', Tc, 'Q', 1.0, Ref)
