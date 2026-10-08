@@ -41,7 +41,14 @@ renderer.show()
 
 diagram.units = "SI"                     # no new property calculations,
 renderer.sync(diagram.update_scene())    # existing lines are updated in place
+
+diagram.theme = "print"                  # "default", "dark", "print", "classic"
+renderer.sync(diagram.update_scene())    # only styles change
 ```
+
+Every backend renders themes identically; see
+[docs/styling.md](docs/styling.md) for themes and
+[docs/backends.md](docs/backends.md) for adding a backend.
 
 The legacy API in `CoolPlot.Plot` is deprecated and will be removed.
 

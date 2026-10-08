@@ -36,8 +36,9 @@ from typing import Dict, Optional, Sequence, Tuple
 import numpy as np
 
 from .quantities import get_quantity, quantity_key
-from .scene import AxesSpec, Line, LineStyle, Markers, MarkerStyle, Scene, Text
-from .style import Theme
+from .scene import AxesSpec, Line, Markers, Scene, Text
+from .style import LineStyle, MarkerStyle
+from .theme import Theme, get_theme
 from .thermo.diagram_type import DiagramType
 from .thermo.fluid import Fluid
 from .thermo.isolines import CurveCache, compute_isoline, value_grid
@@ -102,8 +103,8 @@ class PropertyDiagram:
     tp_limits : str, TpLimits or sequence
         The temperature and pressure region to cover, see
         :mod:`CoolPlot.thermo.limits`.
-    theme : Theme, optional
-        Line styles and colours.
+    theme : str or Theme, optional
+        "default", "dark", "print", "classic" or a Theme; see docs/styling.md.
     cache : CurveCache, optional
         Share one cache between several diagrams of the same fluid.
 
@@ -121,18 +122,18 @@ class PropertyDiagram:
     """
 
     def __init__(self, fluid, diagram_type="ph", units="EUR", tp_limits="DEF",
-                 theme: Theme = None, cache: CurveCache = None):
+                 theme="default", cache: CurveCache = None):
         self._fluid = fluid if isinstance(fluid, Fluid) else Fluid(fluid)
         self._diagram = DiagramType.parse(diagram_type)
         self._units = get_unit_system(units)
         self._tp_limits = get_tp_limits(tp_limits)
-        self._theme = theme or Theme()
+        self._theme = get_theme(theme)
+        self._style_overrides: Dict[str, dict] = {}
         self._isolines: Dict[str, IsolineSet] = {}
         self._processes: Dict[str, ProcessSet] = {}
         self._view: Tuple[Optional[Tuple[float, float]], Optional[Tuple[float, float]]] = (None, None)
         self._domain = None
         self.title = ""
-        self.grid = False
         self.cache = cache if cache is not None else CurveCache()
         self.scene = Scene()
 
@@ -185,12 +186,23 @@ class PropertyDiagram:
         return self._theme
 
     @theme.setter
-    def theme(self, value: Theme):
-        self._theme = value
+    def theme(self, value):
+        self._theme = get_theme(value)
 
     def set_isoline_style(self, key: str, **changes):
-        """Shortcut to restyle one isoline family, e.g. set_isoline_style("T", color="blue")."""
-        self._theme = self._theme.with_isoline_style(key, **changes)
+        """Override the theme for one isoline family in this diagram.
+
+        Accepts any LineStyle field, e.g. set_isoline_style("T",
+        color="blue", width_pt=1.0). Call without changes to go back to
+        the theme. Only the affected lines are restyled; nothing is
+        recalculated.
+        """
+        key = quantity_key(key)
+        if changes:
+            LineStyle().with_(**changes)   # validate now, not at the next update
+            self._style_overrides[key] = dict(self._style_overrides.get(key, {}), **changes)
+        else:
+            self._style_overrides.pop(key, None)
 
     def set_view(self, x_limits=None, y_limits=None):
         """Show only part of the diagram (zoom), in display units. None resets.
@@ -300,8 +312,8 @@ class PropertyDiagram:
         items = []
         for iso_set in self._isolines.values():
             items.extend(self._isoline_items(iso_set, tp_box, axes))
-        for process in self._processes.values():
-            items.extend(self._process_items(process))
+        for index, process in enumerate(self._processes.values()):
+            items.extend(self._process_items(process, index))
         self.scene.replace_all(items, axes=axes)
         return self.scene
 
@@ -316,7 +328,7 @@ class PropertyDiagram:
         y_limits = y_view or tuple(sorted(uy.from_SI(y_range_SI).tolist()))
         return AxesSpec(x_label=label(self._diagram.x), y_label=label(self._diagram.y),
                         x_log=self._diagram.x_log, y_log=self._diagram.y_log,
-                        x_limits=x_limits, y_limits=y_limits, title=self.title, grid=self.grid)
+                        x_limits=x_limits, y_limits=y_limits, title=self.title, style=self._theme.axes)
 
     def _isoline_values_SI(self, iso_set: IsolineSet, tp_box) -> np.ndarray:
         if iso_set.values_SI is not None:
@@ -329,11 +341,33 @@ class PropertyDiagram:
             values = unit.to_SI(nice_values(unit.from_SI(values)))
         return values
 
+    def _isoline_look(self, key: str, value_SI: float, legends_given: set):
+        """(style, role, legend text) of one isoline, from the theme.
+
+        The first line of every family carries the legend entry for it.
+        """
+        if key == "Q":
+            role = "saturation" if value_SI in (0.0, 1.0) else "quality"
+            style = self._theme.saturation if role == "saturation" else self._theme.quality
+            text = "Saturation" if role == "saturation" else "Vapour quality"
+        else:
+            role = "isoline"
+            families = [k for k in self._diagram.supported_isolines() if k != "Q"]
+            style = self._theme.isoline_style(key, families)
+            text = get_quantity(key).label
+        if key in self._style_overrides:
+            style = style.with_(**self._style_overrides[key])
+        legend_key = role if key == "Q" else key
+        legend = None if legend_key in legends_given else text
+        legends_given.add(legend_key)
+        return style, role, legend
+
     def _isoline_items(self, iso_set: IsolineSet, tp_box, axes: AxesSpec):
         key = iso_set.key
         ux, uy = self._units[self._diagram.x], self._units[self._diagram.y]
         uk = self._units[key]
         items = []
+        legends_given = set()
         for value_SI in self._isoline_values_SI(iso_set, tp_box):
             value_SI = float(value_SI)
             if key == "Q":
@@ -349,11 +383,11 @@ class PropertyDiagram:
                     key, value_SI, self._fluid.name, curve.n_failed, len(curve.x)), UserWarning)
                 continue
             is_saturation = key == "Q" and value_SI in (0.0, 1.0)
-            style = self._theme.saturation if is_saturation else self._theme.isoline(key)
+            style, role, legend = self._isoline_look(key, value_SI, legends_given)
             item_id = "iso/{0}/{1:.12g}".format(key, value_SI)
             x, y = ux.from_SI(curve.x), uy.from_SI(curve.y)
-            items.append(Line(id=item_id, group="iso/" + key, x=x, y=y, style=style,
-                              z_order=2.0 if is_saturation else 1.0))
+            items.append(Line(id=item_id, group="iso/" + key, role=role, legend=legend, x=x, y=y,
+                              style=style, z_order=2.0 if is_saturation else 1.0))
             if iso_set.labels:
                 label = self._isoline_label(item_id, key, float(uk.from_SI(value_SI)), x, y, axes)
                 if label is not None:
@@ -374,10 +408,11 @@ class PropertyDiagram:
             direction = None
         q = get_quantity(key)
         text = "{0}={1:.4g} {2}".format(q.symbol, value, self._units[key].label)
-        return Text(id=line_id + "/label", group="iso/" + key + "/label", x=float(x[i]), y=float(y[i]),
+        return Text(id=line_id + "/label", group="iso/" + key + "/label", role="isoline_label",
+                    x=float(x[i]), y=float(y[i]),
                     text=text, direction=direction, style=self._theme.isoline_label, z_order=4.0)
 
-    def _process_items(self, process: ProcessSet):
+    def _process_items(self, process: ProcessSet, index: int):
         ux, uy = self._units[self._diagram.x], self._units[self._diagram.y]
         kx, ky = self._diagram.x, self._diagram.y
         group = "process/" + process.name
@@ -385,13 +420,16 @@ class PropertyDiagram:
         if process.line_states:
             x = ux.from_SI([s[kx] for s in process.line_states])
             y = uy.from_SI([s[ky] for s in process.line_states])
-            items.append(Line(id=group + "/line", group=group, x=x, y=y,
-                              style=process.line_style or self._theme.process, z_order=5.0))
+            items.append(Line(id=group + "/line", group=group, role="process", legend=process.name,
+                              x=x, y=y, style=process.line_style or self._theme.process_style(index),
+                              z_order=5.0))
         if process.marker_states:
             x = ux.from_SI([s[kx] for s in process.marker_states])
             y = uy.from_SI([s[ky] for s in process.marker_states])
-            items.append(Markers(id=group + "/points", group=group, x=x, y=y,
-                                 style=process.marker_style or self._theme.process_points, z_order=6.0))
+            items.append(Markers(id=group + "/points", group=group, role="state_points",
+                                 legend=process.name, x=x, y=y,
+                                 style=process.marker_style or self._theme.state_point_style(index),
+                                 z_order=6.0))
         return items
 
     # ------------------------------------------------------------------

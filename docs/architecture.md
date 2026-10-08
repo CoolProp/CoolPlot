@@ -1,15 +1,19 @@
 # CoolPlot architecture
 
 This document reviews the code CoolPlot inherited from CoolProp 6.3 and
-describes the layered architecture that replaces it. The goals are:
+describes the architecture that replaces it. The goals are:
 
 1. Separate property calculations from plotting completely.
-2. Make matplotlib one rendering backend among several.
+2. Make matplotlib one rendering backend among several, with identical
+   styling in every backend.
 3. Support interactive applications, where a small change (a slider, a
-   new isoline, a unit switch) must only recompute and redraw what it
+   new isoline, a unit switch) only recomputes and redraws what it
    affects.
 
-The new layers live next to the legacy code (`CoolPlot/Plot`,
+Related documents: `docs/styling.md` (themes and styles for users) and
+`docs/backends.md` (requirements for new backends).
+
+The new modules live next to the legacy code (`CoolPlot/Plot`,
 `CoolPlot/Util`), which stays until the new API covers all of its
 features.
 
@@ -70,7 +74,7 @@ model, the unit converter, the owner of the matplotlib `Figure` and
 ### Fragile encodings and magic numbers
 
 * Diagram types are encoded as `y_index * 10 + x_index`
-  (`Common.py:49-56`). CoolProp parameter indices have two digits
+  (`Common.py:47-54`). CoolProp parameter indices have two digits
   (iT=19, iP=20, iHmass=41), so the code is ambiguous in principle and
   only works because no colliding pair is used.
 * A T or p limit below 10 is interpreted as a factor, anything above as
@@ -109,202 +113,170 @@ point also emits its own warning, thousands per chart.
 it has the #3409 fix and a new `IsoLineTracer` (warm-started Newton
 iterations with saturation brackets, robust near the critical point and
 for zeotropic blends). CoolPlot is frozen at the 2020 state. Two
-diverging copies of the same code is the most important organisational
-issue; see the open decisions in section 6.
+diverging copies of the same code was the most important organisational
+issue. Decision (October 2026): CoolPlot stays a separate package and owns
+the numerics as well; the tracer is ported, not imported (section 7).
 
 
-## 2. The new layers
+## 2. Decisions
+
+| Decision | Status |
+|----------|--------|
+| CoolPlot is a separate package and owns everything, including the isoline numerics. `IsoLineTracer` is ported from CoolProp. | decided |
+| Styling is a first-class layer: themes resolve to concrete, normalised styles in the scene; every backend must render them identically. | decided, implemented |
+| Backends are accepted by passing a mechanical conformance kit. | decided, implemented |
+| Rename the import to `coolplot`, remove the legacy packages, release as v1.0. | proposed, open |
+| Minimum versions CoolProp 8.0 and Python 3.10. | proposed, open |
+| Property calculations run synchronously by default; background execution is opt-in for applications. | proposed, open |
+
+
+## 3. The pipeline
 
 ```
-  +-----------------------------------------------------------+
-  |  quantities   units   scene   style                       |  plain data
-  |  (no CoolProp, no plotting library)                       |
-  +-----------------------------------------------------------+
-        ^                  ^                       ^
-        |                  |                       |
-  +-------------+    +-------------+         +-------------+
-  |   thermo    |--->|   diagram   |-------->|   render    |
-  | CoolProp,   |    | Property-   |  Scene  | base, mpl,  |
-  | SI units    |    | Diagram     |         | svg, ...    |
-  +-------------+    +-------------+         +-------------+
-   only layer that    turns settings          only render.mpl
-   imports CoolProp   into a scene            imports matplotlib
+DiagramSpec --plan--> CurveRequests --engine--> Curves --compose--> Scene --layout--> Scene --sync--> backend
+(all settings,        (hashable,                (SI, cached)    (display     (labels,          (mpl, svg,
+ one value)            cheap to make)                            units,       needs viewport)   plotly, web)
+                                                                 styles)
+     ^                                                                                              |
+     +------------------------- events: zoom, hover, pick, drag <-----------------------------------+
 ```
 
-An arrow means "may import". `tests/test_architecture.py` checks these
-rules in fresh interpreters, so a stray import fails the test suite.
+Each stage is a plain function of the stage before it. Every stage either
+caches its results (curves) or compares them with the previous ones
+(scene items), so a change only flows through the parts it affects.
 
-| Module | Responsibility |
-|--------|----------------|
-| `quantities.py` | The quantities CoolPlot can plot (T, p, h, s, rho, u, Q): key, CoolProp name, symbol, label, default log scale. |
-| `units.py` | Immutable `Unit` and `UnitSystem` (SI, KSI, EUR, custom). Conversion only. |
-| `scene.py` | Backend-neutral drawable items (`Line`, `Markers`, `Text`), styles, `AxesSpec`, and the `Scene` container with value-based change detection. |
-| `style.py` | `Theme`: default styles per isoline family, saturation dome, processes. |
-| `thermo/fluid.py` | `Fluid` wraps (does not inherit) an `AbstractState`, caches the critical point and fluid limits, provides `model_key` for caching and `clone()` for worker threads. |
-| `thermo/diagram_type.py` | `DiagramType`: which quantities are on the axes, which isolines make sense and how to compute them. |
-| `thermo/limits.py` | `TpLimits` with explicit `Relative(factor)` bounds instead of the "below 10 means factor" rule; derives axis ranges. |
-| `thermo/isolines.py` | Pure functions returning a `Curve` (SI arrays, NaN for failed points), and the `CurveCache`. |
-| `thermo/process.py` | `StatePoint`, `state_point()` and `process_path()`. Cycle models go here. |
-| `diagram.py` | `PropertyDiagram`: stores user settings in SI, builds the scene from cached calculations. |
-| `render/base.py` | `Renderer` base class: diffs the scene against what it drew and calls backend hooks only for changes. |
-| `render/mpl.py` | Matplotlib backend; updates artists in place. |
-| `render/svg.py` | Dependency-free SVG backend; also the reference for new backends. |
-
-### Principles
-
-* **SI inside, display units at the edges.** Values entering through the
-  API are converted to SI at once; the scene is converted to display units
-  when it is built. Nothing in between knows about units.
-* **Settings are declarative.** Setters only store. `update_scene()`
-  describes the complete plot from the current settings. Caching and
-  diffing make that cheap; the caller never has to say what changed.
-* **Immutable values.** Units, themes, styles, items, curves and state
-  points are frozen. A change means a new value, so equality is a reliable
-  test for "did this change".
-* **Failures are visible.** A point CoolProp cannot compute is NaN and
-  shows up as a gap. A line with fewer than two valid points is skipped
-  with a single warning.
-
-### Isoline computation
-
-Every isoline holds one quantity constant and steps through temperature or
-pressure, whichever is not the constant, over the T-p region of the plot.
-Both axis values are read from each state. This uses only the input pairs
-PT, HmassP, PSmass and DmassT, which are the fast and reliable ones. Lines
-of constant x or y would be straight lines parallel to an axis and are not
-offered as isolines (use the grid). Lines of constant quality step through
-saturation temperatures, denser towards the critical point, and for pure
-fluids end at the critical point so that the dome closes.
+| Stage | Module | Status |
+|-------|--------|--------|
+| Settings | `diagram.py` (`PropertyDiagram`); an immutable `DiagramSpec` is planned | partly |
+| Plan | inside `PropertyDiagram.update_scene` today; a pure `plan(spec)` is planned | partly |
+| Engine | `thermo/isolines.py` (`compute_isoline`, `CurveCache`), synchronous | partly |
+| Compose | `PropertyDiagram.update_scene`: display units and theme styles | done |
+| Layout | label placement inside compose today; a viewport-aware pass is planned | planned |
+| Sync | `render/base.py` and the backends | done |
+| Events | backend-neutral events back into the diagram | planned |
 
 
-## 3. How selective updates work
+## 4. Layers and import rules
 
-Two mechanisms work together.
+```
+  +---------------------------------------------------------------+
+  |  quantities  units  style  theme  scene                       |  plain data
+  |  (no CoolProp, no plotting library)                           |
+  +---------------------------------------------------------------+
+        ^                     ^                         ^
+  +-------------+       +-------------+           +---------------+
+  |   thermo    |       |   diagram   |           |    render     |
+  | CoolProp,   |       | settings -> |           | base, svg,    |
+  | SI units    |       | scene       |           | mpl, testing  |
+  +-------------+       +-------------+           +---------------+
+        ^                     |                         ^
+        +---------------------+  diagram uses thermo    |
+                                 and hands scenes to ---+
+```
 
-**Calculation cache.** Each curve is stored in a `CurveCache` under a key
-holding everything it depends on: fluid model, diagram type, quantity,
-value, T-p region and number of points. Rebuilding the scene asks the cache
-first, so only curves with new inputs are computed.
+| Module | May import | Must not import |
+|--------|------------|-----------------|
+| `quantities`, `units` | numpy | CoolProp, matplotlib, thermo, diagram, scene, render |
+| `style`, `theme` | numpy, quantities | CoolProp, matplotlib, thermo, diagram, scene, render |
+| `scene` | numpy, style | CoolProp, matplotlib, thermo, diagram, theme, render |
+| `thermo` | CoolProp, numpy, quantities, units | matplotlib, scene, style, theme, diagram, render |
+| `diagram` | everything above | matplotlib, render (one documented exception: `draw()` creates a MatplotlibRenderer for scripts) |
+| `render.base`, `render.svg`, `render.testing` | scene, style | CoolProp, matplotlib, thermo, diagram, theme |
+| `render.mpl` | matplotlib, scene, style | CoolProp, thermo, diagram, theme |
 
-**Scene diff.** Each item has a stable id, for example `iso/T/273.15` or
-`process/cycle/line`. `Scene.replace_all()` keeps the existing object for
-any item that compares equal (arrays by value), and `Renderer.sync()`
-compares the scene with what it drew last time. Backends receive only
-`_add`, `_update` and `_remove` calls for the items that changed.
+`tests/test_architecture.py` checks these rules by reading every import
+statically, including imports inside functions, and confirms at run time
+that building and drawing a scene with the SVG backend never loads
+matplotlib.
 
-What a change costs:
+Backends never see themes: the diagram resolves the theme into concrete
+styles on every item, so a backend cannot apply its own idea of a
+default, and all backends look the same.
+
+
+## 5. Styling
+
+Summary of `docs/styling.md`:
+
+* Style values (`LineStyle`, `MarkerStyle`, `Font`, `TextStyle`,
+  `AxesStyle`, `LegendStyle`) are immutable and normalised when created:
+  colours to `#rrggbb` plus alpha, all lengths in points, dashes resolved
+  by one function (`dash_pattern_pt`) that every backend uses.
+* A `Theme` maps element kinds to styles. Presets: `default`, `dark`,
+  `print`, `classic`. Themes serialise to JSON.
+* Isoline colours are assigned per diagram type from three hues that stay
+  distinguishable in every pairing, also for colour vision deficiencies;
+  the assignment depends on what a diagram offers, so hiding a family
+  never repaints the others. The saturation dome and cycles use ink,
+  weight and casing, not a fourth hue.
+* Scene items carry a semantic `role` and a legend text; items sharing a
+  legend text form one composite legend entry.
+* Changing the theme restyles items only; no property is recalculated.
+
+
+## 6. Backends and the conformance kit
+
+Summary of `docs/backends.md`:
+
+* A backend subclasses `Renderer` and implements hooks for axes, add,
+  update, remove, reorder, legend and finish. The base class does the
+  diffing; a backend never rebuilds the whole plot.
+* Every backend implements read-back (`describe_item`, `describe_axes`)
+  that reports what it actually drew, from its own objects.
+* `CoolPlot.render.testing.run_conformance` draws a reference scene using
+  every style feature and awkward data, reads it back, then changes it
+  step by step (restyle, hide, restack, reorder, remove, new axes, legend,
+  clear) and checks both the result and that only affected items were
+  touched. For file backends it also checks deterministic, ASCII output.
+* The SVG and matplotlib backends pass the kit. Planted bugs (dropped
+  dashes, missing halos, no restacking, wrong marker shape) are caught.
+
+What a change costs today:
 
 | Change | Property calculations | Items redrawn |
 |--------|----------------------|---------------|
 | Unit system | none | all coordinates, axes |
-| Isoline colour or width | none | that family only |
+| Theme | none | every item whose resolved style differs, axes |
+| One isoline family's style | none | that family |
 | Add one isoline value | that line | that line |
-| Move a cycle state | none for isolines | the cycle line and markers |
-| Zoom or pan (`set_view`) | none | axes only |
-| T-p limits, fluid, diagram type | all lines (cache misses) | all |
-| Unit system with `rounding=True` | lines whose rounded value changed | those lines |
+| Move a cycle state | none | the cycle line and markers |
+| Zoom (`set_view`) | none | axes, and labels (their position depends on the view) |
+| T-p limits, fluid, diagram type | all lines | all |
 
-`tests/test_diagram.py` asserts each of these rows. In the interactive
-example, moving a slider updates 2 matplotlib artists and leaves 38
-untouched.
+`tests/test_diagram.py` and `tests/test_style.py` assert the rows for
+units, styles, one added line, cycles, zoom and themes.
 
 
-## 4. Interactive applications
+## 7. Plan
 
-The pattern is the same for every GUI toolkit or web framework:
+Work is split into phases, each a separate commit with tests.
 
-```python
-diagram = PropertyDiagram("HEOS::R290", "ph", units="EUR", tp_limits="ACHP")
-diagram.set_isolines("Q", num=11)
-renderer = MatplotlibRenderer(ax=my_embedded_axes, use_pyplot=False)
+| Phase | Content | Status |
+|-------|---------|--------|
+| 0 | Layered skeleton: units, scene, renderer diffing, first thermo layer | done |
+| 1 | Styling and backends: style model, themes, backend guide, conformance kit, SVG and matplotlib to spec | done |
+| 2 | Fluid and diagram as data: `FluidSpec` (backend, components, fractions, interaction parameters), immutable `DiagramSpec`, pure `plan()` | next |
+| 3 | Numerics: port `IsoLineTracer`, isolines built from phase segments with the saturation states inserted, mixture dome from the phase envelope, per-curve diagnostics | |
+| 4 | Engine: background execution (threads or processes), cancellation, coarse-then-fine, keep old lines until new ones arrive, optional disk cache | |
+| 5 | Viewport, layout and events: renderers report their size and visible window; label placement with collision avoidance; neutral events (zoom, hover, pick, drag) | |
+| 6 | More backends: plotly `FigureWidget`, JSON deltas for web clients | |
+| 7 | Cycles as pure models, packaging (`src` layout, `pyproject.toml`, CI), removal of the legacy code | |
 
-def on_user_input(...):
-    diagram.set_process("cycle", path_states, corner_states)  # or any setter
-    renderer.sync(diagram.update_scene())                    # minimal redraw
-```
+Findings from the review of phase 0 that are still open, by phase:
 
-* **Hover readouts:** `diagram.state_at(x, y)` turns a cursor position in
-  display units into a full `StatePoint`.
-* **Zoom:** `diagram.set_view(...)` changes only the visible window. The
-  calculation domain (`tp_limits`) is a separate setting, so zooming never
-  recomputes.
-* **Several views:** one scene can be synchronised to several renderers,
-  for example an on-screen matplotlib canvas and an SVG export. Each
-  renderer keeps its own record of what it drew.
-* **Web front ends:** item ids are stable, so a server can send only the
-  changed items (the `SyncReport` lists them) and a browser can patch an
-  SVG or a plotly figure in place.
-* **Labels** carry a direction in data coordinates instead of a fixed
-  angle; the backend converts it to a screen angle. In matplotlib this uses
-  `transform_rotates_text`, so labels stay aligned after zooming and
-  resizing.
+* Phase 2: cached curves can go stale when a caller changes a passed-in
+  `AbstractState` (fractions, interaction parameters), because the cache
+  key does not capture them; fractions given for a single fluid string
+  (`INCOMP::MEG[0.3]`) are dropped.
+* Phase 3: lines of constant T or p cut diagonally across the two-phase
+  region, because no saturation states are inserted; the dome of tabular
+  backends closes with a kink.
+* Phase 2: item ids are built from values with 12 significant digits and
+  can collide; `nice_values` can space rounded isolines unevenly.
+* Phase 3: a line that fails warns again on every `update_scene`; this
+  becomes per-curve diagnostics.
 
-Not yet done, and the main open item for interactivity: **calculations in
-the background.** Pure fluids are fast (a full ph chart of R290 in about
-0.2 s), but a zeotropic blend is not: with plain flash calls, one line of
-constant entropy for an R32/R125 blend takes about 15 s for 50 points. The
-design is prepared for this (pure calculation functions, hashable cache
-keys, `Fluid.clone()` for worker threads); what is missing is a small job
-API on `PropertyDiagram` that computes cache misses in a worker, possibly
-coarse first and refined later, and notifies the UI.
-
-
-## 5. Writing a new backend
-
-Subclass `CoolPlot.render.base.Renderer` and implement:
-
-| Hook | Called when |
-|------|-------------|
-| `_set_axes(axes)` | labels, scales or limits changed |
-| `_add(item)` | an item appeared |
-| `_update(old, new)` | an item changed (default: remove and add) |
-| `_remove(item)` | an item disappeared |
-| `_finish(report)` | once per sync, e.g. to request a repaint |
-
-Sketches for the obvious next candidates:
-
-* **plotly:** keep a `FigureWidget`; `_add` appends a trace with
-  `uid=item.id`, `_update` assigns `trace.x`, `trace.y` and `trace.line`
-  inside `fig.batch_update()`, `_remove` filters `fig.data`.
-* **bokeh:** one `ColumnDataSource` per item; `_update` assigns
-  `source.data`, which bokeh streams to the browser.
-
-No other part of CoolPlot changes when a backend is added.
-
-
-## 6. Status and next steps
-
-Implemented in this step: all modules in the table of section 2, tests
-for each layer, `examples/quickstart.py` and
-`examples/interactive_cycle.py`.
-
-Compared with the legacy API, still missing:
-
-* Cycle models (`SimpleCompressionCycle`, `SimpleRankineCycle`) as pure
-  `thermo` functions returning `StatePoint`s. The interactive example
-  shows the shape of such a function.
-* A saturation dome for mixtures built from the phase envelope.
-* Label collision avoidance; labels are currently at the middle of the
-  visible part of each line.
-* Psychrometric charts (`psy.py`, `PsychChart.py`). They would be a second
-  `thermo` module and diagram class; `scene` and `render` are reused as
-  they are.
-
-Open decisions:
-
-1. **Where the canonical code lives.** Either CoolPlot becomes the home
-   of property plots and `CoolProp.Plots` turns into a thin compatibility
-   layer that depends on it, or CoolPlot is retired in favour of
-   `CoolProp.Plots`. Keeping two diverging copies is the worst option.
-2. **Port `IsoLineTracer`** from CoolProp into `thermo/isolines.py` (or
-   depend on it). It addresses exactly the slow blend case above.
-3. **Background calculation API**, see section 4.
-4. **Remove the legacy packages** (`CoolPlot/Plot`, `CoolPlot/Util`,
-   `CoolPlot/Calc`, `mains/`, `plots/`) once the points above are done.
-   `ConsistencyPlots.py` is a CoolProp development tool and does not
-   belong in CoolPlot at all.
-5. **Package name.** PEP 8 prefers `coolplot`. A rename is only safe
-   after the legacy directories are gone, because `CoolPlot/Plot` and a
-   new `plot` module would collide on case-insensitive file systems (the
-   same reason the calculation package is called `thermo` and not `calc`).
-6. **CI.** Replace Travis with GitHub Actions running `pytest`.
+Calculation speed today: pure fluids are fast (a full ph chart of R290 in
+about 0.2 s). Zeotropic blends are not: one line of constant entropy for
+an R32/R125 blend takes about 15 s for 50 points with plain flash calls,
+which phases 3 and 4 address.

@@ -44,13 +44,14 @@ def simple_cycle(fluid, T_evap_C, T_cond_C, dT_sh_K=5.0, eta_is=0.7):
 def main():
     diagram = PropertyDiagram(FLUID, "ph", units="EUR", tp_limits="ACHP")
     diagram.title = "R290 - drag the sliders"
-    diagram.grid = True
     diagram.set_isolines("Q", num=11)
     diagram.set_isolines("T", num=15, rounding=True)
     diagram.set_isolines("s", num=12, rounding=True)
 
     fig, ax = plt.subplots(figsize=(9, 7))
-    fig.subplots_adjust(bottom=0.22)
+    # The figure belongs to this script, so leave room for the legend that
+    # the default theme puts outside the axes on the right.
+    fig.subplots_adjust(bottom=0.22, right=0.78)
     renderer = MatplotlibRenderer(ax=ax)
     status = fig.text(0.01, 0.01, "", family="monospace", fontsize=8)
     readout = fig.text(0.01, 0.97, "", family="monospace", fontsize=8)

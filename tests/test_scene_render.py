@@ -28,6 +28,12 @@ class RecordingRenderer(Renderer):
     def _remove(self, item):
         self.calls.append(("remove", item.id))
 
+    def _reorder(self, order):
+        self.calls.append(("reorder", tuple(order)))
+
+    def _set_legend(self, entries, style):
+        self.calls.append(("legend", tuple(text for text, _ in entries)))
+
 
 def _line(item_id, y0=0.0, color="black"):
     return Line(id=item_id, x=[0.0, 1.0, 2.0], y=[y0, y0 + 1.0, np.nan], style=LineStyle(color=color))
@@ -83,11 +89,16 @@ def test_renderer_only_touches_changed_items():
     assert report.removed == ["c"]
     assert report.unchanged == 1
     assert ("add", "a") not in renderer.calls and ("update", "a") not in renderer.calls
+    assert ("reorder", ("a", "b", "d")) in renderer.calls  # new item, restack
     assert not report.axes_changed
 
     renderer.calls.clear()
     report = renderer.sync(scene)
     assert not report.changed and renderer.calls == []
+
+    scene.replace_all([_line("b", color="red"), _line("a"), _line("d")])
+    report = renderer.sync(scene)
+    assert report.reordered and not report.updated
 
 
 def test_svg_renderer_regenerates_only_changed_elements():
@@ -99,7 +110,7 @@ def test_svg_renderer_regenerates_only_changed_elements():
     svg.sync(scene)
     doc = svg.to_svg()
     assert doc.startswith("<svg") and doc.endswith("</svg>")
-    assert 'id="a"' in doc and 'id="m"' in doc
+    assert 'data-item="a"' in doc and 'data-item="m"' in doc
     assert "p &lt; 5 &amp; T &gt; 3" in doc
     doc.encode("ascii")  # the output is plain ASCII
     assert svg.elements_built == 4
@@ -129,7 +140,7 @@ def test_matplotlib_renderer_updates_artists_in_place():
     renderer.sync(scene)
     assert renderer._artists["a"] is artist_a
     assert renderer._artists["b"] is artist_b  # same artist, new data
-    assert artist_b.get_color() == "red"
+    assert artist_b.get_color() == "#ff0000"  # colours arrive normalised
     np.testing.assert_allclose(artist_b.get_ydata()[:2], [1.0, 2.0])
 
     scene.remove("a")

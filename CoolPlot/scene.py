@@ -27,46 +27,21 @@ from typing import Dict, Iterable, Iterator, Optional, Tuple
 import numpy as np
 
 
-# ---------------------------------------------------------------------------
-# Styles
-# ---------------------------------------------------------------------------
-@dataclass(frozen=True)
-class LineStyle:
-    """How a line looks. Colours are CSS colour strings (names or #rrggbb)."""
-    color: str = "black"
-    width: float = 1.0         # in points
-    dash: str = "solid"        # "solid", "dashed", "dotted" or "dashdot"
-    alpha: float = 1.0
-
-
-@dataclass(frozen=True)
-class MarkerStyle:
-    """How individual points look."""
-    shape: str = "o"           # "o" circle, "s" square, "^" triangle, "x", "+"
-    size: float = 6.0          # in points
-    face_color: str = "black"
-    edge_color: str = "black"
-    alpha: float = 1.0
-
-
-@dataclass(frozen=True)
-class TextStyle:
-    """How a text label looks."""
-    color: str = "black"
-    size: float = 8.0          # in points
-    h_align: str = "center"    # "left", "center" or "right"
-    v_align: str = "center"    # "bottom", "center" or "top"
-    background: Optional[str] = None
+from .style import AxesStyle, LineStyle, MarkerStyle, TextStyle  # noqa: F401 (re-exported)
 
 
 # ---------------------------------------------------------------------------
 # Items
 # ---------------------------------------------------------------------------
 def _frozen_array(values) -> np.ndarray:
-    """Return a read-only float copy, so an item cannot change behind our back."""
-    arr = np.array(values, dtype=float).ravel()
-    arr.flags.writeable = False
-    return arr
+    """Return a read-only float copy, so an item cannot change behind our back.
+
+    The array is a view on an immutable bytes object, so even setting
+    ``flags.writeable = True`` fails. Scene diffing relies on this: an item
+    that could change in place would never be redrawn.
+    """
+    data = np.ascontiguousarray(values, dtype=float).ravel()
+    return np.frombuffer(data.tobytes(), dtype=float)
 
 
 @dataclass(frozen=True, eq=False, kw_only=True)
@@ -80,6 +55,14 @@ class Item:
     group : str
         Items in one group are usually styled and toggled together, for
         example "iso/T" for all isotherms.
+    role : str
+        What the item means, independent of how it looks: "isoline",
+        "saturation", "quality", "isoline_label", "process", "state_points"
+        or "annotation". Backends that support external styling (CSS
+        classes in SVG or HTML) expose it; see docs/backends.md.
+    legend : str, optional
+        Text of a legend entry for this item. Usually only one item per
+        group carries it.
     visible : bool
         Hidden items stay in the scene; a renderer only toggles visibility.
     z_order : float
@@ -87,6 +70,8 @@ class Item:
     """
     id: str
     group: str = ""
+    role: str = ""
+    legend: Optional[str] = None
     visible: bool = True
     z_order: float = 1.0
 
@@ -164,6 +149,9 @@ class AxesSpec:
     """Everything about the axes that is not an item
 
     Limits are in display units. ``None`` lets the renderer autoscale.
+    The grid is drawn when ``style.grid_major`` (or ``grid_minor``) is set,
+    the legend when ``style.legend.visible`` is True and at least one item
+    has a legend text.
     """
     x_label: str = ""
     y_label: str = ""
@@ -172,7 +160,7 @@ class AxesSpec:
     x_limits: Optional[Tuple[float, float]] = None
     y_limits: Optional[Tuple[float, float]] = None
     title: str = ""
-    grid: bool = False
+    style: AxesStyle = field(default_factory=AxesStyle)
 
 
 class Scene:
@@ -209,6 +197,23 @@ class Scene:
 
     def ids(self):
         return list(self._items)
+
+    def draw_order(self):
+        """Item ids in drawing order: by z_order, then by position in the scene."""
+        ranked = sorted(enumerate(self._items.values()), key=lambda p: (p[1].z_order, p[0]))
+        return [item.id for _, item in ranked]
+
+    def legend_entries(self):
+        """(text, items) pairs for the legend, in scene order (not z order).
+
+        Items that share a legend text form one entry whose sample shows all
+        of them, e.g. the line and the markers of a cycle.
+        """
+        entries = {}
+        for item in self._items.values():
+            if item.legend and item.visible:
+                entries.setdefault(item.legend, []).append(item)
+        return [(text, tuple(items)) for text, items in entries.items()]
 
     def group(self, group: str):
         """All items of one group, in drawing order."""

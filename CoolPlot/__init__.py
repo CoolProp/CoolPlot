@@ -3,8 +3,8 @@
 
 The package is organised in layers, each depending only on the ones above:
 
-* ``quantities``, ``units``, ``scene``, ``style``: plain data, no CoolProp,
-  no plotting library.
+* ``quantities``, ``units``, ``style``, ``theme``, ``scene``: plain data,
+  no CoolProp, no plotting library.
 * ``thermo``: all property calculations, in SI units. Only layer that
   imports CoolProp.
 * ``diagram``: :class:`PropertyDiagram`, turns user settings and cached
@@ -12,7 +12,8 @@ The package is organised in layers, each depending only on the ones above:
 * ``render``: backends that draw a scene. ``render.mpl`` is the only module
   that imports matplotlib.
 
-See docs/architecture.md for the reasoning.
+See docs/architecture.md for the reasoning, docs/styling.md for themes
+and docs/backends.md for writing a new backend.
 """
 from .__version__ import __version__  # noqa: F401
 
@@ -27,7 +28,14 @@ _LAZY = {
     "StatePoint": ".thermo",
     "state_point": ".thermo",
     "process_path": ".thermo",
-    "Theme": ".style",
+    "Theme": ".theme",
+    "get_theme": ".theme",
+    "LineStyle": ".style",
+    "MarkerStyle": ".style",
+    "TextStyle": ".style",
+    "Font": ".style",
+    "AxesStyle": ".style",
+    "LegendStyle": ".style",
     "Scene": ".scene",
     "UnitSystem": ".units",
     "Unit": ".units",
