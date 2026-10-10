@@ -468,7 +468,7 @@ units, styles, one added line, cycles, zoom and themes.
 | 3 | Numerics: port `IsoLineTracer`, isolines built from phase segments with the saturation states inserted, mixture dome from the phase envelope, per-curve diagnostics | done |
 | 4 | Label layout: edge labels with keep-out zones around processes, margin labels as an option, stable placement while dragging; central number formats | done |
 | 5 | Cycles on diagrams (section 7): `add_cycle` with states, `via`, automatic paths, loops for split and two-stage cycles, state numbers; models for simple compression, two-stage (flash tank, economizer) and Rankine | done |
-| 6 | Close the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising); examples and user documentation | next |
+| 6 | Close the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising); examples and user documentation | done |
 
 ### 0.3 and later
 
@@ -487,7 +487,7 @@ drag), plotly and web backends, psychrometric charts.
   meets the dome), the kink at the top of the dome of tabular backends
   (the dome is drawn with the underlying equation of state), and the
   polygonal dome of mixtures (it comes from the refined phase envelope).
-* Step 6: the conformance-kit findings listed there.
+* Fixed in step 6: the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising, vertical text, stacking, wrongly rejected valid axes).
 
 Calculation speed after step 3: pure fluids are fast (a full ph chart of
 R290 in about 0.1 s). For zeotropic blends the isolines are traced

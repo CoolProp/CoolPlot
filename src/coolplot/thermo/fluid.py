@@ -131,6 +131,7 @@ class Fluid:
         self._state = build_state(model)
         self._critical = None
         self._envelope = None
+        self._guided = False   # phase envelope built on the working state, see update()
         self._name = name
 
     def __repr__(self):
@@ -159,6 +160,7 @@ class Fluid:
         twin._state = build_state(twin._model)
         twin._critical = None
         twin._envelope = None
+        twin._guided = False
         twin._name = "{0}::{1}".format(backend, "&".join(self._model[1]))
         return twin
 
@@ -169,15 +171,34 @@ class Fluid:
         twin._state = build_state(self._model)
         twin._critical = self._critical
         twin._envelope = self._envelope   # read-only arrays, safe to share
+        twin._guided = False
         twin._name = self._name
         return twin
 
     # Property evaluation ---------------------------------------------------
     def update(self, key1: str, value1_SI: float, key2: str, value2_SI: float) -> AbstractState:
-        """Set the working state from two quantities given by CoolPlot keys."""
+        """Set the working state from two quantities given by CoolPlot keys.
+
+        For a mixture, a saturation state (vapour quality as one input)
+        that CoolProp cannot find is tried once more after building the
+        phase envelope on the working state: CoolProp's mixture saturation
+        solvers take their starting values from it. That rescues most
+        condenser and evaporator states of blends, for example the dew
+        point of R32/R125 (70/30) at 26.6 bar.
+        """
         pair, v1, v2 = CP.generate_update_pair(parameter_index(key1), value1_SI,
                                                parameter_index(key2), value2_SI)
-        self._state.update(pair, v1, v2)
+        try:
+            self._state.update(pair, v1, v2)
+        except Exception:
+            if self.is_pure or "Q" not in (get_quantity(key1).key, get_quantity(key2).key) or self._guided:
+                raise
+            self._guided = True
+            try:
+                self._state.build_phase_envelope("veryfine")
+            except Exception:
+                pass   # the retry below raises the solver's own error
+            self._state.update(pair, v1, v2)
         return self._state
 
     def get(self, key: str) -> float:
