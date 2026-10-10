@@ -274,6 +274,30 @@ the same from code. For other behaviour, handle the events yourself:
 `Drag`, `DragEnd`, `ViewChanged` and `Resized` from
 `coolplot.core.events`, in the units of the axes.
 
+### In the browser
+
+`coolplot.render.web.WebRenderer` draws the same SVG as the SVG backend
+but sends only what changed to a small JavaScript client, and turns the
+browser's pointer input into the same events as matplotlib (dragging
+empty space pans, the wheel zooms). `WebServer` serves it without any
+web framework:
+
+```python
+from coolplot.render.web import WebRenderer, WebServer
+renderer = WebRenderer(width=1000, height=700)
+Interaction(diagram, renderer)
+renderer.sync(diagram.update_scene(renderer.plot_size_pt()))
+server = WebServer(renderer)
+print("Open", server.url)
+server.serve_forever()
+```
+
+For your own web application, send the messages from
+`renderer.listen(callback)` to the browser (for example over a
+websocket), feed the client's input to `renderer.receive(message)`, and
+serve `renderer.page(stream=..., input=...)`. `save("chart.html")` writes
+a static page. See `examples/web_app.py`.
+
 ### Calculating in the background
 
 ```python

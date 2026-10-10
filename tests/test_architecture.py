@@ -54,6 +54,10 @@ RULES = {
     "coolplot.render.testing": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine",
                                        "coolplot.compose", "coolplot.diagram", "coolplot.interaction", "coolplot.style.theme",
                                        "coolplot.render.mpl", "coolplot.render.plotly"},
+    # The web backend builds on the SVG backend's elements
+    "coolplot.render.web": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
+                                   "coolplot.diagram", "coolplot.interaction", "coolplot.style.theme",
+                                   "coolplot.render.mpl", "coolplot.render.plotly"},
     "coolplot.render.plotly": {"CoolProp", "matplotlib", "coolplot.spec", "coolplot.thermo", "coolplot.engine",
                                "coolplot.compose", "coolplot.diagram", "coolplot.interaction",
                                "coolplot.style.theme", "coolplot.render.mpl", "coolplot.render.svg"},

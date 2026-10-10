@@ -293,7 +293,13 @@ in its module docstring:
 | `line_caps` | line caps and joins are the library's own; `cap` and `join` are not checked |
 | `text_order` | texts are always drawn above lines and markers; texts and other items are each checked for their order among themselves |
 
-The plotly backend declares both. Anything not in this list has to be
+The plotly backend declares both. The web backend (`render/web.py`) builds on the SVG
+backend and is checked twice: the kit runs with every patch applied in
+headless Chromium and the document read back from the browser, and a
+separate test replays long sequences of incremental changes (the kit's
+steps mostly change the legend or the axes, which sends the whole
+document) and compares the browser's document with the local one after
+each step. Anything not in this list has to be
 implemented, if necessary by emulation (plotly does not clip
 annotations, so its backend hides texts whose anchor leaves the plot
 area).

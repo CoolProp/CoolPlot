@@ -51,6 +51,11 @@ def _num(value: float) -> str:
 _CONTROL = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
 
 
+def _ascii(text: str) -> str:
+    """Non-ASCII characters as XML character references."""
+    return text.encode("ascii", "xmlcharrefreplace").decode("ascii")
+
+
 def _clean(text: str) -> str:
     """Drop characters that would make the document invalid XML."""
     return _CONTROL.sub("", str(text))
@@ -309,13 +314,23 @@ class SvgRenderer(Renderer):
     # Output ------------------------------------------------------------
     def to_svg(self) -> str:
         """The complete SVG document for the last synchronised scene, ASCII only."""
+        head, items, tail = self._document_parts()
+        return "\n".join([head, '<g class="cp-items">'] + [e for _, e in items] + ['</g>', tail])
+
+    def _document_parts(self):
+        """(head, [(item id, element)], tail) of the document, ASCII only.
+
+        The head holds everything below the items (background, grid), the
+        tail everything above them (frame, ticks, labels, legend). Items are
+        listed in drawing order; hidden items are left out.
+        """
         to_px, mapping_key = self._mapper()
         if mapping_key != self._mapping_key:
             self._elements.clear()
             self._mapping_key = mapping_key
         for item_id, item in self._items.items():
             if item_id not in self._elements:
-                self._elements[item_id] = self._element(item, to_px)
+                self._elements[item_id] = _ascii(self._element(item, to_px))
                 self.elements_built += 1
 
         axes = self._axes or AxesSpec()
@@ -323,7 +338,7 @@ class SvgRenderer(Renderer):
         bx, by, bw, bh = self._box
         (x0, x1), (y0, y1) = self._limits()
         clip = self.id_prefix + "-plot-area"
-        out: List[str] = [
+        head: List[str] = [
             '<svg xmlns="http://www.w3.org/2000/svg" width="{0}" height="{1}" viewBox="0 0 {0} {1}" '
             'data-x-log="{2}" data-y-log="{3}" data-x-limits="{4} {5}" data-y-limits="{6} {7}">'.format(
                 self.width, self.height, int(axes.x_log), int(axes.y_log),
@@ -335,17 +350,18 @@ class SvgRenderer(Renderer):
             '<rect class="cp-background" x="{0}" y="{1}" width="{2}" height="{3}" fill="{4}"/>'.format(
                 _num(bx), _num(by), _num(bw), _num(bh), st.background or "none"),
         ]
-        out.extend(self._grid(to_px, axes))
+        head.extend(self._grid(to_px, axes))
         # Every item clips itself (see _open), so that unclipped text keeps
         # its place in the drawing order.
-        out.extend(self._elements[i] for i in self._order if i in self._elements and self._elements[i])
-        out.append('<rect class="cp-frame" x="{0}" y="{1}" width="{2}" height="{3}" fill="none" '
-                   'stroke="{4}" stroke-width="{5}"/>'.format(_num(bx), _num(by), _num(bw), _num(bh),
-                                                            st.frame_color or "none", _px(st.frame_width_pt)))
-        out.extend(self._ticks_and_labels(to_px, axes))
-        out.extend(self._legend_elements())
-        out.append('</svg>')
-        return "\n".join(out).encode("ascii", "xmlcharrefreplace").decode("ascii")
+        items = [(i, self._elements[i]) for i in self._order if i in self._elements and self._elements[i]]
+        tail: List[str] = [
+            '<rect class="cp-frame" x="{0}" y="{1}" width="{2}" height="{3}" fill="none" '
+            'stroke="{4}" stroke-width="{5}"/>'.format(_num(bx), _num(by), _num(bw), _num(bh),
+                                                     st.frame_color or "none", _px(st.frame_width_pt))]
+        tail.extend(self._ticks_and_labels(to_px, axes))
+        tail.extend(self._legend_elements())
+        tail.append('</svg>')
+        return _ascii("\n".join(head)), items, _ascii("\n".join(tail))
 
     def plot_size_pt(self):
         bx, by, bw, bh = self._box
