@@ -215,6 +215,12 @@ snapshot of its fluid, fractions and interaction parameters, so later
 changes to the user's state cannot leave stale curves in the cache; the
 INCOMP backend takes mass fractions by default.
 
+Step 3 added the numerics in `thermo`: `tracer.py` (the `IsoLineTracer`
+ported from CoolProp 8), saturation states inserted where an isoline
+meets the dome, the bubble and dew lines of mixtures from the phase
+envelope, and diagnostics on every `Curve` (`n_failed`, `n_gaps`,
+`n_fallback`, `n_inserted`, `method`).
+
 Backends never see themes: the scene carries concrete styles on every
 item, so a backend cannot apply its own idea of a default.
 
@@ -240,9 +246,10 @@ number of points can be overridden per isoline family.
 Implemented in step 2 (`coolplot.spec.settings`):
 
 * `calc`: `points`, `saturation_points`, `saturation_spacing`
-  ("critical" or "linear"), `critical_margin` (1e-7 of the critical
-  values) and `warn_failed_fraction` (warn once per curve that lost more
-  points than this).
+  ("critical" or "linear"), `solver` ("auto", "tracer" or "flash", step
+  3), `critical_margin` (1e-7 of the critical values) and
+  `warn_failed_fraction` (warn once per curve with more failed points
+  inside the line than this).
 * `look`: a `Theme`.
 * `labels`: `position` along the visible part of a line, `digits` of the
   values shown, `show_units`. Edge placement and keep-out zones follow in
@@ -419,8 +426,8 @@ units, styles, one added line, cycles, zoom and themes.
 | - | Legacy release 0.1.7 | done, waiting for merge and upload |
 | 1 | Restructure into the package layout of section 4 (`src/coolplot`, `pyproject.toml`), remove the legacy code, CI on GitHub Actions with CoolProp 6.8, 7.x and 8.x | done |
 | 2 | Specs and settings: `FluidSpec` (backend, components, fractions, interaction parameters), `DiagramSpec`, `Settings` with presets, pure `plan()`, scene building moved from the facade into `compose` | done |
-| 3 | Numerics: port `IsoLineTracer`, isolines built from phase segments with the saturation states inserted, mixture dome from the phase envelope, per-curve diagnostics | next |
-| 4 | Label layout: edge labels with keep-out zones around processes, margin labels as an option, stable placement while dragging; central number formats | |
+| 3 | Numerics: port `IsoLineTracer`, isolines built from phase segments with the saturation states inserted, mixture dome from the phase envelope, per-curve diagnostics | done |
+| 4 | Label layout: edge labels with keep-out zones around processes, margin labels as an option, stable placement while dragging; central number formats | next |
 | 5 | Cycles on diagrams (section 7): `add_cycle` with states, `via`, automatic paths, loops for split and two-stage cycles, state numbers; models for simple compression, two-stage (flash tank, economizer) and Rankine | |
 | 6 | Close the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising); examples and user documentation | |
 
@@ -436,12 +443,19 @@ drag), plotly and web backends, psychrometric charts.
   `AbstractState` (the Fluid is now a snapshot), dropped fractions for
   `INCOMP::MEG[0.3]`, colliding item ids, unevenly spaced rounded values,
   and a failing line warning again on every update (now once per curve).
-* Step 3: lines of constant T or p cut diagonally across the two-phase
-  region, because no saturation states are inserted; the dome of tabular
-  backends closes with a kink.
+* Fixed in step 3: lines of constant T or p cutting diagonally across the
+  two-phase region (saturation states are now inserted where any isoline
+  meets the dome), the kink at the top of the dome of tabular backends
+  (the dome is drawn with the underlying equation of state), and the
+  polygonal dome of mixtures (it comes from the refined phase envelope).
 * Step 6: the conformance-kit findings listed there.
 
-Calculation speed today: pure fluids are fast (a full ph chart of R290 in
-about 0.2 s). Zeotropic blends are not: one line of constant entropy for
-an R32/R125 blend takes about 15 s for 50 points with plain flash calls,
-which step 3 and the 0.3 background engine address.
+Calculation speed after step 3: pure fluids are fast (a full ph chart of
+R290 in about 0.1 s). For zeotropic blends the isolines are traced
+(`Settings.calc.solver`, "auto" traces mixtures on CoolProp 8 and later):
+one line of constant entropy for an R32/R125 blend takes about 1 s
+instead of 15 to 20 s, and a full default ph chart about 14 s instead of
+several minutes. What remains are near-critical points the tracer hands
+back to a plain flash, at up to 2 s each; the 0.3 background engine
+addresses that. Before CoolProp 8 the tracer is switched off, because
+some of its saturation calls abort the Python process there.

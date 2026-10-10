@@ -31,7 +31,7 @@ def parameter_index(key: str) -> int:
 
 
 #: Binary interaction parameters copied when a state is snapshotted.
-INTERACTION_KEYS = ("betaT", "gammaT", "betaV", "gammaV", "Fij")
+INTERACTION_KEYS = ("betaT", "gammaT", "betaV", "gammaV", "Fij", "kij")
 
 
 def model_from_state(state: AbstractState) -> Tuple:
@@ -130,6 +130,7 @@ class Fluid:
         self._model = model
         self._state = build_state(model)
         self._critical = None
+        self._envelope = None
         self._name = name
 
     def __repr__(self):
@@ -151,12 +152,23 @@ class Fluid:
         that determines the properties, so it can serve as a cache key."""
         return self._model
 
+    def with_backend(self, backend: str) -> "Fluid":
+        """The same fluid model on another CoolProp backend."""
+        twin = Fluid.__new__(Fluid)
+        twin._model = (backend,) + tuple(self._model[1:])
+        twin._state = build_state(twin._model)
+        twin._critical = None
+        twin._envelope = None
+        twin._name = "{0}::{1}".format(backend, "&".join(self._model[1]))
+        return twin
+
     def clone(self) -> "Fluid":
         """An independent Fluid with the same model, for example for a worker thread."""
         twin = Fluid.__new__(Fluid)
         twin._model = self._model
         twin._state = build_state(self._model)
         twin._critical = self._critical
+        twin._envelope = self._envelope   # read-only arrays, safe to share
         twin._name = self._name
         return twin
 
@@ -219,6 +231,18 @@ class Fluid:
             self._critical = _critical_point(self)
         return self._critical
 
+    def phase_envelope(self) -> Optional[PhaseEnvelope]:
+        """The phase envelope of a mixture, computed once; None for pure fluids or on failure."""
+        if self._envelope is None:
+            envelope = False   # remembers a failure, so it is not retried
+            if not self.is_pure:
+                try:
+                    envelope = PhaseEnvelope(self)
+                except Exception:
+                    envelope = False
+            self._envelope = envelope
+        return self._envelope or None
+
     def saturation_range(self, key: str, margin: float = 1e-7) -> Tuple[float, float]:
         """Lowest and highest saturation temperature or pressure in SI units.
 
@@ -238,6 +262,77 @@ class Fluid:
             return T_lo_K, crit["T"] * (1.0 - rel_small)
         self.update("Q", 0.0, "T", T_lo_K)
         return self.get("p") * (1.0 + rel_small), crit["p"] * (1.0 - rel_small)
+
+
+class PhaseEnvelope:
+    """The two-phase boundary of a mixture, from CoolProp's phase envelope
+
+    The envelope runs along the dew line (Q = 1) up through the critical
+    region and back down the bubble line (Q = 0). For every point it holds
+    temperature, pressure and the density of the bulk phase, which has the
+    overall composition. Further properties are evaluated on demand with
+    :meth:`values` and kept.
+
+    CoolProp stores the bulk phase in the "vap" fields and the incipient
+    phase in the "liq" fields on both branches, so the bulk density is
+    always ``rhomolar_vap``.
+    """
+
+    def __init__(self, fluid: "Fluid"):
+        work = build_state(fluid.model_key)
+        data = None
+        for level in ("veryfine", "none"):   # about 300 points; 60 if refining fails
+            try:
+                work.build_phase_envelope(level)
+                data = work.get_phase_envelope_data()
+                break
+            except Exception:
+                continue
+        if data is None:
+            raise ValueError("CoolProp could not build the phase envelope of {0}.".format(fluid.name))
+        self._work = work
+        self.Q = _read_only(data.Q)
+        rhomolar = _read_only(data.rhomolar_vap)
+        self._values = {"T": _read_only(data.T), "p": _read_only(data.p), "Q": self.Q,
+                        "rho": _read_only(rhomolar * work.molar_mass())}
+        self._rhomolar = rhomolar
+        if not (np.any(self.Q == 0.0) and np.any(self.Q == 1.0)):
+            raise ValueError("The phase envelope of {0} has no bubble or no dew line.".format(fluid.name))
+
+    def __len__(self):
+        return len(self.Q)
+
+    def values(self, key: str) -> np.ndarray:
+        """A property along the envelope in SI units, NaN where it fails.
+
+        Temperature, pressure and density come from the envelope itself.
+        Everything else is evaluated at the envelope's (T, rho) with the
+        phase imposed, an explicit evaluation of the equation of state
+        without a flash. Recomputing the pressure from (T, rho) instead
+        would turn the envelope's convergence tolerance into pressure errors
+        of a few tenths of a percent on the liquid side.
+        """
+        key = get_quantity(key).key
+        if key not in self._values:
+            out = np.full(len(self), np.nan)
+            index = parameter_index(key)
+            T_K = self._values["T"]
+            for i in range(len(self)):
+                phase = CoolProp.iphase_liquid if self.Q[i] == 0.0 else CoolProp.iphase_gas
+                try:
+                    self._work.specify_phase(phase)
+                    self._work.update(CoolProp.DmolarT_INPUTS, self._rhomolar[i], T_K[i])
+                    out[i] = self._work.keyed_output(index)
+                except Exception:
+                    pass
+            self._values[key] = _read_only(out)
+        return self._values[key]
+
+
+def _read_only(values) -> np.ndarray:
+    arr = np.array(values, dtype=float)
+    arr.flags.writeable = False
+    return arr
 
 
 def _critical_point(fluid: Fluid) -> dict:

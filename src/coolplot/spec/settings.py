@@ -22,6 +22,7 @@ from dataclasses import asdict, dataclass, field, fields, replace
 from ..style.theme import Theme, get_theme
 
 SATURATION_SPACINGS = ("critical", "linear")
+SOLVERS = ("auto", "tracer", "flash")
 
 
 @dataclass(frozen=True)
@@ -38,18 +39,25 @@ class CalcSettings:
         "critical" puts the points closer together towards the critical
         point, where the dome bends most; "linear" spaces them evenly in
         temperature.
+    solver : str
+        How isolines are calculated. "flash" solves every point on its own
+        with CoolProp; "tracer" walks along the line and starts each point
+        from the previous one, which is much faster for mixtures; "auto"
+        uses the tracer for mixtures and plain flashes for pure fluids.
     critical_margin : float
         Distance kept from the triple point and the critical point,
         relative to the critical values. Saturation solvers become
         unreliable closer to the critical point.
     warn_failed_fraction : float
         Warn (once per curve) when more than this fraction of its points
-        could not be calculated. A curve with fewer than two valid points
+        could not be calculated inside the line; failures at the ends only
+        make a line shorter. A curve with fewer than two valid points
         is always left out with a warning.
     """
     points: int = 250
     saturation_points: int = 250
     saturation_spacing: str = "critical"
+    solver: str = "auto"
     critical_margin: float = 1e-7
     warn_failed_fraction: float = 0.1
 
@@ -62,6 +70,8 @@ class CalcSettings:
         if self.saturation_spacing not in SATURATION_SPACINGS:
             raise ValueError("Unknown saturation_spacing '{0}', expected one of {1}.".format(
                 self.saturation_spacing, SATURATION_SPACINGS))
+        if self.solver not in SOLVERS:
+            raise ValueError("Unknown solver '{0}', expected one of {1}.".format(self.solver, SOLVERS))
         if not 0.0 < float(self.critical_margin) < 0.1:
             raise ValueError("critical_margin has to be between 0 and 0.1, not {0}.".format(self.critical_margin))
         if not 0.0 <= float(self.warn_failed_fraction) <= 1.0:

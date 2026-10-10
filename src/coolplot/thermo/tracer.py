@@ -1,0 +1,799 @@
+# -*- coding: utf-8 -*-
+"""Walking along an isoline, warm-starting each point from the previous one.
+
+Ported from ``CoolProp.Plots.Common.IsoLineTracer`` (CoolProp 8), where it
+was developed and tested against the predefined blends. The changes are
+that the tracer builds its CoolProp states from a :class:`Fluid` model
+description instead of cloning a caller's state, that the critical
+temperature cache is keyed by that description, and a smaller margin on
+the top of a closed phase envelope (see CLOSED_ENVELOPE_MARGIN).
+
+For a pure fluid a plain flash is already fast; for mixtures the tracer is
+orders of magnitude faster than a flash per point and leaves fewer gaps.
+Every point the tracer cannot solve with confidence raises, and the caller
+falls back to a plain flash for that point.
+"""
+from __future__ import annotations
+
+import numpy as np
+
+import CoolProp
+from CoolProp.CoolProp import PropsSI
+
+from .fluid import build_state
+
+
+def _major_version(text: str) -> int:
+    try:
+        return int(str(text).split(".")[0])
+    except ValueError:
+        return 0
+
+
+#: The tracer needs CoolProp 8. Older versions abort the whole Python
+#: process (a C++ abort, not an exception) in some of the saturation calls
+#: the tracer makes for mixtures near the critical point, for example on an
+#: R32/R125 blend with CoolProp 7.2. There every point is flashed instead.
+TRACER_AVAILABLE = _major_version(getattr(CoolProp, "__version__", "0")) >= 8
+
+
+#: A two-phase state whose two phases differ in density by less than this,
+#: relatively, is the trivial solution: the VLE solver collapsed both phases
+#: onto the same root rather than converging on a saturation state.
+#:
+#: Calibrated where it is load-bearing, which is the Q=0 and Q=1 calls the
+#: bracket and the dome check make: across the predefined blends, genuine
+#: saturation pairs there stay above 1.8e-3 and collapsed ones fall below
+#: 1e-7, so this sits orders clear of both.  At intermediate quality the
+#: separation is looser -- Air, R441A, R448A and R407C all return pairs a
+#: little above this threshold at temperatures beyond their critical point --
+#: and the quality lines will draw those.  Both error directions are safe for
+#: the tracer: a rejected genuine pair costs a fallback flash, and an accepted
+#: collapsed one still has to get past the density comparison that follows.
+_TRIVIAL_SOLUTION_RTOL = 1e-4
+
+
+def _phases_are_distinct(state):
+    """Whether a two-phase state really has two phases
+
+    Near the critical point the mixture QT and PQ solvers can return the
+    trivial solution, reporting the requested quality and a state whose
+    saturated liquid and vapour are the same root.  The result is a plausible
+    looking point that is nowhere near the one asked for -- on an R513A Q=0.5
+    line it puts the last point 93 J/kg/K along in entropy, which is the jag
+    at the top of the dome.
+    """
+    try:
+        rho_liq = state.saturated_liquid_keyed_output(CoolProp.iDmolar)
+        rho_vap = state.saturated_vapor_keyed_output(CoolProp.iDmolar)
+    except Exception:
+        return True         # nothing to check against; the caller's other tests apply
+    if not (np.isfinite(rho_liq) and np.isfinite(rho_vap)) or rho_liq <= 0.0 or rho_vap <= 0.0:
+        return False
+    return (rho_liq - rho_vap) > _TRIVIAL_SOLUTION_RTOL * max(rho_liq, rho_vap)
+
+
+class IsoLineTracer(object):
+    """Walk along an isoline, warm-starting every point from the previous one.
+
+    :func:`coolplot.thermo.isolines.compute_isoline` evaluates an isoline at consecutive points, so
+    the solution at one point is an excellent initial guess for the next one.
+    That turns each point into a much cheaper problem than the cold
+    two-dimensional flash it replaces:
+
+    * A single-phase point is solved as a two-by-two Newton iteration in
+      ``(T, rhomolar)``.  Every property is an explicit function of
+      ``(T, rhomolar)`` for a Helmholtz-energy EOS, so the iteration needs no
+      flash at all, only ``DmolarT_INPUTS`` updates on a state whose phase has
+      been imposed.  Imposing the phase skips the saturation call that
+      dominates a mixture update and, just as importantly, keeps the iterates
+      on the single-phase root instead of snapping to a two-phase solution.
+    * A two-phase point is bracketed by the two saturation states at the
+      constant temperature or pressure of the input pair, and the vapour
+      quality between them is found by a bracketed one-dimensional solve.
+
+    The tracer needs temperature or pressure among the two inputs -- see
+    :func:`supports` -- because that is what lets it bracket the saturation
+    curve.  Every point it cannot bracket, on either side, raises so that the
+    caller falls back to a plain :func:`AbstractState.update` call: a
+    phase-imposed Newton iteration will happily return the metastable
+    extension of the EOS inside the dome, and only the bracket rules that out.
+    """
+
+    #: The Newton iteration has settled once the relative step in both T and
+    #: rhomolar is this small.  That alone is not convergence -- see
+    #: RESIDUAL_RTOL -- but it is what stops the iteration.
+    NEWTON_RTOL = 1e-10
+    #: Residual accepted at that point, relative to how much the property
+    #: varies over the iteration variables.
+    RESIDUAL_RTOL = 1e-9
+    NEWTON_ITMAX = 30
+    #: A single Newton step may not move T or rhomolar by more than this
+    #: fraction of their current value.
+    NEWTON_TRUST = 0.25
+    #: Bracketed solve for the vapour quality of a two-phase point.
+    QUALITY_XTOL = 1e-12
+    QUALITY_RTOL = 1e-8
+    QUALITY_ITMAX = 60
+    #: A saturation bracket narrower than this (relative) cannot resolve a
+    #: quality: a pure fluid at fixed T brackets p by psat on both sides, and
+    #: an azeotropic mixture is barely better.  Such a point is single-phase
+    #: as far as the tracer is concerned.
+    BRACKET_RTOL = 1e-8
+    #: How far outside the saturation densities a converged single-phase root
+    #: may sit before it is rejected as the wrong branch.
+    BRANCH_RTOL = 1e-6
+
+    #: The reported extent of the two-phase region is a traced curve, so its
+    #: end is not exactly the cricondenbar (or cricondentherm).  A point is
+    #: only called supercritical this far beyond it.
+    DOME_MARGIN = 1.05
+    #: Margin on the highest temperature of a phase envelope that ran to the
+    #: critical point (CoolPlot change; CoolProp uses DOME_MARGIN here). On
+    #: the predefined and common refrigerant blends that temperature agrees
+    #: with the critical temperature from all_critical_points to within
+    #: 0.04 K and does not change when the envelope is refined, so 0.5 % is
+    #: still a margin of about forty. With 5 % every supercritical point up
+    #: to some 17 K above the dome was handed back to a flash that costs up
+    #: to 2 s per point for a blend; one isentrope of R32/R125 near the
+    #: critical point took 25 s instead of 1 s.
+    CLOSED_ENVELOPE_MARGIN = 1.005
+    #: A phase envelope that ends with its two densities still this far apart
+    #: did not run to the critical point, so where its dome ends is unknown
+    #: and has to be found the expensive way.
+    ENVELOPE_CLOSED_RTOL = 0.35
+
+    LIQUID = -1
+    VAPOUR = 1
+
+    #: Critical temperatures keyed by fluid *model*, for the blends whose phase
+    #: envelope does not reach the critical point and where locating it costs
+    #: seconds to minutes.  Unlike the envelope, this lookup has no side effect
+    #: on the state that produced it, so caching it cannot make one tracer
+    #: behave differently from the next.  The key has to carry the binary
+    #: interaction parameters, not just the fluids and composition: they move
+    #: the critical point, and a shared limit that came out too low would send
+    #: :func:`_check_outside_the_dome` down its no-dome path over a range where
+    #: there is one.
+    _CRITICAL_T = {}
+
+    @classmethod
+    def supports(cls, index1, index2):
+        """Whether an isoline with these two inputs can be traced
+
+        The tracer needs temperature or pressure among the inputs, because
+        that is what lets it put a saturation bracket around a point and so
+        tell a two-phase state from a single-phase one.  Without it the Newton
+        iteration would run on a phase-imposed state with nothing to stop it
+        returning the metastable extension of the EOS inside the dome -- a
+        plausible-looking answer that is simply wrong.  ``HmassSmass_INPUTS``
+        and ``DmassSmass_INPUTS`` are the pairs this rules out.
+        """
+        return CoolProp.iT in (index1, index2) or CoolProp.iP in (index1, index2)
+
+    def __init__(self, fluid, index1, index2, iso_index):
+        """
+        Parameters
+        ----------
+        fluid : Fluid
+            The fluid the isoline belongs to. The tracer builds its own
+            CoolProp states from the fluid model and never touches the
+            working state of the fluid.
+        index1, index2 : int
+            Parameter indices of the two inputs, in the order the input pair
+            expects them.
+        iso_index : int
+            Parameter index the isoline holds constant.
+        """
+        if index1 == index2:
+            raise ValueError("The two inputs of an isoline cannot be the same property.")
+        if not self.supports(index1, index2):
+            raise ValueError("An isoline whose inputs include neither temperature "
+                             "nor pressure cannot be traced.")
+        self._i1 = index1
+        self._i2 = index2
+        # Both states are built from the same model description, so they are
+        # the same fluid model by construction (no clone check needed).
+        self._model_key = fluid.model_key
+        self._sat = build_state(fluid.model_key)
+        self._sp = build_state(fluid.model_key)
+        # Not every backend honours an imposed phase; the tracer is still
+        # correct without it, just slower and less robust, so fail soft.
+        try:
+            self._sp.specify_phase(CoolProp.iphase_gas)
+        except Exception:
+            pass  # backend without an imposed phase; correctness does not depend on it
+        # Using the isoline's own constant as the saturation variable makes the
+        # bracket constant along the whole line, so it is computed only once.
+        if iso_index in (CoolProp.iT, CoolProp.iP) and iso_index in (index1, index2):
+            self._sat_index = iso_index
+        elif CoolProp.iT in (index1, index2):
+            self._sat_index = CoolProp.iT
+        else:
+            self._sat_index = CoolProp.iP
+        self._eos_bounds = self._find_eos_bounds()
+        envelope_bounds, self._saturation_bounds = self._find_saturation_bounds()
+        self._dome_limit = envelope_bounds.get(self._sat_index)
+        self._dome_T_limit = self._find_dome_temperature_limit()
+        self._sat_value = None
+        self._bracket = None
+        self._bracket_failure = None
+        self._T = np.nan
+        self._rhomolar = np.nan
+        self._side = None
+        self._out = None
+
+    @property
+    def state(self):
+        """The state holding the most recently traced point
+
+        Note that its ``phase()`` reports the phase the tracer imposed on it,
+        not one it determined; ``Q()`` is meaningful, ``phase()`` is not.
+        """
+        if self._out is None:
+            raise ValueError("No point has been traced yet.")
+        return self._out
+
+    def keyed_output(self, key):
+        """Read a property of the most recently traced point"""
+        return self.state.keyed_output(key)
+
+    def set_guess(self, state):
+        """Adopt a state the caller solved itself as the warm start
+
+        A two-phase state says nothing about the single-phase root the Newton
+        iteration follows, so it is ignored.  Both ``phase()`` and ``Q()`` are
+        consulted: the caller's state is shared and may have had a phase
+        imposed on it, in which case ``phase()`` reports that rather than what
+        was found.
+        """
+        try:
+            if state.phase() == CoolProp.iphase_twophase:
+                return
+            quality = state.Q()
+            # phase() reports whatever the caller imposed on the shared state,
+            # so do not rely on it alone.
+            if np.isfinite(quality) and 0.0 <= quality <= 1.0:
+                return
+            T, rhomolar = state.T(), state.rhomolar()
+        except Exception:
+            return  # unusable state; keep whatever warm start we already had
+        if np.isfinite(T) and np.isfinite(rhomolar) and T > 0.0 and rhomolar > 0.0:
+            self._T = T
+            self._rhomolar = rhomolar
+            self._side = None
+
+    def update(self, value1, value2):
+        """Trace the state with ``index1 == value1`` and ``index2 == value2``
+
+        Raises if the point could not be traced.  The warm start survives,
+        because it holds the last point that *did* converge and that is still
+        the best guess available for the next one -- dropping it on every
+        failure lets a single awkward point strand the whole rest of the line
+        in a region where there is no saturation state to restart from.
+        """
+        try:
+            self._out = None
+            targets = {self._i1: value1, self._i2: value2}
+            bracket = self._get_bracket(targets)
+            if bracket is not None and bracket['two_phase']:
+                self._solve_quality(bracket)
+            else:
+                self._solve_single_phase(targets, bracket)
+        except Exception:
+            self._out = None
+            raise
+
+    # -------------------------------------------------------------------
+    # Saturation bracket
+    # -------------------------------------------------------------------
+    def _find_eos_bounds(self):
+        """The range the equation of state is actually valid over
+
+        Cheap -- these are trivial parameters -- and used twice: to keep a
+        diverged phase envelope from setting a meaningless bound, and to stop
+        the Newton iteration reporting a root far outside the fitted range.
+        With the phase imposed there is nothing else to stop it: an isochore
+        on R504 will happily extrapolate to tens of thousands of kelvin and
+        report finite numbers there.
+        """
+        bounds = {}
+        for index, key in ((CoolProp.iT, CoolProp.iT_max), (CoolProp.iP, CoolProp.iP_max)):
+            try:
+                value = self._sp.trivial_keyed_output(key)
+            except Exception:
+                continue
+            if np.isfinite(value) and value > 0.0:
+                bounds[index] = value
+        try:
+            value = self._sp.trivial_keyed_output(CoolProp.iT_min)
+            if np.isfinite(value) and value > 0.0:
+                bounds['T_min'] = value
+        except Exception:
+            pass  # no lower limit published; the runaway guard uses the upper one
+        return bounds
+
+    def _find_saturation_bounds(self):
+        """Two bounds on how far the two-phase region reaches, in T and in p
+
+        They answer different questions and must not be conflated.
+
+        The *inner* one is the phase envelope's own extent.  It decides what a
+        failed saturation call means: beyond it there is probably no dome, so
+        the point is traced without a bracket -- and then checked against the
+        saturation densities at its own temperature by
+        :func:`_check_outside_the_dome`, which is what actually makes that
+        safe.  Being merely probable is therefore fine, and keeping it tight
+        is what keeps the fallback rate down.
+
+        The *outer* one also takes in the largest critical point among the
+        components, and decides whether a saturation state the solver returned
+        can be believed.  Beyond the cricondenbar the mixture PQ and QT
+        solvers do not fail: they return a state that reports the requested
+        pressure and quality exactly and sits hundreds of kelvin from the
+        dome.  This one has to be generous, because the envelope trace stops
+        short of the real cricondentherm for several predefined blends --
+        R504 by about 20 K -- and those genuine dome states must not be thrown
+        away as solver noise.
+
+        Building the envelope is also what makes the saturation calls on
+        ``self._sat`` converge in the first place -- the mixture PQ and QT
+        flashes take their guesses from it -- so this is deliberately done on
+        that object and deliberately not cached between tracers.  Caching it
+        made the first isoline of a fluid behave differently from the rest.
+        """
+        envelope = {}
+        closed = False
+        try:
+            self._sat.build_phase_envelope("none")
+            data = self._sat.get_phase_envelope_data()
+            envelope = {CoolProp.iT: max(data.T), CoolProp.iP: max(data.p)}
+            closed = self._envelope_is_closed(data)
+        except Exception:
+            pass  # no envelope: every point must be bracketed or handed back
+        outer = dict(envelope)
+        try:
+            for index, name in ((CoolProp.iT, 'Tcrit'), (CoolProp.iP, 'pcrit')):
+                critical = max(PropsSI(name, fluid) for fluid in self._sat.fluid_names())
+                outer[index] = max(outer.get(index, 0.0), critical)
+        except Exception:
+            pass  # no component critical data; the envelope alone has to do
+        def clean(candidate, margin):
+            """Drop unusable bounds, clamp to the EOS range, apply the margin"""
+            bounds = {}
+            for index, value in candidate.items():
+                if not (np.isfinite(value) and value > 0.0):
+                    continue
+                # A phase envelope can diverge rather than fail -- CO2/nitrogen
+                # traces one out to 18000 K -- and an unclamped bound from it
+                # makes every plausibility test below a tautology.
+                limit = self._eos_bounds.get(index)
+                bounds[index] = min(value, limit) if limit is not None else value
+            return {k: v * margin for k, v in bounds.items()}
+        # The inner bound may be tight when the envelope ran to the critical
+        # point (CoolPlot change, see CLOSED_ENVELOPE_MARGIN): a point beyond
+        # it is still checked by _check_outside_the_dome.
+        inner_margin = self.CLOSED_ENVELOPE_MARGIN if closed else self.DOME_MARGIN
+        return clean(envelope, inner_margin), clean(outer, self.DOME_MARGIN)
+
+    def _envelope_is_closed(self, data):
+        """Whether a phase envelope ran to the critical point
+
+        Its liquid and vapour densities then converge at the hottest point.
+        """
+        temperatures = np.asarray(data.T, dtype=float)
+        hot = int(np.argmax(temperatures))
+        rho_liq = float(np.asarray(data.rhomolar_liq, dtype=float)[hot])
+        rho_vap = float(np.asarray(data.rhomolar_vap, dtype=float)[hot])
+        return abs(rho_liq - rho_vap) <= self.ENVELOPE_CLOSED_RTOL * max(rho_liq, rho_vap)
+
+    def _find_dome_temperature_limit(self):
+        """The temperature above which there is certainly no two-phase region
+
+        Temperature only, deliberately.  A pressure bound looks like it should
+        be just as usable -- above the cricondenbar no two-phase state exists
+        at that pressure -- but it does not answer the question this is for.
+        What has to be decided is whether the ``(T, rhomolar)`` the Newton
+        iteration landed on is the stable root at *its own* temperature, and
+        the EOS pressure along the metastable branch inside the dome runs well
+        above the cricondenbar, so a root there satisfies a high-pressure
+        isobar perfectly while sitting between the saturation densities.
+        Short-circuiting on pressure shipped 69 such roots on a default
+        R441A T-s plot, 8.7 % out in temperature.
+
+        This one has to be right rather than generous: it is what decides
+        whether a saturation call that could not answer counts as "there is no
+        dome here" or as "this point cannot be checked, hand it back".  Too
+        high and every supercritical point pays for a flash; too low and roots
+        inside the dome are accepted unexamined.
+
+        A phase envelope that ran to the critical point ends with its liquid
+        and vapour densities converging, and then its own maximum temperature
+        is the answer for free.  One that stopped early -- R504's ends with
+        them still a factor of six apart, 37 K below the real critical point
+        -- says nothing, and the critical point has to be located directly,
+        which is slow enough to be worth avoiding for every other fluid.
+        """
+        try:
+            data = self._sat.get_phase_envelope_data()
+            temperatures = np.asarray(data.T, dtype=float)
+            hot = int(np.argmax(temperatures))
+            if self._envelope_is_closed(data):
+                # The trace covered the whole dome, so its own extremes are the
+                # cricondentherm and the cricondenbar.
+                return temperatures[hot] * self.CLOSED_ENVELOPE_MARGIN
+        except Exception:
+            pass  # envelope unusable; fall through to locating the critical point
+        # An envelope that stopped early does not bound the dome.  The critical
+        # point can be located directly, which is slow enough to be worth
+        # avoiding whenever the envelope already answered.
+        key = self._model_key
+        if key not in self._CRITICAL_T:
+            if len(self._CRITICAL_T) > 64:  # a plotting session, not a cache
+                self._CRITICAL_T.clear()
+            critical = None
+            try:
+                stable = [point.T for point in self._sat.all_critical_points() if point.stable]
+                if stable:
+                    critical = max(stable)
+            except Exception:
+                pass  # critical point not locatable; fall back on the outer bound
+            self._CRITICAL_T[key] = critical
+        critical = self._CRITICAL_T[key]
+        if critical is not None:
+            return critical * self.DOME_MARGIN
+        return self._saturation_bounds.get(CoolProp.iT)
+
+    def _is_plausible_saturation(self, T, p):
+        """Whether a state the saturation solver returned can be on the dome"""
+        for index, value in ((CoolProp.iT, T), (CoolProp.iP, p)):
+            bound = self._saturation_bounds.get(index)
+            if bound is not None and not value <= bound:
+                return False
+        return True
+
+    def _saturation_endpoint(self, sat_value, quality):
+        """Move ``self._sat`` onto the saturation curve
+
+        These deliberately do not go through ``update_with_guesses``.  Seeding
+        the saturation solver from the previous point is about twice as fast,
+        but near the critical point it converges on a state that is not the
+        bubble or dew point and reports no error while doing so, and every
+        branch decision below is built on this bracket.  The saturation calls
+        are a small part of the cost of a traced isoline anyway.
+        """
+        if self._sat_index == CoolProp.iT:
+            self._sat.update(CoolProp.QT_INPUTS, quality, sat_value)
+        else:
+            self._sat.update(CoolProp.PQ_INPUTS, sat_value, quality)
+
+    def _get_bracket(self, targets):
+        """Bracket the target property between its saturated liquid and vapour values
+
+        Returns a dict describing the bracket and whether the point falls
+        inside it, or ``None`` if the point is beyond the dome entirely, where
+        an unbracketed single-phase root is safe because there is no second
+        root to confuse it with.  Raises if the dome should be there and could
+        not be found, so that the caller flashes the point instead.
+        """
+        sat_value = targets[self._sat_index]
+        target_index = self._i2 if self._sat_index == self._i1 else self._i1
+        target = targets[target_index]
+
+        if self._sat_value is None or sat_value != self._sat_value:
+            # Record the outcome and the value it belongs to together.  Storing
+            # the value first and letting the build raise past it would leave
+            # the previous outcome -- None, meaning "no dome, nothing to
+            # check" -- cached against the new value, and since an isoline in T
+            # or p has the same saturation value at every point, one failed
+            # build would disable the branch check for the whole line.
+            bracket, failure = None, None
+            try:
+                bracket = self._build_bracket(sat_value, target_index)
+            except Exception as e:
+                failure = str(e)
+            self._sat_value = sat_value
+            self._bracket = bracket
+            self._bracket_failure = failure
+        if self._bracket_failure is not None:
+            raise ValueError(self._bracket_failure)
+        if self._bracket is None:
+            # Above the dome; a single-phase root here needs no checking
+            # because there is no other root to be confused with.
+            return None
+
+        bracket = dict(self._bracket)
+        v_liq, v_vap = bracket['liq'][0], bracket['vap'][0]
+        bracket['target'] = target
+        bracket['two_phase'] = (not bracket['degenerate']
+                                and min(v_liq, v_vap) < target < max(v_liq, v_vap))
+        # Which single-phase branch the point sits on.  Following the bracket
+        # rather than the previous point is what keeps the iteration on the
+        # correct root where an isoline crosses the saturation curve.  The
+        # midpoint and the slope are used rather than the two bracket values
+        # because for an azeotropic mixture the bubble and dew values can
+        # agree to within round-off, and then their order is noise: R513A's
+        # bubble and dew pressures come within 1.4e-9 relative of each other
+        # near 305 K, below BRACKET_RTOL.
+        slope = bracket['slope']
+        if bracket['two_phase']:
+            bracket['side'] = None
+        elif slope is not None:
+            bracket['side'] = self.LIQUID if (target - 0.5 * (v_liq + v_vap)) * slope > 0 \
+                else self.VAPOUR
+        elif not bracket['degenerate']:
+            # No slope, but a bracket this wide still separates the branches
+            bracket['side'] = self.LIQUID if (target - v_liq) * (v_liq - v_vap) > 0 \
+                else self.VAPOUR
+        else:
+            raise ValueError("Cannot tell which side of the saturation curve "
+                             "this point is on.")
+        return bracket
+
+    def _build_bracket(self, sat_value, target_index):
+        """Saturation states at ``sat_value``, or None if there is no dome there
+
+        Raises rather than returning None when the dome should exist but could
+        not be found: an unbracketed point is only safe where there is nothing
+        to bracket, and everywhere else the caller has to flash it instead.
+        """
+        # The bracket is attempted even beyond the reported extent of the dome,
+        # because that extent is only a lower bound and a saturation state
+        # that really does exist is better evidence than the limit.  A call
+        # that fails, or that returns a state the envelope says cannot be on
+        # the dome, then falls back on the limit to decide whether it came up
+        # empty for want of a dome or for want of a solver.
+        ends = {}
+        try:
+            for name, quality in (('liq', 0.0), ('vap', 1.0)):
+                self._saturation_endpoint(sat_value, quality)
+                ends[name] = (self._sat.keyed_output(target_index),
+                              self._sat.T(), self._sat.rhomolar())
+                if not self._is_plausible_saturation(self._sat.T(), self._sat.p()):
+                    raise ValueError(
+                        "The saturation solver returned a state at T={0:g} K, "
+                        "p={1:g} Pa, beyond any possible dome.".format(
+                            self._sat.T(), self._sat.p()))
+        except Exception:
+            if self._dome_limit is not None and sat_value > self._dome_limit:
+                return None
+            raise
+        v_liq, v_vap = ends['liq'][0], ends['vap'][0]
+        if not (np.isfinite(v_liq) and np.isfinite(v_vap)):
+            raise ValueError("The saturation states are not finite.")
+        # A saturation solver that converged on the wrong branch, or onto the
+        # trivial solution with both phases at one density, would make every
+        # branch decision below meaningless.
+        if not ends['liq'][2] > ends['vap'][2] * (1.0 + _TRIVIAL_SOLUTION_RTOL):
+            raise ValueError("The saturation states are not on their own branches.")
+        degenerate = abs(v_vap - v_liq) <= self.BRACKET_RTOL * max(abs(v_liq), abs(v_vap), 1e-30)
+        return {'target_index': target_index, 'liq': ends['liq'], 'vap': ends['vap'],
+                'degenerate': degenerate,
+                'slope': self._branch_slope(target_index, ends['liq'])}
+
+    def _branch_slope(self, target_index, liquid_end):
+        """Sign of the target property along density at the saturated liquid
+
+        A point whose target property lies on the same side of the saturation
+        curve as this slope points sits on the liquid branch.  Returns None if
+        the derivative is unavailable, in which case the branch is left to the
+        previous point.
+        """
+        try:
+            self._sp.update(CoolProp.DmolarT_INPUTS, liquid_end[2], liquid_end[1])
+            slope = self._sp.first_partial_deriv(target_index, CoolProp.iDmolar, self._sat_index)
+        except Exception:
+            return None
+        if not np.isfinite(slope) or slope == 0.0:
+            return None
+        return slope
+
+    # -------------------------------------------------------------------
+    # Two-phase point: solve for the vapour quality
+    # -------------------------------------------------------------------
+    def _quality_residual(self, quality, bracket):
+        """How far the two-phase state at this quality is from the target"""
+        if self._sat_index == CoolProp.iT:
+            self._sat.update(CoolProp.QT_INPUTS, quality, self._sat_value)
+        else:
+            self._sat.update(CoolProp.PQ_INPUTS, self._sat_value, quality)
+        return self._sat.keyed_output(bracket['target_index']) - bracket['target']
+
+    def _solve_quality(self, bracket):
+        """Regula falsi (Illinois) on the vapour quality between the saturation states"""
+        target = bracket['target']
+        a, fa = 0.0, bracket['liq'][0] - target
+        b, fb = 1.0, bracket['vap'][0] - target
+        width = abs(fb - fa)
+        if fa * fb > 0.0:
+            raise ValueError("The saturation bracket does not contain the target.")
+        for _ in range(self.QUALITY_ITMAX):
+            quality = b - fb * (b - a) / (fb - fa)
+            # The endpoints are already known and a regula falsi can creep onto
+            # them, so keep every trial strictly inside the bracket.
+            lo, hi = min(a, b), max(a, b)
+            if not np.isfinite(quality) or not lo < quality < hi:
+                quality = 0.5 * (lo + hi)
+            fq = self._quality_residual(quality, bracket)
+            if fq * fb < 0.0:
+                a, fa = b, fb
+            else:
+                fa *= 0.5  # Illinois: stops the retained endpoint from stalling
+            b, fb = quality, fq
+            if fq == 0.0 or abs(b - a) < self.QUALITY_XTOL:
+                break
+        else:
+            raise ValueError("The quality solver did not converge.")
+        # A bracket built on a bad saturation state can be wide enough to
+        # appear to contain a target the two-phase region never reaches, and
+        # then the iteration runs out of interval with the residual intact.
+        if abs(fb) > self.QUALITY_RTOL * width:
+            raise ValueError("The quality solver ran out of bracket with the "
+                             "residual unresolved.")
+        self._out = self._sat
+        # A two-phase point says nothing about the single-phase root.
+        self._T = np.nan
+        self._rhomolar = np.nan
+        self._side = None
+
+    # -------------------------------------------------------------------
+    # Single-phase point: Newton iteration in (T, rhomolar)
+    # -------------------------------------------------------------------
+    def _seed(self, bracket):
+        """Pick the initial (T, rhomolar), preferring the previous point"""
+        side = None if bracket is None else bracket['side']
+        if np.isfinite(self._T) and np.isfinite(self._rhomolar) \
+                and (side is None or self._side is None or side == self._side):
+            return self._T, self._rhomolar
+        if bracket is not None:
+            end = bracket['liq'] if side == self.LIQUID else bracket['vap']
+            return end[1], end[2]
+        raise ValueError("No initial guess is available for the Newton iteration.")
+
+    def _solve_single_phase(self, targets, bracket):
+        """Newton iteration in (T, rhomolar) onto both target properties
+
+        Raises unless it settles on a root that is checked, in range, and on
+        the side of the saturation curve the bracket says it should be.
+        """
+        T, rhomolar = self._seed(bracket)
+        i1, i2, state = self._i1, self._i2, self._sp
+        v1, v2 = targets[i1], targets[i2]
+        for _ in range(self.NEWTON_ITMAX):
+            state.update(CoolProp.DmolarT_INPUTS, rhomolar, T)
+            f1 = state.keyed_output(i1) - v1
+            f2 = state.keyed_output(i2) - v2
+            J11 = state.first_partial_deriv(i1, CoolProp.iT, CoolProp.iDmolar)
+            J12 = state.first_partial_deriv(i1, CoolProp.iDmolar, CoolProp.iT)
+            J21 = state.first_partial_deriv(i2, CoolProp.iT, CoolProp.iDmolar)
+            J22 = state.first_partial_deriv(i2, CoolProp.iDmolar, CoolProp.iT)
+            det = J11 * J22 - J12 * J21
+            if not np.isfinite(det) or det == 0.0:
+                raise ValueError("The Newton iteration hit a singular Jacobian.")
+            dT = (J12 * f2 - J22 * f1) / det
+            dD = (J21 * f1 - J11 * f2) / det
+            if not (np.isfinite(dT) and np.isfinite(dD)):
+                raise ValueError("The Newton iteration produced a non-finite step.")
+            if abs(dT) <= self.NEWTON_RTOL * T and abs(dD) <= self.NEWTON_RTOL * rhomolar:
+                # A small step is not by itself a small residual: where the
+                # Jacobian is large -- cv near the critical point, say -- the
+                # iteration can stall with the residual intact.  Scale each
+                # residual by how much its property moves over the iteration
+                # variables, which is finite and non-zero even for an enthalpy
+                # that happens to sit near its reference value.
+                scale1 = abs(J11) * T + abs(J12) * rhomolar
+                scale2 = abs(J21) * T + abs(J22) * rhomolar
+                if not (np.isfinite(scale1) and np.isfinite(scale2)):
+                    raise ValueError("The residual cannot be scaled at this point.")
+                if abs(f1) > self.RESIDUAL_RTOL * scale1 \
+                        or abs(f2) > self.RESIDUAL_RTOL * scale2:
+                    raise ValueError("The Newton iteration stalled with the "
+                                     "residual unresolved.")
+                self._check_in_range(T)
+                side = None if bracket is None else bracket['side']
+                self._check_branch(bracket, side, T, rhomolar)
+                self._T, self._rhomolar = T, rhomolar
+                self._side = side
+                self._out = state
+                return
+            damp = 1.0
+            if abs(dT) > self.NEWTON_TRUST * T:
+                damp = min(damp, self.NEWTON_TRUST * T / abs(dT))
+            if abs(dD) > self.NEWTON_TRUST * rhomolar:
+                damp = min(damp, self.NEWTON_TRUST * rhomolar / abs(dD))
+            T += damp * dT
+            rhomolar += damp * dD
+            if not (T > 0.0 and rhomolar > 0.0):
+                raise ValueError("The Newton iteration left the physical domain.")
+        raise ValueError("The Newton iteration did not converge.")
+
+    #: How far past the equation of state's stated temperature range a root
+    #: may sit.  Deliberately loose: this is not a validity check.  CoolProp
+    #: answers a PT flash well outside the fitted range and so would the
+    #: fallback this hands back to, so a tighter bound would only make traced
+    #: and flashed points on the same isoline obey different rules.  What it
+    #: catches is an iteration that has run away entirely -- an R504 isochore
+    #: reaching four hundred times the maximum temperature.
+    RANGE_FACTOR = 2.0
+
+    def _check_in_range(self, T):
+        """Reject a root the Newton iteration has run away with"""
+        upper = self._eos_bounds.get(CoolProp.iT)
+        lower = self._eos_bounds.get('T_min')
+        if (upper is not None and T > upper * self.RANGE_FACTOR) \
+                or (lower is not None and T < lower / self.RANGE_FACTOR):
+            raise ValueError("The Newton iteration converged at T={0:g} K, far "
+                             "outside the range of the equation of state.".format(T))
+
+    def _check_branch(self, bracket, side, T, rhomolar):
+        """Reject a root that ended up inside the two-phase dome
+
+        With a bracket this is a comparison against the two saturation
+        densities at the constant temperature (or pressure) it was built at: a
+        liquid root is denser than the saturated liquid, a vapour root thinner
+        than the saturated vapour, and a root that is neither is metastable or
+        unstable and goes back to the caller to flash.
+
+        Without one the point was taken to be beyond the dome, and that is
+        checked here rather than assumed.  The reported extent of the phase
+        envelope is not reliable enough to assume it: for several predefined
+        blends the envelope trace stops well short of the real cricondentherm
+        -- R504 by about 20 K -- and every point in between would otherwise be
+        accepted unexamined, which is exactly where the dome is.
+        """
+        if bracket is None:
+            self._check_outside_the_dome(T, rhomolar)
+            return
+        if side is None:
+            return
+        if side == self.LIQUID:
+            limit = bracket['liq'][2]
+            wrong = rhomolar < limit * (1.0 - self.BRANCH_RTOL)
+        else:
+            limit = bracket['vap'][2]
+            wrong = rhomolar > limit * (1.0 + self.BRANCH_RTOL)
+        if wrong:
+            raise ValueError("The Newton iteration converged on the wrong side "
+                             "of the saturation curve.")
+
+    def _check_outside_the_dome(self, T, rhomolar):
+        """Confirm there is no two-phase region around this root
+
+        A saturation call that succeeds here gives the two densities to
+        compare against directly.  One that fails is not the reassurance it
+        looks like: when the isoline is indexed by temperature this is the
+        same call, at the same temperature, that :func:`_build_bracket`
+        already gave up on, so it can add nothing.  Treating that as "no dome"
+        left a band of about ten kelvin on R504 -- between where the
+        saturation solver stops converging and the real critical point at
+        335.5 K, which its phase envelope stops 37 K short of -- in which
+        roots inside the dome were accepted unexamined.  So a failure only
+        counts as an answer above the temperature where a dome could exist at
+        all; below it the point goes back to the caller to flash.
+        """
+        if self._dome_T_limit is not None and T > self._dome_T_limit:
+            return          # above the critical point; there is no dome to be in
+        undecided = None
+        try:
+            self._sat.update(CoolProp.QT_INPUTS, 0.0, T)
+            rho_liq, p_liq = self._sat.rhomolar(), self._sat.p()
+            self._sat.update(CoolProp.QT_INPUTS, 1.0, T)
+            rho_vap, p_vap = self._sat.rhomolar(), self._sat.p()
+        except Exception:
+            undecided = "the saturation solver did not converge"
+        if undecided is None and not self._is_plausible_saturation(T, max(p_liq, p_vap)):
+            undecided = "the saturation solver left the dome behind"
+        if undecided is None and not _phases_are_distinct(self._sat):
+            # Same trivial solution the bracket has to reject: a positive but
+            # vanishing density gap is the solver collapsing both phases, not
+            # a narrow dome, and it would let a root inside one through.
+            undecided = "the saturation states are not on their own branches"
+        if undecided is not None:
+            bound = self._dome_T_limit
+            if bound is None or T <= bound:
+                raise ValueError("This root cannot be shown to be outside the "
+                                 "two-phase dome: {0}.".format(undecided))
+            return          # above any possible dome, so there is none to be in
+        if rho_vap < rhomolar < rho_liq:
+            raise ValueError("The Newton iteration converged inside the "
+                             "two-phase dome.")

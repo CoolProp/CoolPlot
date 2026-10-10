@@ -81,7 +81,8 @@ class Engine:
         base = (spec.fluid, spec.diagram, request.key, request.value_SI, request.points)
         if request.key == "Q":
             return base + (calc.critical_margin, calc.saturation_spacing)
-        return base + (domain.tp_box,)
+        # The margin decides where saturation states are inserted
+        return base + (domain.tp_box, calc.solver, calc.critical_margin)
 
     def curve(self, spec: DiagramSpec, domain: Domain, request: CurveRequest) -> Curve:
         """One curve, from the cache or freshly computed."""
@@ -93,14 +94,15 @@ class Engine:
                 return compute_quality_line(fluid, spec.diagram, request.value_SI, request.points,
                                             calc.critical_margin, calc.saturation_spacing)
             return compute_isoline(fluid, spec.diagram, request.key, request.value_SI, domain.tp_box,
-                                   request.points)
+                                   request.points, calc.solver, calc.critical_margin)
 
         return self.cache.get_or_compute(self.cache_key(spec, domain, request), compute)
 
     def curves(self, spec: DiagramSpec, domain: Domain, requests) -> List[Tuple[CurveRequest, Curve]]:
         """The curves of all requests that have at least two valid points.
 
-        Curves that are left out, or that lost more points than
+        Curves that are left out, or that have more failed points inside
+        the line (see :attr:`Curve.n_gaps`) than
         ``Settings.calc.warn_failed_fraction``, cause one warning each; the
         same curve does not warn again on later updates.
         """
@@ -114,10 +116,10 @@ class Engine:
                            "{3} of {4} points.".format(request.key, request.value_SI, spec.fluid.name,
                                                        curve.n_failed, total))
                 continue
-            if total and curve.n_failed > tolerance * total:
+            if total and curve.n_gaps > tolerance * total:
                 self._warn(spec, request, "The line {0}={1:.6g} in {2} has gaps: CoolProp failed for "
-                           "{3} of {4} points.".format(request.key, request.value_SI, spec.fluid.name,
-                                                       curve.n_failed, total))
+                           "{3} of {4} points inside the line.".format(request.key, request.value_SI,
+                                                                       spec.fluid.name, curve.n_gaps, total))
             result.append((request, curve))
         return result
 
