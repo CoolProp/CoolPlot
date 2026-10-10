@@ -28,8 +28,8 @@ def _chromium():
 
 @pytest.fixture(scope="module")
 def browser():
+    exe = _chromium()   # skips first when Playwright or Chromium is missing
     from playwright.sync_api import sync_playwright
-    exe = _chromium()
     with sync_playwright() as p:
         b = p.chromium.launch(executable_path=exe)
         yield b

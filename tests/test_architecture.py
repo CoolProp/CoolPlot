@@ -22,7 +22,7 @@ PACKAGE = os.path.join(SRC, "coolplot")
 LIBS = {"CoolProp", "matplotlib", "plotly"}
 ALL_LAYERS = ["coolplot.core", "coolplot.style", "coolplot.scene", "coolplot.spec", "coolplot.thermo",
               "coolplot.engine", "coolplot.compose", "coolplot.render", "coolplot.diagram",
-              "coolplot.interaction"]
+              "coolplot.psychrometric", "coolplot.interaction"]
 
 
 def _after(layer):
@@ -45,25 +45,27 @@ RULES = {
     "coolplot.compose": LIBS | {"coolplot.thermo", "coolplot.engine"} | _after("coolplot.compose"),
     # Backends see only the scene and style values; themes are resolved before.
     "coolplot.render": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
-                               "coolplot.diagram", "coolplot.interaction", "coolplot.style.theme",
+                               "coolplot.diagram", "coolplot.psychrometric", "coolplot.interaction", "coolplot.style.theme",
                                "coolplot.render.mpl", "coolplot.render.svg"},
     "coolplot.render.base": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
-                                    "coolplot.diagram", "coolplot.interaction", "coolplot.style.theme"},
+                                    "coolplot.diagram", "coolplot.psychrometric", "coolplot.interaction", "coolplot.style.theme"},
     "coolplot.render.svg": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
-                                   "coolplot.diagram", "coolplot.interaction", "coolplot.style.theme"},
+                                   "coolplot.diagram", "coolplot.psychrometric", "coolplot.interaction", "coolplot.style.theme"},
     "coolplot.render.testing": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine",
-                                       "coolplot.compose", "coolplot.diagram", "coolplot.interaction", "coolplot.style.theme",
+                                       "coolplot.compose", "coolplot.diagram", "coolplot.psychrometric", "coolplot.interaction", "coolplot.style.theme",
                                        "coolplot.render.mpl", "coolplot.render.plotly"},
     # The web backend builds on the SVG backend's elements
     "coolplot.render.web": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
-                                   "coolplot.diagram", "coolplot.interaction", "coolplot.style.theme",
+                                   "coolplot.diagram", "coolplot.psychrometric", "coolplot.interaction", "coolplot.style.theme",
                                    "coolplot.render.mpl", "coolplot.render.plotly"},
     "coolplot.render.plotly": {"CoolProp", "matplotlib", "coolplot.spec", "coolplot.thermo", "coolplot.engine",
                                "coolplot.compose", "coolplot.diagram", "coolplot.interaction",
                                "coolplot.style.theme", "coolplot.render.mpl", "coolplot.render.svg"},
     "coolplot.render.mpl": {"CoolProp", "plotly", "coolplot.spec", "coolplot.thermo", "coolplot.engine",
-                            "coolplot.compose", "coolplot.diagram", "coolplot.interaction", "coolplot.style.theme"},
+                            "coolplot.compose", "coolplot.diagram", "coolplot.psychrometric", "coolplot.interaction", "coolplot.style.theme"},
     "coolplot.diagram": {"matplotlib", "coolplot.render", "coolplot.interaction"},
+    "coolplot.psychrometric": {"matplotlib", "plotly", "coolplot.render", "coolplot.interaction",
+                               "coolplot.diagram"},
     # The interaction helper works with any backend through the Renderer API.
     "coolplot.interaction": LIBS | {"coolplot.render.mpl", "coolplot.render.svg", "coolplot.thermo",
                                     "coolplot.engine"},
@@ -73,6 +75,8 @@ RULES = {
 ALLOWED = {
     ("coolplot.diagram", "coolplot.render.mpl"):
         "PropertyDiagram.draw/show/savefig create a MatplotlibRenderer on demand for scripts",
+    ("coolplot.psychrometric", "coolplot.render.mpl"):
+        "PsychrometricChart.draw/show/savefig create a MatplotlibRenderer on demand for scripts",
 }
 
 

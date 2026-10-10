@@ -318,7 +318,29 @@ processes, which compute in parallel and never block the application.
 the workers, and `draw()`, `show()` and `savefig()` wait for the
 complete picture.
 
-## 8. Refrigerant blends and other mixtures
+## 8. Psychrometric charts
+
+```python
+from coolplot import PsychrometricChart
+
+chart = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25))   # deg C and g/kg, sea level
+chart.set_default_lines()            # RH every 10 %, Twb every 5 deg C, h every 10 kJ/kg, v every 0.02 m3/kg
+chart.add_process("Air conditioning", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}, {"T": 20, "W": 8.9}])
+chart.process_states("Air conditioning")[1].h    # J/kg dry air
+chart.savefig("psychro.png")                     # or chart.draw(any renderer)
+```
+
+A psychrometric chart shows humid air at one total pressure (`p=` in
+bar, default sea level), with dry-bulb temperature over humidity ratio
+and lines of relative humidity (`"RH"`, in %), wet-bulb temperature
+(`"Twb"`), specific enthalpy (`"h"`) and specific volume (`"v"`), both
+per kg of dry air. `set_lines(key, values)` chooses the values. Air
+states are given by any two of `T`, `W`, `RH`, `Twb`, `Tdp`, `h`, `v`
+and joined by straight lines (`closed=True` closes the loop). Labels,
+themes, settings and every backend work as for property diagrams; the
+properties come from CoolProp's `HAPropsSI`.
+
+## 9. Refrigerant blends and other mixtures
 
 For mixtures CoolPlot traces isolines point by point, starting each point
 from the previous one (`Settings.calc.solver = "auto"`). That needs
@@ -328,7 +350,7 @@ default chart of R32/R125 takes seconds. The bubble and dew lines come
 from CoolProp's phase envelope, so the dome closes properly through the
 critical region, and isotherms show the temperature glide.
 
-## 9. When something goes wrong
+## 10. When something goes wrong
 
 * A warning "Skipping the line ..." or "... has gaps" names the line and
   how many points CoolProp could not compute. Each line warns once.

@@ -37,3 +37,8 @@ def test_refrigerant_blend(tmp_path):
         pytest.skip("without the tracer (CoolProp 8) the blend takes minutes")
     _run("refrigerant_blend.py", tmp_path)
     assert (tmp_path / "R32_R125_ph.svg").stat().st_size > 10000
+
+
+def test_psychrometric(tmp_path):
+    assert "RH =" in _run("psychrometric.py", tmp_path)
+    assert (tmp_path / "psychrometric.svg").stat().st_size > 10000

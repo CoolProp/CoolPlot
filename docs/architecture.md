@@ -480,8 +480,8 @@ units, styles, one added line, cycles, zoom and themes.
 | 2 | Events back from the backends (hover, click, drag, view changes, resize) as plain data; an `Interaction` helper that turns them into diagram changes (zoom and pan re-layout labels, hover reads the state, dragging a cycle state moves it) | done |
 | 3 | plotly backend, passing the conformance kit, with documented limitations where plotly cannot follow a requirement | done |
 | 4 | Web backend: the SVG elements of the SVG backend streamed as patches to a small JavaScript client, events back from the browser, a dependency-free development server; conformance checked in a real browser (headless Chromium) | done |
-| 5 | Psychrometric charts for humid air (CoolProp HAPropsSI): dry-bulb temperature over humidity ratio, lines of relative humidity, wet-bulb temperature, enthalpy and specific volume, air processes on top | next |
-| 6 | Examples, user documentation, adversarial review of the 0.3 work | |
+| 5 | Psychrometric charts for humid air (CoolProp HAPropsSI): dry-bulb temperature over humidity ratio, lines of relative humidity, wet-bulb temperature, enthalpy and specific volume, air processes on top | done |
+| 6 | Examples, user documentation, adversarial review of the 0.3 work | next |
 
 #### Background calculation (step 1)
 
@@ -505,6 +505,16 @@ units, styles, one added line, cycles, zoom and themes.
   workers receive only plain data (`FluidSpec`, request, region,
   calculation settings) and return `Curve` values.
 * `diagram.progress` gives (ready, total) for the current plan.
+
+#### Psychrometric charts (step 5)
+
+Humid air follows the same layers with modules of its own:
+`thermo/humid_air.py` (states and lines with HAPropsSI; lines are cut at
+saturation, where fog would begin, and start exactly on it),
+`spec/psychro.py` (`PsychroSpec`, display units for W, RH and Twb),
+`compose/psychro.py` (styles, texts and the shared label layout) and the
+facade `psychrometric.py` (`PsychrometricChart`). Lines are cached by
+pressure, region, family and value.
 
 #### Events (step 2)
 
