@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Background calculation: never waiting, coarse then fine, cancelling."""
 import pickle
+from dataclasses import replace
 import threading
 
 import numpy as np
@@ -25,7 +26,7 @@ def _settle(d):
     """Let all background work finish and take the final scene."""
     for _ in range(5):
         d.update_scene()
-        if not d.engine.busy:
+        if not d.engine.busy and d.progress[0] >= d.progress[1]:
             break
         assert d.wait(60.0)
     return d.update_scene()
@@ -139,3 +140,97 @@ def test_curves_survive_pickling_read_only():
 def test_bad_modes():
     with pytest.raises(ValueError):
         BackgroundEngine("fibres")
+
+
+def test_close_cancels_and_releases_waiters():
+    d = _diagram(background="threads")
+    gate = threading.Event()
+    d.engine._pool.submit(gate.wait)   # keep the work queued
+    d.update_scene()
+    assert d.engine.busy
+    d.close()
+    gate.set()
+    assert d.wait(10.0) and not d.engine.busy
+    with pytest.raises(RuntimeError):
+        d.update_scene()
+
+
+def test_failures_are_retried_then_reported(monkeypatch):
+    import coolplot.engine.background as background
+    calls = {"n": 0}
+    real = background.compute_curve
+
+    def flaky(*args):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise RuntimeError("worker hiccup")
+        return real(*args)
+
+    monkeypatch.setattr(background, "compute_curve", flaky)
+    d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP", background="threads",
+                        settings=None)
+    d.set_isolines("T", values=[0.0], points=40)
+    d.spec = d.spec.with_(settings=d.spec.settings.with_(calc=replace(d.spec.settings.calc, preview_points=0)))
+    try:
+        # The first attempt fails, the next request tries again; after the
+        # second failure the line is given up with a warning naming the error
+        d.update_scene()
+        d.wait(30.0)
+        d.update_scene()
+        d.wait(30.0)
+        with pytest.warns(UserWarning, match="worker hiccup"):
+            scene = d.update_scene()
+        assert [i for i in scene if i.group.startswith("iso/T")] == []
+        assert d.progress == (1, 1) and not d.engine.busy
+    finally:
+        d.close()
+
+    # A single failure is retried and the line arrives
+    calls["n"] = 1
+    d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP", background="threads")
+    d.set_isolines("T", values=[0.0], points=40)
+    d.spec = d.spec.with_(settings=d.spec.settings.with_(calc=replace(d.spec.settings.calc, preview_points=0)))
+    try:
+        scene = _settle(d)
+        assert len([i for i in scene if i.group.startswith("iso/T")]) == 1
+    finally:
+        d.close()
+
+
+def test_a_background_engine_serves_one_diagram():
+    a = _diagram(background="threads")
+    try:
+        with pytest.raises(ValueError, match="share the cache"):
+            PropertyDiagram("HEOS::R290", "ph", engine=a.engine)
+        b = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP", background="threads", cache=a.cache)
+        b.close()
+    finally:
+        a.close()
+
+
+def test_on_ready_never_runs_in_the_asking_thread():
+    from concurrent.futures import Future
+
+    class DonePool:
+        """A pool whose work is done before the callback is attached."""
+        def submit(self, fn, *args):
+            future = Future()
+            future.set_result(fn(*args))
+            return future
+
+        def shutdown(self, **kwargs):
+            pass
+
+    calls = []
+    done = threading.Event()
+
+    def on_ready(engine):
+        calls.append((threading.current_thread() is threading.main_thread(), engine._lock._is_owned()))
+        done.set()
+
+    engine = BackgroundEngine("threads", on_ready=on_ready)
+    engine._pool = DonePool()
+    d = _diagram(engine=engine)
+    d.update_scene()
+    assert done.wait(10.0)
+    assert calls[0] == (False, False)

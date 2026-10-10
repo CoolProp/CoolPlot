@@ -368,14 +368,16 @@ class MatplotlibRenderer(Renderer):
         if getattr(self, "_event_ids", None) is not None:
             return
         canvas = self.figure.canvas
-        self._press = None      # (item_id, index, x_px, y_px) of a pressed button
-        self._dragging = False
-        self._last_view = None
+        self._press = None      # dict describing the pressed button, see _on_press
+        self._buttons_reported = False
+        self._last_view = self._view()
+        # The view is reported when the figure is drawn, not on every limit
+        # change: a zoom changes x and y one after the other, and reporting
+        # both changes would redraw the diagram twice, once half zoomed.
         self._event_ids = [canvas.mpl_connect(name, handler) for name, handler in (
             ("motion_notify_event", self._on_motion), ("button_press_event", self._on_press),
-            ("button_release_event", self._on_release), ("resize_event", self._on_resize))]
-        self.ax.callbacks.connect("xlim_changed", self._on_limits)
-        self.ax.callbacks.connect("ylim_changed", self._on_limits)
+            ("button_release_event", self._on_release), ("resize_event", self._on_resize),
+            ("draw_event", self._on_draw))]
 
     def _toolbar_busy(self) -> bool:
         """True while the zoom or pan tool of the window is active."""
@@ -400,55 +402,80 @@ class MatplotlibRenderer(Renderer):
         return item_id, index
 
     def _data(self, mouse_event):
+        """The pointer in data units; finite anywhere on the canvas, also outside the axes."""
         x, y = self.ax.transData.inverted().transform((mouse_event.x, mouse_event.y))
         return float(x), float(y)
 
     def _on_motion(self, event):
-        if event.inaxes is not self.ax:
+        press = self._press
+        buttons = getattr(event, "buttons", None) or frozenset()
+        if buttons:
+            self._buttons_reported = True
+        if press is not None and self._buttons_reported and not buttons:
+            # No button is held any more, but the release was lost (outside
+            # the window): end the press here. Only for canvases that report
+            # held buttons at all; others send an empty set every time.
+            self._end_press(*press["last"])
+            press = None
+        if press is None:
+            if event.inaxes is self.ax:
+                x, y = self._data(event)
+                item_id, index = self._hit(event)
+                self._emit(Hover(x, y, item_id, index))
             return
         x, y = self._data(event)
-        if self._press is not None and self._press[0] is not None and self._press[1] is not None:
-            item_id, index = self._press[0], self._press[1]
-            if not self._dragging:
-                self._dragging = True
-                self._emit(DragStart(item_id, index, x, y))
-            self._emit(Drag(item_id, index, x, y))
-            return
-        item_id, index = self._hit(event)
-        self._emit(Hover(x, y, item_id, index))
+        press["last"] = (x, y)
+        if not press["moved"] and math.hypot(event.x - press["x_px"], event.y - press["y_px"]) < 1.0:
+            return   # jitter of a click
+        press["moved"] = True
+        if press["draggable"]:
+            if not press["dragging"]:
+                press["dragging"] = True
+                self._emit(DragStart(press["item_id"], press["index"], x, y))
+            self._emit(Drag(press["item_id"], press["index"], x, y))
 
     def _on_press(self, event):
         if event.inaxes is not self.ax or self._toolbar_busy():
             return
         item_id, index = self._hit(event)
-        # Only markers can be dragged: their points are the states of a process
-        draggable = isinstance(self._drawn.get(item_id), Markers) and index is not None
-        self._press = (item_id if draggable else None, index if draggable else None, event.x, event.y,
-                       item_id, index, event.button)
-        self._dragging = False
+        button = int(event.button or 1)
+        # Only markers can be dragged, with the left button: their points are
+        # the states of a process
+        draggable = isinstance(self._drawn.get(item_id), Markers) and index is not None and button == 1
+        self._press = dict(item_id=item_id, index=index, button=button, draggable=draggable,
+                           x_px=event.x, y_px=event.y, last=self._data(event), moved=False, dragging=False)
 
     def _on_release(self, event):
+        if self._press is not None:
+            self._end_press(*self._data(event))
+
+    def _end_press(self, x, y):
         press, self._press = self._press, None
-        if press is None:
-            return
-        x, y = self._data(event) if event.inaxes is self.ax else (math.nan, math.nan)
-        if self._dragging:
-            self._dragging = False
-            self._emit(DragEnd(press[0], press[1], x, y))
-        else:
-            self._emit(Click(x, y, press[4], press[5], int(press[6] or 1)))
+        if press["dragging"]:
+            self._emit(DragEnd(press["item_id"], press["index"], x, y))
+        elif not press["moved"]:
+            self._emit(Click(x, y, press["item_id"], press["index"], press["button"]))
 
     def _on_resize(self, event):
         size = self.plot_size_pt()
         self._emit(Resized(*size))
 
-    def _on_limits(self, _axes):
+    def _view(self):
+        return tuple(float(v) for v in self.ax.get_xlim()), tuple(float(v) for v in self.ax.get_ylim())
+
+    def _on_draw(self, _event=None):
         if self._syncing:
-            return   # our own sync, not the user
-        view = (tuple(float(v) for v in self.ax.get_xlim()), tuple(float(v) for v in self.ax.get_ylim()))
+            return
+        view = self._view()
         if view != self._last_view:
             self._last_view = view
             self._emit(ViewChanged(*view))
+
+    def sync(self, scene):
+        report = super().sync(scene)
+        if getattr(self, "_event_ids", None) is not None:
+            self._last_view = self._view()   # the view sync set is not the user's
+        return report
 
     # Simulated input, for tests and the conformance kit
     def simulate_pointer(self, kind: str, x: float, y: float, button: int = 1):
@@ -460,7 +487,11 @@ class MatplotlibRenderer(Renderer):
         x_px, y_px = self.ax.transData.transform((x, y))
         name = {"move": "motion_notify_event", "press": "button_press_event",
                 "release": "button_release_event"}[kind]
-        event = MouseEvent(name, self.figure.canvas, x_px, y_px, button=None if kind == "move" else button)
+        if kind == "move":
+            held = [self._press["button"]] if self._press is not None else None
+            event = MouseEvent(name, self.figure.canvas, x_px, y_px, buttons=held)
+        else:
+            event = MouseEvent(name, self.figure.canvas, x_px, y_px, button=button)
         self.figure.canvas.callbacks.process(name, event)
 
     def simulate_view(self, x_limits, y_limits):
@@ -468,6 +499,7 @@ class MatplotlibRenderer(Renderer):
         self._start_events()
         self.ax.set_xlim(*x_limits)
         self.ax.set_ylim(*y_limits)
+        self._on_draw()   # the toolbar redraws the canvas after a change
 
     # Read back ---------------------------------------------------------
     def backend_object(self, item_id):

@@ -252,7 +252,9 @@ Moving a cycle recalculates no isoline and redraws only the cycle (and
 labels it pushes away). Changing units or the theme recalculates nothing.
 `diagram.state_at(x, y)` gives the full state under the mouse. Several
 diagrams of the same fluid can share their caches:
-`PropertyDiagram(..., engine=other.engine)`. `examples/interactive_cycle.py`
+`PropertyDiagram(..., engine=other.engine)`, or with background
+calculation `PropertyDiagram(..., background="threads", cache=other.cache)`
+(a background engine serves one diagram). `examples/interactive_cycle.py`
 shows a complete matplotlib application with sliders.
 
 ### Zoom, hover and drag
@@ -324,8 +326,11 @@ waits for a line. Missing lines are queued, first coarse
 cancelled. Threads keep pure-fluid charts responsive; for blends use
 processes, which compute in parallel and never block the application.
 `diagram.wait()` blocks until all work is done, `diagram.close()` stops
-the workers, and `draw()`, `show()` and `savefig()` wait for the
-complete picture.
+the workers (the diagram then takes no more updates), and `draw()`,
+`show()` and `savefig()` wait for the complete picture. A line whose
+calculation fails is tried once more and then skipped with a warning
+naming the error. On Linux, worker processes are started by forking the
+application; start the diagram before your GUI starts other threads.
 
 ## 8. Psychrometric charts
 

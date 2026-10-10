@@ -12,10 +12,17 @@ are ready and queues the others on a pool of worker threads or processes:
 * Every request for curves starts a new generation. Queued work that the
   latest plan no longer needs is cancelled. Work already running is left
   to finish, and its result is cached for later.
-* When work finishes, ``on_ready`` is called, from a worker thread. A GUI
-  application passes this on to its own event loop and then asks the
-  diagram for a new scene. There is at most one notification between two
-  requests for curves, so a slow application is not flooded.
+* When work finishes, ``on_ready`` is called, never from the thread that
+  asks for curves and never with the engine locked. A GUI application
+  passes this on to its own event loop and then asks the diagram for a
+  new scene. There is at most one notification between two requests for
+  curves, so a slow application is not flooded.
+* A computation that fails is tried once more on the next request (a
+  worker process may have died, which also replaces the pool); if it
+  fails again the line is skipped with a warning naming the error.
+
+One engine serves one diagram: every request for curves replaces the
+previous plan. Diagrams share curves by sharing a cache instead.
 
 Workers only receive plain data (the fluid model, the request, the region
 and the calculation settings) and return a :class:`Curve`, which is what
@@ -28,7 +35,7 @@ they are needed before anything can be drawn and are fast.
 from __future__ import annotations
 
 import threading
-from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import BrokenExecutor, Future, ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import replace
 from typing import Callable, Dict, Optional, Tuple
 
@@ -84,10 +91,14 @@ class BackgroundEngine(Engine):
         Number of workers; default 1 for threads and the number of cores
         for processes.
     on_ready : callable, optional
-        Called as ``on_ready(engine)`` from a worker when work has finished.
+        Called as ``on_ready(engine)`` from another thread when work has
+        finished.
     cache : CurveCache, optional
         Store for the curves.
     """
+
+    #: Attempts per curve before it is skipped with a warning.
+    MAX_TRIES = 2
 
     def __init__(self, mode: str = "threads", workers: int = None, on_ready: Callable = None,
                  cache: CurveCache = None):
@@ -96,10 +107,15 @@ class BackgroundEngine(Engine):
             raise ValueError("Unknown background mode '{0}', expected one of {1}.".format(mode, MODES))
         self.mode = mode
         self.on_ready = on_ready
-        pool = ThreadPoolExecutor if mode == "threads" else ProcessPoolExecutor
         if workers is None and mode == "threads":
             workers = 1   # more threads only compete for the interpreter lock
-        self._pool = pool(max_workers=workers)
+        self._workers = workers
+        self._pool = self._new_pool()
+        self._broken = False
+        self._closed = False
+        self._failed: Dict[Tuple, Tuple[int, str]] = {}   # key -> (attempts, last error)
+        self._submitting = None   # the thread that is queueing work right now
+        self.claimed = False      # set by the diagram this engine serves
         # Re-entrant: a job that is already done when it is submitted runs
         # its callback right away, in the submitting thread.
         self._lock = threading.RLock()
@@ -113,28 +129,52 @@ class BackgroundEngine(Engine):
         self._idle = threading.Event()
         self._idle.set()
 
+    def _new_pool(self):
+        pool = ThreadPoolExecutor if self.mode == "threads" else ProcessPoolExecutor
+        return pool(max_workers=self._workers)
+
+    def _done(self, key) -> bool:
+        """True when a final curve needs no more work: computed, or given up."""
+        return self.cache.peek(key) is not None or self._failed.get(key, (0,))[0] >= self.MAX_TRIES
+
     # Asking for curves ----------------------------------------------------
     def curves(self, spec: DiagramSpec, domain: Domain, requests):
         requests = list(requests)
         with self._lock:
+            if self._closed:
+                raise RuntimeError("This BackgroundEngine was closed.")
+            if self._broken:
+                # A worker process died: its pool takes no more work
+                self._pool.shutdown(wait=False, cancel_futures=True)
+                self._pool, self._broken = self._new_pool(), False
             self._generation += 1
             self._notified = False
             self._needed = set()
             self._needed_final = set()
             self._to_submit = []
-        result = super().curves(spec, domain, requests)
+            self._idle.clear()   # until the new plan has been looked at
+        try:
+            result = super().curves(spec, domain, requests)
+        except BaseException:
+            with self._lock:
+                if not self._jobs:
+                    self._idle.set()   # wait() must not hang on a failed request
+            raise
         # Queue the work only now: worker threads hold the GIL while CoolProp
         # computes, which would slow down building this scene.
         with self._lock:
-            for args in self._to_submit:
-                self._submit(*args)
+            self._submitting = threading.get_ident()
+            try:
+                for args in self._to_submit:
+                    self._submit(*args)
+            finally:
+                self._submitting = None
             self._to_submit = []
-        with self._lock:
             # Cancel queued work the latest plan does not need
             for key, future in list(self._jobs.items()):
                 if key not in self._needed and future.cancel():
-                    del self._jobs[key]
-            ready = sum(1 for k in self._needed_final if self.cache.peek(k) is not None)
+                    self._jobs.pop(key, None)
+            ready = sum(1 for k in self._needed_final if self._done(k))
             self._progress = (ready + len(requests) - len(self._needed_final), len(requests))
             if not self._jobs:
                 self._idle.set()
@@ -152,6 +192,12 @@ class BackgroundEngine(Engine):
             if curve is not None:
                 self.cache.hits += 1
                 return curve, True
+            attempts, error = self._failed.get(key, (0, ""))
+            if attempts >= self.MAX_TRIES:
+                self._needed_final.add(key)
+                self._warn(spec, domain, request, "Skipping the line {0}={1:.6g} in {2}: the calculation failed "
+                           "with {3}".format(request.key, request.value_SI, spec.fluid.name, error))
+                return None, False
             self._needed.add(key)
             self._needed_final.add(key)
             preview_curve = None
@@ -179,26 +225,37 @@ class BackgroundEngine(Engine):
 
     def _finished(self, key: Tuple, future: Future):
         """Store a result and tell the application (runs in a worker callback)."""
-        if future.cancelled():
-            return
         notify = False
         with self._lock:
-            self._jobs.pop(key, None)
-            error = future.exception()
-            # A failed computation is stored as an empty curve, so that it is
-            # skipped with a warning like any curve without valid points.
-            curve = future.result() if error is None else Curve([], [], 0)
-            self.cache.put(key, curve)
-            if key in self._needed_final:
-                ready, total = self._progress
-                self._progress = (min(ready + 1, total), total)
-            if key in self._needed:
-                if not self._notified:
+            if self._jobs.get(key) is future:
+                del self._jobs[key]
+            if not future.cancelled():
+                error = future.exception()
+                if error is None:
+                    self.cache.put(key, future.result())
+                    self._failed.pop(key, None)
+                else:
+                    # Not cached: the next request tries again, up to MAX_TRIES
+                    attempts = self._failed.get(key, (0, ""))[0] + 1
+                    self._failed[key] = (attempts, "{0}: {1}".format(type(error).__name__, error))
+                    if isinstance(error, BrokenExecutor):
+                        self._broken = True
+                if key in self._needed_final and self._done(key):
+                    ready, total = self._progress
+                    self._progress = (min(ready + 1, total), total)
+                if key in self._needed and not self._notified:
                     self._notified = notify = True
             if not self._jobs:
                 self._idle.set()
+            # A job that was already done when it was queued lands here in the
+            # thread that asks for curves, with the engine locked: tell the
+            # application from another thread, as for any other job.
+            here = self._submitting == threading.get_ident()
         if notify and self.on_ready is not None:
-            self.on_ready(self)
+            if here:
+                threading.Thread(target=self.on_ready, args=(self,), daemon=True).start()
+            else:
+                self.on_ready(self)
 
     # State ----------------------------------------------------------------
     @property
@@ -216,5 +273,10 @@ class BackgroundEngine(Engine):
         return self._idle.wait(timeout)
 
     def close(self):
-        """Stop the workers; queued work is cancelled."""
-        self._pool.shutdown(wait=False, cancel_futures=True)
+        """Stop the workers; queued work is cancelled, the engine takes no more requests."""
+        with self._lock:
+            self._closed = True
+            self._pool.shutdown(wait=False, cancel_futures=True)
+            # Cancelled jobs have left _jobs through _finished; running ones finish
+            if not self._jobs:
+                self._idle.set()

@@ -253,11 +253,15 @@ in display units (the units of the axes):
   5 pt) and the index of its point, or None;
 * `Click(x, y, item_id, index, button)` for a press and release without
   movement;
-* `DragStart`, `Drag`, `DragEnd(item_id, index, x, y)` when a button is
-  pressed on a point of a marker item and the pointer moves;
-* `ViewChanged(x_limits, y_limits)` when the user zooms or pans with the
-  library's own tools (it may come once per axis), never for limits set
-  by `sync()`;
+* `DragStart`, `Drag`, `DragEnd(item_id, index, x, y)` when the left
+  button is pressed on a point of a marker item and the pointer moves;
+  no `Hover` while a button is held. A release outside the plot area,
+  or one the library never reports (the next move holds no button),
+  still ends the drag, with finite coordinates;
+* `ViewChanged(x_limits, y_limits)` once per change of the view by the
+  library's own tools (matplotlib reports it when the canvas is drawn,
+  so a zoom is one event, not one per axis), never for limits set by
+  `sync()`;
 * `Resized(width_pt, height_pt)` when the plot area changes size.
 
 The base class keeps the callbacks (`connect`, `disconnect`); the hook

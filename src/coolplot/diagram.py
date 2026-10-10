@@ -135,10 +135,17 @@ class PropertyDiagram:
                                 units=get_unit_system(units), limits=get_tp_limits(tp_limits),
                                 settings=settings)
         if engine is not None:
+            if isinstance(engine, BackgroundEngine):
+                if engine.claimed:
+                    raise ValueError("A BackgroundEngine works for one diagram, it keeps only the latest plan. "
+                                     "To share curves, share the cache: PropertyDiagram(..., background=..., "
+                                     "cache=other.cache).")
+                engine.claimed = True
             self.engine = engine
         elif background is not None:
             callback = (lambda _engine: on_ready(self)) if on_ready is not None else None
             self.engine = BackgroundEngine(background, workers, callback, cache)
+            self.engine.claimed = True
         else:
             self.engine = Engine(cache)
         self.scene = Scene()
@@ -415,9 +422,13 @@ class PropertyDiagram:
 
         The state is then given by the two axis quantities, for example
         h and p in a ph chart; states that follow it with "via" move along.
-        This is what dragging a state marker does. Raises ValueError, and
-        leaves the cycle unchanged, if the cycle cannot be computed there.
+        A state that was itself given with "via" (say a compression with
+        eta_is) becomes a fixed point and loses that relation. This is what
+        dragging a state marker does. Raises ValueError, and leaves the
+        cycle unchanged, if the cycle cannot be computed there.
         """
+        if isinstance(number, bool) or int(number) != number:
+            raise ValueError("State numbers are whole numbers, not {0!r}.".format(number))
         cycle = next((c for c in self.spec.cycles if c.name == name), None)
         if cycle is None:
             raise KeyError("No cycle named {0!r}.".format(name))
@@ -488,11 +499,15 @@ class PropertyDiagram:
         # Scripts want the complete picture: let background work finish,
         # previews first, then the final curves they make room for.
         if isinstance(self.engine, BackgroundEngine):
-            for _ in range(3):
+            for _ in range(10):
                 self.update_scene()
-                if not self.engine.busy:
+                ready, needed = self.engine.progress
+                if not self.engine.busy and ready >= needed:   # a failed line may still be due a retry
                     break
                 self.wait()
+            else:
+                warnings.warn("Background work did not finish, the drawing may be incomplete (is the cache "
+                              "smaller than the number of lines?).", UserWarning, stacklevel=2)
         if renderer is None:
             renderer = self._default_renderer
             if renderer is None:

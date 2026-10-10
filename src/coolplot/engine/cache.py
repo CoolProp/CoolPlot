@@ -43,8 +43,14 @@ class CurveCache:
         return curve
 
     def peek(self, key: Hashable):
-        """The curve stored for ``key``, or None; counts neither a hit nor a miss."""
-        return self._store.get(key)
+        """The curve stored for ``key``, or None; counts neither a hit nor a miss.
+
+        A curve found counts as recently used, so curves on screen are the
+        last to be dropped."""
+        curve = self._store.get(key)
+        if curve is not None:
+            self._store.move_to_end(key)
+        return curve
 
     def put(self, key: Hashable, curve: Any):
         """Store a curve computed elsewhere (for example in a worker)."""
