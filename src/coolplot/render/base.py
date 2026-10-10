@@ -15,7 +15,7 @@ every requirement. Nothing else in CoolPlot needs to change.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, FrozenSet, List, Optional, Tuple
+from typing import Callable, Dict, FrozenSet, List, Optional, Tuple
 
 from ..scene import AxesSpec, Item, Scene, items_equal
 
@@ -25,6 +25,7 @@ CAPABILITIES = {
     "file_output": "can write a file with save(path)",
     "interactive": "draws into a live window or widget",
     "css_classes": "exposes item roles and groups as CSS classes",
+    "events": "reports hover, click, drag, view changes and resizes with connect(callback)",
 }
 
 
@@ -57,10 +58,21 @@ class Renderer:
         self._axes: Optional[AxesSpec] = None
         self._legend: Tuple = ()
         self.last_report: Optional[SyncReport] = None
+        self._callbacks: Dict[int, Callable] = {}
+        self._next_token = 0
+        # True while sync() runs: limit changes made by sync are not user events
+        self._syncing = False
 
     # ------------------------------------------------------------------
     def sync(self, scene: Scene) -> SyncReport:
         """Make the output match ``scene``, touching only what changed."""
+        self._syncing = True
+        try:
+            return self._sync(scene)
+        finally:
+            self._syncing = False
+
+    def _sync(self, scene: Scene) -> SyncReport:
         report = SyncReport()
         if scene.axes != self._axes:
             self._set_axes(scene.axes)
@@ -160,6 +172,28 @@ class Renderer:
 
     def _finish(self, report: SyncReport):
         """Called once at the end of every sync, e.g. to request a repaint."""
+
+    # Events ------------------------------------------------------------
+    def connect(self, callback: Callable) -> int:
+        """Call ``callback(event)`` for every event (see :mod:`coolplot.core.events`).
+
+        Returns a token for :meth:`disconnect`. Only backends with the
+        "events" capability produce events.
+        """
+        self._next_token += 1
+        self._callbacks[self._next_token] = callback
+        self._start_events()
+        return self._next_token
+
+    def disconnect(self, token: int):
+        self._callbacks.pop(token, None)
+
+    def _start_events(self):
+        """Hook: begin listening to the library's input events (called on connect)."""
+
+    def _emit(self, event):
+        for callback in list(self._callbacks.values()):
+            callback(event)
 
     def plot_size_pt(self):
         """(width, height) of the plot area in points, or None if unknown.

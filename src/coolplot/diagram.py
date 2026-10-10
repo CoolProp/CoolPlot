@@ -24,6 +24,7 @@ in the current unit system of the diagram and converted on entry.
 from __future__ import annotations
 
 import warnings
+from dataclasses import replace
 from typing import Sequence
 
 import numpy as np
@@ -408,6 +409,27 @@ class PropertyDiagram:
         self.engine.cycle(self.spec, spec)   # compute now, so that errors show up here
         self.spec = self.spec.with_cycle(spec)
         return spec.name
+
+    def move_cycle_state(self, name: str, number: int, x: float, y: float):
+        """Put state ``number`` of a cycle at (x, y) in display units.
+
+        The state is then given by the two axis quantities, for example
+        h and p in a ph chart; states that follow it with "via" move along.
+        This is what dragging a state marker does. Raises ValueError, and
+        leaves the cycle unchanged, if the cycle cannot be computed there.
+        """
+        cycle = next((c for c in self.spec.cycles if c.name == name), None)
+        if cycle is None:
+            raise KeyError("No cycle named {0!r}.".format(name))
+        diagram, units = self.spec.diagram, self.spec.units
+        moved = StateInput(((diagram.x, float(units[diagram.x].to_SI(x))),
+                            (diagram.y, float(units[diagram.y].to_SI(y)))))
+        states = tuple((n, moved if n == int(number) else given) for n, given in cycle.states)
+        if all(n != int(number) for n, _ in cycle.states):
+            raise KeyError("Cycle {0!r} has no state {1}.".format(name, number))
+        new = replace(cycle, states=states)
+        self.engine.cycle(self.spec, new)   # raises if it cannot be computed; spec unchanged
+        self.spec = self.spec.with_cycle(new)
 
     def remove_cycle(self, name: str):
         self.spec = self.spec.without_cycle(name)

@@ -521,7 +521,11 @@ def run_conformance(factory: Callable[[], object]) -> List[str]:
     except Exception as e:
         failures.append("awkward axes raised {0!r} [robustness]".format(e))
 
-    # 11. File output: valid, ASCII, no NaN, deterministic
+    # 11. Events, for backends that produce them
+    if "events" in getattr(renderer, "capabilities", ()):
+        failures.extend(check_events(factory))
+
+    # 12. File output: valid, ASCII, no NaN, deterministic
     if "file_output" in getattr(renderer, "capabilities", ()):
         failures.extend(_check_file_output(factory))
     return failures
@@ -592,4 +596,92 @@ def _check_file_output(factory) -> List[str]:
             return failures + ["text output is not ASCII [file output]"]
         if re.search(r"(?<![A-Za-z_/-])nan(?![A-Za-z])", text, re.IGNORECASE):
             failures.append("text output contains 'nan' [robustness]")
+    return failures
+
+
+def _events_scene() -> Scene:
+    return Scene(AxesSpec(x_limits=(0.0, 10.0), y_limits=(0.0, 10.0)), [
+        Line(id="line", x=[0.0, 10.0], y=[5.0, 5.0], z_order=1.0),
+        Markers(id="states", x=[2.0, 8.0], y=[5.0, 5.0], z_order=6.0),
+    ])
+
+
+def check_events(factory) -> List[str]:
+    """Events in display units, from simulated input [events].
+
+    A backend with the "events" capability provides
+    ``simulate_pointer(kind, x, y)`` ("move", "press", "release") and
+    ``simulate_view(x_limits, y_limits)``, which feed input through the same
+    path as real input.
+    """
+    from ..core.events import Click, Drag, DragEnd, DragStart, Hover, ViewChanged
+    failures: List[str] = []
+    renderer = factory()
+    for name in ("simulate_pointer", "simulate_view"):
+        if not callable(getattr(renderer, name, None)):
+            return ["a backend with events has to provide {0}() [events]".format(name)]
+    scene = _events_scene()
+    renderer.sync(scene)
+    events = []
+    token = renderer.connect(events.append)
+    tol = 0.02   # in data units on a 0 to 10 axis: about a pixel
+
+    def close(event, x, y):
+        return abs(event.x - x) <= tol * 10 and abs(event.y - y) <= tol * 10
+
+    def take():
+        out = list(events)
+        events.clear()
+        return out
+
+    renderer.simulate_pointer("move", 8.0, 5.0)
+    got = take()
+    if not (len(got) == 1 and isinstance(got[0], Hover) and got[0].item_id == "states" and got[0].index == 1
+            and close(got[0], 8.0, 5.0)):
+        failures.append("hover on the second marker (above a line) gave {0} [events]".format(got))
+    renderer.simulate_pointer("move", 5.0, 5.0)
+    got = take()
+    if not (len(got) == 1 and isinstance(got[0], Hover) and got[0].item_id == "line"):
+        failures.append("hover on the line gave {0} [events]".format(got))
+    renderer.simulate_pointer("move", 5.0, 9.0)
+    got = take()
+    if not (len(got) == 1 and isinstance(got[0], Hover) and got[0].item_id is None and close(got[0], 5.0, 9.0)):
+        failures.append("hover on empty space gave {0} [events]".format(got))
+
+    renderer.simulate_pointer("press", 2.0, 5.0)
+    renderer.simulate_pointer("move", 3.0, 6.0)
+    renderer.simulate_pointer("move", 4.0, 7.0)
+    renderer.simulate_pointer("release", 4.0, 7.0)
+    got = take()
+    kinds = [type(e).__name__ for e in got]
+    if not (kinds and kinds[0] == "DragStart" and kinds[-1] == "DragEnd" and "Drag" in kinds
+            and all(getattr(e, "item_id", None) == "states" and e.index == 0 for e in got)
+            and close(got[-1], 4.0, 7.0)):
+        failures.append("dragging the first marker gave {0} [events]".format(got))
+    elif not isinstance(got[0], DragStart) or not any(isinstance(e, Drag) for e in got) \
+            or not isinstance(got[-1], DragEnd):
+        failures.append("drag events of the wrong types: {0} [events]".format(kinds))
+
+    renderer.simulate_pointer("press", 5.0, 9.0)
+    renderer.simulate_pointer("release", 5.0, 9.0)
+    got = take()
+    if not (len(got) == 1 and isinstance(got[0], Click) and got[0].item_id is None and close(got[0], 5.0, 9.0)):
+        failures.append("a click on empty space gave {0} [events]".format(got))
+
+    renderer.simulate_view((1.0, 9.0), (2.0, 8.0))
+    got = [e for e in take() if isinstance(e, ViewChanged)]
+    if not got or not (_same(got[-1].x_limits, (1.0, 9.0)) and _same(got[-1].y_limits, (2.0, 8.0))):
+        failures.append("zooming gave {0} [events]".format(got))
+
+    # Limits set by sync are the application's own, not a user event
+    scene.set_axes(replace(scene.axes, x_limits=(0.0, 20.0)))
+    renderer.sync(scene)
+    got = [e for e in take() if isinstance(e, ViewChanged)]
+    if got:
+        failures.append("sync with new limits reported {0} as a user event [events]".format(got))
+
+    renderer.disconnect(token)
+    renderer.simulate_pointer("move", 5.0, 9.0)
+    if events:
+        failures.append("events arrived after disconnect [events]")
     return failures

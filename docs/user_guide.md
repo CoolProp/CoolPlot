@@ -247,6 +247,25 @@ diagrams of the same fluid can share their caches:
 `PropertyDiagram(..., engine=other.engine)`. `examples/interactive_cycle.py`
 shows a complete matplotlib application with sliders.
 
+### Zoom, hover and drag
+
+Backends with events (matplotlib, and the web backend) report what the
+user does. `Interaction` handles the usual cases:
+
+```python
+from coolplot.interaction import Interaction
+Interaction(diagram, renderer, on_hover=lambda state, event: print(state))
+```
+
+Zooming and panning with the toolbar lay out the labels for the new
+window, and dragging a state marker of a cycle moves that state (it is
+then given by the two axis quantities; states that follow it with
+`"via"` move along). `diagram.move_cycle_state(name, number, x, y)` does
+the same from code. For other behaviour, handle the events yourself:
+`renderer.connect(callback)` delivers `Hover`, `Click`, `DragStart`,
+`Drag`, `DragEnd`, `ViewChanged` and `Resized` from
+`coolplot.core.events`, in the units of the axes.
+
 ### Calculating in the background
 
 ```python

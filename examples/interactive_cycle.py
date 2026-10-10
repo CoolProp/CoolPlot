@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 """Interactive log(p)-h chart with a refrigeration cycle.
 
-Drag the sliders to change the evaporating and condensing temperatures.
-Only the cycle is recalculated and redrawn; the isolines come from the
-cache and their matplotlib artists are never touched, and isoline labels
-only move when the cycle comes too close. Move the mouse over the chart
-to read the full state under the cursor.
+Drag the sliders to change the evaporating and condensing temperatures,
+or drag a state of the cycle with the mouse. Only the cycle is
+recalculated and redrawn; the isolines come from the cache and their
+matplotlib artists are never touched, and isoline labels only move when
+the cycle comes too close. Zoom and pan with the toolbar: the labels
+follow. Move the mouse over the chart to read the full state under the
+cursor.
 
 Run with:  python examples/interactive_cycle.py
 """
@@ -13,6 +15,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 
 from coolplot import PropertyDiagram
+from coolplot.interaction import Interaction
 from coolplot.render.mpl import MatplotlibRenderer
 from coolplot.thermo.cycles import simple_compression
 
@@ -46,20 +49,18 @@ def main():
         status.set_text("COP heating {0:.2f} | last redraw: {1} added, {2} updated, {3} untouched".format(
             cycle.result["COP_heating"], len(report.added), len(report.updated), report.unchanged))
 
-    def on_move(event):
-        if event.inaxes is not ax or event.xdata is None:
-            return
-        try:
-            s = diagram.state_at(event.xdata, event.ydata)
-        except ValueError:
+    def show_state(state, event):
+        if state is None:
             return
         readout.set_text("T = {0:.1f} deg C, p = {1:.2f} bar, h = {2:.1f} kJ/kg, s = {3:.3f} kJ/kg/K".format(
-            s.T - 273.15, s.p * 1e-5, s.h * 1e-3, s.s * 1e-3))
+            state.T - 273.15, state.p * 1e-5, state.h * 1e-3, state.s * 1e-3))
         fig.canvas.draw_idle()
+
+    # Zoom, pan, hover and dragging cycle states are handled by Interaction
+    Interaction(diagram, renderer, on_hover=show_state)
 
     T_evap.on_changed(redraw)
     T_cond.on_changed(redraw)
-    fig.canvas.mpl_connect("motion_notify_event", on_move)
     redraw()
     plt.show()
 

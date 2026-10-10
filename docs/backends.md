@@ -242,6 +242,32 @@ Reading private attributes of a library is acceptable here if there is no
 public accessor; mark such places in a comment.
 
 
+## 6b. Events [events]
+
+A backend that can report user input declares the capability `"events"`
+and calls `self._emit(event)` with the events of `coolplot.core.events`,
+in display units (the units of the axes):
+
+* `Hover(x, y, item_id, index)` when the pointer moves without a button,
+  with the topmost visible line or marker item under it (within about
+  5 pt) and the index of its point, or None;
+* `Click(x, y, item_id, index, button)` for a press and release without
+  movement;
+* `DragStart`, `Drag`, `DragEnd(item_id, index, x, y)` when a button is
+  pressed on a point of a marker item and the pointer moves;
+* `ViewChanged(x_limits, y_limits)` when the user zooms or pans with the
+  library's own tools (it may come once per axis), never for limits set
+  by `sync()`;
+* `Resized(width_pt, height_pt)` when the plot area changes size.
+
+The base class keeps the callbacks (`connect`, `disconnect`); the hook
+`_start_events()` is called on the first `connect` to start listening.
+`sync()` sets `self._syncing` while it runs. For the kit, the backend
+provides `simulate_pointer(kind, x, y)` ("move", "press", "release") and
+`simulate_view(x_limits, y_limits)`, which feed input through the same
+path as real input; `check_events` then checks the events.
+
+
 ## 7. Output [file output], [deterministic output]
 
 A backend that writes files declares `"file_output"`, implements

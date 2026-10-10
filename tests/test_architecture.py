@@ -21,7 +21,8 @@ PACKAGE = os.path.join(SRC, "coolplot")
 # layers listed before its own, never the ones after it.
 LIBS = {"CoolProp", "matplotlib"}
 ALL_LAYERS = ["coolplot.core", "coolplot.style", "coolplot.scene", "coolplot.spec", "coolplot.thermo",
-              "coolplot.engine", "coolplot.compose", "coolplot.render", "coolplot.diagram"]
+              "coolplot.engine", "coolplot.compose", "coolplot.render", "coolplot.diagram",
+              "coolplot.interaction"]
 
 
 def _after(layer):
@@ -44,18 +45,21 @@ RULES = {
     "coolplot.compose": LIBS | {"coolplot.thermo", "coolplot.engine"} | _after("coolplot.compose"),
     # Backends see only the scene and style values; themes are resolved before.
     "coolplot.render": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
-                               "coolplot.diagram", "coolplot.style.theme",
+                               "coolplot.diagram", "coolplot.interaction", "coolplot.style.theme",
                                "coolplot.render.mpl", "coolplot.render.svg"},
     "coolplot.render.base": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
-                                    "coolplot.diagram", "coolplot.style.theme"},
+                                    "coolplot.diagram", "coolplot.interaction", "coolplot.style.theme"},
     "coolplot.render.svg": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
-                                   "coolplot.diagram", "coolplot.style.theme"},
+                                   "coolplot.diagram", "coolplot.interaction", "coolplot.style.theme"},
     "coolplot.render.testing": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine",
-                                       "coolplot.compose", "coolplot.diagram", "coolplot.style.theme",
+                                       "coolplot.compose", "coolplot.diagram", "coolplot.interaction", "coolplot.style.theme",
                                        "coolplot.render.mpl"},
     "coolplot.render.mpl": {"CoolProp", "coolplot.spec", "coolplot.thermo", "coolplot.engine",
-                            "coolplot.compose", "coolplot.diagram", "coolplot.style.theme"},
-    "coolplot.diagram": {"matplotlib", "coolplot.render"},
+                            "coolplot.compose", "coolplot.diagram", "coolplot.interaction", "coolplot.style.theme"},
+    "coolplot.diagram": {"matplotlib", "coolplot.render", "coolplot.interaction"},
+    # The interaction helper works with any backend through the Renderer API.
+    "coolplot.interaction": LIBS | {"coolplot.render.mpl", "coolplot.render.svg", "coolplot.thermo",
+                                    "coolplot.engine"},
 }
 
 # Deliberate, documented exceptions: (module, imported name, reason)

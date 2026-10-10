@@ -35,6 +35,7 @@ from matplotlib.colors import to_hex
 from matplotlib.font_manager import FontProperties
 from matplotlib.markers import MarkerStyle as _MplMarker
 
+from ..core.events import Click, Drag, DragEnd, DragStart, Hover, Resized, ViewChanged
 from ..core.numbers import format_number
 from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
 from ..style.values import dash_pattern_pt
@@ -153,7 +154,7 @@ class MatplotlibRenderer(Renderer):
         Size of a newly created figure in inches.
     """
 
-    capabilities = frozenset({"in_place_updates", "file_output", "interactive"})
+    capabilities = frozenset({"in_place_updates", "file_output", "interactive", "events"})
     default_suffix = ".png"
     text_output = False
 
@@ -358,6 +359,115 @@ class MatplotlibRenderer(Renderer):
                 dx, dy = item.direction
                 artist.set_rotation(_upright(math.degrees(math.atan2(dy, dx))))
             artist.set_visible(item.visible and math.isfinite(item.x) and math.isfinite(item.y))
+
+    # Events ------------------------------------------------------------
+    #: Points within this distance (in points) of a marker or line hit it.
+    PICK_RADIUS_PT = 5.0
+
+    def _start_events(self):
+        if getattr(self, "_event_ids", None) is not None:
+            return
+        canvas = self.figure.canvas
+        self._press = None      # (item_id, index, x_px, y_px) of a pressed button
+        self._dragging = False
+        self._last_view = None
+        self._event_ids = [canvas.mpl_connect(name, handler) for name, handler in (
+            ("motion_notify_event", self._on_motion), ("button_press_event", self._on_press),
+            ("button_release_event", self._on_release), ("resize_event", self._on_resize))]
+        self.ax.callbacks.connect("xlim_changed", self._on_limits)
+        self.ax.callbacks.connect("ylim_changed", self._on_limits)
+
+    def _toolbar_busy(self) -> bool:
+        """True while the zoom or pan tool of the window is active."""
+        toolbar = getattr(self.figure.canvas, "toolbar", None)
+        return bool(toolbar is not None and getattr(toolbar, "mode", ""))
+
+    def _hit(self, mouse_event):
+        """(item_id, index) of the topmost visible marker or line under the pointer."""
+        candidates = []
+        for item_id, artist in self._artists.items():
+            item = self._drawn.get(item_id)
+            if not artist.get_visible() or isinstance(item, Text):
+                continue
+            artist.set_pickradius(self.PICK_RADIUS_PT)
+            hit, details = artist.contains(mouse_event)
+            if hit:
+                indices = list(details.get("ind", []))
+                candidates.append((artist.get_zorder(), item_id, int(indices[0]) if indices else None))
+        if not candidates:
+            return None, None
+        _, item_id, index = max(candidates)
+        return item_id, index
+
+    def _data(self, mouse_event):
+        x, y = self.ax.transData.inverted().transform((mouse_event.x, mouse_event.y))
+        return float(x), float(y)
+
+    def _on_motion(self, event):
+        if event.inaxes is not self.ax:
+            return
+        x, y = self._data(event)
+        if self._press is not None and self._press[0] is not None and self._press[1] is not None:
+            item_id, index = self._press[0], self._press[1]
+            if not self._dragging:
+                self._dragging = True
+                self._emit(DragStart(item_id, index, x, y))
+            self._emit(Drag(item_id, index, x, y))
+            return
+        item_id, index = self._hit(event)
+        self._emit(Hover(x, y, item_id, index))
+
+    def _on_press(self, event):
+        if event.inaxes is not self.ax or self._toolbar_busy():
+            return
+        item_id, index = self._hit(event)
+        # Only markers can be dragged: their points are the states of a process
+        draggable = isinstance(self._drawn.get(item_id), Markers) and index is not None
+        self._press = (item_id if draggable else None, index if draggable else None, event.x, event.y,
+                       item_id, index, event.button)
+        self._dragging = False
+
+    def _on_release(self, event):
+        press, self._press = self._press, None
+        if press is None:
+            return
+        x, y = self._data(event) if event.inaxes is self.ax else (math.nan, math.nan)
+        if self._dragging:
+            self._dragging = False
+            self._emit(DragEnd(press[0], press[1], x, y))
+        else:
+            self._emit(Click(x, y, press[4], press[5], int(press[6] or 1)))
+
+    def _on_resize(self, event):
+        size = self.plot_size_pt()
+        self._emit(Resized(*size))
+
+    def _on_limits(self, _axes):
+        if self._syncing:
+            return   # our own sync, not the user
+        view = (tuple(float(v) for v in self.ax.get_xlim()), tuple(float(v) for v in self.ax.get_ylim()))
+        if view != self._last_view:
+            self._last_view = view
+            self._emit(ViewChanged(*view))
+
+    # Simulated input, for tests and the conformance kit
+    def simulate_pointer(self, kind: str, x: float, y: float, button: int = 1):
+        """Feed a pointer event at (x, y) in data units: "move", "press" or "release"."""
+        from matplotlib.backend_bases import MouseEvent
+        self._start_events()
+        if self.figure.stale:
+            self.figure.draw_without_rendering()
+        x_px, y_px = self.ax.transData.transform((x, y))
+        name = {"move": "motion_notify_event", "press": "button_press_event",
+                "release": "button_release_event"}[kind]
+        event = MouseEvent(name, self.figure.canvas, x_px, y_px, button=None if kind == "move" else button)
+        self.figure.canvas.callbacks.process(name, event)
+
+    def simulate_view(self, x_limits, y_limits):
+        """Change the visible limits as the zoom or pan tool would."""
+        self._start_events()
+        self.ax.set_xlim(*x_limits)
+        self.ax.set_ylim(*y_limits)
 
     # Read back ---------------------------------------------------------
     def backend_object(self, item_id):
