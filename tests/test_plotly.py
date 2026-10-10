@@ -54,12 +54,28 @@ class _MarkersNotCompensated(PlotlyRenderer):
             trace.marker.size = item.style.size_pt * 4.0 / 3.0
 
 
+class _QuotesEscaped(PlotlyRenderer):
+    def _annotate(self):
+        super()._annotate()
+        for annotation in self.figure.layout.annotations:
+            annotation.text = annotation.text.replace('"', "&quot;")
+
+
+class _RangeNotApplied(PlotlyRenderer):
+    def sync(self, scene):
+        report = super().sync(scene)
+        self.figure.layout.xaxis.range = [0, 1]
+        self.figure.layout.yaxis.range = [0, 1]
+        return report
+
+
 class _UnknownLimitation(PlotlyRenderer):
     limitations = frozenset({"line_caps", "text_order", "colours"})
 
 
 @pytest.mark.parametrize("defect", [_NoHalo, _DashesInPoints, _NoStacking, _LegendAlwaysUpperRight,
-                                    _MarkersNotCompensated, _UnknownLimitation])
+                                    _MarkersNotCompensated, _QuotesEscaped, _RangeNotApplied,
+                                    _UnknownLimitation])
 def test_kit_rejects_plotly_defects(defect):
     assert run_conformance(defect) != []
 

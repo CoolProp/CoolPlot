@@ -295,8 +295,17 @@ server.serve_forever()
 For your own web application, send the messages from
 `renderer.listen(callback)` to the browser (for example over a
 websocket), feed the client's input to `renderer.receive(message)`, and
-serve `renderer.page(stream=..., input=...)`. `save("chart.html")` writes
-a static page. See `examples/web_app.py`.
+serve `renderer.page(stream=..., input=...)`. `receive` checks every
+message and raises `ValueError` for a malformed one; answer that with an
+error instead of passing it on. `save("chart.html")` writes a static
+page. See `examples/web_app.py`.
+
+`WebServer` is meant for development and small tools on your own
+machine. It binds to 127.0.0.1, only answers requests that name it in
+their `Host` header and only takes input from its own page, so other web
+sites open in the browser cannot drive it. Bound to another address
+(`host="0.0.0.0"`) it serves anyone who can reach it, without
+authentication; put a real web server in front of it for that.
 
 ### Calculating in the background
 

@@ -112,7 +112,7 @@ def conformance_scene() -> Scene:
             style=MarkerStyle(shape=shape, size_pt=6.0 + i, face_color=None if hollow else "#0b0b0b",
                               edge_color="#4a3aa7", edge_width_pt=1.0 + 0.25 * i, alpha=0.9)))
     items += [
-        Text(id="text/plain", role="annotation", x=5.0, y=1.0, text="plain <&> 'text'",
+        Text(id="text/plain", role="annotation", x=5.0, y=1.0, text="plain <&> 'text' \"quoted\"",
              z_order=4.0, style=TextStyle(font=Font(size_pt=9.0), color="#0b0b0b")),
         Text(id="text/styled", role="isoline_label", x=3.0, y=3.0, text="T=25 deg C", z_order=4.0,
              direction=(1.0, 1.0),

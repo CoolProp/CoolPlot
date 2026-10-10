@@ -71,6 +71,18 @@ _LEGEND = {"upper left": dict(x=0.01, y=0.99, xanchor="left", yanchor="top"),
            "outside right": dict(x=1.02, y=1.0, xanchor="left", yanchor="top")}
 
 
+
+def _escape(text: str) -> str:
+    """Text for plotly, which reads a few HTML tags: escape <, > and &, but
+    not quotes, which plotly would show as &quot;."""
+    return html.escape(text, quote=False)
+
+
+def _unescape(text: str) -> str:
+    """The reverse of _escape and nothing more: a stray &quot; stays visible
+    in the read-back, as it does in the browser."""
+    return text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+
 def _color(value: Optional[str]) -> str:
     return value if value is not None else TRANSPARENT
 
@@ -192,11 +204,11 @@ class PlotlyRenderer(Renderer):
         layout = self.figure.layout
         self.figure.update_layout(
             plot_bgcolor=_color(st.background), paper_bgcolor=_color(st.figure_background),
-            title=dict(text=html.escape(axes.title), font=_font(st.title), x=0.5, xanchor="center"))
+            title=dict(text=_escape(axes.title), font=_font(st.title), x=0.5, xanchor="center"))
         for name, label, log in (("xaxis", axes.x_label, axes.x_log), ("yaxis", axes.y_label, axes.y_log)):
             grid, minor = st.grid_major, st.grid_minor
             settings = dict(
-                type="log" if log else "linear", title=dict(text=html.escape(label), font=_font(st.axis_label)),
+                type="log" if log else "linear", title=dict(text=_escape(label), font=_font(st.axis_label)),
                 showline=st.frame_color is not None, mirror=True, linecolor=_color(st.frame_color),
                 linewidth=st.frame_width_pt * PX_PER_PT, layer="above traces", zeroline=False,
                 ticks="outside" if st.tick_direction == "out" else "inside", tickcolor=_color(st.tick_color),
@@ -347,9 +359,22 @@ class PlotlyRenderer(Renderer):
         return float(values.min()), float(values.max())
 
     # Texts ----------------------------------------------------------------
+    def _figure_ranges(self):
+        """The axis ranges the figure really holds, in data values."""
+        out = []
+        for axis, wanted in zip((self.figure.layout.xaxis, self.figure.layout.yaxis), self._ranges):
+            lo, hi = (float(v) for v in axis.range)
+            if axis.type == "log":
+                # 10 ** log10(50) is 49.99999...: keep the exact value when the figure holds it
+                exact = all(math.isclose(v, math.log10(w), rel_tol=1e-12, abs_tol=1e-12)
+                            for v, w in zip((lo, hi), wanted) if w > 0.0)
+                lo, hi = wanted if exact else (10.0 ** lo, 10.0 ** hi)
+            out.append((lo, hi))
+        return tuple(out)
+
     def _fraction(self, x, y):
-        """A point as fractions of the plot area, y up."""
-        (x0, x1), (y0, y1) = self._ranges
+        """A point as fractions of the plot area, y up, read from the figure."""
+        (x0, x1), (y0, y1) = self._figure_ranges()
         x_log, y_log = self._log()
 
         def frac(v, lo, hi, log):
@@ -397,7 +422,7 @@ class PlotlyRenderer(Renderer):
                                            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
             annotations.append(dict(
                 x=math.log10(item.x) if x_log else item.x, y=math.log10(item.y) if y_log else item.y,
-                xref="x", yref="y", text=html.escape(item.text), showarrow=False,
+                xref="x", yref="y", text=_escape(item.text), showarrow=False,
                 textangle=-self._screen_angle(item), xanchor=_H_ANCHOR[s.h_align], yanchor=_V_ANCHOR[s.v_align],
                 xshift=item.offset_pt[0] * PX_PER_PT, yshift=item.offset_pt[1] * PX_PER_PT, font=font,
                 opacity=s.alpha, visible=item.visible and (inside or not item.clip),
@@ -479,7 +504,7 @@ class PlotlyRenderer(Renderer):
         width, height = self.plot_size_pt()
         dx, dy = annotation.xshift / PX_PER_PT, annotation.yshift / PX_PER_PT
         out = {"visible": True, "kind": "text", "draw_rank": texts.index(item_id),
-               "text": html.unescape(annotation.text), "alpha": 1.0 if annotation.opacity is None else annotation.opacity,
+               "text": _unescape(annotation.text), "alpha": 1.0 if annotation.opacity is None else annotation.opacity,
                "h_align": annotation.xanchor, "v_align": _V_BACK[annotation.yanchor],
                "screen_angle_deg": -(annotation.textangle or 0.0), "offset_pt": (dx, dy),
                # Clipping is emulated by hiding texts outside the plot area
@@ -497,11 +522,11 @@ class PlotlyRenderer(Renderer):
     def describe_axes(self) -> dict:
         layout = self.figure.layout
         xa, ya = layout.xaxis, layout.yaxis
-        (x0, x1), (y0, y1) = self._ranges
+        (x0, x1), (y0, y1) = self._figure_ranges()
         out = dict(
             x_log=xa.type == "log", y_log=ya.type == "log", x_limits=(x0, x1), y_limits=(y0, y1),
-            x_label=html.unescape(xa.title.text or ""), y_label=html.unescape(ya.title.text or ""),
-            title=html.unescape(layout.title.text or ""),
+            x_label=_unescape(xa.title.text or ""), y_label=_unescape(ya.title.text or ""),
+            title=_unescape(layout.title.text or ""),
             background=_color_back(layout.plot_bgcolor), figure_background=_color_back(layout.paper_bgcolor),
             frame_color=_color_back(xa.linecolor) if xa.showline else None,
             frame_width_pt=(xa.linewidth or 0.0) / PX_PER_PT,
