@@ -90,9 +90,12 @@ def get_critical_state(state: CoolProp.AbstractState) -> CoolProp.AbstractState:
 class EnhancedState(CoolProp.AbstractState):
 
     def __init__(self, backend: str, fluid: str):
-        # The arguments have to be passed on with self; CoolProp 8 (pybind11)
-        # rejects the call without it, older Cython versions ignored it.
-        CoolProp.AbstractState.__init__(self, backend, fluid)
+        # CoolProp 8 (pybind11 bindings) builds the C++ state in __init__,
+        # which a subclass has to call. CoolProp 6 and 7 (Cython bindings)
+        # build it in __cinit__ from the constructor arguments and leave
+        # __init__ as object.__init__, which refuses any arguments.
+        if CoolProp.AbstractState.__init__ is not object.__init__:
+            CoolProp.AbstractState.__init__(self, backend, fluid)
         self._critical_state = None
         self._T_critical = None
         self._rhomass_critical = None
