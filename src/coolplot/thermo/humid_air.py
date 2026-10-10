@@ -262,6 +262,24 @@ def psychro_line(key: str, value: float, p_Pa: float, T_range_K: Tuple[float, fl
     return Curve(np.array(xs), np.array(ys), n_failed)
 
 
+def _saturation_T(W: float, T_lo: float, T_hi: float, p_Pa: float) -> Optional[float]:
+    """Temperature in [T_lo, T_hi] where saturated air has humidity ratio W, or None."""
+    def excess(T):
+        W_sat = saturation_W(T, p_Pa)
+        return (W_sat if math.isfinite(W_sat) else math.inf) - W
+    if not (excess(T_lo) < 0.0 < excess(T_hi)):
+        return None
+    for _ in range(40):
+        T_mid = 0.5 * (T_lo + T_hi)
+        if excess(T_mid) > 0.0:
+            T_hi = T_mid
+        else:
+            T_lo = T_mid
+        if T_hi - T_lo < 1e-3:
+            break
+    return 0.5 * (T_lo + T_hi)
+
+
 def chart_ranges(p_Pa: float, T_range_K: Tuple[float, float], W_range: Tuple[float, float]) -> dict:
     """(min, max) of RH, Twb, h and v over the visible part of the chart."""
     T_lo, T_hi = T_range_K
@@ -272,6 +290,12 @@ def chart_ranges(p_Pa: float, T_range_K: Tuple[float, float], W_range: Tuple[flo
         W_top = min(W_hi, W_sat) if math.isfinite(W_sat) else W_hi   # no saturation above boiling
         if W_top >= W_lo:   # otherwise this edge of the chart is all fog
             corners += [(T, W_lo), (T, W_top)]
+    # Where saturation crosses the bottom and top edges: the corners of the
+    # visible region when an edge of the chart is fog
+    for W in (W_lo, W_hi):
+        T = _saturation_T(W, T_lo, T_hi, p_Pa)
+        if T is not None:
+            corners.append((T, W))
     out = {}
     for key in ("Twb", "h", "v"):
         values = []

@@ -363,6 +363,9 @@ class PlotlyRenderer(Renderer):
         """The axis ranges the figure really holds, in data values."""
         out = []
         for axis, wanted in zip((self.figure.layout.xaxis, self.figure.layout.yaxis), self._ranges):
+            if axis.range is None:   # before the first sync
+                out.append(wanted)
+                continue
             lo, hi = (float(v) for v in axis.range)
             if axis.type == "log":
                 # 10 ** log10(50) is 49.99999...: keep the exact value when the figure holds it

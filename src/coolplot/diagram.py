@@ -24,6 +24,7 @@ in the current unit system of the diagram and converted on entry.
 from __future__ import annotations
 
 import warnings
+import weakref
 from dataclasses import replace
 from typing import Sequence
 
@@ -135,22 +136,24 @@ class PropertyDiagram:
                                 units=get_unit_system(units), limits=get_tp_limits(tp_limits),
                                 settings=settings)
         if engine is not None:
-            if isinstance(engine, BackgroundEngine):
-                if engine.claimed:
-                    raise ValueError("A BackgroundEngine works for one diagram, it keeps only the latest plan. "
-                                     "To share curves, share the cache: PropertyDiagram(..., background=..., "
-                                     "cache=other.cache).")
-                engine.claimed = True
+            if isinstance(engine, BackgroundEngine) and engine.claimed:
+                raise ValueError("A BackgroundEngine works for one diagram, it keeps only the latest plan. "
+                                 "To share curves, share the cache: PropertyDiagram(..., background=..., "
+                                 "cache=other.cache).")
             self.engine = engine
         elif background is not None:
             callback = (lambda _engine: on_ready(self)) if on_ready is not None else None
             self.engine = BackgroundEngine(background, workers, callback, cache)
-            self.engine.claimed = True
         else:
             self.engine = Engine(cache)
         self.scene = Scene()
         self._default_renderer = None
         self._plot_size_pt = None
+        if isinstance(self.engine, BackgroundEngine):
+            # Claimed last, so a failing constructor leaves the engine free,
+            # and released when this diagram is garbage collected
+            self.engine.claimed = True
+            weakref.finalize(self, setattr, self.engine, "claimed", False)
 
     # ------------------------------------------------------------------
     # Settings. Setters only replace the spec; update_scene does the work.
@@ -499,11 +502,17 @@ class PropertyDiagram:
         # Scripts want the complete picture: let background work finish,
         # previews first, then the final curves they make room for.
         if isinstance(self.engine, BackgroundEngine):
+            last = None
             for _ in range(10):
                 self.update_scene()
                 ready, needed = self.engine.progress
                 if not self.engine.busy and ready >= needed:   # a failed line may still be due a retry
                     break
+                if last is not None and ready <= last:   # the last wait brought nothing new
+                    warnings.warn("Background work makes no progress, the drawing may be incomplete (is the "
+                                  "cache smaller than the number of lines?).", UserWarning, stacklevel=2)
+                    break
+                last = ready
                 self.wait()
             else:
                 warnings.warn("Background work did not finish, the drawing may be incomplete (is the cache "

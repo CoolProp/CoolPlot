@@ -17,9 +17,12 @@ are ready and queues the others on a pool of worker threads or processes:
   passes this on to its own event loop and then asks the diagram for a
   new scene. There is at most one notification between two requests for
   curves, so a slow application is not flooded.
-* A computation that fails is tried once more on the next request (a
-  worker process may have died, which also replaces the pool); if it
-  fails again the line is skipped with a warning naming the error.
+* A computation that fails is tried once more on the next request; if it
+  fails again the line is skipped with a warning naming the error. When
+  a worker process dies (a crash inside CoolProp), every job of that pool
+  fails and nobody knows which one crashed: the pool is replaced, and the
+  jobs it lost are tried again each in a process of its own, so that only
+  the line that really crashes is given up.
 
 One engine serves one diagram: every request for curves replaces the
 previous plan. Diagrams share curves by sharing a cache instead.
@@ -114,6 +117,8 @@ class BackgroundEngine(Engine):
         self._broken = False
         self._closed = False
         self._failed: Dict[Tuple, Tuple[int, str]] = {}   # key -> (attempts, last error)
+        self._suspects = set()    # keys lost with a crashed pool, retried alone
+        self._planning = False    # True while curves() works out a new plan
         self._submitting = None   # the thread that is queueing work right now
         self.claimed = False      # set by the diagram this engine serves
         # Re-entrant: a job that is already done when it is submitted runs
@@ -129,9 +134,9 @@ class BackgroundEngine(Engine):
         self._idle = threading.Event()
         self._idle.set()
 
-    def _new_pool(self):
+    def _new_pool(self, workers=None):
         pool = ThreadPoolExecutor if self.mode == "threads" else ProcessPoolExecutor
-        return pool(max_workers=self._workers)
+        return pool(max_workers=workers or self._workers)
 
     def _done(self, key) -> bool:
         """True when a final curve needs no more work: computed, or given up."""
@@ -152,11 +157,13 @@ class BackgroundEngine(Engine):
             self._needed = set()
             self._needed_final = set()
             self._to_submit = []
-            self._idle.clear()   # until the new plan has been looked at
+            self._planning = True
+            self._idle.clear()   # until the new plan has been queued
         try:
             result = super().curves(spec, domain, requests)
         except BaseException:
             with self._lock:
+                self._planning = False
                 if not self._jobs:
                     self._idle.set()   # wait() must not hang on a failed request
             raise
@@ -176,6 +183,7 @@ class BackgroundEngine(Engine):
                     self._jobs.pop(key, None)
             ready = sum(1 for k in self._needed_final if self._done(k))
             self._progress = (ready + len(requests) - len(self._needed_final), len(requests))
+            self._planning = False
             if not self._jobs:
                 self._idle.set()
         return result
@@ -216,14 +224,19 @@ class BackgroundEngine(Engine):
             return
         calc = spec.settings.calc
         self.cache.misses += 1
-        future = self._pool.submit(compute_curve, spec.fluid, spec.diagram, request.key, request.value_SI,
-                                   request.points, domain.tp_box, calc.solver, calc.critical_margin,
-                                   calc.saturation_spacing)
+        # A job lost with a crashed pool runs alone, so a crash names its culprit
+        alone = key in self._suspects
+        pool = self._new_pool(workers=1) if alone else self._pool
+        future = pool.submit(compute_curve, spec.fluid, spec.diagram, request.key, request.value_SI,
+                             request.points, domain.tp_box, calc.solver, calc.critical_margin,
+                             calc.saturation_spacing)
+        if alone:
+            pool.shutdown(wait=False)   # the process ends after this one job
         self._jobs[key] = future
         self._idle.clear()
-        future.add_done_callback(lambda f, key=key: self._finished(key, f))
+        future.add_done_callback(lambda f, key=key, pool=pool, alone=alone: self._finished(key, f, pool, alone))
 
-    def _finished(self, key: Tuple, future: Future):
+    def _finished(self, key: Tuple, future: Future, pool=None, alone: bool = False):
         """Store a result and tell the application (runs in a worker callback)."""
         notify = False
         with self._lock:
@@ -234,19 +247,26 @@ class BackgroundEngine(Engine):
                 if error is None:
                     self.cache.put(key, future.result())
                     self._failed.pop(key, None)
+                    self._suspects.discard(key)
+                elif isinstance(error, BrokenExecutor) and not alone:
+                    # Some job crashed the shared pool, maybe not this one: no
+                    # attempt is counted, the job is retried alone
+                    self._suspects.add(key)
+                    if pool is self._pool:
+                        self._broken = True   # replaced on the next request
                 else:
                     # Not cached: the next request tries again, up to MAX_TRIES
                     attempts = self._failed.get(key, (0, ""))[0] + 1
                     self._failed[key] = (attempts, "{0}: {1}".format(type(error).__name__, error))
-                    if isinstance(error, BrokenExecutor):
-                        self._broken = True
                 if key in self._needed_final and self._done(key):
                     ready, total = self._progress
                     self._progress = (min(ready + 1, total), total)
                 if key in self._needed and not self._notified:
                     self._notified = notify = True
-            if not self._jobs:
+            if not self._jobs and not self._planning:
                 self._idle.set()
+            if self._closed:
+                notify = False   # nobody may ask for curves any more
             # A job that was already done when it was queued lands here in the
             # thread that asks for curves, with the engine locked: tell the
             # application from another thread, as for any other job.

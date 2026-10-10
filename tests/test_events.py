@@ -172,3 +172,13 @@ def test_move_cycle_state_needs_a_whole_number(app):
     diagram, _, _, _ = app
     with pytest.raises(ValueError):
         diagram.move_cycle_state("Heat pump", 2.7, 500.0, 10.0)
+
+
+def test_a_sync_before_the_repaint_keeps_the_zoom(app):
+    diagram, renderer, _, _ = app
+    seen = _events(renderer)
+    renderer.ax.set_xlim(300.0, 600.0)
+    renderer.ax.set_ylim(2.0, 20.0)
+    renderer.sync(diagram.scene)   # e.g. a background curve arrives, axes unchanged
+    renderer.figure.draw_without_rendering()
+    assert [type(e).__name__ for e in seen] == ["ViewChanged"]

@@ -364,6 +364,9 @@ class MatplotlibRenderer(Renderer):
     #: Points within this distance (in points) of a marker or line hit it.
     PICK_RADIUS_PT = 5.0
 
+    #: A press that moves less than this (logical pixels) is still a click.
+    CLICK_SLOP_PX = 4.0
+
     def _start_events(self):
         if getattr(self, "_event_ids", None) is not None:
             return
@@ -418,6 +421,8 @@ class MatplotlibRenderer(Renderer):
             self._end_press(*press["last"])
             press = None
         if press is None:
+            if buttons and self._toolbar_busy():
+                return   # panning or zooming with the toolbar
             if event.inaxes is self.ax:
                 x, y = self._data(event)
                 item_id, index = self._hit(event)
@@ -425,7 +430,9 @@ class MatplotlibRenderer(Renderer):
             return
         x, y = self._data(event)
         press["last"] = (x, y)
-        if not press["moved"] and math.hypot(event.x - press["x_px"], event.y - press["y_px"]) < 1.0:
+        ratio = getattr(self.figure.canvas, "device_pixel_ratio", 1.0) or 1.0   # event pixels are physical
+        slop = self.CLICK_SLOP_PX * ratio
+        if not press["moved"] and math.hypot(event.x - press["x_px"], event.y - press["y_px"]) < slop:
             return   # jitter of a click
         press["moved"] = True
         if press["draggable"]:
@@ -473,7 +480,7 @@ class MatplotlibRenderer(Renderer):
 
     def sync(self, scene):
         report = super().sync(scene)
-        if getattr(self, "_event_ids", None) is not None:
+        if report.axes_changed and getattr(self, "_event_ids", None) is not None:
             self._last_view = self._view()   # the view sync set is not the user's
         return report
 

@@ -384,3 +384,32 @@ def test_margin_does_not_grab_clipped_markers():
 def test_page_title_is_escaped_once():
     page = WebRenderer().page(title="a<b & c")
     assert "<title>a&lt;b &amp; c</title>" in page
+
+
+def test_huge_numbers_are_refused():
+    with pytest.raises(ValueError):
+        WebRenderer.check_input('{"type": "move", "px": 1' + "0" * 400 + ', "py": 1}')
+
+
+def test_a_dropped_stream_closes_its_connection():
+    import http.client
+    renderer = WebRenderer()
+    renderer.sync(Scene(AxesSpec(x_limits=(0.0, 1.0), y_limits=(0.0, 1.0)), []))
+    server = WebServer(renderer).start()
+    host, port = server._httpd.server_address[:2]
+    try:
+        connection = http.client.HTTPConnection(host, port, timeout=10)
+        connection.request("GET", "/stream")
+        response = connection.getresponse()
+        response.readline()
+        deadline = time.monotonic() + 5.0
+        while not server._clients and time.monotonic() < deadline:
+            time.sleep(0.01)
+        server._clients[0].dropped = True
+        start = time.monotonic()
+        while response.readline():
+            pass   # until the server closes the socket
+        assert time.monotonic() - start < 5.0   # not the 30 s socket timeout
+        connection.close()
+    finally:
+        server.stop()

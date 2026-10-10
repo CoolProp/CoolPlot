@@ -562,6 +562,15 @@ that state by the two axis properties at the new position.
   per zoom), and psychrometric lines (above boiling, the CoolProp 8 gap
   in wet-bulb lines, exact W = 0 ends, bounded default line counts,
   failure warnings, pressure and temperature checks, zoom and dragging).
+  A second review of these fixes found more, also fixed: a crashing
+  worker process made every line in flight count a failed attempt (jobs
+  lost with a crashed pool now run again each in a process of its own),
+  charts with a foggy edge lost default lines, wait() could still return
+  while a plan was being worked out, on_ready ran after close(), a sync
+  before the repaint swallowed a matplotlib zoom, dropped browsers waited
+  30 s to reconnect, huge JSON numbers raised OverflowError, -100 deg C
+  was refused by rounding, and a garbage collected diagram kept its
+  background engine claimed.
 
 Known trade-offs, from the adversarial review of the 0.3 work:
 

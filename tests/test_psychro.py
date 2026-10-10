@@ -201,3 +201,17 @@ def test_interaction_zooms_and_drags_air_states(chart):
     assert moved.T == pytest.approx(288.15) and moved.W == pytest.approx(0.008)
     interaction.handle(DragEnd("air/Air conditioning/states", 1, 15.0, 80.0))   # in the fog: refused
     assert chart.process_states("Air conditioning")[1].W == pytest.approx(0.008)
+
+
+def test_charts_with_a_foggy_edge_get_all_visible_lines():
+    # T 0 to 50 deg C, W 10 to 30 g/kg: the left edge is fog, the visible
+    # region starts on saturation at about 14 deg C
+    ranges = chart_ranges(P, (273.15, 323.15), (0.010, 0.030))
+    twb_C = np.array(default_values("Twb", ranges)) - 273.15
+    assert twb_C.min() <= 15.0 + 1e-6
+    assert min(default_values("h", ranges)) <= 40e3 + 1e-6
+
+
+def test_the_limits_of_hapropssi_are_allowed():
+    assert PsychrometricChart(T_range=(-100, 50)).spec.T_range_K[0] == pytest.approx(173.15)
+    PsychrometricChart().set_lines("Twb", [-100.0])

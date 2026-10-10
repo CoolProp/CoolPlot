@@ -163,6 +163,8 @@ class WebRenderer(SvgRenderer):
 
     #: Points within this distance (in points) of a marker or line hit it.
     PICK_RADIUS_PT = 5.0
+    #: A press that moves less than this (SVG pixels) is still a click.
+    CLICK_SLOP_PX = 4.0
     #: Zoom factor per wheel step (a wheel delta of 100 pixels, one notch).
     ZOOM_STEP = 1.2
     #: Largest and smallest span of a view: decades on log axes, and
@@ -298,9 +300,15 @@ class WebRenderer(SvgRenderer):
             raise ValueError("An input message is a JSON object, not {0}.".format(type(message).__name__))
 
         def number(value):
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError("Expected a number, got {0!r}.".format(value))
+            try:
+                value = float(value)   # a huge JSON integer overflows here
+            except OverflowError:
+                value = math.inf
+            if not math.isfinite(value):
                 raise ValueError("Expected a finite number, got {0!r}.".format(value))
-            return float(value)
+            return value
 
         kind = message.get("type")
         if kind == "view":
@@ -360,7 +368,7 @@ class WebRenderer(SvgRenderer):
             item_id, index = self._hit(px, py)
             self._emit(Hover(x, y, item_id, index))
             return
-        if not press["moved"] and math.hypot(px - press["px"], py - press["py"]) < 1.0:
+        if not press["moved"] and math.hypot(px - press["px"], py - press["py"]) < self.CLICK_SLOP_PX:
             return   # jitter of a click
         first = not press["moved"]
         press["moved"] = True
@@ -400,11 +408,11 @@ class WebRenderer(SvgRenderer):
             a, b = (math.log10(lo), math.log10(hi)) if log else (lo, hi)
             centre = a + f * (b - a)
             out.append((centre + (a - centre) * factor, centre + (b - centre) * factor, log))
-        view = self._valid_view(out, scaled=True)
+        view = self._valid_view(out)
         if view is not None:
             self._emit(ViewChanged(*view))
 
-    def _valid_view(self, view, scaled=None):
+    def _valid_view(self, view):
         """The view as ((x0, x1), (y0, y1)), or None when it is not usable.
 
         ``view`` holds (lo, hi) per axis in data values or, from
@@ -584,6 +592,7 @@ class WebServer:
                 server.renderer.receive(message)
 
             def _stream(self):
+                self.close_connection = True   # a stream has no length: never reuse the socket
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
                 self.send_header("Cache-Control", "no-cache")
@@ -618,8 +627,8 @@ class WebServer:
         # Host headers that name this server; None when it is bound to a
         # public address, where the name it is reached by is not known
         bound = self._httpd.server_address[1]
-        if host in ("127.0.0.1", "localhost", "::1"):
-            self._hosts = {"127.0.0.1:{0}".format(bound), "localhost:{0}".format(bound), "[::1]:{0}".format(bound)}
+        if host in ("127.0.0.1", "localhost"):
+            self._hosts = {"127.0.0.1:{0}".format(bound), "localhost:{0}".format(bound)}
         else:
             self._hosts = None
         self._thread = None

@@ -12,6 +12,7 @@ pytest.importorskip("CoolProp")
 from coolplot import PropertyDiagram  # noqa: E402
 from coolplot.engine import BackgroundEngine  # noqa: E402
 from coolplot.engine.plan import plan  # noqa: E402
+from coolplot.render.svg import SvgRenderer  # noqa: E402
 from coolplot.thermo.isolines import Curve  # noqa: E402
 
 
@@ -234,3 +235,55 @@ def test_on_ready_never_runs_in_the_asking_thread():
     d.update_scene()
     assert done.wait(10.0)
     assert calls[0] == (False, False)
+
+
+def _crash_at_zero(fluid, diagram, key, value_SI, *args):
+    """compute_curve that kills its worker process for the 0 deg C isotherm."""
+    import os
+    from coolplot.engine import background
+    if key == "T" and abs(value_SI - 273.15) < 1e-6:
+        os._exit(1)
+    return background._real_compute_curve(fluid, diagram, key, value_SI, *args)
+
+
+def test_a_crashing_line_costs_only_itself(monkeypatch):
+    import multiprocessing
+    import warnings
+    from coolplot.engine import background
+    if multiprocessing.get_start_method() != "fork":
+        pytest.skip("the patched worker function only reaches forked workers")
+    monkeypatch.setattr(background, "_real_compute_curve", background.compute_curve, raising=False)
+    monkeypatch.setattr(background, "compute_curve", _crash_at_zero)
+    d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP", background="processes", workers=2)
+    d.set_isolines("T", values=[-20.0, 0.0, 20.0, 40.0, 60.0], points=40)
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            d.draw(SvgRenderer())
+        skipped = [str(w.message) for w in caught if "Skipping the line" in str(w.message)]
+        assert len(skipped) == 1 and "T=273.15" in skipped[0]
+        assert len([i for i in d.scene if i.group == "iso/T"]) == 4
+    finally:
+        d.close()
+
+
+def test_no_notification_after_close():
+    calls = []
+    d = _diagram(background="threads", on_ready=lambda diagram: calls.append(diagram))
+    gate = threading.Event()
+    d.engine._pool.submit(gate.wait)
+    d.update_scene()
+    d.close()
+    gate.set()
+    d.wait(10.0)
+    assert calls == []
+
+
+def test_the_engine_is_free_again_after_its_diagram_is_gone():
+    import gc
+    engine = BackgroundEngine("threads")
+    first = PropertyDiagram("HEOS::R290", "ph", engine=engine)
+    del first
+    gc.collect()
+    PropertyDiagram("HEOS::R290", "ph", engine=engine)   # no error
+    engine.close()
