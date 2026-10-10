@@ -154,11 +154,11 @@ caches its results (curves) or compares them with the previous ones
 |-------|--------|--------|
 | Settings | `spec/` (`DiagramSpec`, `Settings`), held by `PropertyDiagram` in `diagram.py` | done |
 | Plan | `engine/plan.py` (`plan(spec, domain)`), pure | done |
-| Engine | `engine/engine.py` (`Engine`), `engine/cache.py` (`CurveCache`), `thermo/` for the calculations; synchronous | done |
+| Engine | `engine/engine.py` (`Engine`), `engine/background.py` (`BackgroundEngine`, 0.3), `engine/cache.py` (`CurveCache`), `thermo/` for the calculations | done |
 | Compose | `compose/builder.py`: display units, theme styles, texts | done |
 | Layout | `compose/layout.py`: labels for the reported plot size, keep-out zones | done |
 | Sync | `render/base.py` and the backends | done |
-| Events | backend-neutral events back into the diagram | planned |
+| Events | `core/events.py`, `Renderer.connect`, `interaction.py` (0.3) | planned |
 
 
 ## 4. Package layout for 0.2
@@ -472,12 +472,51 @@ units, styles, one added line, cycles, zoom and themes.
 | 5 | Cycles on diagrams (section 7): `add_cycle` with states, `via`, automatic paths, loops for split and two-stage cycles, state numbers; models for simple compression, two-stage (flash tank, economizer) and Rankine | done |
 | 6 | Close the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising); examples and user documentation | done |
 
-### 0.3 and later
+### 0.3: background, events, more backends, psychrometric charts
 
-Background calculation (threads or processes, cancellation,
-coarse-then-fine), events back from the backends (zoom, hover, pick,
-drag), plotly and web backends, psychrometric charts.
+| Step | Content | Status |
+|------|---------|--------|
+| 1 | Background calculation: curves computed in worker threads or processes, coarse first and then fine, outdated work cancelled; the diagram stays responsive and reports progress | done |
+| 2 | Events back from the backends (hover, click, drag, view changes, resize) as plain data; an `Interaction` helper that turns them into diagram changes (zoom and pan re-layout labels, hover reads the state, dragging a cycle state moves it) | next |
+| 3 | plotly backend, passing the conformance kit, with documented limitations where plotly cannot follow a requirement | |
+| 4 | Web backend: the SVG elements of the SVG backend streamed as patches to a small JavaScript client, events back from the browser, a dependency-free development server; conformance checked in a real browser (headless Chromium) | |
+| 5 | Psychrometric charts for humid air (CoolProp HAPropsSI): dry-bulb temperature over humidity ratio, lines of relative humidity, wet-bulb temperature, enthalpy and specific volume, air processes on top | |
+| 6 | Examples, user documentation, adversarial review of the 0.3 work | |
 
+#### Background calculation (step 1)
+
+* `PropertyDiagram(..., background="threads" | "processes" | None)`.
+  `update_scene()` never waits for a curve: it returns the scene from the
+  curves that are ready and queues the missing ones. When queued work
+  finishes, `on_ready(diagram)` is called (from a worker thread; GUI
+  applications pass it on to their event loop) and the application calls
+  `update_scene()` again.
+* Coarse then fine: a missing curve is first computed with
+  `Settings.calc.preview_points` and then with full resolution; the
+  preview is drawn in the meantime and replaced in place (same item id).
+* Every `update_scene()` starts a new generation. Queued work that the
+  latest plan no longer needs is cancelled; work already running finishes
+  and stays in the cache.
+* Threads share the process; each worker uses its own copy of the fluid
+  (CoolProp states are not thread safe). CoolProp keeps the interpreter
+  lock during every call, so there is one worker thread by default:
+  more threads cannot compute in parallel and only slow down the
+  application. For blends, whose calls are long, use processes. Processes compute in parallel;
+  workers receive only plain data (`FluidSpec`, request, region,
+  calculation settings) and return `Curve` values.
+* `diagram.progress` gives (ready, total) for the current plan.
+
+#### Events (step 2)
+
+Events are plain data in display units, defined in `core/events.py`, so
+an application handles them the same way for every backend: `Hover(x,
+y)`, `Click(x, y, item_id)`, `DragStart`/`Drag`/`DragEnd(item_id, index,
+x, y)`, `ViewChanged(x_limits, y_limits)`, `Resized(width_pt,
+height_pt)`. Backends that can produce them declare the capability
+"events" and deliver them to callbacks registered with
+`renderer.connect(callback)`. `coolplot.interaction.Interaction(diagram,
+renderer)` handles the common cases; dragging a state of a cycle replaces
+that state by the two axis properties at the new position.
 ### Open findings from the reviews
 
 * Fixed in step 2: stale curves after a caller changed a passed-in

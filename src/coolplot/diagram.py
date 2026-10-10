@@ -36,7 +36,7 @@ from .core.limits import get_tp_limits
 from .core.quantities import quantity_key
 from .core.state import StatePoint
 from .core.units import get_unit_system
-from .engine import CurveCache, Engine, plan
+from .engine import BackgroundEngine, CurveCache, Engine, plan
 from .scene import Scene
 from .spec import CycleSpec, DiagramSpec, FluidSpec, IsolineSet, ProcessSpec, get_settings
 from .style.theme import Theme, get_theme
@@ -101,6 +101,15 @@ class PropertyDiagram:
         Share one engine (and its caches) between several diagrams.
     cache : CurveCache, optional
         Curve store for a new engine; ignored when ``engine`` is given.
+    background : str, optional
+        "threads" or "processes": compute curves in the background, see
+        :mod:`coolplot.engine.background`. :meth:`update_scene` then never
+        waits; it draws what is ready (coarse previews first) and
+        ``on_ready(diagram)`` is called when more is ready.
+    on_ready : callable, optional
+        With ``background``: called from a worker when curves are ready.
+    workers : int, optional
+        With ``background``: number of workers.
 
     Examples
     --------
@@ -116,14 +125,21 @@ class PropertyDiagram:
     """
 
     def __init__(self, fluid, diagram_type="ph", units="EUR", tp_limits="DEF", theme=None,
-                 settings=None, engine: Engine = None, cache: CurveCache = None):
+                 settings=None, engine: Engine = None, cache: CurveCache = None, background: str = None,
+                 on_ready=None, workers: int = None):
         settings = get_settings(settings)
         if theme is not None:
             settings = settings.with_(look=theme)
         self.spec = DiagramSpec(fluid=fluid_spec(fluid), diagram=DiagramType.parse(diagram_type),
                                 units=get_unit_system(units), limits=get_tp_limits(tp_limits),
                                 settings=settings)
-        self.engine = engine if engine is not None else Engine(cache)
+        if engine is not None:
+            self.engine = engine
+        elif background is not None:
+            callback = (lambda _engine: on_ready(self)) if on_ready is not None else None
+            self.engine = BackgroundEngine(background, workers, callback, cache)
+        else:
+            self.engine = Engine(cache)
         self.scene = Scene()
         self._default_renderer = None
         self._plot_size_pt = None
@@ -134,6 +150,27 @@ class PropertyDiagram:
     @property
     def cache(self) -> CurveCache:
         return self.engine.cache
+
+    # Background work -------------------------------------------------------
+    @property
+    def progress(self):
+        """(curves ready, curves needed) after the last update_scene; always
+        complete without a background engine."""
+        if isinstance(self.engine, BackgroundEngine):
+            return self.engine.progress
+        n = sum(len(s.values_SI or ()) or s.num for s in self.spec.isolines)
+        return n, n
+
+    def wait(self, timeout: float = None) -> bool:
+        """Block until background work is done (True), or until the timeout (False)."""
+        if isinstance(self.engine, BackgroundEngine):
+            return self.engine.wait(timeout)
+        return True
+
+    def close(self):
+        """Stop background workers, if any."""
+        if isinstance(self.engine, BackgroundEngine):
+            self.engine.close()
 
     @property
     def fluid(self) -> Fluid:
@@ -426,6 +463,14 @@ class PropertyDiagram:
 
         A renderer created here uses the canvas size of ``settings.page``.
         """
+        # Scripts want the complete picture: let background work finish,
+        # previews first, then the final curves they make room for.
+        if isinstance(self.engine, BackgroundEngine):
+            for _ in range(3):
+                self.update_scene()
+                if not self.engine.busy:
+                    break
+                self.wait()
         if renderer is None:
             renderer = self._default_renderer
             if renderer is None:

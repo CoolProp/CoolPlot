@@ -247,6 +247,26 @@ diagrams of the same fluid can share their caches:
 `PropertyDiagram(..., engine=other.engine)`. `examples/interactive_cycle.py`
 shows a complete matplotlib application with sliders.
 
+### Calculating in the background
+
+```python
+diagram = PropertyDiagram("HEOS::R32[0.7]&R125[0.3]", "ph", background="processes",
+                          on_ready=lambda d: app.call_soon(redraw))   # your GUI's way to run on its thread
+renderer.sync(diagram.update_scene())   # returns at once: previews first, then the final lines
+diagram.progress                         # (ready, needed)
+```
+
+With `background="threads"` or `"processes"`, `update_scene()` never
+waits for a line. Missing lines are queued, first coarse
+(`Settings.calc.preview_points`) and then at full resolution, and
+`on_ready(diagram)` is called from a worker when more is ready; call
+`update_scene()` again then. Work the latest scene no longer needs is
+cancelled. Threads keep pure-fluid charts responsive; for blends use
+processes, which compute in parallel and never block the application.
+`diagram.wait()` blocks until all work is done, `diagram.close()` stops
+the workers, and `draw()`, `show()` and `savefig()` wait for the
+complete picture.
+
 ## 8. Refrigerant blends and other mixtures
 
 For mixtures CoolPlot traces isolines point by point, starting each point

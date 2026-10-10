@@ -42,5 +42,16 @@ class CurveCache:
             self._store.popitem(last=False)
         return curve
 
+    def peek(self, key: Hashable):
+        """The curve stored for ``key``, or None; counts neither a hit nor a miss."""
+        return self._store.get(key)
+
+    def put(self, key: Hashable, curve: Any):
+        """Store a curve computed elsewhere (for example in a worker)."""
+        self._store[key] = curve
+        self._store.move_to_end(key)
+        if len(self._store) > self.max_size:
+            self._store.popitem(last=False)
+
     def clear(self):
         self._store.clear()

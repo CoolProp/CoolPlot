@@ -46,6 +46,10 @@ class CalcSettings:
         with CoolProp; "tracer" walks along the line and starts each point
         from the previous one, which is much faster for mixtures; "auto"
         uses the tracer for mixtures and plain flashes for pure fluids.
+    preview_points : int
+        With a background engine, a missing curve is first computed with
+        this many points and drawn while the full curve is computed. 0
+        switches the preview off.
     critical_margin : float
         Distance kept from the triple point and the critical point,
         relative to the critical values. Saturation solvers become
@@ -60,6 +64,7 @@ class CalcSettings:
     saturation_points: int = 250
     saturation_spacing: str = "critical"
     solver: str = "auto"
+    preview_points: int = 40
     critical_margin: float = 1e-7
     warn_failed_fraction: float = 0.1
 
@@ -69,6 +74,10 @@ class CalcSettings:
             if value < 2:
                 raise ValueError("CalcSettings.{0} has to be at least 2, not {1}.".format(name, value))
             object.__setattr__(self, name, value)
+        preview = int(self.preview_points)
+        if preview != 0 and preview < 2:
+            raise ValueError("CalcSettings.preview_points has to be 0 (off) or at least 2, not {0}.".format(preview))
+        object.__setattr__(self, "preview_points", preview)
         if self.saturation_spacing not in SATURATION_SPACINGS:
             raise ValueError("Unknown saturation_spacing '{0}', expected one of {1}.".format(
                 self.saturation_spacing, SATURATION_SPACINGS))
