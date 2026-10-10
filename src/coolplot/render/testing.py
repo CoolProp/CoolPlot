@@ -47,6 +47,16 @@ ANGLE_TOL = 1.0
 #: point on a typical plot.
 POSITION_TOL = 1e-3
 
+#: Requirements a backend may declare it cannot follow, in
+#: ``Renderer.limitations``, because its library offers no way to. The kit
+#: then skips exactly those checks; docs/backends.md lists them and every
+#: backend documents its own.
+ALLOWED_LIMITATIONS = {
+    "line_caps": "line caps and joins are the library's own (cap and join are not checked)",
+    "text_order": "texts are always drawn above lines and markers (texts and other items are "
+                  "each checked for their order among themselves)",
+}
+
 
 # ---------------------------------------------------------------------------
 # The reference scene
@@ -356,7 +366,14 @@ def _check_scene(renderer, scene: Scene, failures: List[str], label: str):
                         label, name, text, value, want))
                     break
 
+    limitations = set(getattr(renderer, "limitations", ()))
+    unknown = limitations - set(ALLOWED_LIMITATIONS)
+    if unknown:
+        failures.append("{0}: unknown limitations {1} [limitations]".format(label, sorted(unknown)))
     visible_order = [i for i in scene.draw_order() if expected_item(scene[i], scene.axes)["visible"]]
+    if "text_order" in limitations:
+        texts = [i for i in visible_order if isinstance(scene[i], Text)]
+        others = [i for i in visible_order if not isinstance(scene[i], Text)]
     for item in scene:
         where = "{0}: {1}".format(label, item.id)
         try:
@@ -369,10 +386,16 @@ def _check_scene(renderer, scene: Scene, failures: List[str], label: str):
             if actual.get("visible"):
                 failures.append("{0}: should not be visible [visibility]".format(where))
             continue
+        if "line_caps" in limitations:
+            want.pop("cap", None)
+            want.pop("join", None)
         _compare(where, want, actual, failures)
-        if actual.get("draw_rank") != visible_order.index(item.id):
+        order = visible_order
+        if "text_order" in limitations:
+            order = texts if isinstance(item, Text) else others
+        if actual.get("draw_rank") != order.index(item.id):
             failures.append("{0}: drawn at rank {1}, expected {2} [order]".format(
-                where, actual.get("draw_rank"), visible_order.index(item.id)))
+                where, actual.get("draw_rank"), order.index(item.id)))
         if "plot_size_pt" not in axes_actual:
             continue
         limits = (axes_actual.get("x_limits"), axes_actual.get("y_limits"))

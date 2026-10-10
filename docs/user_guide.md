@@ -35,6 +35,14 @@ diagram.draw(SvgRenderer()).save("R290_ph.svg")
 `diagram.draw()` without a renderer uses matplotlib; `diagram.show()` and
 `diagram.savefig("R290_ph.png")` are shortcuts for scripts.
 
+Three backends come with CoolPlot and draw the same scene:
+`coolplot.render.svg.SvgRenderer` (no dependencies),
+`coolplot.render.mpl.MatplotlibRenderer` (`pip install
+"coolplot[matplotlib]"`) and `coolplot.render.plotly.PlotlyRenderer`
+(`pip install "coolplot[plotly]"`; `renderer.figure` is the plotly
+figure, `save("chart.html")` writes a page). plotly cannot set line caps
+and always draws texts above lines; everything else looks the same.
+
 ### Fluids
 
 Any CoolProp fluid string works: `"R290"`, `"HEOS::R290"`,

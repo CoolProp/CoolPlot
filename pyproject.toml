@@ -25,7 +25,8 @@ classifiers = [
 [project.optional-dependencies]
 # Plotting backends are optional; the core and the SVG backend need neither.
 matplotlib = ["matplotlib>=3.8"]
-test = ["pytest>=7", "matplotlib>=3.8"]
+plotly = ["plotly>=5.22"]
+test = ["pytest>=7", "matplotlib>=3.8", "plotly>=5.22"]
 
 [project.urls]
 Homepage = "https://github.com/CoolProp/CoolPlot"

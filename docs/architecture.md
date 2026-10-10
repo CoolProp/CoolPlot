@@ -478,8 +478,8 @@ units, styles, one added line, cycles, zoom and themes.
 |------|---------|--------|
 | 1 | Background calculation: curves computed in worker threads or processes, coarse first and then fine, outdated work cancelled; the diagram stays responsive and reports progress | done |
 | 2 | Events back from the backends (hover, click, drag, view changes, resize) as plain data; an `Interaction` helper that turns them into diagram changes (zoom and pan re-layout labels, hover reads the state, dragging a cycle state moves it) | done |
-| 3 | plotly backend, passing the conformance kit, with documented limitations where plotly cannot follow a requirement | next |
-| 4 | Web backend: the SVG elements of the SVG backend streamed as patches to a small JavaScript client, events back from the browser, a dependency-free development server; conformance checked in a real browser (headless Chromium) | |
+| 3 | plotly backend, passing the conformance kit, with documented limitations where plotly cannot follow a requirement | done |
+| 4 | Web backend: the SVG elements of the SVG backend streamed as patches to a small JavaScript client, events back from the browser, a dependency-free development server; conformance checked in a real browser (headless Chromium) | next |
 | 5 | Psychrometric charts for humid air (CoolProp HAPropsSI): dry-bulb temperature over humidity ratio, lines of relative humidity, wet-bulb temperature, enthalpy and specific volume, air processes on top | |
 | 6 | Examples, user documentation, adversarial review of the 0.3 work | |
 

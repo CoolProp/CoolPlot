@@ -11,7 +11,8 @@ CoolProp = pytest.importorskip("CoolProp")
 from coolplot import PropertyDiagram  # noqa: E402
 from coolplot.compose.layout import Frame, keep_out_points  # noqa: E402
 from coolplot.engine.plan import nice_log  # noqa: E402
-from coolplot.render.svg import SvgRenderer, _ticks  # noqa: E402
+from coolplot.render.svg import SvgRenderer  # noqa: E402
+from coolplot.render.ticks import ticks as _ticks  # noqa: E402
 from coolplot.thermo import DiagramType, Fluid, compute_isoline, compute_quality_line, get_tp_limits, resolve_tp_box  # noqa: E402,E501
 from coolplot.thermo.cycles import rankine, simple_compression, two_stage  # noqa: E402
 

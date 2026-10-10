@@ -281,6 +281,24 @@ A backend that writes files declares `"file_output"`, implements
   references in SVG).
 
 
+## 7b. Limitations [limitations]
+
+Some libraries offer no way to follow a requirement. A backend lists
+such cases in `Renderer.limitations`; only the names below are accepted,
+the kit then skips exactly those checks, and the backend documents them
+in its module docstring:
+
+| Name | Meaning |
+|------|---------|
+| `line_caps` | line caps and joins are the library's own; `cap` and `join` are not checked |
+| `text_order` | texts are always drawn above lines and markers; texts and other items are each checked for their order among themselves |
+
+The plotly backend declares both. Anything not in this list has to be
+implemented, if necessary by emulation (plotly does not clip
+annotations, so its backend hides texts whose anchor leaves the plot
+area).
+
+
 ## 8. Capabilities
 
 Declare optional abilities in the class attribute `capabilities`:

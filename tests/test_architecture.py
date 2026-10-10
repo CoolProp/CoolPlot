@@ -19,7 +19,7 @@ PACKAGE = os.path.join(SRC, "coolplot")
 
 # Layers in order (docs/architecture.md, section 4). A module may import
 # layers listed before its own, never the ones after it.
-LIBS = {"CoolProp", "matplotlib"}
+LIBS = {"CoolProp", "matplotlib", "plotly"}
 ALL_LAYERS = ["coolplot.core", "coolplot.style", "coolplot.scene", "coolplot.spec", "coolplot.thermo",
               "coolplot.engine", "coolplot.compose", "coolplot.render", "coolplot.diagram",
               "coolplot.interaction"]
@@ -53,8 +53,11 @@ RULES = {
                                    "coolplot.diagram", "coolplot.interaction", "coolplot.style.theme"},
     "coolplot.render.testing": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine",
                                        "coolplot.compose", "coolplot.diagram", "coolplot.interaction", "coolplot.style.theme",
-                                       "coolplot.render.mpl"},
-    "coolplot.render.mpl": {"CoolProp", "coolplot.spec", "coolplot.thermo", "coolplot.engine",
+                                       "coolplot.render.mpl", "coolplot.render.plotly"},
+    "coolplot.render.plotly": {"CoolProp", "matplotlib", "coolplot.spec", "coolplot.thermo", "coolplot.engine",
+                               "coolplot.compose", "coolplot.diagram", "coolplot.interaction",
+                               "coolplot.style.theme", "coolplot.render.mpl", "coolplot.render.svg"},
+    "coolplot.render.mpl": {"CoolProp", "plotly", "coolplot.spec", "coolplot.thermo", "coolplot.engine",
                             "coolplot.compose", "coolplot.diagram", "coolplot.interaction", "coolplot.style.theme"},
     "coolplot.diagram": {"matplotlib", "coolplot.render", "coolplot.interaction"},
     # The interaction helper works with any backend through the Renderer API.
