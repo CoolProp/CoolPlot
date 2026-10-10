@@ -122,6 +122,48 @@ def _scientific_ticks(text):
                   lambda m: m.group(1) + "{0:.2e}".format(float(m.group(2))) + "<", text)
 
 
+def _shift_lines_up(text):
+    """Every line drawn 20 px too high."""
+    def shift(match):
+        return re.sub(r"([ML]-?[0-9.]+),(-?[0-9.]+)",
+                      lambda m: "{0},{1}".format(m.group(1), float(m.group(2)) - 20.0), match.group(0))
+    return re.sub(r'class="cp-stroke" d="[^"]*"', shift, text)
+
+
+class _CirclesOnly(SvgRenderer):
+    def _markers(self, item, to_px):
+        return super()._markers(replace(item, style=item.style.with_(shape="o")), to_px).replace(
+            'data-shape="o"', 'data-shape={0!r}'.format(item.style.shape).replace("'", '"'))
+
+
+class _JoinedMarkers(SvgRenderer):
+    def _markers(self, item, to_px):
+        out = super()._markers(item, to_px)
+        px, py = to_px(item.x, item.y)
+        ok = [(x, y) for x, y in zip(px, py) if math.isfinite(x) and math.isfinite(y)]
+        if len(ok) < 2:
+            return out
+        path = '<path d="M{0},{1}L{2},{3}"/>'.format(ok[0][0], ok[0][1], ok[-1][0], ok[-1][1])
+        return out.replace("</g>", path + "</g>", 1) if out.endswith("</g>") else out
+
+
+def _frame_below_items(text):
+    lines = text.split("\n")
+    frame = [ln for ln in lines if 'class="cp-frame"' in ln]
+    rest = [ln for ln in lines if 'class="cp-frame"' not in ln]
+    index = next(i for i, ln in enumerate(rest) if "data-item=" in ln)
+    return "\n".join(rest[:index] + frame + rest[index:])
+
+
+def _vertical_flipped(text):
+    return re.sub(r'(data-item="text/vertical-down".*?rotate\()(-?[0-9.]+)',
+                  lambda m: m.group(1) + str(-float(m.group(2))), text)
+
+
+def _no_vertical_grid(text):
+    return re.sub(r'<line class="cp-grid-major" x1="([^"]*)" y1="[^"]*" x2="\1"[^>]*/>\n?', "", text)
+
+
 SVG_DEFECTS = {
     "casing ignores dash": _svg_postprocessed(
         lambda t: re.sub(r'(class="cp-casing"[^>]*?) stroke-dasharray="[^"]*"', r"\1", t)),
@@ -151,6 +193,21 @@ SVG_DEFECTS = {
     "text offset ignored": _OffsetIgnored,
     "unclipped text clipped": _ClipsEverything,
     "tick labels not in the central format": _svg_postprocessed(_scientific_ticks),
+    "lines drawn too high": _svg_postprocessed(_shift_lines_up),
+    "markers shifted sideways": _svg_postprocessed(
+        lambda t: re.sub(r'<circle cx="(-?[0-9.]+)"', lambda m: '<circle cx="{0}"'.format(float(m.group(1)) + 8), t)),
+    "every marker a circle": _CirclesOnly,
+    "markers joined by a line": _JoinedMarkers,
+    "frame below the items": _svg_postprocessed(_frame_below_items),
+    "vertical text upside down": _svg_postprocessed(_vertical_flipped),
+    "grid on one axis only": _svg_postprocessed(_no_vertical_grid),
+    "legend text colour ignored": _svg_postprocessed(
+        lambda t: re.sub(r'(class="cp-legend-text"[^>]*?fill=")[^"]*"', r'\1#ff0000"', t)),
+    "legend background ignored": _svg_postprocessed(
+        lambda t: re.sub(r'(class="cp-legend-box"[^>]*?fill=")[^"]*"', r'\1#00ff00"', t)),
+    "y ticks too long": _svg_postprocessed(
+        lambda t: re.sub(r'(class="cp-tick cp-tick-y" x1="(-?[0-9.]+)" y1="[^"]*" x2=")[^"]*"',
+                         lambda m: m.group(1) + str(float(m.group(2)) - 30.0) + '"', t)),
 }
 
 
@@ -228,6 +285,50 @@ def _mpl_defects():
             super()._apply(artist, item)
             artist.set_clip_on(True)
 
+    class DashCapsIgnored(MatplotlibRenderer):
+        def _apply(self, artist, item):
+            super()._apply(artist, item)
+            if isinstance(item, Line):
+                artist.set_dash_capstyle("butt")
+                artist.set_dash_joinstyle("miter")
+
+    class JoinedMarkers(MatplotlibRenderer):
+        def _apply(self, artist, item):
+            super()._apply(artist, item)
+            if isinstance(item, Markers):
+                artist.set_linestyle("-")
+
+    class SceneZOrder(MatplotlibRenderer):
+        def _reorder(self, order):
+            super()._reorder(order)
+            for item_id, artist in self._artists.items():
+                artist.set_zorder(1.0 + self._drawn[item_id].z_order)
+
+    class LegendTextBlack(MatplotlibRenderer):
+        def _set_legend(self, entries, style):
+            super()._set_legend(entries, style)
+            legend = self.ax.get_legend()
+            if legend is not None:
+                for text in legend.get_texts():
+                    text.set_color("#000000")
+
+    class OpenFrame(MatplotlibRenderer):
+        def _set_axes(self, axes):
+            super()._set_axes(axes)
+            self.ax.spines["top"].set_visible(False)
+
+    class NoYGrid(MatplotlibRenderer):
+        def _set_axes(self, axes):
+            super()._set_axes(axes)
+            self.ax.yaxis.grid(False)
+
+    class ShiftedData(MatplotlibRenderer):
+        def _apply(self, artist, item):
+            super()._apply(artist, item)
+            if isinstance(item, Line):
+                from matplotlib.transforms import ScaledTranslation
+                artist.set_transform(self.ax.transData + ScaledTranslation(0.1, 0.0, self.figure.dpi_scale_trans))
+
     class DefaultTickFormat(MatplotlibRenderer):
         def _set_axes(self, axes):
             super()._set_axes(axes)
@@ -238,12 +339,17 @@ def _mpl_defects():
             "text not upright": NotUpright, "log values clipped": ClipsLogValues, "dashes ignored": NoDashes,
             "diamond too large": DiamondTooLarge, "no restacking": NoRestacking,
             "text offset ignored": OffsetIgnored, "unclipped text clipped": ClipsEverything,
-            "default tick format": DefaultTickFormat}
+            "default tick format": DefaultTickFormat, "dash caps ignored": DashCapsIgnored,
+            "markers joined by a line": JoinedMarkers, "scene z order used directly": SceneZOrder,
+            "legend text colour ignored": LegendTextBlack, "frame side missing": OpenFrame,
+            "no y grid": NoYGrid, "lines shifted": ShiftedData}
 
 
 MPL_DEFECTS = ["casing without line", "autoscale with hidden items", "text not upright", "log values clipped",
                "dashes ignored", "diamond too large", "no restacking", "text offset ignored",
-               "unclipped text clipped", "default tick format"]
+               "unclipped text clipped", "default tick format", "dash caps ignored", "markers joined by a line",
+               "scene z order used directly", "legend text colour ignored", "frame side missing", "no y grid",
+               "lines shifted"]
 
 
 @pytest.mark.parametrize("defect", MPL_DEFECTS)

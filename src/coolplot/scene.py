@@ -143,6 +143,12 @@ class Text(Item):
             raise ValueError("Text {0!r}: offset_pt has to be two finite numbers.".format(self.id))
         object.__setattr__(self, "offset_pt", offset)
         object.__setattr__(self, "clip", bool(self.clip))
+        if self.direction is not None:
+            direction = tuple(float(v) for v in self.direction)
+            if len(direction) != 2 or not all(math.isfinite(v) for v in direction) or direction == (0.0, 0.0):
+                raise ValueError("Text {0!r}: direction has to be two finite numbers, not both zero, or None; "
+                                 "got {1}.".format(self.id, self.direction))
+            object.__setattr__(self, "direction", direction)
 
 
 def items_equal(a: Item, b: Item) -> bool:

@@ -424,14 +424,20 @@ Summary of `docs/backends.md`:
   clear) and checks both the result and that only affected items were
   touched. For file backends it also checks deterministic, ASCII output.
 * The SVG and matplotlib backends pass the kit. Read-back comes from the
-  drawn geometry (marker size from the shape, text angle checked against
-  the plot size in points, legend position from its bounding box), so a
-  backend cannot pass by echoing the scene.
-* `tests/test_backend_conformance.py` plants 25 defects one at a time
-  (casing without dash or alpha, grid above the items, ignored fonts or
-  tick sizes, legend in the wrong place or without samples, text angle in
-  data space or upside down, hidden items in autoscale, markers of the
-  wrong size, no restacking, ...) and checks that the kit catches each.
+  drawn geometry where the library exposes it: drawn positions as
+  fractions of the plot area, marker size and shape from the drawn shape,
+  text angle checked against the plot size in points, legend position
+  from its bounding box. That makes it hard, not impossible, to pass by
+  echoing the scene: a backend that reports the scene's drawing order
+  instead of its own, for example, would still pass the order check.
+  The kit is a strong safety net, not a proof.
+* `tests/test_backend_conformance.py` plants 51 defects one at a time
+  (casing without dash or alpha, grid above the items or on one axis
+  only, ignored fonts, tick sizes or tick label format, legend in the
+  wrong place, without samples or with the wrong text colour, text angle
+  in data space or upside down, hidden items in autoscale, markers of the
+  wrong size or shape or joined by a line, data drawn in the wrong place,
+  items above the frame, ...) and checks that the kit catches each.
 
 What a change costs today:
 

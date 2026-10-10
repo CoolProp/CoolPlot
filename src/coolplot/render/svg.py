@@ -45,12 +45,24 @@ def _num(value: float) -> str:
     return "0" if text in ("-0", "") else text
 
 
-_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+# Characters XML 1.0 does not allow anywhere: control characters, lone
+# surrogates (invalid Unicode) and the two non-characters U+FFFE and U+FFFF.
+_CONTROL = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+
+
+def _clean(text: str) -> str:
+    """Drop characters that would make the document invalid XML."""
+    return _CONTROL.sub("", str(text))
 
 
 def _xml_text(text: str) -> str:
-    """Escape text for XML; control characters (not allowed in XML) are dropped."""
-    return escape(_CONTROL.sub("", text))
+    """Escape text for XML; characters not allowed in XML are dropped."""
+    return escape(_clean(text))
+
+
+def _attr(text: str) -> str:
+    """A quoted, escaped XML attribute value."""
+    return quoteattr(_clean(text))
 
 
 def _css_class(prefix: str, value: str) -> str:
@@ -63,7 +75,7 @@ def _font_family(families) -> str:
 
 def _text_attrs(style: TextStyle) -> str:
     f = style.font
-    attrs = ['font-family={0}'.format(quoteattr(_font_family(f.family))),
+    attrs = ['font-family={0}'.format(_attr(_font_family(f.family))),
              'font-size="{0}"'.format(_px(f.size_pt)),
              'font-weight="{0}"'.format(f.weight), 'font-style="{0}"'.format(f.style),
              'fill="{0}"'.format(style.color or "none"), 'fill-opacity="{0}"'.format(_num(style.alpha))]
@@ -307,7 +319,7 @@ class SvgRenderer(Renderer):
                                        _css_class("cp-group-", item.group) if item.group else "") if c)
         if getattr(item, "clip", True):
             extra = ' clip-path="url(#{0}-plot-area)"'.format(self.id_prefix) + extra
-        return '<g data-item={0} class="{1}"{2}>'.format(quoteattr(item.id), classes, extra)
+        return '<g data-item={0} class="{1}"{2}>'.format(_attr(item.id), classes, extra)
 
     def _element(self, item: Item, to_px) -> str:
         """SVG text for one item; empty for hidden items, which are not drawn."""
@@ -355,7 +367,7 @@ class SvgRenderer(Renderer):
                   if math.isfinite(x) and math.isfinite(y)]
         extra = (' fill="{0}" stroke="{1}" stroke-width="{2}" opacity="{3}" data-shape={4} '
                  'data-size-pt="{5}"').format(face, s.edge_color or "none", _px(s.edge_width_pt),
-                                              _num(s.alpha), quoteattr(s.shape), _num(s.size_pt))
+                                              _num(s.alpha), _attr(s.shape), _num(s.size_pt))
         return self._open(item, extra) + "".join(shapes) + "</g>"
 
     def _text(self, item: Text, to_px) -> str:
@@ -375,7 +387,10 @@ class SvgRenderer(Renderer):
             if math.isfinite(qx) and math.isfinite(qy) and (qx, qy) != (px, py):
                 # Screen y points down, so a rising line has a negative SVG angle.
                 angle = math.degrees(math.atan2(qy - py, qx - px))
-                if angle > 90.0:
+                # Upright: the screen angle (counter-clockwise, the negative
+                # of the SVG angle) stays in (-90, 90], so straight down
+                # becomes straight up and the text reads bottom to top.
+                if angle >= 90.0:
                     angle -= 180.0
                 elif angle < -90.0:
                     angle += 180.0
@@ -511,10 +526,18 @@ class SvgRenderer(Renderer):
             return {"visible": False, "kind": kind}
         out = {"visible": True, "kind": kind, "draw_rank": groups.index(element),
                "clip": element.get("clip-path") is not None}
+        bx, by, bw, bh = self._box
+
+        def frac(px, py):
+            """A drawn point as a fraction of the plot area, y up."""
+            return ((px - bx) / bw, 1.0 - (py - by) / bh)
+
         if kind == "line":
             paths = {p.get("class"): p for p in element.iter(_NS + "path")}
             main, casing = paths["cp-stroke"], paths.get("cp-casing")
-            out.update(_stroke_description(main), n_points=len(re.findall(r"[ML]", main.get("d") or "")))
+            vertices = re.findall(r"[ML](-?[0-9.e]+),(-?[0-9.e]+)", main.get("d") or "")
+            out.update(_stroke_description(main), n_points=len(vertices),
+                       drawn_points=[frac(float(x), float(y)) for x, y in vertices])
             if casing is not None:
                 cased = _stroke_description(casing)
                 out.update(casing_color=cased["color"], casing_width_pt=(cased["width_pt"] - out["width_pt"]) / 2.0,
@@ -523,8 +546,11 @@ class SvgRenderer(Renderer):
                 out.update(casing_color=None, casing_width_pt=0.0)
         elif kind == "markers":
             shapes = list(element)
-            out.update(shape=element.get("data-shape"),
+            out.update(shape=_shape_from_geometry(shapes[0]) if shapes else None,
                        size_pt=_shape_width_px(shapes[0]) / PX_PER_PT if shapes else 0.0,
+                       drawn_points=[frac(*_shape_centre(el)) for el in shapes],
+                       connected=any(el.tag in (_NS + "polyline", _NS + "line") for el in shapes)
+                       or any(_shape_width_px(el) > 3.0 * _shape_width_px(shapes[0]) for el in shapes),
                        face_color=_color(element.get("fill")), edge_color=_color(element.get("stroke")),
                        edge_width_pt=float(element.get("stroke-width")) / PX_PER_PT,
                        alpha=float(element.get("opacity")), n_points=len(shapes))
@@ -544,7 +570,9 @@ class SvgRenderer(Renderer):
             # Offset: where the text was drawn, compared with its anchor
             to_px, _ = self._mapper()
             px, py = (float(v) for v in to_px(item.x, item.y))
-            out["offset_pt"] = ((float(text.get("x")) - px) / PX_PER_PT, (py - float(text.get("y"))) / PX_PER_PT)
+            drawn_x, drawn_y = float(text.get("x")), float(text.get("y"))
+            out["offset_pt"] = ((drawn_x - px) / PX_PER_PT, (py - drawn_y) / PX_PER_PT)
+            out["drawn_points"] = [frac(drawn_x, drawn_y)]
         return out
 
     def describe_axes(self) -> dict:
@@ -581,12 +609,32 @@ class SvgRenderer(Renderer):
             out.update(tick_direction="out" if length > 0 else "in", tick_color=_color(tick.get("stroke")),
                        tick_length_pt=abs(length) / PX_PER_PT,
                        tick_width_pt=float(tick.get("stroke-width")) / PX_PER_PT)
+        tick = first("cp-tick-y")
+        if tick is not None:
+            length = float(tick.get("x1")) - float(tick.get("x2"))   # outward points left
+            out.update(y_tick_direction="out" if length > 0 else "in", y_tick_color=_color(tick.get("stroke")),
+                       y_tick_length_pt=abs(length) / PX_PER_PT,
+                       y_tick_width_pt=float(tick.get("stroke-width")) / PX_PER_PT)
+        # One rectangle draws all four sides of the frame with one style
+        out["frame_sides"] = 4 if frame is not None and frame.get("stroke") not in (None, "none") else 0
+        item_positions = [order[id(g)] for g in root.iter() if g.get("data-item") is not None]
+        out["items_below_frame"] = not item_positions or max(item_positions) < order[id(frame)]
+        legend_box = first("cp-legend-box")
+        if legend_box is not None:
+            legend_text = first("cp-legend-text")
+            out.update(legend_background=_color(legend_box.get("fill")),
+                       items_below_legend=not item_positions or max(item_positions) < order[id(legend_box)])
+            if legend_text is not None:
+                described = _text_description("legend", legend_text)
+                out.update({k: v for k, v in described.items() if not k.endswith(("weight", "style"))})
         major, minor = by_class.get("cp-grid-major"), by_class.get("cp-grid-minor")
         out["grid_color"] = _color(major[0].get("stroke")) if major else None
         out["grid_minor_color"] = _color(minor[0].get("stroke")) if minor else None
         if major:
             grid = _stroke_description(major[0])
             items = [order[id(g)] for g in root.iter() if g.get("data-item") is not None]
+            vertical = [g for g in major if g.get("x1") == g.get("x2")]
+            out.update(x_grid_lines=len(vertical), y_grid_lines=len(major) - len(vertical))
             out.update(grid_width_pt=grid["width_pt"], grid_dash_pt=grid["dash_pt"], grid_lines=len(major),
                        grid_below_items=not items or max(order[id(g)] for g in major + (minor or [])) < min(items))
         box = first("cp-legend-box")
@@ -647,6 +695,48 @@ def _text_description(prefix, el) -> dict:
     return {p + "font_family": families, p + "font_size_pt": float(el.get("font-size")) / PX_PER_PT,
             p + "font_weight": el.get("font-weight"), p + "font_style": el.get("font-style"),
             p + "color": _color(el.get("fill"))}
+
+
+def _path_points(el):
+    return [(float(x), float(y)) for x, y in re.findall(r"[ML](-?[0-9.e]+),(-?[0-9.e]+)", el.get("d") or "")]
+
+
+def _shape_centre(el):
+    """Centre of one drawn marker in pixels, from its geometry."""
+    if el.tag == _NS + "circle":
+        return float(el.get("cx")), float(el.get("cy"))
+    if el.tag == _NS + "rect":
+        return float(el.get("x")) + float(el.get("width")) / 2.0, float(el.get("y")) + float(el.get("height")) / 2.0
+    points = _path_points(el)
+    if not points:
+        return math.nan, math.nan
+    xs, ys = [p[0] for p in points], [p[1] for p in points]
+    return (min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0
+
+
+def _shape_from_geometry(el) -> Optional[str]:
+    """Which marker shape an element draws, judged from its geometry only."""
+    if el.tag == _NS + "circle":
+        return "o"
+    if el.tag == _NS + "rect":
+        return "s"
+    if el.tag != _NS + "path":
+        return None
+    d = el.get("d") or ""
+    points = _path_points(el)
+    if d.rstrip().endswith("Z"):
+        if len(points) == 4:
+            return "D"
+        if len(points) == 3:
+            cx, cy = _shape_centre(el)
+            # One corner above the centre (screen y points down): pointing up
+            above = sum(1 for _, y in points if y < cy)
+            return "^" if above == 1 else "v"
+        return None
+    if len(points) == 4 and d.count("M") == 2:
+        (x0, y0), (x1, y1) = points[0], points[1]
+        return "+" if (x0 == x1 or y0 == y1) else "x"
+    return None
 
 
 def _shape_width_px(el) -> float:

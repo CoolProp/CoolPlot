@@ -172,3 +172,26 @@ def test_svg_survives_hostile_text_and_long_legends():
     width_pt, height_pt = svg.describe_axes()["plot_size_pt"]
     assert width_pt > 0.2 * 400 / (4.0 / 3.0)           # the legend did not eat the plot
     assert svg.describe_axes()["legend"][0][0].endswith("...")
+
+
+def test_svg_stays_valid_xml_with_awkward_characters():
+    import xml.etree.ElementTree as ET
+    from coolplot.render.svg import SvgRenderer
+    from coolplot.scene import AxesSpec, Line, Scene, Text
+    from coolplot.style.values import Font, TextStyle
+    bad = "a\x01b\x0bc\ud800d￿"
+    scene = Scene(AxesSpec(x_limits=(0.0, 1.0), y_limits=(0.0, 1.0), title=bad), [
+        Line(id="line/" + bad, x=[0.1, 0.9], y=[0.1, 0.9], legend=bad),
+        Text(id="text/" + bad, x=0.5, y=0.5, text=bad,
+             style=TextStyle(font=Font(family=("Fancy" + bad, "sans-serif")))),
+    ])
+    renderer = SvgRenderer()
+    renderer.sync(scene)
+    ET.fromstring(renderer.to_svg())   # raises if the document is not well-formed
+
+
+def test_text_direction_has_to_be_finite():
+    from coolplot.scene import Text
+    for direction in ((float("nan"), 1.0), (0.0, 0.0), (1.0, float("inf"))):
+        with pytest.raises(ValueError):
+            Text(id="t", x=0.0, y=0.0, text="t", direction=direction)

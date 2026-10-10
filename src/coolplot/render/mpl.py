@@ -42,7 +42,7 @@ from .base import Renderer, SyncReport
 
 _CAPS = {"butt": "butt", "round": "round", "square": "projecting"}
 _CAPS_BACK = {v: k for k, v in _CAPS.items()}
-_RANK_STEP = 1e-9     # z order tie breaker, small against any real z_order difference
+_RANK_STEP = 1e-3     # z order step between consecutive items in the drawing order
 _ITEM_BASE = 1.0      # items start above the grid (0.5)
 _DECORATION_Z = 1e5   # the frame above all items
 _LEGEND_Z = 1e6
@@ -248,7 +248,7 @@ class MatplotlibRenderer(Renderer):
             super()._update(old, new)
             if rank is not None:
                 self._rank[new.id] = rank
-                self._artists[new.id].set_zorder(_ITEM_BASE + new.z_order + rank * _RANK_STEP)
+                self._artists[new.id].set_zorder(_ITEM_BASE + rank * _RANK_STEP)
             return
         self._apply(self._artists[new.id], new)
 
@@ -259,9 +259,12 @@ class MatplotlibRenderer(Renderer):
             artist.remove()
 
     def _reorder(self, order):
+        # matplotlib z orders come from the position in the drawing order,
+        # not from the scene's z_order values themselves: those can be huge
+        # and would then lift items above the frame and the legend.
         self._rank = {item_id: i for i, item_id in enumerate(order)}
         for item_id, artist in self._artists.items():
-            artist.set_zorder(_ITEM_BASE + self._drawn[item_id].z_order + self._rank[item_id] * _RANK_STEP)
+            artist.set_zorder(_ITEM_BASE + self._rank[item_id] * _RANK_STEP)
 
     def _set_legend(self, entries, style):
         old = self.ax.get_legend()
@@ -297,7 +300,7 @@ class MatplotlibRenderer(Renderer):
     # Applying item properties -------------------------------------------
     def _apply(self, artist, item: Item):
         """Copy every property of an item onto its artist."""
-        artist.set_zorder(_ITEM_BASE + item.z_order + self._rank.get(item.id, 0) * _RANK_STEP)
+        artist.set_zorder(_ITEM_BASE + self._rank.get(item.id, len(self._rank)) * _RANK_STEP)
         s = item.style
         if isinstance(item, Line):
             artist.set_data(item.x, item.y)
@@ -370,10 +373,12 @@ class MatplotlibRenderer(Renderer):
             offset, seq = getattr(artist, "_dash_pattern", (0.0, None))   # private: final dashes in points
             dash = tuple(seq) if seq else ()
             width = artist.get_linewidth()
+            # A dashed line is drawn with the dash cap and join styles
+            cap = artist.get_dash_capstyle() if dash else artist.get_solid_capstyle()
+            join = artist.get_dash_joinstyle() if dash else artist.get_solid_joinstyle()
             out.update(kind="line", color=_hex_or_none(artist.get_color()) if _draws_itself(artist) else None,
-                       alpha=alpha, width_pt=width, dash_pt=dash,
-                       cap=_CAPS_BACK[artist.get_solid_capstyle()], join=artist.get_solid_joinstyle(),
-                       n_points=self._n_drawable(artist))
+                       alpha=alpha, width_pt=width, dash_pt=dash, cap=_CAPS_BACK[cap], join=join,
+                       n_points=self._n_drawable(artist), drawn_points=self._drawn_points(artist))
             if stroke is not None:
                 gc = stroke._gc   # private: the overrides the Stroke effect applies
                 out.update(casing_color=_hex_or_none(gc["foreground"]),
@@ -389,7 +394,8 @@ class MatplotlibRenderer(Renderer):
                        face_color=None if shape in ("x", "+") else _hex_or_none(artist.get_markerfacecolor()),
                        edge_color=_hex_or_none(artist.get_markeredgecolor()),
                        edge_width_pt=artist.get_markeredgewidth(), alpha=alpha,
-                       n_points=self._n_drawable(artist))
+                       n_points=self._n_drawable(artist), drawn_points=self._drawn_points(artist),
+                       connected=artist.get_linestyle() not in ("None", "none", "", " "))
         elif isinstance(item, Text):
             stroke = _stroke_effect(artist)
             weight = artist.get_fontweight()
@@ -414,6 +420,8 @@ class MatplotlibRenderer(Renderer):
             plain = self.ax.transData.transform(position)
             scale = 72.0 / self.figure.dpi
             out["offset_pt"] = (float(drawn[0] - plain[0]) * scale, float(drawn[1] - plain[1]) * scale)
+            fx, fy = self.ax.transAxes.inverted().transform(drawn)
+            out["drawn_points"] = [(float(fx), float(fy))]
         if out["visible"]:
             out["draw_rank"] = self._draw_rank(item_id)
         return out
@@ -447,6 +455,7 @@ class MatplotlibRenderer(Renderer):
                        grid_below_items=not items_z or ax.xaxis.get_zorder() < min(items_z),
                        grid_lines=self._count_in_view(ax.xaxis.get_majorticklocs(), x_lim)
                        + self._count_in_view(ax.yaxis.get_majorticklocs(), y_lim))
+        out.update(self._extra_axes_description(tick, spine))
         location = self._legend_location()
         if location is not None:
             out["legend_location"] = location
@@ -464,6 +473,46 @@ class MatplotlibRenderer(Renderer):
         return out
 
     # Read-back helpers -------------------------------------------------
+    def _drawn_points(self, artist):
+        """Where the artist's points end up, as fractions of the plot area."""
+        xy = np.asarray(artist.get_xydata(), dtype=float).reshape(-1, 2)
+        if not len(xy):
+            return []
+        with np.errstate(divide="ignore", invalid="ignore"):
+            screen = artist.get_transform().transform(xy)
+            fractions = self.ax.transAxes.inverted().transform(screen)
+        return [(float(a), float(b)) for a, b in fractions if math.isfinite(a) and math.isfinite(b)]
+
+    def _extra_axes_description(self, x_tick, spine) -> dict:
+        """y-axis ticks, all frame sides, legend style, grid per axis, stacking."""
+        ax = self.ax
+        out = {}
+        y_tick = ax.yaxis.get_major_ticks()[0]
+        out.update(y_tick_direction=getattr(y_tick, "_tickdir", None),   # private: no public getter
+                   y_tick_color=_hex_or_none(y_tick.tick1line.get_color()),
+                   y_tick_length_pt=y_tick.tick1line.get_markersize(),
+                   y_tick_width_pt=y_tick.tick1line.get_markeredgewidth())
+        color, width = spine.get_edgecolor(), spine.get_linewidth()
+        out["frame_sides"] = sum(1 for sp in ax.spines.values()
+                                 if sp.get_visible() and _hex_or_none(sp.get_edgecolor()) == _hex_or_none(color)
+                                 and sp.get_linewidth() == width)
+        items_z = [a.get_zorder() for a in self._artists.values()]
+        out["items_below_frame"] = not items_z or max(items_z) < min(sp.get_zorder() for sp in ax.spines.values())
+        legend = ax.get_legend()
+        if legend is not None:
+            out["items_below_legend"] = not items_z or max(items_z) < legend.get_zorder()
+            out["legend_background"] = _hex_or_none(legend.get_frame().get_facecolor())
+            texts = legend.get_texts()
+            if texts:
+                out.update(_font_description("legend", texts[0], full=False))
+        # matplotlib creates tick objects lazily and copies the first one's
+        # properties, so the first gridline of each axis speaks for all
+        if x_tick.gridline.get_visible():
+            out["x_grid_lines"] = self._count_in_view(ax.xaxis.get_majorticklocs(), ax.get_xlim())
+        if y_tick.gridline.get_visible():
+            out["y_grid_lines"] = self._count_in_view(ax.yaxis.get_majorticklocs(), ax.get_ylim())
+        return out
+
     @staticmethod
     def _count_in_view(locations, limits):
         lo, hi = min(limits), max(limits)
@@ -546,11 +595,21 @@ class MatplotlibRenderer(Renderer):
 
 
 def _safe_limits(limits, log):
-    """A log axis cannot start at zero or below; fall back to a 1000:1 range."""
+    """Limits matplotlib can draw.
+
+    A log axis cannot start at zero or below; fall back to a 1000:1 range.
+    Equal limits are widened by 5 % (a decade on a log axis) on each side.
+    """
     lo, hi = limits
     if log and not lo > 0.0:
         hi = hi if hi > 0.0 else 10.0
         lo = hi * 1e-3
+    if lo == hi:
+        if log:
+            lo, hi = lo / 10.0, hi * 10.0
+        else:
+            pad = 0.05 * abs(lo) if lo != 0.0 else 1.0
+            lo, hi = lo - pad, hi + pad
     return lo, hi
 
 
