@@ -25,6 +25,9 @@ from .__version__ import __version__  # noqa: F401
 # module such as coolplot.scene therefore does not pull in CoolProp.
 _LAZY = {
     "PropertyDiagram": ".diagram",
+    "Cycle": ".core.cycle",
+    "CycleSpec": ".spec",
+    "StateInput": ".core.cycle",
     "DiagramSpec": ".spec",
     "FluidSpec": ".spec",
     "IsolineSet": ".spec",

@@ -232,6 +232,10 @@ re-runs the layout once if the plot area changed when the scene was
 drawn. Tick label texts follow `coolplot.core.numbers.format_number`
 in every backend; `Text` gained `offset_pt` and `clip` for margin labels.
 
+Step 5 added cycles (section 7): `core/cycle.py` (`StateInput`,
+`Cycle`), `CycleSpec` in the spec, `thermo/cycles/` (state resolution,
+paths, models) and the engine cache for cycles; compose draws them.
+
 Backends never see themes: the scene carries concrete styles on every
 item, so a backend cannot apply its own idea of a default.
 
@@ -298,31 +302,46 @@ Overlaying a cycle on a diagram has to take a few lines, whether the
 states come from CoolPlot's own cycle models, from the user's own
 calculation or from measurements.
 
-### The interface (proposed)
+### The interface (implemented in step 5)
 
 ```python
 diagram.add_cycle("Heat pump", [
-    {"p": 3.0, "T": 0.0},                  # 1 compressor inlet, in the diagram's units
-    {"p": 15.0, "T": 75.0},                # 2 compressor outlet
-    {"p": 15.0, "Q": 0.0},                 # 3 condenser outlet
-    {"p": 3.0, "via": "isenthalpic"},      # 4 after the valve, h follows from the process
+    {"p": 3.0, "T": 0.0},                                     # 1 compressor inlet, diagram units
+    {"p": 15.0, "via": "compression", "eta_is": 0.7},         # 2 compressor outlet
+    {"p": 15.0, "Q": 0.0},                                    # 3 condenser outlet
+    {"p": 3.0, "via": "isenthalpic"},                         # 4 after the valve
 ])
+diagram.add_cycle(simple_compression("R290", T_evap_C=-5, T_cond_C=45))   # from a model
+diagram.add_cycle("measured", p=[...], h=[...])                           # from arrays
 ```
 
-* States are given by any two properties in the diagram's units (or SI
-  with `units="SI"`), by `StatePoint` objects, or as arrays
-  (`add_cycle(name, p=[...], h=[...])`). A state given with `via` takes
-  its missing property from the process that leads to it.
-* Paths between states follow the physics: equal pressure gives an
-  isobar (bending along the dome in heat exchangers), equal enthalpy an
-  isenthalp, equal entropy an isentrope, anything else a polytropic path
-  (linear in log p and s). Each connection can be set explicitly with
-  `paths=[...]`.
+* States are given by any two properties in the diagram's units (or
+  another unit system with `units=`), by `StatePoint` objects, or as
+  arrays. A state given with `via` takes its missing property from the
+  state before it in the cycle: "isenthalpic", "isentropic", "isobaric",
+  "isothermal", "isochoric", or "compression" and "expansion" with an
+  isentropic efficiency `eta_is` (the outlet pressure is the given
+  property). The proposal used "polytropic" here; a pressure alone does
+  not fix a compressor outlet, so "polytropic" is a path shape only.
+* Paths between states follow the physics ("auto"): equal pressure gives
+  an isobar (with the saturation states inserted, so heat exchangers bend
+  exactly on the dome), equal enthalpy an isenthalp, equal entropy an
+  isentrope, equal temperature an isotherm, anything else a polytropic
+  path (linear in log p and s). Each connection can be set explicitly
+  with `paths={(from, to): kind}`, including "straight".
 * The cycle gets theme styles, markers, state numbers (shown by default,
-  `numbers=False` hides them), one legend entry and a keep-out zone for
-  isoline labels. Several cycles get different styles.
+  `numbers=False` hides them, moved around their marker so they do not
+  cover each other), one legend entry and a keep-out zone for isoline
+  labels. Several cycles get different styles. Without a zoom window the
+  axes grow so that every state is inside the frame.
 * Calling `add_cycle` again with the same name replaces that cycle; only
-  it is recalculated and redrawn.
+  it is recalculated and redrawn. Errors (a state CoolProp cannot
+  compute, a chain referring to an unknown state) are raised by
+  `add_cycle`, not at the next draw. `cycle_states(name)` returns the
+  computed states.
+* Values are stored in SI units in a `CycleSpec` inside the
+  `DiagramSpec`, so a cycle survives unit changes and JSON round trips;
+  the engine computes states and paths once per fluid and cycle.
 
 ### Split and two-stage cycles
 
@@ -351,8 +370,10 @@ diagram.add_cycle("Two-stage, flash tank", states={
 ### Cycle models
 
 Models live in `thermo/cycles/` and return the same `Cycle` object that
-`add_cycle` accepts, with states, loops, mass-flow fractions per branch
-and results (COP, heat flows, power):
+`add_cycle` accepts, with states, loops and results (COP, specific heat
+flows and work per kg through the evaporator, and the flow ratio between
+the stages, `m_dot_ratio`). For blends the evaporating and condensing
+temperatures are dew points (EN 12900):
 
 * simple vapour compression (`T_evap_C`, `T_cond_C`, `dT_sh_K`,
   `dT_sc_K`, `eta_is`);
@@ -440,8 +461,8 @@ units, styles, one added line, cycles, zoom and themes.
 | 2 | Specs and settings: `FluidSpec` (backend, components, fractions, interaction parameters), `DiagramSpec`, `Settings` with presets, pure `plan()`, scene building moved from the facade into `compose` | done |
 | 3 | Numerics: port `IsoLineTracer`, isolines built from phase segments with the saturation states inserted, mixture dome from the phase envelope, per-curve diagnostics | done |
 | 4 | Label layout: edge labels with keep-out zones around processes, margin labels as an option, stable placement while dragging; central number formats | done |
-| 5 | Cycles on diagrams (section 7): `add_cycle` with states, `via`, automatic paths, loops for split and two-stage cycles, state numbers; models for simple compression, two-stage (flash tank, economizer) and Rankine | next |
-| 6 | Close the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising); examples and user documentation | |
+| 5 | Cycles on diagrams (section 7): `add_cycle` with states, `via`, automatic paths, loops for split and two-stage cycles, state numbers; models for simple compression, two-stage (flash tank, economizer) and Rankine | done |
+| 6 | Close the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising); examples and user documentation | next |
 
 ### 0.3 and later
 

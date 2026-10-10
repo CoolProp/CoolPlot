@@ -17,9 +17,10 @@ from collections import OrderedDict
 from typing import List, Tuple
 
 from ..core.quantities import QUANTITIES
-from ..spec.diagram import DiagramSpec
+from ..spec.diagram import CycleSpec, DiagramSpec
 from ..spec.fluid import FluidSpec
 from ..thermo.fluid import Fluid
+from ..thermo.cycles import cycle_paths, resolve_states
 from ..thermo.isolines import Curve, compute_isoline, compute_quality_line
 from ..thermo.limits import property_range_SI, resolve_tp_box
 from .cache import CurveCache
@@ -42,6 +43,7 @@ class Engine:
         self.max_fluids = max_fluids
         self._fluids: "OrderedDict[FluidSpec, Fluid]" = OrderedDict()
         self._domains = {}
+        self._cycles: "OrderedDict[Tuple, Tuple]" = OrderedDict()
         self._warned = set()
 
     def fluid(self, spec: FluidSpec) -> Fluid:
@@ -122,6 +124,22 @@ class Engine:
                                                                        spec.fluid.name, curve.n_gaps, total))
             result.append((request, curve))
         return result
+
+    def cycle(self, spec: DiagramSpec, cycle: CycleSpec):
+        """(states, chains) of a cycle: StatePoints by number, and per chain
+        the states along all its paths. Computed once per fluid and cycle
+        definition; restyling a cycle does not recompute it."""
+        key = (spec.fluid, cycle.states, cycle.loops, cycle.paths, cycle.steps)
+        if key in self._cycles:
+            self._cycles.move_to_end(key)
+            return self._cycles[key]
+        fluid = self.fluid(spec.fluid)
+        states = resolve_states(fluid, dict(cycle.states), cycle.loops)
+        chains = cycle_paths(fluid, states, cycle.loops, dict(cycle.paths), cycle.steps)
+        self._cycles[key] = (states, chains)
+        if len(self._cycles) > 64:
+            self._cycles.popitem(last=False)
+        return states, chains
 
     def _warn(self, spec, request, message):
         key = (spec.fluid, spec.diagram, request.key, request.value_SI, request.points)

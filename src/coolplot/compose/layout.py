@@ -31,7 +31,7 @@ inputs always give the same labels.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -486,3 +486,54 @@ def _margin_text(request: LabelRequest, frame: Frame, edge: str, x: float, y: fl
     return Text(id=request.id, group=request.group, role="isoline_label", x=float(cx[0]), y=float(cy[0]),
                 text=request.text, direction=direction, style=request.style.with_(h_align=h_align, v_align=v_align),
                 offset_pt=offset, clip=False, z_order=4.0)
+
+
+# ---------------------------------------------------------------------------
+# State numbers
+# ---------------------------------------------------------------------------
+#: Where a state number may go around its marker, in order of preference:
+#: (x direction, y direction, h_align, v_align).
+NUMBER_SPOTS = ((1, 1, "left", "bottom"), (-1, 1, "right", "bottom"), (1, -1, "left", "top"),
+                (-1, -1, "right", "top"))
+
+
+def place_state_numbers(numbers: Sequence[Text], frame: Frame, marker_x, marker_y) -> List[Text]:
+    """Move state numbers around their markers so they do not cover each other.
+
+    Each number starts up and to the right of its marker (its offset gives
+    the distance) and moves to another corner if that spot overlaps a
+    number placed before or another marker. If no corner is free it stays
+    in the first one.
+    """
+    if not frame.usable:
+        return list(numbers)
+    mx, my = frame.to_pt(np.asarray(marker_x, dtype=float), np.asarray(marker_y, dtype=float))
+    placed: List[Box] = []
+    out = []
+    for t in numbers:
+        px, py = frame.to_pt([t.x], [t.y])
+        if not (math.isfinite(px[0]) and math.isfinite(py[0])):
+            out.append(t)
+            continue
+        width, height = text_size_pt(t.text, t.style)
+        distance = abs(t.offset_pt[0])
+        others = (np.hypot(mx - px[0], my - py[0]) > 0.5)   # every marker but its own
+        choice = None
+        for sx, sy, h_align, v_align in NUMBER_SPOTS:
+            cx = px[0] + sx * (distance + 0.5 * width)
+            cy = py[0] + sy * (distance + 0.5 * height)
+            box = Box(cx, cy, 0.0, 0.5 * width, 0.5 * height)
+            if any(box.overlaps(b, 0.5) for b in placed) or box.near_points(mx[others], my[others], 2.0):
+                continue
+            choice = (box, sx, sy, h_align, v_align)
+            break
+        if choice is None:
+            sx, sy, h_align, v_align = NUMBER_SPOTS[0]
+            box = Box(px[0] + distance + 0.5 * width, py[0] + distance + 0.5 * height, 0.0,
+                      0.5 * width, 0.5 * height)
+            choice = (box, sx, sy, h_align, v_align)
+        box, sx, sy, h_align, v_align = choice
+        placed.append(box)
+        out.append(replace(t, offset_pt=(sx * distance, sy * distance),
+                           style=t.style.with_(h_align=h_align, v_align=v_align)))
+    return out

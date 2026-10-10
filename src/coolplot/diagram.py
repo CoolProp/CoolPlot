@@ -25,9 +25,11 @@ from __future__ import annotations
 
 from typing import Sequence
 
+import numpy as np
 from CoolProp import AbstractState
 
 from .compose import compose
+from .core.cycle import Cycle, StateInput
 from .core.diagram_type import DiagramType
 from .core.limits import get_tp_limits
 from .core.quantities import quantity_key
@@ -35,11 +37,26 @@ from .core.state import StatePoint
 from .core.units import get_unit_system
 from .engine import CurveCache, Engine, plan
 from .scene import Scene
-from .spec import DiagramSpec, FluidSpec, IsolineSet, ProcessSpec, get_settings
+from .spec import CycleSpec, DiagramSpec, FluidSpec, IsolineSet, ProcessSpec, get_settings
 from .style.theme import Theme, get_theme
 from .style.values import LineStyle, MarkerStyle
 from .thermo.fluid import Fluid
 from .thermo.process import state_point
+
+
+def _state_input(entry, units) -> StateInput:
+    """A StateInput from a StatePoint, a StateInput or a dict in ``units``."""
+    if isinstance(entry, StateInput):
+        return entry
+    if isinstance(entry, StatePoint):
+        return StateInput(state=entry)
+    if not isinstance(entry, dict):
+        raise TypeError("A state is a StatePoint or a dict of properties, not {0}.".format(type(entry).__name__))
+    entry = dict(entry)
+    via = entry.pop("via", None)
+    eta_is = float(entry.pop("eta_is", 1.0))
+    props = tuple((quantity_key(k), float(units[k].to_SI(v))) for k, v in entry.items())
+    return StateInput(props, via, eta_is)
 
 
 def fluid_spec(fluid) -> FluidSpec:
@@ -275,6 +292,82 @@ class PropertyDiagram:
     def remove_process(self, name: str):
         self.spec = self.spec.without_process(name)
 
+    def add_cycle(self, name, states=None, loops=None, paths=None, numbers: bool = True, units=None,
+                  line_style: LineStyle = None, marker_style: MarkerStyle = None, steps: int = 20, **arrays):
+        """Add or replace a cycle, drawn on top of the diagram.
+
+        Parameters
+        ----------
+        name : str or Cycle
+            Shown in the legend. A :class:`coolplot.core.cycle.Cycle` from
+            one of the cycle models (:mod:`coolplot.thermo.cycles`) is drawn
+            as it is, under its own name.
+        states : list or dict
+            The states, numbered from 1 in the order of a list, or by the
+            keys of a dict. Each state is a StatePoint, or a dict with two
+            properties in the diagram's units, e.g. ``{"p": 3.0, "T": 0.0}``,
+            or one property and ``"via"``, e.g. ``{"p": 3.0, "via":
+            "isenthalpic"}``, which takes the second property from the state
+            before it in the cycle (see :data:`coolplot.core.cycle.VIA_KINDS`;
+            "compression" and "expansion" also take ``"eta_is"``).
+        loops : list of lists, optional
+            Chains of state numbers, each drawn as one connected line, e.g.
+            ``[[1, 2, 7, 8, 1], [3, 4, 5, 6, 3]]`` for two closed loops.
+            Default: one closed loop through all states in order.
+        paths : dict, optional
+            ``{(from, to): kind}`` for connections that should not be drawn
+            with "auto" (see :data:`coolplot.core.cycle.PATH_KINDS`).
+        numbers : bool
+            Show the state numbers.
+        units : str or UnitSystem, optional
+            Units of the given values; default the diagram's units.
+        line_style, marker_style : optional
+            Override the theme for this cycle.
+        steps : int
+            Segments per drawn path.
+        **arrays
+            Instead of ``states``: arrays of two properties, e.g.
+            ``add_cycle("measured", p=[...], h=[...])``.
+
+        Only this cycle is recalculated and redrawn when it changes.
+        Returns the name.
+        """
+        cycle = name if isinstance(name, Cycle) else (states if isinstance(states, Cycle) else None)
+        if cycle is not None:
+            spec = CycleSpec.from_cycle(cycle, name=None if isinstance(name, Cycle) else name, loops=loops,
+                                        paths=paths, numbers=numbers, line_style=line_style,
+                                        marker_style=marker_style, steps=steps)
+        else:
+            unit_system = self.spec.units if units is None else get_unit_system(units)
+            if arrays:
+                if states is not None:
+                    raise ValueError("Give the states either as 'states' or as arrays, not both.")
+                if len(arrays) != 2:
+                    raise ValueError("Give arrays of exactly two properties, not {0}.".format(sorted(arrays)))
+                columns = {k: list(np.atleast_1d(v)) for k, v in arrays.items()}
+                lengths = {len(v) for v in columns.values()}
+                if len(lengths) != 1:
+                    raise ValueError("The arrays {0} have different lengths.".format(sorted(arrays)))
+                states = [dict(zip(columns, row)) for row in zip(*columns.values())]
+            if states is None:
+                raise ValueError("Give the states of cycle '{0}'.".format(name))
+            items = states.items() if isinstance(states, dict) else enumerate(states, start=1)
+            inputs = tuple((int(n), _state_input(entry, unit_system)) for n, entry in items)
+            spec = CycleSpec(str(name), inputs, loops or (), paths or (), numbers, line_style, marker_style, steps)
+        self.engine.cycle(self.spec, spec)   # compute now, so that errors show up here
+        self.spec = self.spec.with_cycle(spec)
+        return spec.name
+
+    def remove_cycle(self, name: str):
+        self.spec = self.spec.without_cycle(name)
+
+    def cycle_states(self, name: str):
+        """The states of a cycle in SI units, by state number."""
+        cycle = next((c for c in self.spec.cycles if c.name == name), None)
+        if cycle is None:
+            raise KeyError("No cycle named {0!r}.".format(name))
+        return dict(self.engine.cycle(self.spec, cycle)[0])
+
     # ------------------------------------------------------------------
     # Interaction helpers
     # ------------------------------------------------------------------
@@ -306,7 +399,8 @@ class PropertyDiagram:
         domain = self.engine.domain(spec)
         curves = self.engine.curves(spec, domain, plan(spec, domain))
         previous = {item.id: item for item in self.scene if item.role == "isoline_label"}
-        items, axes = compose(spec, domain, curves, self._plot_size_pt, previous)
+        cycles = [self.engine.cycle(spec, c) for c in spec.cycles]
+        items, axes = compose(spec, domain, curves, self._plot_size_pt, previous, cycles)
         self.scene.replace_all(items, axes=axes)
         return self.scene
 

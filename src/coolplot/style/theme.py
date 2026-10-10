@@ -67,6 +67,8 @@ class Theme:
         least as many entries as you expect processes.
     state_points : tuple of MarkerStyle
         Markers for the states of process i.
+    state_number : TextStyle
+        The numbers next to the states of a cycle.
     axes : AxesStyle
         Background, frame, ticks, grid, fonts and legend.
     """
@@ -80,6 +82,7 @@ class Theme:
     isoline_label: TextStyle = TextStyle(font=Font(size_pt=7.5))
     processes: Tuple[LineStyle, ...] = (LineStyle(width_pt=2.0),)
     state_points: Tuple[MarkerStyle, ...] = (MarkerStyle(),)
+    state_number: TextStyle = TextStyle(font=Font(size_pt=8.0, weight="bold"))
     axes: AxesStyle = field(default_factory=AxesStyle)
 
     def __post_init__(self):
@@ -184,6 +187,7 @@ def _screen_theme(name, surface, ink, ink_secondary, ink_muted, gridline, baseli
             MarkerStyle(shape="D", size_pt=6.0, face_color=ink_secondary, edge_color=surface,
                         edge_width_pt=1.0),
         ),
+        state_number=TextStyle(font=_sans(8.0, weight="bold"), color=ink, halo_color=surface, halo_width_pt=2.0),
         axes=AxesStyle(
             background=surface,
             figure_background=surface,
@@ -238,6 +242,7 @@ CLASSIC = Theme(
     isoline_label=TextStyle(font=Font(size_pt=7.0), halo_color="white", halo_width_pt=1.5),
     processes=(LineStyle(color="red", width_pt=1.5),),
     state_points=(MarkerStyle(shape="o", size_pt=5.0, face_color="red", edge_color="red"),),
+    state_number=TextStyle(font=Font(size_pt=8.0), color="red", halo_color="white", halo_width_pt=1.5),
     axes=AxesStyle(grid_major=None, legend=LegendStyle(visible=False)),
 )
 

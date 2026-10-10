@@ -17,12 +17,13 @@ import numpy as np
 
 from ..core.quantities import get_quantity
 from ..scene import AxesSpec, Item, Line, Markers, Text
-from ..spec.diagram import DiagramSpec, ProcessSpec
+from ..spec.diagram import CycleSpec, DiagramSpec, ProcessSpec
 from ..style.theme import Theme
 from ..style.values import Font
-from .layout import Frame, LabelRequest, place_edge_labels, place_margin_labels
+from .layout import Frame, LabelRequest, place_edge_labels, place_margin_labels, place_state_numbers
 
-# Drawing order: isolines, saturation dome, labels, processes, state points.
+# Drawing order: isolines, saturation dome, labels, processes and cycles,
+# state points, state numbers.
 Z_ISOLINE, Z_SATURATION, Z_LABEL, Z_PROCESS, Z_STATES = 1.0, 2.0, 4.0, 5.0, 6.0
 
 
@@ -50,13 +51,40 @@ def axis_label(spec: DiagramSpec, key: str) -> str:
     return "{0} {1} / {2}".format(q.label, q.symbol, spec.units[key].label)
 
 
-def axes_spec(spec: DiagramSpec, domain, theme: Theme) -> AxesSpec:
-    """Axis titles, scales, limits and style of the diagram."""
+def _include(limits, values, log: bool, pad: float = 0.04):
+    """Widen (lo, hi) so that all finite values lie inside, with a margin of
+    ``pad`` times the span, so that markers are not cut off at the frame."""
+    values = [v for v in values if np.isfinite(v) and (v > 0.0 or not log)]
+    lo, hi = limits
+    if not values:
+        return limits
+    if log:
+        span = np.log10(hi) - np.log10(lo)
+        lo = min(lo, min(values) / 10.0 ** (pad * span))
+        hi = max(hi, max(values) * 10.0 ** (pad * span))
+    else:
+        span = hi - lo
+        lo = min(lo, min(values) - pad * span)
+        hi = max(hi, max(values) + pad * span)
+    return lo, hi
+
+
+def axes_spec(spec: DiagramSpec, domain, theme: Theme, shown=()) -> AxesSpec:
+    """Axis titles, scales, limits and style of the diagram.
+
+    Without a zoom window the axes cover the calculation domain, widened
+    where needed so that every point in ``shown`` (display-unit (x, y)
+    arrays of processes and cycles) is visible.
+    """
     diagram = spec.diagram
     limits = []
-    for key, view in zip((diagram.x, diagram.y), spec.view_SI):
+    for axis, (key, view, log) in enumerate(zip((diagram.x, diagram.y), spec.view_SI,
+                                                (diagram.x_log, diagram.y_log))):
         lo_hi = view if view is not None else domain.range_SI(key)
-        limits.append(tuple(sorted(spec.units[key].from_SI(lo_hi).tolist())))
+        lo_hi = tuple(sorted(spec.units[key].from_SI(lo_hi).tolist()))
+        if view is None:
+            lo_hi = _include(lo_hi, [v for xy in shown for v in np.asarray(xy[axis], dtype=float)], log)
+        limits.append(tuple(lo_hi))
     return AxesSpec(x_label=axis_label(spec, diagram.x), y_label=axis_label(spec, diagram.y),
                     x_log=diagram.x_log, y_log=diagram.y_log,
                     x_limits=limits[0], y_limits=limits[1], title=spec.title, style=theme.axes,
@@ -195,8 +223,42 @@ def process_items(spec: DiagramSpec, theme: Theme, process: ProcessSpec, index: 
     return items
 
 
+def cycle_items(spec: DiagramSpec, theme: Theme, cycle: CycleSpec, states, chains, index: int) -> List[Item]:
+    """One line per chain, the state markers and the state numbers of a cycle.
+
+    All items share the group "cycle/<name>", so that a change to the
+    cycle touches only them. Each state is marked and numbered once,
+    however many chains pass through it.
+    """
+    ux, uy = spec.units[spec.diagram.x], spec.units[spec.diagram.y]
+    kx, ky = spec.diagram.x, spec.diagram.y
+    group = "cycle/" + cycle.name
+    line_style = cycle.line_style or theme.process_style(index)
+    marker_style = cycle.marker_style or theme.state_point_style(index)
+    items: List[Item] = []
+    for i, chain in enumerate(chains):
+        items.append(Line(id="{0}/loop/{1}".format(group, i), group=group, role="cycle",
+                          legend=cycle.name if i == 0 else None,
+                          x=ux.from_SI([s[kx] for s in chain]), y=uy.from_SI([s[ky] for s in chain]),
+                          style=line_style, z_order=Z_PROCESS))
+    numbers = sorted(states)
+    x = ux.from_SI([states[n][kx] for n in numbers])
+    y = uy.from_SI([states[n][ky] for n in numbers])
+    items.append(Markers(id=group + "/states", group=group, role="state_points", legend=cycle.name,
+                         x=x, y=y, style=marker_style, z_order=Z_STATES))
+    if cycle.numbers:
+        # Up and to the right of the marker, a fixed distance on screen
+        offset = 0.5 * marker_style.size_pt + 1.5
+        number_style = theme.state_number.with_(h_align="left", v_align="bottom")
+        for n, xi, yi in zip(numbers, x, y):
+            items.append(Text(id="{0}/number/{1}".format(group, n), group=group + "/numbers", role="state_number",
+                              x=float(xi), y=float(yi), text=str(n), offset_pt=(offset, offset),
+                              style=number_style, z_order=Z_STATES + 1.0))
+    return items
+
+
 def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Tuple[float, float] = None,
-            previous_labels: Dict[str, Text] = None) -> Tuple[List[Item], AxesSpec]:
+            previous_labels: Dict[str, Text] = None, cycles: Sequence = None) -> Tuple[List[Item], AxesSpec]:
     """All scene items and the axes for a diagram.
 
     ``curves`` are (CurveRequest, Curve) pairs as returned by
@@ -204,19 +266,31 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Tuple[flo
     the plot area as a renderer reports it, needed to place labels; without
     it the size is estimated from ``Settings.page``. ``previous_labels``
     maps label ids to the label items of the previous scene, so that labels
-    stay where they were while that spot is still free.
+    stay where they were while that spot is still free. ``cycles`` holds
+    (states, chains) for each cycle of the spec, from
+    :meth:`coolplot.engine.Engine.cycle`.
     """
     theme = scaled_theme(spec.settings.look, spec.settings.page.font_scale)
-    axes = axes_spec(spec, domain, theme)
-    lines = isoline_items(spec, theme, curves)
-    items: List[Item] = list(lines)
     process_parts = []
     for index, process in enumerate(spec.processes):
         process_parts.extend(process_items(spec, theme, process, index))
+    for index, (cycle, (states, chains)) in enumerate(zip(spec.cycles, cycles or ())):
+        process_parts.extend(cycle_items(spec, theme, cycle, states, chains, len(spec.processes) + index))
+    drawn = [(p.x, p.y) for p in process_parts if not isinstance(p, Text)]
+    axes = axes_spec(spec, domain, theme, drawn)
+    size = plot_size_pt or default_plot_size_pt(spec)
+    frame = Frame(axes.x_limits, axes.y_limits, axes.x_log, axes.y_log, *size)
+    numbers = [p for p in process_parts if isinstance(p, Text)]
+    if numbers:
+        markers = [p for p in process_parts if isinstance(p, Markers)]
+        mx = np.concatenate([m.x for m in markers]) if markers else np.array([])
+        my = np.concatenate([m.y for m in markers]) if markers else np.array([])
+        moved = {t.id: t for t in place_state_numbers(numbers, frame, mx, my)}
+        process_parts = [moved.get(p.id, p) if isinstance(p, Text) else p for p in process_parts]
+    lines = isoline_items(spec, theme, curves)
+    items: List[Item] = list(lines)
     requests = label_requests(spec, theme, curves, lines)
     if requests:
-        keep_out = [(p.x, p.y) for p in process_parts]
-        size = plot_size_pt or default_plot_size_pt(spec)
-        items.extend(labels_for(spec, requests, axes, keep_out, size, previous_labels))
+        items.extend(labels_for(spec, requests, axes, drawn, size, previous_labels))
     items.extend(process_parts)
     return items, axes

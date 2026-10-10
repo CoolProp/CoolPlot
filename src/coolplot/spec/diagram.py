@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Optional, Tuple
 
+from ..core.cycle import Cycle, StateInput, check_loops, check_paths, default_loops
 from ..core.diagram_type import DiagramType
 from ..core.limits import Relative, TpLimits, get_tp_limits
 from ..core.quantities import quantity_key
@@ -102,6 +103,69 @@ class ProcessSpec:
 
 
 @dataclass(frozen=True)
+class CycleSpec:
+    """A cycle to draw: numbered states, the chains through them and how paths are drawn
+
+    ``states`` are (number, StateInput) pairs in SI units, ``loops`` chains
+    of state numbers (one closed loop through all states in ascending order
+    if empty), ``paths`` (from, to) -> path kind for connections that should
+    not use "auto". ``numbers`` shows the state numbers. ``steps`` is the
+    number of segments per drawn path.
+    """
+    name: str
+    states: Tuple[Tuple[int, StateInput], ...]
+    loops: Tuple[Tuple[int, ...], ...] = ()
+    paths: Tuple[Tuple[Tuple[int, int], str], ...] = ()
+    numbers: bool = True
+    line_style: Optional[LineStyle] = None
+    marker_style: Optional[MarkerStyle] = None
+    steps: int = 20
+
+    def __post_init__(self):
+        items = self.states.items() if isinstance(self.states, dict) else self.states
+        states = tuple(sorted((int(n), s) for n, s in items))
+        if not states:
+            raise ValueError("Cycle '{0}' has no states.".format(self.name))
+        if len({n for n, _ in states}) != len(states):
+            raise ValueError("Cycle '{0}': a state number is used twice.".format(self.name))
+        for number, given in states:
+            if not isinstance(given, StateInput):
+                raise TypeError("Cycle '{0}', state {1}: expected a StateInput.".format(self.name, number))
+        numbers = [n for n, _ in states]
+        object.__setattr__(self, "states", states)
+        object.__setattr__(self, "loops", check_loops(numbers, self.loops) if self.loops else default_loops(numbers))
+        object.__setattr__(self, "paths", check_paths(self.paths))
+        if int(self.steps) < 1:
+            raise ValueError("Cycle '{0}': steps has to be at least 1.".format(self.name))
+        object.__setattr__(self, "steps", int(self.steps))
+        object.__setattr__(self, "numbers", bool(self.numbers))
+
+    @classmethod
+    def from_cycle(cls, cycle: Cycle, **changes) -> "CycleSpec":
+        """A spec that draws a computed :class:`coolplot.core.cycle.Cycle` as it is."""
+        values = dict(name=cycle.name, states=tuple((n, StateInput(state=s)) for n, s in cycle.states),
+                      loops=cycle.loops, paths=cycle.paths)
+        values.update({k: v for k, v in changes.items() if v is not None})
+        return cls(**values)
+
+    def to_dict(self) -> dict:
+        return {"name": self.name, "states": [[n, s.to_dict()] for n, s in self.states],
+                "loops": [list(c) for c in self.loops], "paths": [[list(p), k] for p, k in self.paths],
+                "numbers": self.numbers, "steps": self.steps,
+                "line_style": None if self.line_style is None else style_to_dict(self.line_style),
+                "marker_style": None if self.marker_style is None else style_to_dict(self.marker_style)}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "CycleSpec":
+        return cls(data["name"], tuple((n, StateInput.from_dict(s)) for n, s in data["states"]),
+                   tuple(tuple(c) for c in data.get("loops", ())),
+                   tuple((tuple(p), k) for p, k in data.get("paths", ())), data.get("numbers", True),
+                   None if data.get("line_style") is None else style_from_dict(LineStyle, data["line_style"]),
+                   None if data.get("marker_style") is None else style_from_dict(MarkerStyle, data["marker_style"]),
+                   data.get("steps", 20))
+
+
+@dataclass(frozen=True)
 class DiagramSpec:
     """Everything a property diagram shows, see the module docstring
 
@@ -117,6 +181,7 @@ class DiagramSpec:
     settings: Settings = field(default_factory=Settings)
     isolines: Tuple[IsolineSet, ...] = ()
     processes: Tuple[ProcessSpec, ...] = ()
+    cycles: Tuple[CycleSpec, ...] = ()
     style_overrides: Tuple[Tuple[str, Tuple[Tuple[str, Any], ...]], ...] = ()
     view_SI: Tuple[Limits, Limits] = (None, None)
     title: str = ""
@@ -137,6 +202,10 @@ class DiagramSpec:
         names = [p.name for p in self.processes]
         if len(set(names)) != len(names):
             raise ValueError("Process names have to be unique, got {0}.".format(names))
+        names = [c.name for c in self.cycles]
+        if len(set(names)) != len(names):
+            raise ValueError("Cycle names have to be unique, got {0}.".format(names))
+        object.__setattr__(self, "cycles", tuple(self.cycles))
         view = tuple(None if lim is None else tuple(float(v) for v in lim) for lim in self.view_SI)
         if len(view) != 2 or any(lim is not None and len(lim) != 2 for lim in view):
             raise ValueError("view_SI has to be (x_limits, y_limits), each None or (min, max).")
@@ -179,6 +248,15 @@ class DiagramSpec:
     def without_process(self, name: str) -> "DiagramSpec":
         return replace(self, processes=tuple(p for p in self.processes if p.name != name))
 
+    def with_cycle(self, cycle: CycleSpec) -> "DiagramSpec":
+        """Add a cycle, or replace the cycle of the same name in place."""
+        if all(c.name != cycle.name for c in self.cycles):
+            return replace(self, cycles=self.cycles + (cycle,))
+        return replace(self, cycles=tuple(cycle if c.name == cycle.name else c for c in self.cycles))
+
+    def without_cycle(self, name: str) -> "DiagramSpec":
+        return replace(self, cycles=tuple(c for c in self.cycles if c.name != name))
+
     def with_style_override(self, key: str, **changes) -> "DiagramSpec":
         """Add LineStyle changes for one family; without changes, remove its overrides."""
         key = quantity_key(key)
@@ -197,6 +275,7 @@ class DiagramSpec:
                 "settings": self.settings.to_dict(),
                 "isolines": [s.to_dict() for s in self.isolines],
                 "processes": [p.to_dict() for p in self.processes],
+                "cycles": [c.to_dict() for c in self.cycles],
                 "style_overrides": {k: {name: _plain(v) for name, v in changes}
                                     for k, changes in self.style_overrides},
                 "view_SI": [None if lim is None else list(lim) for lim in self.view_SI],
@@ -213,6 +292,7 @@ class DiagramSpec:
                    settings=Settings.from_dict(data.get("settings", {})),
                    isolines=tuple(IsolineSet.from_dict(s) for s in data.get("isolines", ())),
                    processes=tuple(ProcessSpec.from_dict(p) for p in data.get("processes", ())),
+                   cycles=tuple(CycleSpec.from_dict(c) for c in data.get("cycles", ())),
                    style_overrides=overrides,
                    view_SI=tuple(None if lim is None else tuple(lim) for lim in data.get("view_SI", (None, None))),
                    title=data.get("title", ""))
