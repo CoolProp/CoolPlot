@@ -179,7 +179,7 @@ def test_svg_stays_valid_xml_with_awkward_characters():
     from coolplot.render.svg import SvgRenderer
     from coolplot.scene import AxesSpec, Line, Scene, Text
     from coolplot.style.values import Font, TextStyle
-    bad = "a\x01b\x0bc\ud800d￿"
+    bad = "a\x01b\x0bc\ud800d\uffff"
     scene = Scene(AxesSpec(x_limits=(0.0, 1.0), y_limits=(0.0, 1.0), title=bad), [
         Line(id="line/" + bad, x=[0.1, 0.9], y=[0.1, 0.9], legend=bad),
         Text(id="text/" + bad, x=0.5, y=0.5, text=bad,

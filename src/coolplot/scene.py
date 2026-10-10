@@ -175,6 +175,31 @@ def items_equal(a: Item, b: Item) -> bool:
 # ---------------------------------------------------------------------------
 # Axes and scene
 # ---------------------------------------------------------------------------
+def drawable_limits(limits, log: bool) -> Tuple[float, float]:
+    """The axis limits a backend actually draws for the requested ones.
+
+    One rule for every backend and for the label layout, so that labels
+    are placed in the same frame that is drawn:
+
+    * a log axis cannot reach zero: an upper limit at or below zero
+      becomes 10, a lower limit at or below zero upper / 1000;
+    * equal limits are widened, by a decade on each side of a log axis
+      and by 10 % (0.5 around zero) on a linear one.
+    """
+    lo, hi = float(min(limits)), float(max(limits))
+    if log:
+        if not hi > 0.0:
+            hi = 10.0
+        if not lo > 0.0:
+            lo = hi * 1e-3
+        if lo == hi:
+            lo, hi = lo / 10.0, hi * 10.0
+    elif lo == hi:
+        pad = abs(lo) * 0.1 or 0.5
+        lo, hi = lo - pad, hi + pad
+    return lo, hi
+
+
 @dataclass(frozen=True)
 class AxesSpec:
     """Everything about the axes that is not an item

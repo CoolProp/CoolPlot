@@ -42,7 +42,7 @@ class Engine:
         self.cache = cache if cache is not None else CurveCache()
         self.max_fluids = max_fluids
         self._fluids: "OrderedDict[FluidSpec, Fluid]" = OrderedDict()
-        self._domains = {}
+        self._domains: "OrderedDict[Tuple, Domain]" = OrderedDict()
         self._cycles: "OrderedDict[Tuple, Tuple]" = OrderedDict()
         self._warned = set()
 
@@ -71,6 +71,9 @@ class Engine:
                 except ValueError:
                     continue   # not defined for this fluid, e.g. u for some backends
             self._domains[key] = Domain(tuple(tp_box), tuple(ranges))
+            if len(self._domains) > 64:
+                self._domains.popitem(last=False)
+        self._domains.move_to_end(key)
         return self._domains[key]
 
     def cache_key(self, spec: DiagramSpec, domain: Domain, request: CurveRequest) -> Tuple:
@@ -114,12 +117,12 @@ class Engine:
             curve = self.curve(spec, domain, request)
             total = len(curve.x)
             if curve.n_valid < 2:
-                self._warn(spec, request, "Skipping the line {0}={1:.6g} in {2}: CoolProp failed for "
+                self._warn(spec, domain, request, "Skipping the line {0}={1:.6g} in {2}: CoolProp failed for "
                            "{3} of {4} points.".format(request.key, request.value_SI, spec.fluid.name,
                                                        curve.n_failed, total))
                 continue
             if total and curve.n_gaps > tolerance * total:
-                self._warn(spec, request, "The line {0}={1:.6g} in {2} has gaps: CoolProp failed for "
+                self._warn(spec, domain, request, "The line {0}={1:.6g} in {2} has gaps: CoolProp failed for "
                            "{3} of {4} points inside the line.".format(request.key, request.value_SI,
                                                                        spec.fluid.name, curve.n_gaps, total))
             result.append((request, curve))
@@ -141,8 +144,11 @@ class Engine:
             self._cycles.popitem(last=False)
         return states, chains
 
-    def _warn(self, spec, request, message):
-        key = (spec.fluid, spec.diagram, request.key, request.value_SI, request.points)
+    def _warn(self, spec, domain, request, message):
+        # Keyed like the curve itself, so a gappy line in a new domain warns again
+        key = self.cache_key(spec, domain, request)
         if key not in self._warned:
+            if len(self._warned) > 10000:   # a long session, not a memory leak
+                self._warned.clear()
             self._warned.add(key)
             warnings.warn(message, UserWarning, stacklevel=3)

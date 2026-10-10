@@ -32,7 +32,7 @@ from typing import Callable, List
 import numpy as np
 
 from ..core.numbers import format_number
-from ..scene import AxesSpec, Line, Markers, Scene, Text
+from ..scene import AxesSpec, Line, Markers, Scene, Text, drawable_limits
 from ..style.values import (AxesStyle, Font, GENERIC_FONTS, LegendStyle, LineStyle, MarkerStyle, MARKER_SHAPES,
                      TextStyle, dash_pattern_pt)
 
@@ -153,12 +153,8 @@ def _sample_colors(item):
 
 
 def safe_limits(limits, log):
-    """The limits a backend has to use: a log axis cannot start at or below zero."""
-    lo, hi = limits
-    if log and not lo > 0.0:
-        hi = hi if hi > 0.0 else 10.0
-        lo = hi * 1e-3
-    return lo, hi
+    """The limits a backend has to use, see :func:`coolplot.scene.drawable_limits`."""
+    return drawable_limits(limits, log)
 
 
 def expected_item(item, axes: AxesSpec) -> dict:
@@ -220,8 +216,7 @@ def expected_axes(scene: Scene, owns_canvas: bool) -> dict:
     if st.frame_color is not None and st.frame_width_pt > 0.0:
         out["frame_sides"] = 4
     for name, limits, log in (("x_limits", a.x_limits, a.x_log), ("y_limits", a.y_limits, a.y_log)):
-        # Equal limits cannot be drawn; the backend widens them (checked separately)
-        if limits is not None and limits[0] != limits[1]:
+        if limits is not None:
             out[name] = safe_limits(limits, log)
     if grid_major is not None:
         g = grid_major

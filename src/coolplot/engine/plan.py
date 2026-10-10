@@ -97,6 +97,8 @@ def nice_linear(lo: float, hi: float, num: int) -> np.ndarray:
     The step is chosen so that about ``num`` values fall between lo and hi;
     all values are whole multiples of the step, e.g. -20, -10, 0, 10.
     """
+    if not (math.isfinite(lo) and math.isfinite(hi)):
+        raise ValueError("Cannot round values over the range ({0}, {1}).".format(lo, hi))
     if not hi > lo:
         return np.array([lo])
     raw = (hi - lo) / max(num - 1, 1)
@@ -122,9 +124,10 @@ def nice_log(lo: float, hi: float, num: int) -> np.ndarray:
     for mantissas in _LOG_MANTISSAS:
         values = [float("{0:.6g}".format(m * 10.0 ** k)) for k in range(k_lo, k_hi + 1) for m in mantissas]
         values = np.array(sorted(v for v in values if lo * (1 - 1e-9) <= v <= hi * (1 + 1e-9)))
-        if best is None or abs(len(values) - num) < abs(len(best) - num):
+        if len(values) and (best is None or abs(len(values) - num) < abs(len(best) - num)):
             best = values
-    return best
+    # A range narrower than the finest mantissa step: round linearly instead
+    return best if best is not None else nice_linear(lo, hi, num)
 
 
 def isoline_values_SI(spec: DiagramSpec, iso_set: IsolineSet, domain: Domain) -> np.ndarray:
@@ -140,6 +143,8 @@ def isoline_values_SI(spec: DiagramSpec, iso_set: IsolineSet, domain: Domain) ->
             unit = spec.units[key]
             lo_d, hi_d = sorted(float(v) for v in unit.from_SI([lo, hi]))
             values_d = nice_log(lo_d, hi_d, iso_set.num) if log else nice_linear(lo_d, hi_d, iso_set.num)
+            if len(values_d) == 0:   # no round value in a very narrow range
+                values_d = np.array([0.5 * (lo_d + hi_d)])
             values = unit.to_SI(values_d)
         else:
             values = log_grid(lo, hi, iso_set.num) if log else linear_grid(lo, hi, iso_set.num)

@@ -152,11 +152,11 @@ caches its results (curves) or compares them with the previous ones
 
 | Stage | Module | Status |
 |-------|--------|--------|
-| Settings | `diagram.py` (`PropertyDiagram`); an immutable `DiagramSpec` is planned | partly |
-| Plan | inside `PropertyDiagram.update_scene` today; a pure `plan(spec)` is planned | partly |
-| Engine | `thermo/isolines.py` (`compute_isoline`, `CurveCache`), synchronous | partly |
-| Compose | `PropertyDiagram.update_scene`: display units and theme styles | done |
-| Layout | label placement inside compose today; a viewport-aware pass is planned | planned |
+| Settings | `spec/` (`DiagramSpec`, `Settings`), held by `PropertyDiagram` in `diagram.py` | done |
+| Plan | `engine/plan.py` (`plan(spec, domain)`), pure | done |
+| Engine | `engine/engine.py` (`Engine`), `engine/cache.py` (`CurveCache`), `thermo/` for the calculations; synchronous | done |
+| Compose | `compose/builder.py`: display units, theme styles, texts | done |
+| Layout | `compose/layout.py`: labels for the reported plot size, keep-out zones | done |
 | Sync | `render/base.py` and the backends | done |
 | Events | backend-neutral events back into the diagram | planned |
 
@@ -251,12 +251,14 @@ change costs, because that decides what is recomputed:
 | `calc` | points per isoline, points and spacing on the saturation line, distance kept from the triple and critical point, solver (tracer or plain flash), failure tolerance | recalculation of the affected curves; part of the cache key |
 | `look` | the theme: every colour, line, marker and font | restyling only |
 | `labels` | mode (edge, margin, inline), keep-out margin around processes, density, number format and rounding of all values shown | new label layout only |
-| `page` | hints for the backends: preferred canvas size, font scale, legend position | backend layout only |
+| `page` | hints for the backends: preferred canvas size, font scale (the legend position is part of the theme) | backend layout only |
 
 Defaults come from presets (`screen`, `print`, `publication`,
-`interactive`); the interactive preset uses few points while the user
-drags, and an application switches to `screen` when the drag ends. The
-number of points can be overridden per isoline family.
+`interactive`). An application that wants few points while the user drags
+switches only the calculation part, `settings.with_(calc="interactive")`,
+and back with `settings.with_(calc="screen")`; assigning a whole preset
+would also replace the theme, labels and page. The number of points can
+be overridden per isoline family.
 
 Implemented in step 2 (`coolplot.spec.settings`):
 
@@ -350,8 +352,8 @@ numbers. Without `loops`, the states in order form one closed cycle.
 
 ```python
 diagram.add_cycle("Two-stage, flash tank", states={
-        1: {"p": 1.5, "T": -30.0}, 2: {"p": 5.0, "via": "polytropic"},
-        3: {"p": 5.0, "Q": 1.0},   4: {"p": 18.0, "via": "polytropic"},
+        1: {"p": 1.5, "T": -30.0}, 2: {"p": 5.0, "via": "compression", "eta_is": 0.7},
+        3: {"p": 5.0, "Q": 1.0},   4: {"p": 18.0, "via": "compression", "eta_is": 0.7},
         5: {"p": 18.0, "Q": 0.0},  6: {"p": 5.0, "via": "isenthalpic"},
         7: {"p": 5.0, "Q": 0.0},   8: {"p": 1.5, "via": "isenthalpic"}},
     loops=[[1, 2, 3, 4, 5, 6, 7, 8, 1]])        # one split cycle
@@ -488,6 +490,23 @@ drag), plotly and web backends, psychrometric charts.
   (the dome is drawn with the underlying equation of state), and the
   polygonal dome of mixtures (it comes from the refined phase envelope).
 * Fixed in step 6: the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising, vertical text, stacking, wrongly rejected valid axes).
+
+Known trade-offs, from the adversarial review of the 0.2 work:
+
+* Global CoolProp settings (reference states, `set_mixture_binary_pair_data`,
+  REFPROP paths) are not part of the `FluidSpec`; changing them leaves
+  cached fluids and curves stale. Create a new `Engine` after such a change.
+* `CLOSED_ENVELOPE_MARGIN` (0.5 %) is safe on the 104 predefined blends
+  with a closed envelope (envelope maximum within about 0.3 K of the
+  critical point, no two-phase state found above it). A user blend whose
+  envelope stops early but still counts as closed (densities up to 35 %
+  apart) could have points just above the margin accepted unchecked.
+* The flash tank model assumes that vapour and liquid leaving the tank
+  have the circulating composition; for strongly zeotropic blends that
+  is an approximation.
+* Isoline labels and state numbers are not tested against each other
+  (the keep-out zone usually separates them), and inline labels have no
+  overlap or keep-out checks at all; edge mode is the default.
 
 Calculation speed after step 3: pure fluids are fast (a full ph chart of
 R290 in about 0.1 s). For zeotropic blends the isolines are traced

@@ -23,6 +23,7 @@ in the current unit system of the diagram and converted on entry.
 """
 from __future__ import annotations
 
+import warnings
 from typing import Sequence
 
 import numpy as np
@@ -141,7 +142,12 @@ class PropertyDiagram:
 
     @fluid.setter
     def fluid(self, value):
-        self.spec = self.spec.with_(fluid=fluid_spec(value))
+        new = fluid_spec(value)
+        fixed = [c.name for c in self.spec.cycles if any(given.state is not None for _, given in c.states)]
+        if fixed and new != self.spec.fluid:
+            warnings.warn("Cycles {0} hold complete states of the previous fluid; they are drawn unchanged. "
+                          "Add them again for the new fluid.".format(fixed), UserWarning, stacklevel=2)
+        self.spec = self.spec.with_(fluid=new)
 
     @property
     def diagram_type(self) -> DiagramType:
@@ -213,7 +219,12 @@ class PropertyDiagram:
         calculations.
         """
         def to_SI(key, limits):
-            return None if limits is None else tuple(sorted(self.spec.units[key].to_SI(limits).tolist()))
+            if limits is None:
+                return None
+            values = [float(v) for v in self.spec.units[key].to_SI(limits).ravel()]
+            if len(values) != 2 or not all(np.isfinite(values)):
+                raise ValueError("A view needs two finite limits for '{0}', not {1}.".format(key, limits))
+            return tuple(sorted(values))
         self.spec = self.spec.with_(view_SI=(to_SI(self.spec.diagram.x, x_limits),
                                              to_SI(self.spec.diagram.y, y_limits)))
 
@@ -334,6 +345,9 @@ class PropertyDiagram:
         """
         cycle = name if isinstance(name, Cycle) else (states if isinstance(states, Cycle) else None)
         if cycle is not None:
+            if cycle.fluid and Fluid(cycle.fluid).model_key != self.fluid.model_key:
+                raise ValueError("Cycle '{0}' was computed for {1}, but this diagram shows {2}.".format(
+                    cycle.name, cycle.fluid, self.spec.fluid))
             spec = CycleSpec.from_cycle(cycle, name=None if isinstance(name, Cycle) else name, loops=loops,
                                         paths=paths, numbers=numbers, line_style=line_style,
                                         marker_style=marker_style, steps=steps)

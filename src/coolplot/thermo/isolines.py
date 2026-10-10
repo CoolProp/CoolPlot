@@ -255,12 +255,8 @@ def _saturation_crossings(fluid, diagram, iso_key, value_SI, sweep_key, sweep, q
             return found
         sweep_lo, sweep_hi = min(sweep[0], sweep[-1]), max(sweep[0], sweep[-1])
         for q in (0.0, 1.0):
-            pair = CoolProp.QT_INPUTS if iso_key == "T" else CoolProp.PQ_INPUTS
             try:
-                if iso_key == "T":
-                    fluid.state.update(pair, q, value_SI)
-                else:
-                    fluid.state.update(pair, value_SI, q)
+                fluid.update(iso_key, value_SI, "Q", q)
                 sweep_value = fluid.get(sweep_key)
                 x, y = fluid.get(diagram.x), fluid.get(diagram.y)
             except Exception:
@@ -410,8 +406,9 @@ def _envelope_line(fluid: Fluid, diagram: DiagramType, quality: float):
     """Bubble (0) or dew (1) line of a mixture from the phase envelope, or None.
 
     See :class:`coolplot.thermo.fluid.PhaseEnvelope` for how the states
-    are obtained. The bubble line also gets the last dew point, which
-    closes the dome across the critical region between the two branches.
+    are obtained. The bubble line also gets the dew point next to it in
+    the trace, which closes the dome across the critical region between
+    the two branches.
     """
     envelope = fluid.phase_envelope()
     if envelope is None:
@@ -423,10 +420,14 @@ def _envelope_line(fluid: Fluid, diagram: DiagramType, quality: float):
         return None
     if quality == 1.0:
         rows = dew
+    elif dew[-1] + 1 == bubble[0]:
+        # The usual trace order: up the dew line, down the bubble line. The
+        # dew point next to the first bubble point closes the dome.
+        rows = np.concatenate(([dew[-1]], bubble))
+    elif bubble[-1] + 1 == dew[0]:
+        rows = np.concatenate((bubble, [dew[0]]))
     else:
-        T_K = envelope.values("T")
-        last_dew = dew[np.argmax(T_K[dew])] if dew[-1] < bubble[0] else dew[-1]
-        rows = np.concatenate(([last_dew], bubble))
+        rows = bubble
     x = envelope.values(diagram.x)[rows]
     y = envelope.values(diagram.y)[rows]
     n_failed = int(np.sum(~(np.isfinite(x) & np.isfinite(y))))

@@ -16,7 +16,7 @@ from typing import Dict, List, Sequence, Tuple
 import numpy as np
 
 from ..core.quantities import get_quantity
-from ..scene import AxesSpec, Item, Line, Markers, Text
+from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
 from ..spec.diagram import CycleSpec, DiagramSpec, ProcessSpec
 from ..style.theme import Theme
 from ..style.values import Font
@@ -84,7 +84,8 @@ def axes_spec(spec: DiagramSpec, domain, theme: Theme, shown=()) -> AxesSpec:
         lo_hi = tuple(sorted(spec.units[key].from_SI(lo_hi).tolist()))
         if view is None:
             lo_hi = _include(lo_hi, [v for xy in shown for v in np.asarray(xy[axis], dtype=float)], log)
-        limits.append(tuple(lo_hi))
+        # What the backends will draw, so that labels are laid out in that frame
+        limits.append(drawable_limits(lo_hi, log))
     return AxesSpec(x_label=axis_label(spec, diagram.x), y_label=axis_label(spec, diagram.y),
                     x_log=diagram.x_log, y_log=diagram.y_log,
                     x_limits=limits[0], y_limits=limits[1], title=spec.title, style=theme.axes,
@@ -276,7 +277,7 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Tuple[flo
         process_parts.extend(process_items(spec, theme, process, index))
     for index, (cycle, (states, chains)) in enumerate(zip(spec.cycles, cycles or ())):
         process_parts.extend(cycle_items(spec, theme, cycle, states, chains, len(spec.processes) + index))
-    drawn = [(p.x, p.y) for p in process_parts if not isinstance(p, Text)]
+    drawn = [(p.x, p.y, isinstance(p, Line)) for p in process_parts if not isinstance(p, Text)]
     axes = axes_spec(spec, domain, theme, drawn)
     size = plot_size_pt or default_plot_size_pt(spec)
     frame = Frame(axes.x_limits, axes.y_limits, axes.x_log, axes.y_log, *size)

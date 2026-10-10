@@ -212,6 +212,7 @@ a change costs:
 ```python
 PropertyDiagram("R290", "ph", settings="publication")    # "screen", "print", "publication", "interactive"
 diagram.settings = diagram.settings.with_(calc={"points": 100}, look="dark", page={"font_scale": 1.2})
+diagram.settings = diagram.settings.with_(calc="interactive")   # few points while dragging, rest unchanged
 diagram.theme = "print"                                   # "default", "dark", "print", "classic"
 ```
 
@@ -262,6 +263,9 @@ critical region, and isotherms show the temperature glide.
   how many points CoolProp could not compute. Each line warns once.
 * `add_cycle` raises right away, naming the state, if a state cannot be
   computed (for example a pressure above the critical pressure with
-  `"Q": 0.0`).
+  `"Q": 0.0`), and refuses a cycle a model computed for another fluid.
+* The cycle models check their inputs: the condensing temperature has to
+  be above the evaporating one, live steam above its saturation
+  temperature.
 * CoolProp's own messages are passed on; the fluid string and the inputs
   are usually enough to reproduce them with CoolProp directly.

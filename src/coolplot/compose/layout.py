@@ -324,11 +324,17 @@ def _candidates(pieces: Sequence[Piece], half_w: float, half_h: float, preferred
                 previous: Optional[Tuple[float, float]], fallback: bool = True) -> List[Candidate]:
     """All positions considered for one label, best (lowest score) first."""
     found = []
+    # How far from the frame the edge candidates reach (three slides inward)
+    edge_reach = half_w + PAD_PT + half_h + 4.0 * half_w + 1.0
     if previous is not None:
-        # Keep the old position if the line still passes through it
+        # Keep the old position if the line still passes through it. Without
+        # fallbacks it also has to stay near a frame crossing, so that a
+        # label cannot drift to the middle of the chart.
         for piece in pieces:
             s, dist = piece.project(*previous)
-            if dist <= 3.0:
+            near_edge = ((piece.start_edge is not None and s <= edge_reach)
+                         or (piece.end_edge is not None and piece.length - s <= edge_reach))
+            if dist <= 3.0 and (fallback or near_edge):
                 c = _candidate(piece, s, half_w, half_h, -10.0)
                 if c is not None:
                     found.append(c)
@@ -351,16 +357,22 @@ def _candidates(pieces: Sequence[Piece], half_w: float, half_h: float, preferred
 
 
 def keep_out_points(frame: Frame, lines, spacing_pt: float = 2.0) -> Tuple[np.ndarray, np.ndarray]:
-    """Points every ``spacing_pt`` along the given (x, y) lines, in pt."""
+    """Points every ``spacing_pt`` along the given lines, in pt.
+
+    Each entry is (x, y) for a line, or (x, y, False) for single points
+    such as state markers, which are not joined.
+    """
     xs, ys = [], []
-    for x, y in lines:
+    for entry in lines:
+        x, y = entry[0], entry[1]
+        joined = entry[2] if len(entry) > 2 else True
         px, py = frame.to_pt(x, y)
         for i in range(len(px)):
             if not (math.isfinite(px[i]) and math.isfinite(py[i])):
                 continue
             xs.append(px[i])
             ys.append(py[i])
-            if i + 1 < len(px) and math.isfinite(px[i + 1]) and math.isfinite(py[i + 1]):
+            if joined and i + 1 < len(px) and math.isfinite(px[i + 1]) and math.isfinite(py[i + 1]):
                 n = int(math.hypot(px[i + 1] - px[i], py[i + 1] - py[i]) // spacing_pt)
                 for k in range(1, n + 1):
                     t = k / (n + 1.0)
@@ -374,8 +386,9 @@ def place_edge_labels(requests: Sequence[LabelRequest], frame: Frame, keep_out_l
                       previous: Optional[Dict[str, Text]] = None, fallback: bool = True) -> List[Text]:
     """Edge labels for the requests, in the order given (most important first).
 
-    ``keep_out_lines`` are (x, y) display-unit lines no label may come
-    closer to than ``keep_out_pt``. ``previous`` maps label ids to the
+    ``keep_out_lines`` are (x, y) display-unit lines, or (x, y, False) for
+    unconnected points, that no label may come closer to than
+    ``keep_out_pt``. ``previous`` maps label ids to the
     label items of the previous layout, see the module docstring; a label
     that stays where it was is returned as the very same item, so a
     renderer does not redraw it. ``fallback`` allows positions along the

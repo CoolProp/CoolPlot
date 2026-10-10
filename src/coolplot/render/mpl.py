@@ -36,7 +36,7 @@ from matplotlib.font_manager import FontProperties
 from matplotlib.markers import MarkerStyle as _MplMarker
 
 from ..core.numbers import format_number
-from ..scene import AxesSpec, Item, Line, Markers, Text
+from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
 from ..style.values import dash_pattern_pt
 from .base import Renderer, SyncReport
 
@@ -595,22 +595,8 @@ class MatplotlibRenderer(Renderer):
 
 
 def _safe_limits(limits, log):
-    """Limits matplotlib can draw.
-
-    A log axis cannot start at zero or below; fall back to a 1000:1 range.
-    Equal limits are widened by 5 % (a decade on a log axis) on each side.
-    """
-    lo, hi = limits
-    if log and not lo > 0.0:
-        hi = hi if hi > 0.0 else 10.0
-        lo = hi * 1e-3
-    if lo == hi:
-        if log:
-            lo, hi = lo / 10.0, hi * 10.0
-        else:
-            pad = 0.05 * abs(lo) if lo != 0.0 else 1.0
-            lo, hi = lo - pad, hi + pad
-    return lo, hi
+    """Limits matplotlib can draw; the common rule of :func:`coolplot.scene.drawable_limits`."""
+    return drawable_limits(limits, log)
 
 
 def _upright(angle_deg: float) -> float:

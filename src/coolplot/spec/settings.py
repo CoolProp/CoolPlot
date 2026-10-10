@@ -229,10 +229,19 @@ class Settings:
 
         ``calc``, ``labels`` and ``page`` take dicts of the fields to change,
         ``look`` a theme or theme name, for example
-        ``settings.with_(calc={"points": 100}, look="dark")``.
+        ``settings.with_(calc={"points": 100}, look="dark")``. ``calc`` also
+        takes a preset name: ``settings.with_(calc="interactive")`` uses few
+        points while the user drags and keeps theme, labels and page;
+        ``settings.with_(calc="screen")`` goes back to full detail.
         """
+        if isinstance(calc, str):
+            calc_value = get_settings(calc).calc
+        elif isinstance(calc, CalcSettings):
+            calc_value = calc
+        else:
+            calc_value = replace(self.calc, **calc) if calc else self.calc
         return replace(self,
-                       calc=replace(self.calc, **calc) if calc else self.calc,
+                       calc=calc_value,
                        look=get_theme(look) if look is not None else self.look,
                        labels=replace(self.labels, **labels) if labels else self.labels,
                        page=replace(self.page, **page) if page else self.page)

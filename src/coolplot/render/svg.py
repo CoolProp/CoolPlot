@@ -25,7 +25,7 @@ from xml.sax.saxutils import escape, quoteattr
 import numpy as np
 
 from ..core.numbers import format_number
-from ..scene import AxesSpec, Item, Line, Markers, Text
+from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
 from ..style.values import AxesStyle, TextStyle, dash_pattern_pt
 from .base import Renderer, SyncReport
 
@@ -155,6 +155,7 @@ class SvgRenderer(Renderer):
         self._legend_entries: List = []
         self._legend_style = None
         self._parsed = None
+        self._extra_margins = (0.0, 0.0, 0.0, 0.0)   # room for unclipped text, see _finish
         self.elements_built = 0  # element strings generated, for tests
 
     # Backend hooks -----------------------------------------------------
@@ -181,6 +182,8 @@ class SvgRenderer(Renderer):
 
     def _finish(self, report: SyncReport):
         self._parsed = None
+        if report.changed:
+            self._extra_margins = self._unclipped_margins()
 
     # Geometry ----------------------------------------------------------
     @property
@@ -205,9 +208,58 @@ class SvgRenderer(Renderer):
         longest = max(len(self._legend_text(text)) for text, _ in self._legend_entries)
         return 44.0 + 0.6 * size_px * longest, 8.0 + 1.6 * size_px * len(self._legend_entries)
 
+    def _unclipped_margins(self) -> Tuple[float, float, float, float]:
+        """Extra (left, right, top, bottom) margins in px for text outside the frame.
+
+        Margin labels sit on the frame and reach outwards; without room they
+        would run off the drawing. The text size is estimated from its length,
+        as for the legend.
+        """
+        need = [0.0, 0.0, 0.0, 0.0]
+        (x0, x1), (y0, y1) = self._limits()
+        axes = self._axes or AxesSpec()
+
+        def frac(v, lo, hi, log):
+            if log:
+                return (math.log10(v) - math.log10(lo)) / (math.log10(hi) - math.log10(lo)) if v > 0 else math.nan
+            return (v - lo) / (hi - lo)
+
+        for item in self._items.values():
+            if not (isinstance(item, Text) and item.visible and not item.clip):
+                continue
+            if not (math.isfinite(item.x) and math.isfinite(item.y)):
+                continue
+            fx, fy = frac(item.x, x0, x1, axes.x_log), frac(item.y, y0, y1, axes.y_log)
+            if not (math.isfinite(fx) and math.isfinite(fy)):
+                continue
+            size_px = item.style.font.size_pt * PX_PER_PT
+            length, height = 0.6 * size_px * len(item.text), 1.25 * size_px
+            vertical = item.direction is not None and abs(item.direction[1]) > abs(item.direction[0])
+            h_align, v_align = item.style.h_align, item.style.v_align
+            along = {"left": (0.0, length), "center": (length / 2, length / 2), "right": (length, 0.0)}[h_align]
+            across = {"bottom": (0.0, height), "center": (height / 2, height / 2), "top": (height, 0.0)}[v_align]
+            # (extent to the left, right, down, up) from the anchor in px
+            if vertical:   # reads upwards: its start is at the bottom
+                left_px, right_px, down_px, up_px = across[1], across[0], along[0], along[1]
+            else:
+                left_px, right_px, down_px, up_px = along[0], along[1], across[0], across[1]
+            dx, dy = item.offset_pt[0] * PX_PER_PT, item.offset_pt[1] * PX_PER_PT
+            if fy >= 1.0 - 1e-9:
+                need[2] = max(need[2], up_px + dy + 4.0)
+            if fy <= 1e-9:
+                need[3] = max(need[3], down_px - dy + 4.0)
+            if fx >= 1.0 - 1e-9:
+                need[1] = max(need[1], right_px + dx + 4.0)
+            if fx <= 1e-9:
+                need[0] = max(need[0], left_px - dx + 4.0)
+        left, right, top, bottom = self.margins
+        return (max(0.0, need[0] - left), max(0.0, need[1] - right), max(0.0, need[2] - top),
+                max(0.0, need[3] - bottom))
+
     @property
     def _box(self) -> Tuple[float, float, float, float]:
-        left, right, top, bottom = self.margins
+        extra = self._extra_margins
+        left, right, top, bottom = (m + e for m, e in zip(self.margins, extra))
         st = self._legend_style
         if st is not None and st.location == "outside right":
             right += self._legend_size()[0] + 12.0 if self._legend_size()[0] else 0.0
@@ -230,18 +282,7 @@ class SvgRenderer(Renderer):
                     limits = (1.0, 10.0) if log else (0.0, 1.0)
                 else:
                     limits = (float(values.min()), float(values.max()))
-            lo, hi = float(min(limits)), float(max(limits))
-            if log:
-                if not hi > 0.0:
-                    hi = 10.0
-                if not lo > 0.0:
-                    lo = hi * 1e-3   # same rule as the matplotlib backend
-                if lo == hi:
-                    lo, hi = lo / 10.0, hi * 10.0
-            elif lo == hi:
-                pad = abs(lo) * 0.1 or 0.5
-                lo, hi = lo - pad, hi + pad
-            result.append((lo, hi))
+            result.append(drawable_limits(limits, log))
         return result
 
     def _mapper(self):
@@ -458,7 +499,8 @@ class SvgRenderer(Renderer):
         if axes.title:
             out.append('<text class="cp-title" x="{0}" y="{1}" text-anchor="middle" '
                        'dominant-baseline="text-after-edge" {2}>{3}</text>'.format(
-                           _num(bx + bw / 2.0), _num(by - 8.0), _text_attrs(st.title), _xml_text(axes.title)))
+                           _num(bx + bw / 2.0), _num(by - 8.0 - self._extra_margins[2]), _text_attrs(st.title),
+                           _xml_text(axes.title)))
         return out
 
     def _legend_elements(self) -> List[str]:
@@ -763,7 +805,10 @@ def _ticks(lo: float, hi: float, log: bool, minor: bool = False) -> List[float]:
         else:
             mantissas = (1.0,) if last - first > 2 else (1.0, 2.0, 5.0)
         ticks = [m * 10.0 ** e for e in range(first, last + 1) for m in mantissas]
-        return [t for t in ticks if lo <= t <= hi]
+        ticks = [t for t in ticks if lo <= t <= hi]
+        if len(ticks) >= 2 or minor:
+            return ticks
+        # A range inside one decade, e.g. 1.5 to 1.9 bar: round linear steps
     span = hi - lo
     if not span > 0.0:
         return [lo]

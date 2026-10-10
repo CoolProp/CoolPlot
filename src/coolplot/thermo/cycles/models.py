@@ -62,6 +62,12 @@ def _liquid_out(fluid, p_Pa, dT_sc_K):
     return state_point(fluid, "p", p_Pa, "T", T_bubble_K - dT_sc_K)
 
 
+def _check_lift(T_evap_C, T_cond_C):
+    if not T_cond_C > T_evap_C:
+        raise ValueError("The condensing temperature ({0} deg C) has to be above the evaporating "
+                         "temperature ({1} deg C).".format(T_cond_C, T_evap_C))
+
+
 def _check(eta_is, *names_values):
     if not 0.0 < eta_is <= 1.0:
         raise ValueError("eta_is has to be between 0 and 1, not {0}.".format(eta_is))
@@ -81,6 +87,7 @@ def simple_compression(fluid, T_evap_C: float, T_cond_C: float, dT_sh_K: float =
     ``w_comp_J_kg``, ``COP_cooling``, ``COP_heating``, ``T_comp_out_K``.
     """
     _check(eta_is, ("dT_sh_K", dT_sh_K), ("dT_sc_K", dT_sc_K))
+    _check_lift(T_evap_C, T_cond_C)
     fluid = _fluid(fluid)
     p_evap_Pa = state_point(fluid, "T", T_evap_C + C_TO_K, "Q", 1.0).p
     p_cond_Pa = state_point(fluid, "T", T_cond_C + C_TO_K, "Q", 1.0).p
@@ -128,6 +135,7 @@ def two_stage(fluid, T_evap_C: float, T_cond_C: float, intermediate: str = "flas
     through the evaporator), ``COP_cooling``, ``COP_heating``.
     """
     _check(eta_is, ("dT_sh_K", dT_sh_K), ("dT_sc_K", dT_sc_K), ("dT_econ_K", dT_econ_K))
+    _check_lift(T_evap_C, T_cond_C)
     fluid = _fluid(fluid)
     p_evap_Pa = state_point(fluid, "T", T_evap_C + C_TO_K, "Q", 1.0).p
     p_cond_Pa = state_point(fluid, "T", T_cond_C + C_TO_K, "Q", 1.0).p
@@ -202,6 +210,13 @@ def rankine(fluid, p_high_Pa: float, p_low_Pa: float, T_live_C: float = None, et
     if T_live_C is None:
         s3 = state_point(fluid, "p", p_high_Pa, "Q", 1.0)
     else:
+        try:
+            T_sat_K = state_point(fluid, "p", p_high_Pa, "Q", 1.0).T
+        except Exception:
+            T_sat_K = None   # supercritical live steam: no saturation temperature
+        if T_sat_K is not None and T_live_C + C_TO_K < T_sat_K:
+            raise ValueError("The live steam temperature ({0} deg C) is below the saturation temperature "
+                             "({1:.1f} deg C) at p_high_Pa.".format(T_live_C, T_sat_K - C_TO_K))
         s3 = state_point(fluid, "p", p_high_Pa, "T", T_live_C + C_TO_K)
     s4 = _expand(fluid, s3, p_low_Pa, eta_turbine)
     w_turbine_J_kg, w_pump_J_kg = s3.h - s4.h, s2.h - s1.h

@@ -127,12 +127,27 @@ class Fluid:
             name = str(fluid)
         else:
             raise TypeError("Expected a FluidSpec, a fluid string or a CoolProp.AbstractState.")
+        state = build_state(model)
+        if len(model[1]) == 1:
+            # A predefined blend such as "R407C.mix" is one name for several
+            # components; describe it by those, so that it is treated as the
+            # mixture it is (tracer, phase envelope) and gets the same model
+            # key as the same blend given as an AbstractState.
+            try:
+                if len(state.fluid_names()) > 1:
+                    model = model_from_state(state)
+            except Exception:
+                pass   # INCOMP and others cannot report their components
         self._model = model
-        self._state = build_state(model)
+        self._state = state
+        self._reset_caches()
+        self._name = name
+
+    def _reset_caches(self):
         self._critical = None
         self._envelope = None
-        self._guided = False   # phase envelope built on the working state, see update()
-        self._name = name
+        self._guide = None         # scratch state for difficult saturation states, see update()
+        self._current = self._state   # the state the last update() set; get() reads it
 
     def __repr__(self):
         return "Fluid({0!r})".format(self._name)
@@ -158,9 +173,7 @@ class Fluid:
         twin = Fluid.__new__(Fluid)
         twin._model = (backend,) + tuple(self._model[1:])
         twin._state = build_state(twin._model)
-        twin._critical = None
-        twin._envelope = None
-        twin._guided = False
+        twin._reset_caches()
         twin._name = "{0}::{1}".format(backend, "&".join(self._model[1]))
         return twin
 
@@ -169,9 +182,9 @@ class Fluid:
         twin = Fluid.__new__(Fluid)
         twin._model = self._model
         twin._state = build_state(self._model)
+        twin._reset_caches()
         twin._critical = self._critical
         twin._envelope = self._envelope   # read-only arrays, safe to share
-        twin._guided = False
         twin._name = self._name
         return twin
 
@@ -180,30 +193,46 @@ class Fluid:
         """Set the working state from two quantities given by CoolPlot keys.
 
         For a mixture, a saturation state (vapour quality as one input)
-        that CoolProp cannot find is tried once more after building the
-        phase envelope on the working state: CoolProp's mixture saturation
-        solvers take their starting values from it. That rescues most
-        condenser and evaporator states of blends, for example the dew
-        point of R32/R125 (70/30) at 26.6 bar.
+        that CoolProp cannot find is tried once more on a separate scratch
+        state that has the phase envelope built: CoolProp's mixture
+        saturation solvers take their starting values from it. That rescues
+        most condenser and evaporator states of blends, for example the dew
+        point of R32/R125 (70/30) at 26.6 bar. The working state is never
+        changed by this, so every other calculation gives the same result
+        whatever was computed before.
+
+        Returns the state that holds the result; :meth:`get` reads it.
         """
         pair, v1, v2 = CP.generate_update_pair(parameter_index(key1), value1_SI,
                                                parameter_index(key2), value2_SI)
+        self._current = self._state
         try:
             self._state.update(pair, v1, v2)
         except Exception:
-            if self.is_pure or "Q" not in (get_quantity(key1).key, get_quantity(key2).key) or self._guided:
+            guide = None
+            if not self.is_pure and "Q" in (get_quantity(key1).key, get_quantity(key2).key):
+                guide = self._guide_state()
+            if guide is None:
                 raise
-            self._guided = True
+            guide.update(pair, v1, v2)
+            self._current = guide
+        return self._current
+
+    def _guide_state(self) -> Optional[AbstractState]:
+        """A scratch state with the phase envelope built, made once; None if that fails."""
+        if self._guide is None:
+            self._guide = False
             try:
-                self._state.build_phase_envelope("veryfine")
+                guide = build_state(self._model)
+                guide.build_phase_envelope("veryfine")
+                self._guide = guide
             except Exception:
-                pass   # the retry below raises the solver's own error
-            self._state.update(pair, v1, v2)
-        return self._state
+                pass
+        return self._guide or None
 
     def get(self, key: str) -> float:
-        """Read one quantity of the working state in SI units."""
-        return self._state.keyed_output(parameter_index(key))
+        """Read one quantity of the state set by the last :meth:`update`, in SI units."""
+        return self._current.keyed_output(parameter_index(key))
 
     def properties(self, keys=("T", "p", "h", "s", "rho", "Q")) -> dict:
         """Read several quantities of the working state in SI units."""
