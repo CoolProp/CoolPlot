@@ -12,13 +12,13 @@ from dataclasses import replace
 
 import pytest
 
-from CoolPlot.render.svg import SvgRenderer
-from CoolPlot.render.testing import run_conformance
+from coolplot.render.svg import SvgRenderer
+from coolplot.render.testing import run_conformance
 
 
 def _mpl_factory(cls=None):
     pytest.importorskip("matplotlib")
-    from CoolPlot.render.mpl import MatplotlibRenderer
+    from coolplot.render.mpl import MatplotlibRenderer
     cls = cls or MatplotlibRenderer
     return lambda: cls(use_pyplot=False)
 
@@ -154,8 +154,8 @@ def test_kit_rejects_a_backend_that_ignores_styles():
 def _mpl_defects():
     pytest.importorskip("matplotlib")
     from matplotlib import patheffects
-    from CoolPlot.render.mpl import MatplotlibRenderer
-    from CoolPlot.scene import Line, Markers, Text
+    from coolplot.render.mpl import MatplotlibRenderer
+    from coolplot.scene import Line, Markers, Text
 
     class CasingWithoutLine(MatplotlibRenderer):
         def _apply(self, artist, item):

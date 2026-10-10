@@ -11,9 +11,9 @@ Run with:  python examples/interactive_cycle.py
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 
-from CoolPlot import PropertyDiagram
-from CoolPlot.render.mpl import MatplotlibRenderer
-from CoolPlot.thermo import process_path, state_point
+from coolplot import PropertyDiagram
+from coolplot.render.mpl import MatplotlibRenderer
+from coolplot.thermo import process_path, state_point
 
 FLUID = "HEOS::R290"
 

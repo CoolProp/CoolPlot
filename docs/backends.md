@@ -1,21 +1,21 @@
 # Writing a CoolPlot backend
 
-A backend (renderer) draws a `CoolPlot.scene.Scene` with one plotting
+A backend (renderer) draws a `coolplot.scene.Scene` with one plotting
 library. This guide lists what a backend has to do to be accepted. The
 key words MUST, SHOULD and MAY are used as in RFC 2119.
 
 The two backends shipped with CoolPlot are the reference implementations:
 
-* `CoolPlot/render/svg.py`: no dependencies, writes a document. Read this
+* `src/coolplot/render/svg.py`: no dependencies, writes a document. Read this
   one first; it is the simplest complete example.
-* `CoolPlot/render/mpl.py`: draws into a live matplotlib Axes and updates
+* `src/coolplot/render/mpl.py`: draws into a live matplotlib Axes and updates
   artists in place.
 
 Acceptance is mechanical: a backend is accepted when the conformance kit
 reports no failures.
 
 ```python
-from CoolPlot.render.testing import run_conformance
+from coolplot.render.testing import run_conformance
 assert run_conformance(MyRenderer) == []
 ```
 
@@ -29,7 +29,7 @@ shipped backends and checks that the kit catches each of them.
 
 ## 1. Contract [sync report], [selective update], [clear]
 
-Subclass `CoolPlot.render.base.Renderer`. The base class owns the
+Subclass `coolplot.render.base.Renderer`. The base class owns the
 bookkeeping: on every `sync(scene)` it compares the scene with what it drew
 last time and calls the hooks below only for what changed. A backend MUST
 NOT override `sync`.
@@ -86,7 +86,7 @@ None MUST produce no paint, not black.
 
 * `width_pt`, `color`, `alpha`, `cap`, `join` as given.
 * Dashes MUST be drawn with exactly `dash_pattern_pt(style.dash,
-  style.width_pt)` from `CoolPlot.style`, final lengths in points. If the
+  style.width_pt)` from `coolplot.style`, final lengths in points. If the
   library scales dashes by line width itself (matplotlib does), compensate
   for it.
 * Casing: when `casing_color` is set and `casing_width_pt > 0`, draw the
@@ -237,13 +237,13 @@ Declare optional abilities in the class attribute `capabilities`:
 
 ## 9. Packaging
 
-* The module lives in `CoolPlot/render/<name>.py` and is imported
-  explicitly by users; `CoolPlot.render` never imports a backend.
+* The module lives in `src/coolplot/render/<name>.py` and is imported
+  explicitly by users; `coolplot.render` never imports a backend.
 * It MAY import its plotting library at module level, and MUST NOT import
-  CoolProp, `CoolPlot.thermo`, `CoolPlot.diagram` or `CoolPlot.theme`;
+  CoolProp, `coolplot.thermo`, `coolplot.engine`, `coolplot.diagram` or `coolplot.style.theme`;
   styles arrive resolved in the scene. `tests/test_architecture.py`
   enforces this, also for imports inside functions.
-* The library is an optional extra in `setup.py`
+* The library is an optional extra in `pyproject.toml`
   (`pip install coolplot[<name>]`).
 * Add the backend to `tests/test_backend_conformance.py`, skipping when
   the library is not installed.

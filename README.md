@@ -1,7 +1,7 @@
 
 ![GitHub License](https://img.shields.io/github/license/coolprop/coolplot.svg)
-![Coverage - Codecov](https://img.shields.io/codecov/c/gh/CoolProp/CoolPlot.svg)
-![Coverage - Coveralls](https://img.shields.io/coveralls/github/CoolProp/CoolPlot.svg)
+![Coverage - Codecov](https://img.shields.io/codecov/c/gh/CoolProp/coolplot.svg)
+![Coverage - Coveralls](https://img.shields.io/coveralls/github/CoolProp/coolplot.svg)
 ![PyPI - Version](https://img.shields.io/pypi/v/coolplot.svg)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/coolplot.svg)
 
@@ -28,8 +28,8 @@ several and interactive applications only redraw what changed. See
 [docs/architecture.md](docs/architecture.md) for the design.
 
 ```python
-from CoolPlot import PropertyDiagram
-from CoolPlot.render.mpl import MatplotlibRenderer   # or render.svg.SvgRenderer
+from coolplot import PropertyDiagram
+from coolplot.render.mpl import MatplotlibRenderer   # or render.svg.SvgRenderer
 
 diagram = PropertyDiagram("HEOS::R290", "ph", units="EUR", tp_limits="ACHP")
 diagram.set_isolines("Q", num=11)
@@ -50,7 +50,9 @@ Every backend renders themes identically; see
 [docs/styling.md](docs/styling.md) for themes and
 [docs/backends.md](docs/backends.md) for adding a backend.
 
-The legacy API in `CoolPlot.Plot` is deprecated and will be removed.
+Version 0.2 replaces the legacy API (`from CoolPlot.Plot import PropertyPlot`).
+If you depend on it, stay on the last legacy release with
+`pip install "coolplot<0.2"`.
 
 Pull requests are encouraged!
 
@@ -62,8 +64,8 @@ The project gets published on [PyPi] as `coolplot` and you can install it
 using pip
 
 ```bash
-pip install coolplot              # core, includes the SVG backend
-pip install coolplot[matplotlib]  # with the matplotlib backend
+pip install coolplot                # core, includes the SVG backend
+pip install "coolplot[matplotlib]"  # with the matplotlib backend
 ```
 
 
@@ -73,6 +75,6 @@ License
 This Python package is released under the terms of the MIT license. 
 
 
-  [CoolProp]: http://coolprop.sourceforge.net/
+  [CoolProp]: https://coolprop.org/
   [CoolProp repository]: https://github.com/CoolProp/CoolProp
-  [PyPi]: https://docs.python.org/3/distutils/packageindex.html
+  [PyPi]: https://pypi.org/project/CoolPlot/

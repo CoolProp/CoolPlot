@@ -13,9 +13,9 @@ describes the architecture that replaces it. The goals are:
 Related documents: `docs/styling.md` (themes and styles for users) and
 `docs/backends.md` (requirements for new backends).
 
-The new modules live next to the legacy code (`CoolPlot/Plot`,
-`CoolPlot/Util`), which stays until the new API covers all of its
-features.
+The legacy code (`CoolPlot/Plot`, `CoolPlot/Util`) was released one last
+time as 0.1.7 and removed from the 0.2 code base; file references in
+section 1 point into that release.
 
 
 ## 1. Review of the legacy code
@@ -168,62 +168,37 @@ been reworked: `diagram.py` stores settings, generates isoline values,
 builds cache keys, calls the calculations, applies units and styles,
 places labels and opens matplotlib windows; the curve cache lives in
 `thermo`; the legacy code and old tooling are still in the tree. 0.2
-restructures the package explicitly, one responsibility per layer:
+restructures the package explicitly, one responsibility per layer, listed
+in dependency order:
 
 ```
 src/coolplot/
   core/      quantities, units                      plain data, no CoolProp, no plotting
-  spec/      FluidSpec, DiagramSpec, Settings       what the user asks for, as data
-  thermo/    states, saturation, isolines, cycles   the only place that talks to CoolProp
-  engine/    plan, cache, executor                  which curves are needed; compute and cache them
-  compose/   scene building, label layout           SI curves + spec + settings -> scene
   style/     style values, themes
   scene.py                                          the contract to the backends
-  render/    base, testing, svg, mpl                paint the scene, nothing else
+  spec/      FluidSpec, DiagramSpec, Settings       what the user asks for, as data
+  thermo/    states, saturation, isolines, cycles   the only place that talks to CoolProp
+  engine/    plan, cache                            which curves are needed; compute and cache them
+  compose/   scene building, label layout           SI curves + spec + settings -> scene
+  render/    base, testing, svg, mpl                paint the scene; may use only core, style, scene
   diagram.py                                        PropertyDiagram: thin facade for users
 ```
 
-Each layer may only use the layers listed above it; `tests/test_architecture.py`
-enforces this statically. The facade holds a `DiagramSpec`, asks the
-engine for curves and hands the composed scene to renderers; it contains
-no calculation, styling or layout logic of its own.
+Each layer may only use the layers listed before it (the backends only
+`core`, `style` and `scene`); `tests/test_architecture.py` enforces this
+statically, including imports inside functions. The facade holds a
+`DiagramSpec`, asks the engine for curves and hands the composed scene to
+renderers; it contains no calculation, styling or layout logic of its own.
 
-### Layers and import rules today
+### Status of the move
 
-```
-  +---------------------------------------------------------------+
-  |  quantities  units  style  theme  scene                       |  plain data
-  |  (no CoolProp, no plotting library)                           |
-  +---------------------------------------------------------------+
-        ^                     ^                         ^
-  +-------------+       +-------------+           +---------------+
-  |   thermo    |       |   diagram   |           |    render     |
-  | CoolProp,   |       | settings -> |           | base, svg,    |
-  | SI units    |       | scene       |           | mpl, testing  |
-  +-------------+       +-------------+           +---------------+
-        ^                     |                         ^
-        +---------------------+  diagram uses thermo    |
-                                 and hands scenes to ---+
-```
+Step 1 moved the modules into `core`, `style`, `scene`, `thermo`,
+`engine` (the curve cache) and `render`, and removed the legacy code and
+old tooling. `spec` and `compose` arrive in step 2; until then the facade
+`diagram.py` still builds the scene itself.
 
-| Module | May import | Must not import |
-|--------|------------|-----------------|
-| `quantities`, `units` | numpy | CoolProp, matplotlib, thermo, diagram, scene, render |
-| `style`, `theme` | numpy, quantities | CoolProp, matplotlib, thermo, diagram, scene, render |
-| `scene` | numpy, style | CoolProp, matplotlib, thermo, diagram, theme, render |
-| `thermo` | CoolProp, numpy, quantities, units | matplotlib, scene, style, theme, diagram, render |
-| `diagram` | everything above | matplotlib, render (one documented exception: `draw()` creates a MatplotlibRenderer for scripts) |
-| `render.base`, `render.svg`, `render.testing` | scene, style | CoolProp, matplotlib, thermo, diagram, theme |
-| `render.mpl` | matplotlib, scene, style | CoolProp, thermo, diagram, theme |
-
-`tests/test_architecture.py` checks these rules by reading every import
-statically, including imports inside functions, and confirms at run time
-that building and drawing a scene with the SVG backend never loads
-matplotlib.
-
-Backends never see themes: the diagram resolves the theme into concrete
-styles on every item, so a backend cannot apply its own idea of a
-default, and all backends look the same.
+Backends never see themes: the scene carries concrete styles on every
+item, so a backend cannot apply its own idea of a default.
 
 
 ## 5. Settings
@@ -373,7 +348,7 @@ Summary of `docs/backends.md`:
   diffing; a backend never rebuilds the whole plot.
 * Every backend implements read-back (`describe_item`, `describe_axes`)
   that reports what it actually drew, from its own objects.
-* `CoolPlot.render.testing.run_conformance` draws a reference scene using
+* `coolplot.render.testing.run_conformance` draws a reference scene using
   every style feature and awkward data, reads it back, then changes it
   step by step (restyle, hide, restack, reorder, remove, new axes, legend,
   clear) and checks both the result and that only affected items were
@@ -412,8 +387,8 @@ units, styles, one added line, cycles, zoom and themes.
 |------|---------|--------|
 | - | Layered skeleton, styling layer, backend guide, conformance kit, SVG and matplotlib backends | done |
 | - | Legacy release 0.1.7 | done, waiting for merge and upload |
-| 1 | Restructure into the package layout of section 4 (`src/coolplot`, `pyproject.toml`), remove the legacy code, CI on GitHub Actions with CoolProp 6.8, 7.x and 8.x | next |
-| 2 | Specs and settings: `FluidSpec` (backend, components, fractions, interaction parameters), `DiagramSpec`, `Settings` with presets, pure `plan()` | |
+| 1 | Restructure into the package layout of section 4 (`src/coolplot`, `pyproject.toml`), remove the legacy code, CI on GitHub Actions with CoolProp 6.8, 7.x and 8.x | done |
+| 2 | Specs and settings: `FluidSpec` (backend, components, fractions, interaction parameters), `DiagramSpec`, `Settings` with presets, pure `plan()`, scene building moved from the facade into `compose` | next |
 | 3 | Numerics: port `IsoLineTracer`, isolines built from phase segments with the saturation states inserted, mixture dome from the phase envelope, per-curve diagnostics | |
 | 4 | Label layout: edge labels with keep-out zones around processes, margin labels as an option, stable placement while dragging; central number formats | |
 | 5 | Cycles on diagrams (section 7): `add_cycle` with states, `via`, automatic paths, loops for split and two-stage cycles, state numbers; models for simple compression, two-stage (flash tank, economizer) and Rankine | |

@@ -4,8 +4,8 @@
 Run with:  python examples/quickstart.py
 Writes R290_ph.png (matplotlib) and R290_ph.svg (no dependencies).
 """
-from CoolPlot import PropertyDiagram
-from CoolPlot.render.svg import SvgRenderer
+from coolplot import PropertyDiagram
+from coolplot.render.svg import SvgRenderer
 
 diagram = PropertyDiagram("HEOS::R290", "ph", units="EUR", tp_limits="ACHP")
 diagram.set_isolines("Q", num=11)
@@ -18,7 +18,7 @@ svg.sync(scene)
 svg.save("R290_ph.svg")
 
 try:
-    from CoolPlot.render.mpl import MatplotlibRenderer
+    from coolplot.render.mpl import MatplotlibRenderer
 except ImportError:
     print("matplotlib is not installed, only the SVG was written.")
 else:

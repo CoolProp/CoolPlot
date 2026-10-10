@@ -3,10 +3,10 @@
 import numpy as np
 import pytest
 
-from CoolPlot.render.base import Renderer
-from CoolPlot.render.svg import SvgRenderer
-from CoolPlot.scene import AxesSpec, Line, LineStyle, Markers, Scene, Text, items_equal
-from CoolPlot.units import EUR, SI, Unit
+from coolplot.render.base import Renderer
+from coolplot.render.svg import SvgRenderer
+from coolplot.scene import AxesSpec, Line, LineStyle, Markers, Scene, Text, items_equal
+from coolplot.core.units import EUR, SI, Unit
 
 
 class RecordingRenderer(Renderer):
@@ -128,7 +128,7 @@ def test_svg_renderer_regenerates_only_changed_elements():
 
 def test_matplotlib_renderer_updates_artists_in_place():
     pytest.importorskip("matplotlib")
-    from CoolPlot.render.mpl import MatplotlibRenderer
+    from coolplot.render.mpl import MatplotlibRenderer
 
     scene = Scene(AxesSpec(x_limits=(0.0, 2.0), y_limits=(0.0, 3.0)), [_line("a"), _line("b")])
     renderer = MatplotlibRenderer(use_pyplot=False)

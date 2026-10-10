@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-from CoolPlot.style import (CSS_COLORS, AxesStyle, Font, LineStyle, MarkerStyle, TextStyle,
+from coolplot.style import (CSS_COLORS, AxesStyle, Font, LineStyle, MarkerStyle, TextStyle,
                             dash_pattern_pt, parse_color)
-from CoolPlot.theme import CLASSIC, DARK, DEFAULT, PRINT, THEMES, Theme, get_theme
+from coolplot.style.theme import CLASSIC, DARK, DEFAULT, PRINT, THEMES, Theme, get_theme
 
 
 def test_parse_color():
@@ -92,8 +92,8 @@ def test_theme_validation():
 
 def test_switching_theme_recomputes_nothing():
     pytest.importorskip("CoolProp")
-    from CoolPlot import PropertyDiagram
-    from CoolPlot.render.svg import SvgRenderer
+    from coolplot import PropertyDiagram
+    from coolplot.render.svg import SvgRenderer
     d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP")
     d.set_isolines("Q", num=3)
     d.set_isolines("T", values=[0.0, 20.0], points=40)

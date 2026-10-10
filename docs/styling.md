@@ -16,7 +16,7 @@ diagram.set_isoline_style("T", width_pt=1.0)           # one family, this diagra
 
 ## 1. Style values
 
-All style classes live in `CoolPlot/style.py`. They are immutable; derive
+All style classes live in `src/coolplot/style/values.py` (import them from `coolplot.style`). They are immutable; derive
 a changed copy with `.with_(...)`.
 
 | Class | Fields |
@@ -120,7 +120,7 @@ diagram.set_isoline_style("s", dash="dashed")
 diagram.set_isoline_style("s")                          # back to the theme
 
 # A derived theme
-from CoolPlot.theme import DEFAULT
+from coolplot.style.theme import DEFAULT, Theme
 mine = DEFAULT.with_(name="report", isoline=DEFAULT.isoline.with_(width_pt=0.5))
 mine = mine.with_isoline_color("T", "darkred")
 diagram.theme = mine

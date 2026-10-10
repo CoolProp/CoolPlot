@@ -1,8 +1,0 @@
-matplotlib
-six
-pytest
-pytest-cov
-sphinx
-numpydoc
-nbsphinx
-twine

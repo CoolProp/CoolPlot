@@ -1,32 +1,18 @@
 # Makefile for CoolPlot
-#
 
-.PHONY: init test coverage install docs build upload
+.PHONY: help install test build
 
 help:
 	@echo "Please use \`make <target>' where <target> is one of"
-	@echo "  init     to install development packages"
-	@echo "  test     to run the tests for this package"
-	@echo "  install  to install the package locally"
-	@echo "  docs     to create the documentation"
-	@echo "  build    shorthand notation for init, install, test, docs"
-	@echo "  upload   to upload wheels to PyPI"
-
-init:
-	pip install -r requirements.txt
-	pip install -r requirements_dev.txt
-
-test:
-	python -m pytest -v --cov=CoolPlot tests
+	@echo "  install  to install the package for development, with test tools"
+	@echo "  test     to run the tests"
+	@echo "  build    to build the source and wheel distributions"
 
 install:
-	python setup.py install
+	python -m pip install -e ".[test]"
 
-docs:
-	cd docs && make html
+test:
+	python -m pytest -v
 
-build: init install test docs
-	@echo "Build completed."
-
-upload:
-	python setup.py upload
+build:
+	python -m build

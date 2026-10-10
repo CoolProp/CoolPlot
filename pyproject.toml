@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "CoolPlot"
+dynamic = ["version"]
+description = "Thermodynamic property diagrams with CoolProp as data source."
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [{name = "Jorrit Wronski", email = "coolplot@jorrit.org"}]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.22",
+    "coolprop>=6.8",
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+
+[project.optional-dependencies]
+# Plotting backends are optional; the core and the SVG backend need neither.
+matplotlib = ["matplotlib>=3.8"]
+test = ["pytest>=7", "matplotlib>=3.8"]
+
+[project.urls]
+Homepage = "https://github.com/CoolProp/CoolPlot"
+
+[tool.setuptools.dynamic]
+version = {attr = "coolplot.__version__.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

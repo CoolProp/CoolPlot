@@ -7,10 +7,10 @@ import pytest
 
 pytest.importorskip("CoolProp")
 
-from CoolPlot import PropertyDiagram  # noqa: E402
-from CoolPlot.render.svg import SvgRenderer  # noqa: E402
-from CoolPlot.scene import Line, Markers, Text  # noqa: E402
-from CoolPlot.thermo import process_path, state_point  # noqa: E402
+from coolplot import PropertyDiagram  # noqa: E402
+from coolplot.render.svg import SvgRenderer  # noqa: E402
+from coolplot.scene import Line, Markers, Text  # noqa: E402
+from coolplot.thermo import process_path, state_point  # noqa: E402
 
 
 @pytest.fixture
@@ -126,7 +126,7 @@ def test_invalid_requests(diagram):
 
 def test_matplotlib_round_trip(tmp_path, diagram):
     pytest.importorskip("matplotlib")
-    from CoolPlot.render.mpl import MatplotlibRenderer
+    from coolplot.render.mpl import MatplotlibRenderer
     renderer = MatplotlibRenderer(use_pyplot=False)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
