@@ -481,7 +481,7 @@ units, styles, one added line, cycles, zoom and themes.
 | 3 | plotly backend, passing the conformance kit, with documented limitations where plotly cannot follow a requirement | done |
 | 4 | Web backend: the SVG elements of the SVG backend streamed as patches to a small JavaScript client, events back from the browser, a dependency-free development server; conformance checked in a real browser (headless Chromium) | done |
 | 5 | Psychrometric charts for humid air (CoolProp HAPropsSI): dry-bulb temperature over humidity ratio, lines of relative humidity, wet-bulb temperature, enthalpy and specific volume, air processes on top | done |
-| 6 | Examples, user documentation, adversarial review of the 0.3 work | next |
+| 6 | Examples, user documentation, adversarial review of the 0.3 work | done |
 
 #### Background calculation (step 1)
 
@@ -514,7 +514,19 @@ saturation, where fog would begin, and start exactly on it),
 `spec/psychro.py` (`PsychroSpec`, display units for W, RH and Twb),
 `compose/psychro.py` (styles, texts and the shared label layout) and the
 facade `psychrometric.py` (`PsychrometricChart`). Lines are cached by
-pressure, region, family and value.
+pressure, region, family, value and point count.
+
+Lines are sampled in dry-bulb temperature. Wet-bulb lines are found
+with a regula falsi search on HAPropsSI(Twb; T, W), which is fast and
+smooth, because asking HAPropsSI for W from Twb directly is slow (it
+iterates inside) and has gaps near 0 deg C in CoolProp 8. Falling lines
+(Twb, h, v) end exactly at W = 0; above the boiling point at the chart
+pressure there is no saturation limit, and lines of relative humidity
+end where the vapour would exceed the total pressure. Near 0 deg C
+HAPropsSI switches between an ice and a water wet bulb, so wet-bulb
+lines just above 0 deg C all end at the same dry-air temperature. The
+view (`set_view`, used by `Interaction` for zoom and pan) only changes
+the axes; lines are computed over the full temperature range once.
 
 #### Events (step 2)
 
@@ -539,6 +551,33 @@ that state by the two axis properties at the new position.
   (the dome is drawn with the underlying equation of state), and the
   polygonal dome of mixtures (it comes from the refined phase envelope).
 * Fixed in step 6: the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising, vertical text, stacking, wrongly rejected valid axes).
+
+* Fixed in 0.3 step 6, from the adversarial review of the 0.3 work: the
+  web development server (snapshot race, Host and Origin checks, input
+  limits and validation, bounded queues, stop without start), web zoom
+  and pan on log axes, plotly quotes and honest axis read-back, the
+  background engine (close, failures retried then reported, one engine
+  per diagram, on_ready threading, LRU order), matplotlib pointer events
+  (finite coordinates, left-button drags, lost releases, one ViewChanged
+  per zoom), and psychrometric lines (above boiling, the CoolProp 8 gap
+  in wet-bulb lines, exact W = 0 ends, bounded default line counts,
+  failure warnings, pressure and temperature checks, zoom and dragging).
+
+Known trade-offs, from the adversarial review of the 0.3 work:
+
+* Conformance limitations are declared by the backend itself. With
+  `text_order`, ranks are compared among texts and among other items
+  separately, so the kit does not check that texts are drawn above lines.
+* Process workers are started with the platform default (fork on Linux
+  before Python 3.14); forking a GUI application that already runs other
+  threads can deadlock. Start the diagram first.
+* Every pan step in `Interaction` redraws the scene with a new label
+  layout; there is no throttling.
+* `WebServer` bound to a public address has no authentication, and patch
+  listeners run while the renderer is locked.
+* Input in the wrong unit (W in kg/kg on an "EUR" chart, a wet-bulb
+  temperature in K) is only caught when it is far outside what HAPropsSI
+  covers.
 
 Known trade-offs, from the adversarial review of the 0.2 work:
 

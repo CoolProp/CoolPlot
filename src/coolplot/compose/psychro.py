@@ -65,7 +65,7 @@ def compose_psychro(spec: PsychroSpec, curves: Sequence, processes: Sequence,
     units = psychro_units(spec.units)
     uT, uW = units["T"], units["W"]
     limits = [drawable_limits(tuple(sorted(u.from_SI(r).tolist())), False)
-              for u, r in ((uT, spec.T_range_K), (uW, spec.W_range))]
+              for u, r in ((uT, spec.view_T_K or spec.T_range_K), (uW, spec.view_W or spec.W_range))]
     axes = AxesSpec(x_label=axis_label(spec, "T"), y_label=axis_label(spec, "W"), x_limits=limits[0],
                     y_limits=limits[1], title=spec.title, style=theme.axes,
                     tick_digits=spec.settings.labels.tick_digits)

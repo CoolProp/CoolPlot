@@ -39,6 +39,10 @@ PSYCHRO_QUANTITIES = {
 LINE_KEYS = ("RH", "Twb", "h", "v")
 STATE_KEYS = ("T", "W", "RH", "Twb", "Tdp", "h", "v")
 
+#: What CoolProp's HAPropsSI covers: temperatures in K, total pressures in Pa.
+T_LIMITS_K = (173.15, 623.15)
+P_LIMITS_PA = (1e4, 1e7)
+
 
 def psychro_units(units) -> dict:
     try:
@@ -62,8 +66,11 @@ class PsychroLines:
         if self.key == "RH" and any(not 0.0 < v <= 1.0 for v in values):
             raise ValueError("Relative humidity has to be above 0 and at most 100 %, got {0} (as fractions).".format(
                 values))
-        if self.key in ("Twb", "v") and any(not v > 0.0 for v in values):
-            raise ValueError("Values of '{0}' have to be positive in SI units, got {1}.".format(self.key, values))
+        if self.key == "Twb" and any(not T_LIMITS_K[0] <= v <= T_LIMITS_K[1] for v in values):
+            raise ValueError("Wet-bulb temperatures have to lie between {0} and {1} K, got {2}.".format(
+                T_LIMITS_K[0], T_LIMITS_K[1], values))
+        if self.key == "v" and any(not v > 0.0 for v in values):
+            raise ValueError("Specific volumes have to be positive, got {0}.".format(values))
         object.__setattr__(self, "values_SI", values)
         object.__setattr__(self, "labels", bool(self.labels))
 
@@ -108,18 +115,34 @@ class PsychroSpec:
     processes: Tuple[AirProcessSpec, ...] = ()
     settings: Settings = field(default_factory=Settings)
     title: str = ""
+    #: Points per line.
+    points: int = 100
+    #: The visible window (T in K, W), or None for the full ranges. Lines
+    #: are computed over T_range_K, so zooming needs no new calculations.
+    view_T_K: Optional[Tuple[float, float]] = None
+    view_W: Optional[Tuple[float, float]] = None
 
     def __post_init__(self):
-        if not float(self.p_Pa) > 0.0:
-            raise ValueError("The total pressure has to be positive, not {0}.".format(self.p_Pa))
-        object.__setattr__(self, "p_Pa", float(self.p_Pa))
-        for name in ("T_range_K", "W_range"):
+        p_Pa = float(self.p_Pa)
+        if not P_LIMITS_PA[0] <= p_Pa <= P_LIMITS_PA[1]:
+            raise ValueError("The total pressure has to lie between {0} and {1} Pa for HAPropsSI, not {2} Pa "
+                             "(bar with units='EUR', Pa with 'SI').".format(P_LIMITS_PA[0], P_LIMITS_PA[1], p_Pa))
+        object.__setattr__(self, "p_Pa", p_Pa)
+        for name in ("T_range_K", "W_range", "view_T_K", "view_W"):
+            if getattr(self, name) is None:
+                continue
             lo, hi = sorted(float(v) for v in getattr(self, name))
             if not hi > lo:
                 raise ValueError("{0} needs two different values, not {1}.".format(name, getattr(self, name)))
             object.__setattr__(self, name, (lo, hi))
-        if self.T_range_K[0] <= 0.0 or self.W_range[0] < 0.0:
-            raise ValueError("Temperatures have to be above 0 K and humidity ratios at least 0.")
+        if not T_LIMITS_K[0] <= self.T_range_K[0] < self.T_range_K[1] <= T_LIMITS_K[1]:
+            raise ValueError("Temperatures have to lie between {0} and {1} K for HAPropsSI, got {2} K.".format(
+                T_LIMITS_K[0], T_LIMITS_K[1], self.T_range_K))
+        if self.W_range[0] < 0.0:
+            raise ValueError("Humidity ratios have to be at least 0, got {0}.".format(self.W_range))
+        if int(self.points) < 2:
+            raise ValueError("Lines need at least 2 points, not {0}.".format(self.points))
+        object.__setattr__(self, "points", int(self.points))
         psychro_units(self.units)
         object.__setattr__(self, "units", str(self.units).upper())
         object.__setattr__(self, "settings", get_settings(self.settings))
@@ -154,6 +177,9 @@ class PsychroSpec:
     def to_dict(self) -> dict:
         return {"p_Pa": self.p_Pa, "T_range_K": list(self.T_range_K), "W_range": list(self.W_range),
                 "units": self.units, "title": self.title, "settings": self.settings.to_dict(),
+                "points": self.points,
+                "view_T_K": None if self.view_T_K is None else list(self.view_T_K),
+                "view_W": None if self.view_W is None else list(self.view_W),
                 "lines": [{"key": f.key, "values_SI": list(f.values_SI), "labels": f.labels} for f in self.lines],
                 "processes": [{"name": p.name, "states": [[list(kv) for kv in s] for s in p.states],
                                "closed": p.closed, "numbers": p.numbers,
@@ -166,6 +192,9 @@ class PsychroSpec:
         return cls(p_Pa=data.get("p_Pa", 101325.0), T_range_K=tuple(data.get("T_range_K", (263.15, 323.15))),
                    W_range=tuple(data.get("W_range", (0.0, 0.03))), units=data.get("units", "EUR"),
                    title=data.get("title", ""), settings=Settings.from_dict(data.get("settings", {})),
+                   points=data.get("points", 100),
+                   view_T_K=None if data.get("view_T_K") is None else tuple(data["view_T_K"]),
+                   view_W=None if data.get("view_W") is None else tuple(data["view_W"]),
                    lines=tuple(PsychroLines(f["key"], tuple(f.get("values_SI", ())), f.get("labels", True))
                                for f in data.get("lines", ())),
                    processes=tuple(AirProcessSpec(

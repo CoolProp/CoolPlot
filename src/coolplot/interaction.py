@@ -11,7 +11,8 @@ usual cases, so that an interactive application needs only a few lines:
 * hovering reports the full state under the pointer to ``on_hover``;
 * dragging a state marker of a cycle moves that state (see
   :meth:`coolplot.PropertyDiagram.move_cycle_state`); only the cycle is
-  recalculated and redrawn.
+  recalculated and redrawn. On a psychrometric chart the states of air
+  processes can be dragged the same way.
 
 Everything goes through the public API of the diagram and the renderer;
 an application that wants different behaviour can handle the events
@@ -87,15 +88,26 @@ class Interaction:
         if target is None:
             return
         name, number = target
+        mover = self.diagram.move_process_state if event.item_id.startswith("air/") else \
+            self.diagram.move_cycle_state
         try:
-            self.diagram.move_cycle_state(name, number, event.x, event.y)
+            mover(name, number, event.x, event.y)
         except (ValueError, KeyError):
             return   # no valid state there: keep the last good position
         self.redraw()
 
     def cycle_state(self, item_id: Optional[str], index: Optional[int]):
-        """(cycle name, state number) of point ``index`` of a cycle's marker item, or None."""
-        if item_id is None or index is None or not item_id.startswith("cycle/") or not item_id.endswith("/states"):
+        """(name, state number) of point ``index`` of the marker item of a
+        cycle (or of an air process on a psychrometric chart), or None."""
+        if item_id is None or index is None or not item_id.endswith("/states"):
+            return None
+        if item_id.startswith("air/"):
+            name = item_id[len("air/"):-len("/states")]
+            process = next((p for p in getattr(self.diagram.spec, "processes", ()) if p.name == name), None)
+            if process is None or not 0 <= index < len(process.states):
+                return None
+            return name, index + 1   # process states are numbered from 1 in order
+        if not item_id.startswith("cycle/"):
             return None
         name = item_id[len("cycle/"):-len("/states")]
         cycle = next((c for c in self.diagram.spec.cycles if c.name == name), None)

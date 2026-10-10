@@ -352,7 +352,15 @@ per kg of dry air. `set_lines(key, values)` chooses the values. Air
 states are given by any two of `T`, `W`, `RH`, `Twb`, `Tdp`, `h`, `v`
 and joined by straight lines (`closed=True` closes the loop). Labels,
 themes, settings and every backend work as for property diagrams; the
-properties come from CoolProp's `HAPropsSI`.
+properties come from CoolProp's `HAPropsSI`, which covers about -100 to
+350 deg C and 0.1 to 100 bar. Without values, `set_lines` picks round
+values (3 to 15 lines per family).
+
+`chart.set_view(x_limits, y_limits)` zooms without new calculations, and
+`Interaction(chart, renderer)` gives zoom, hover (`chart.state_at`) and
+dragging of process states (`chart.move_process_state`), as for property
+diagrams. `chart.spec.to_dict()` saves a chart and
+`PsychrometricChart.from_spec(PsychroSpec.from_dict(data))` restores it.
 
 ## 9. Refrigerant blends and other mixtures
 
