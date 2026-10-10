@@ -249,7 +249,28 @@ Declare optional abilities in the class attribute `capabilities`:
   the library is not installed.
 
 
-## 10. Checklist
+## 10. What the backend decides itself
+
+Charts from different backends carry the same information in the same
+visual language; they are not meant to be pixel-identical. Everything in
+sections 3 to 5 is decided centrally and MUST be followed. The rest of
+the page is the backend's own business and SHOULD follow the library's
+idiomatic defaults:
+
+* canvas size and plot-area margins (the diagram's `page` settings are
+  hints, not requirements);
+* tick positions and minor ticks;
+* exact text rendering and font fallback;
+* the exact geometry of the legend box, as long as it is in the requested
+  corner or outside on the right;
+* interactive behaviour such as toolbars and zoom gestures.
+
+Planned for 0.2: tick label texts will follow a central number format
+carried by the scene, while the tick positions stay with the backend.
+See docs/architecture.md, section 6.
+
+
+## 11. Checklist
 
 1. Subclass `Renderer`, implement the hooks of section 1.
 2. Implement every style rule of section 3, using `dash_pattern_pt` and

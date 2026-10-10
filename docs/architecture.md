@@ -115,7 +115,7 @@ iterations with saturation brackets, robust near the critical point and
 for zeotropic blends). CoolPlot is frozen at the 2020 state. Two
 diverging copies of the same code was the most important organisational
 issue. Decision (October 2026): CoolPlot stays a separate package and owns
-the numerics as well; the tracer is ported, not imported (section 7).
+the numerics as well; the tracer is ported, not imported (section 9).
 
 
 ## 2. Decisions
@@ -125,9 +125,13 @@ the numerics as well; the tracer is ported, not imported (section 7).
 | CoolPlot is a separate package and owns everything, including the isoline numerics. `IsoLineTracer` is ported from CoolProp. | decided |
 | Styling is a first-class layer: themes resolve to concrete, normalised styles in the scene; every backend must render them identically. | decided, implemented |
 | Backends are accepted by passing a mechanical conformance kit. | decided, implemented |
-| Rename the import to `coolplot`, remove the legacy packages, release as v1.0. | proposed, open |
-| Minimum versions CoolProp 8.0 and Python 3.10. | proposed, open |
-| Property calculations run synchronously by default; background execution is opt-in for applications. | proposed, open |
+| The legacy API gets one last release, 0.1.7 (works with CoolProp 6, 7 and 8 and NumPy 2), from a separate branch off master. | done, waiting for merge and upload |
+| 0.2 replaces the legacy API: the import becomes `coolplot`, `CoolPlot.Plot` and `CoolPlot.Util` are removed. Users of the old API stay on 0.1.7. | decided |
+| The package is restructured into layers with one responsibility each (section 4); the facade `PropertyDiagram` only delegates. | decided |
+| One `Settings` value bundles calculation detail, styling, label placement and page hints (section 5). | decided |
+| CoolPlot decides what makes a chart recognisable and correct (colours, styles, all texts, label placement); each backend keeps its own defaults for page geometry and tick positions (section 6). | decided |
+| Minimum versions: Python 3.10; CoolProp 6.8, 7.x and 8.x, all tested in CI. | decided |
+| Property calculations run in the foreground in 0.2; background execution follows in 0.3. | decided |
 
 
 ## 3. The pipeline
@@ -156,7 +160,34 @@ caches its results (curves) or compares them with the previous ones
 | Events | backend-neutral events back into the diagram | planned |
 
 
-## 4. Layers and import rules
+## 4. Package layout for 0.2
+
+The layering exists in the new modules, but the package as a whole has not
+been reworked: `diagram.py` stores settings, generates isoline values,
+builds cache keys, calls the calculations, applies units and styles,
+places labels and opens matplotlib windows; the curve cache lives in
+`thermo`; the legacy code and old tooling are still in the tree. 0.2
+restructures the package explicitly, one responsibility per layer:
+
+```
+src/coolplot/
+  core/      quantities, units                      plain data, no CoolProp, no plotting
+  spec/      FluidSpec, DiagramSpec, Settings       what the user asks for, as data
+  thermo/    states, saturation, isolines, cycles   the only place that talks to CoolProp
+  engine/    plan, cache, executor                  which curves are needed; compute and cache them
+  compose/   scene building, label layout           SI curves + spec + settings -> scene
+  style/     style values, themes
+  scene.py                                          the contract to the backends
+  render/    base, testing, svg, mpl                paint the scene, nothing else
+  diagram.py                                        PropertyDiagram: thin facade for users
+```
+
+Each layer may only use the layers listed above it; `tests/test_architecture.py`
+enforces this statically. The facade holds a `DiagramSpec`, asks the
+engine for curves and hands the composed scene to renderers; it contains
+no calculation, styling or layout logic of its own.
+
+### Layers and import rules today
 
 ```
   +---------------------------------------------------------------+
@@ -194,7 +225,49 @@ styles on every item, so a backend cannot apply its own idea of a
 default, and all backends look the same.
 
 
-## 5. Styling
+## 5. Settings
+
+All tunable values live in one immutable `Settings` value, part of the
+`DiagramSpec`, saved and loaded as JSON like themes. It is split by what a
+change costs, because that decides what is recomputed:
+
+| Part | Contents | A change costs |
+|------|----------|----------------|
+| `calc` | points per isoline, points and spacing on the saturation line, distance kept from the triple and critical point, solver (tracer or plain flash), failure tolerance | recalculation of the affected curves; part of the cache key |
+| `look` | the theme: every colour, line, marker and font | restyling only |
+| `labels` | mode (edge, margin, inline), keep-out margin around processes, density, number format and rounding of all values shown | new label layout only |
+| `page` | hints for the backends: preferred canvas size, font scale, legend position | backend layout only |
+
+Defaults come from presets (`screen`, `print`, `publication`,
+`interactive`); the interactive preset uses few points while the user
+drags and full resolution when the drag ends. Settings can be overridden
+per isoline family. Values that are hard-coded today become settings:
+points per line (250, in three places), the saturation margin (1e-7 of
+the critical values), the quality-line spacing and the rounding rules.
+
+## 6. What is central and what backends decide
+
+Charts do not have to be pixel-identical across plotting libraries. They
+have to carry the same information in the same visual language, and each
+library may lay out the page in its own idiomatic way.
+
+| Decided centrally, every backend must follow | Left to the backend's defaults |
+|----------------------------------------------|--------------------------------|
+| colours, line widths, dashes, casings, markers, fonts (family, size, weight, style) | canvas size and plot-area margins (the `page` settings are hints) |
+| every text: axis labels with units, title, legend entries, isoline label texts | tick positions and minor ticks |
+| the number format of every value shown, including tick labels | exact text rendering and font fallback |
+| position and angle of isoline labels, keep-out zones around processes | exact geometry of the legend box (corner or outside is central) |
+| what is drawn, drawing order, visibility, axis scales and limits, grid on or off | interactive behaviour of the library (toolbars, zoom gestures) |
+
+Label placement needs the size of the plot area, which only the backend
+knows. Renderers report it (`plot_size_pt`); the layout uses the `page`
+hint before the first draw and is re-run, without any property
+calculation, when the reported size differs. The conformance kit checks
+everything in the left column and nothing in the right one; for tick
+labels it checks that the texts follow the central number format, not
+where the ticks are.
+
+## 7. Styling
 
 Summary of `docs/styling.md`:
 
@@ -214,7 +287,7 @@ Summary of `docs/styling.md`:
 * Changing the theme restyles items only; no property is recalculated.
 
 
-## 6. Backends and the conformance kit
+## 8. Backends and the conformance kit
 
 Summary of `docs/backends.md`:
 
@@ -254,36 +327,41 @@ What a change costs today:
 units, styles, one added line, cycles, zoom and themes.
 
 
-## 7. Plan
+## 9. Plan
 
-Work is split into phases, each a separate commit with tests.
+### 0.2: replace the legacy API
 
-| Phase | Content | Status |
-|-------|---------|--------|
-| 0 | Layered skeleton: units, scene, renderer diffing, first thermo layer | done |
-| 1 | Styling and backends: style model, themes, backend guide, conformance kit, SVG and matplotlib to spec | done |
-| 2 | Fluid and diagram as data: `FluidSpec` (backend, components, fractions, interaction parameters), immutable `DiagramSpec`, pure `plan()` | next |
+| Step | Content | Status |
+|------|---------|--------|
+| - | Layered skeleton, styling layer, backend guide, conformance kit, SVG and matplotlib backends | done |
+| - | Legacy release 0.1.7 | done, waiting for merge and upload |
+| 1 | Restructure into the package layout of section 4 (`src/coolplot`, `pyproject.toml`), remove the legacy code, CI on GitHub Actions with CoolProp 6.8, 7.x and 8.x | next |
+| 2 | Specs and settings: `FluidSpec` (backend, components, fractions, interaction parameters), `DiagramSpec`, `Settings` with presets, pure `plan()` | |
 | 3 | Numerics: port `IsoLineTracer`, isolines built from phase segments with the saturation states inserted, mixture dome from the phase envelope, per-curve diagnostics | |
-| 4 | Engine: background execution (threads or processes), cancellation, coarse-then-fine, keep old lines until new ones arrive, optional disk cache | |
-| 5 | Viewport, layout and events: renderers report their size and visible window; label placement with collision avoidance; neutral events (zoom, hover, pick, drag) | |
-| 6 | More backends: plotly `FigureWidget`, JSON deltas for web clients | |
-| 7 | Cycles as pure models, packaging (`src` layout, `pyproject.toml`, CI), removal of the legacy code | |
+| 4 | Label layout: edge labels with keep-out zones around processes, margin labels as an option, stable placement while dragging; central number formats | |
+| 5 | Close the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising) | |
+| 6 | Cycles as pure models (simple compression, Rankine), examples and user documentation | |
 
-Findings from the review of phase 0 that are still open, by phase:
+### 0.3 and later
 
-* Phase 2: cached curves can go stale when a caller changes a passed-in
+Background calculation (threads or processes, cancellation,
+coarse-then-fine), events back from the backends (zoom, hover, pick,
+drag), plotly and web backends, psychrometric charts.
+
+### Open findings from the reviews
+
+* Step 2: cached curves can go stale when a caller changes a passed-in
   `AbstractState` (fractions, interaction parameters), because the cache
   key does not capture them; fractions given for a single fluid string
   (`INCOMP::MEG[0.3]`) are dropped.
-* Phase 3: lines of constant T or p cut diagonally across the two-phase
+* Step 3: lines of constant T or p cut diagonally across the two-phase
   region, because no saturation states are inserted; the dome of tabular
-  backends closes with a kink.
-* Phase 2: item ids are built from values with 12 significant digits and
-  can collide; `nice_values` can space rounded isolines unevenly.
-* Phase 3: a line that fails warns again on every `update_scene`; this
-  becomes per-curve diagnostics.
+  backends closes with a kink; a failing line warns again on every update.
+* Step 2: item ids are built from values with 12 significant digits and
+  can collide; rounded isoline values can be spaced unevenly.
+* Step 5: the conformance-kit findings listed there.
 
 Calculation speed today: pure fluids are fast (a full ph chart of R290 in
 about 0.2 s). Zeotropic blends are not: one line of constant entropy for
 an R32/R125 blend takes about 15 s for 50 points with plain flash calls,
-which phases 3 and 4 address.
+which step 3 and the 0.3 background engine address.
