@@ -31,6 +31,7 @@ from typing import Callable, List
 
 import numpy as np
 
+from ..core.numbers import format_number
 from ..scene import AxesSpec, Line, Markers, Scene, Text
 from ..style.values import (AxesStyle, Font, GENERIC_FONTS, LegendStyle, LineStyle, MarkerStyle, MARKER_SHAPES,
                      TextStyle, dash_pattern_pt)
@@ -112,6 +113,9 @@ def conformance_scene() -> Scene:
         Text(id="text/left-down", x=2.0, y=20.0, text="left down", z_order=4.0, direction=(-1.0, -10.0)),
         Text(id="text/left-up", x=8.0, y=0.5, text="left up", z_order=4.0, direction=(-2.0, 0.1)),
         Text(id="text/nan", x=float("nan"), y=1.0, text="nowhere"),
+        # A margin label: shifted on screen and not cut off at the plot area
+        Text(id="text/margin", role="isoline_label", x=6.0, y=100.0, text="margin", z_order=4.0,
+             offset_pt=(4.0, 6.0), clip=False, style=TextStyle(v_align="bottom")),
     ]
     return Scene(conformance_axes(), items)
 
@@ -150,7 +154,7 @@ def safe_limits(limits, log):
 
 def expected_item(item, axes: AxesSpec) -> dict:
     """The normalised description a conforming backend reports for ``item``."""
-    out = {"visible": item.visible}
+    out = {"visible": item.visible, "clip": getattr(item, "clip", True)}
     s = item.style
     if isinstance(item, Line):
         cased = s.casing_color is not None and s.casing_width_pt > 0.0
@@ -173,7 +177,7 @@ def expected_item(item, axes: AxesSpec) -> dict:
                    font_size_pt=s.font.size_pt, font_weight=s.font.weight, font_style=s.font.style,
                    color=s.color, alpha=s.alpha, h_align=s.h_align, v_align=s.v_align,
                    halo_color=s.halo_color if s.halo_width_pt > 0 else None,
-                   halo_width_pt=s.halo_width_pt if s.halo_color else 0.0)
+                   halo_width_pt=s.halo_width_pt if s.halo_color else 0.0, offset_pt=item.offset_pt)
         if not drawable:
             out["visible"] = False
     return out
@@ -291,6 +295,19 @@ def _check_scene(renderer, scene: Scene, failures: List[str], label: str):
         failures.append("{0}: only {1} major grid lines [style]".format(label, axes_actual.get("grid_lines")))
     if "plot_size_pt" not in axes_actual:
         failures.append("{0}: backend does not report 'plot_size_pt' [read-back]".format(label))
+    for name in ("x", "y"):
+        labels = axes_actual.get(name + "_tick_labels")
+        if labels is None:
+            failures.append("{0}: backend does not report '{1}_tick_labels' [read-back]".format(label, name))
+        elif not labels:
+            failures.append("{0}: no {1} tick labels [number format]".format(label, name))
+        else:
+            for value, text in labels:
+                want = format_number(value, scene.axes.tick_digits)
+                if text != want:
+                    failures.append("{0}: {1} tick label {2!r} at {3!r}, expected {4!r} [number format]".format(
+                        label, name, text, value, want))
+                    break
 
     visible_order = [i for i in scene.draw_order() if expected_item(scene[i], scene.axes)["visible"]]
     for item in scene:

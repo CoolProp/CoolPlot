@@ -221,6 +221,17 @@ meets the dome, the bubble and dew lines of mixtures from the phase
 envelope, and diagnostics on every `Curve` (`n_failed`, `n_gaps`,
 `n_fallback`, `n_inserted`, `method`).
 
+Step 4 added `compose/layout.py`, the label layout (section 6): edge
+labels just inside the frame where the lines leave the plot, keep-out
+zones of `Settings.labels.keep_out_pt` around every process, one pass in
+order of importance, earlier positions kept while they stay free (the
+scene then sees the same item and nothing is redrawn), optional fallback
+positions along the line, margin labels outside the frame, and the old
+inline labels. Renderers report `plot_size_pt()`; `PropertyDiagram.draw`
+re-runs the layout once if the plot area changed when the scene was
+drawn. Tick label texts follow `coolplot.core.numbers.format_number`
+in every backend; `Text` gained `offset_pt` and `clip` for margin labels.
+
 Backends never see themes: the scene carries concrete styles on every
 item, so a backend cannot apply its own idea of a default.
 
@@ -251,9 +262,10 @@ Implemented in step 2 (`coolplot.spec.settings`):
   `warn_failed_fraction` (warn once per curve with more failed points
   inside the line than this).
 * `look`: a `Theme`.
-* `labels`: `position` along the visible part of a line, `digits` of the
-  values shown, `show_units`. Edge placement and keep-out zones follow in
-  step 4.
+* `labels`: `mode` ("edge", "margin" or "inline"), `keep_out_pt`,
+  preferred `edges` per family, `margin_edges`, `fallback`, `every`
+  (label every n-th line), `position` (inline mode), `digits` of the
+  values shown, `show_units` and `tick_digits` (step 4).
 * `page`: `width_pt`, `height_pt` (used when the diagram creates its own
   renderer) and `font_scale`, which compose applies to every font of the
   theme.
@@ -427,8 +439,8 @@ units, styles, one added line, cycles, zoom and themes.
 | 1 | Restructure into the package layout of section 4 (`src/coolplot`, `pyproject.toml`), remove the legacy code, CI on GitHub Actions with CoolProp 6.8, 7.x and 8.x | done |
 | 2 | Specs and settings: `FluidSpec` (backend, components, fractions, interaction parameters), `DiagramSpec`, `Settings` with presets, pure `plan()`, scene building moved from the facade into `compose` | done |
 | 3 | Numerics: port `IsoLineTracer`, isolines built from phase segments with the saturation states inserted, mixture dome from the phase envelope, per-curve diagnostics | done |
-| 4 | Label layout: edge labels with keep-out zones around processes, margin labels as an option, stable placement while dragging; central number formats | next |
-| 5 | Cycles on diagrams (section 7): `add_cycle` with states, `via`, automatic paths, loops for split and two-stage cycles, state numbers; models for simple compression, two-stage (flash tank, economizer) and Rankine | |
+| 4 | Label layout: edge labels with keep-out zones around processes, margin labels as an option, stable placement while dragging; central number formats | done |
+| 5 | Cycles on diagrams (section 7): `add_cycle` with states, `via`, automatic paths, loops for split and two-stage cycles, state numbers; models for simple compression, two-stage (flash tank, economizer) and Rankine | next |
 | 6 | Close the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising); examples and user documentation | |
 
 ### 0.3 and later

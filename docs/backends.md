@@ -121,6 +121,15 @@ None MUST produce no paint, not black.
   upright (between -90 and +90 degrees). Without a direction the text is
   horizontal. If the library supports it, the angle SHOULD stay correct
   after zooming and resizing (matplotlib `transform_rotates_text`).
+* Offset: `Text.offset_pt = (dx, dy)` MUST shift the text on screen by
+  that many points from its anchor `(x, y)`, with y pointing up, after
+  the anchor is mapped to the screen and independent of the axis scales.
+  The angle is still taken at the anchor. Margin labels use it to sit at
+  a fixed distance from the frame.
+* Clipping: data items and texts with `clip=True` MUST be cut off at the
+  plot area; a text with `clip=False` MUST NOT be (margin labels sit
+  outside the frame). Unclipped texts keep their place in the drawing
+  order.
 
 **Axes**
 
@@ -129,6 +138,10 @@ None MUST produce no paint, not black.
 * Axis labels and title with their complete `TextStyle`. Tick labels
   MUST honour font family, size and colour; weight, style, alpha and halo
   MAY be applied.
+* Tick label texts MUST be written with
+  `coolplot.core.numbers.format_number(value, axes.tick_digits)` [number
+  format]. Where the ticks go, and on a log axis which minor ticks get a
+  label, stays with the backend; only the text is central.
 * `background` behind the plot area, `frame_color` and `frame_width_pt`
   for the frame, tick colour, length, width and direction.
 * Grid lines at the major (and, when `grid_minor` is set, minor) ticks in
@@ -186,13 +199,15 @@ from the scene:
 | all | `kind` ("line", "markers", "text"), `visible`, `draw_rank` (position among visible items, bottom first) |
 | line | `color` (None if the line itself is not drawn), `alpha`, `width_pt`, `dash_pt`, `cap`, `join`, `casing_color`, `casing_width_pt`, and with a casing `casing_dash_pt`, `casing_alpha`; `n_points` (points that survive the backend's own transform) |
 | markers | `shape`, `size_pt` (measured from the drawn geometry), `face_color`, `edge_color`, `edge_width_pt`, `alpha`, `n_points` |
-| text | `text`, `font_family`, `font_size_pt`, `font_weight`, `font_style`, `color`, `alpha`, `h_align`, `v_align`, `halo_color`, `halo_width_pt`, `screen_angle_deg` (counter-clockwise, as drawn on screen) |
+| all items | `visible`, `draw_rank`, `clip` (cut off at the plot area) |
+| text | `text`, `font_family`, `font_size_pt`, `font_weight`, `font_style`, `color`, `alpha`, `h_align`, `v_align`, `halo_color`, `halo_width_pt`, `screen_angle_deg` (counter-clockwise, as drawn on screen), `offset_pt` (where the text was drawn relative to its anchor, in points, y up) |
 
 `describe_axes() -> dict`, with the keys
 
 | Group | Keys |
 |-------|------|
 | scales | `x_log`, `y_log`, `x_limits`, `y_limits` (as used, also when autoscaled), `plot_size_pt` (width, height of the plot area) |
+| tick labels | `x_tick_labels`, `y_tick_labels`: (value, text) of the labelled major ticks, as the backend writes them |
 | frame | `background`, `figure_background` (if `owns_canvas`), `frame_color`, `frame_width_pt` |
 | ticks | `tick_direction`, `tick_color`, `tick_length_pt`, `tick_width_pt` |
 | text | `x_label`, `y_label`, `title`, and for each of `x_label`, `y_label`, `title`: `<name>_font_family`, `_font_size_pt`, `_font_weight`, `_font_style`, `_color`; `tick_label_font_family`, `tick_label_font_size_pt`, `tick_label_color` |
@@ -265,9 +280,13 @@ idiomatic defaults:
   corner or outside on the right;
 * interactive behaviour such as toolbars and zoom gestures.
 
-Planned for 0.2: tick label texts will follow a central number format
-carried by the scene, while the tick positions stay with the backend.
-See docs/architecture.md, section 6.
+Tick label *texts* are central (section 3, Axes); tick *positions* are
+not. See docs/architecture.md, section 6.
+
+A backend SHOULD implement `plot_size_pt()`, returning the size of its
+plot area in points (laying out the page first if needed). The diagram
+places isoline labels for that size; without it, labels are placed for
+an estimate from the `page` settings.
 
 
 ## 11. Checklist

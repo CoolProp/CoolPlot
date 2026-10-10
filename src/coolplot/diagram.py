@@ -108,6 +108,7 @@ class PropertyDiagram:
         self.engine = engine if engine is not None else Engine(cache)
         self.scene = Scene()
         self._default_renderer = None
+        self._plot_size_pt = None
 
     # ------------------------------------------------------------------
     # Settings. Setters only replace the spec; update_scene does the work.
@@ -290,12 +291,22 @@ class PropertyDiagram:
     # ------------------------------------------------------------------
     # Scene building
     # ------------------------------------------------------------------
-    def update_scene(self) -> "Scene":
-        """Bring :attr:`scene` up to date with the spec and return it."""
+    def update_scene(self, plot_size_pt=None) -> "Scene":
+        """Bring :attr:`scene` up to date with the spec and return it.
+
+        ``plot_size_pt`` is the (width, height) of the plot area in points,
+        as ``renderer.plot_size_pt()`` reports it; labels are laid out for
+        it. Without it the last reported size is used, or an estimate from
+        ``settings.page``. Labels that are already placed keep their
+        positions while those stay free.
+        """
+        if plot_size_pt is not None:
+            self._plot_size_pt = tuple(float(v) for v in plot_size_pt)
         spec = self.spec
         domain = self.engine.domain(spec)
         curves = self.engine.curves(spec, domain, plan(spec, domain))
-        items, axes = compose(spec, domain, curves)
+        previous = {item.id: item for item in self.scene if item.role == "isoline_label"}
+        items, axes = compose(spec, domain, curves, self._plot_size_pt, previous)
         self.scene.replace_all(items, axes=axes)
         return self.scene
 
@@ -312,7 +323,14 @@ class PropertyDiagram:
             if renderer is None:
                 from .render.mpl import MatplotlibRenderer
                 renderer = self._default_renderer = MatplotlibRenderer(figsize=self.spec.settings.page.size_in)
-        renderer.sync(self.update_scene())
+        renderer.sync(self.update_scene(renderer.plot_size_pt()))
+        # The plot area can change once the scene is drawn (for example when
+        # matplotlib fits the axis titles); lay out the labels again then.
+        # Only labels change, nothing is recalculated.
+        size = renderer.plot_size_pt()
+        if size is not None and self._plot_size_pt is not None and any(
+                abs(a - b) > 0.02 * b for a, b in zip(size, self._plot_size_pt)):
+            renderer.sync(self.update_scene(size))
         return renderer
 
     def show(self):

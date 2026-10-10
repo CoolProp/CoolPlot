@@ -161,6 +161,14 @@ class Renderer:
     def _finish(self, report: SyncReport):
         """Called once at the end of every sync, e.g. to request a repaint."""
 
+    def plot_size_pt(self):
+        """(width, height) of the plot area in points, or None if unknown.
+
+        The diagram places isoline labels in this area; a backend that
+        reports it gets labels laid out for its own page geometry.
+        """
+        return None
+
     # Read back ---------------------------------------------------------
     # These report what the backend actually drew, read from its own
     # objects (artists, SVG elements, ...) and not copied from the scene,

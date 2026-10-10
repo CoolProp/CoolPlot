@@ -35,6 +35,7 @@ from matplotlib.colors import to_hex
 from matplotlib.font_manager import FontProperties
 from matplotlib.markers import MarkerStyle as _MplMarker
 
+from ..core.numbers import format_number
 from ..scene import AxesSpec, Item, Line, Markers, Text
 from ..style.values import dash_pattern_pt
 from .base import Renderer, SyncReport
@@ -201,6 +202,9 @@ class MatplotlibRenderer(Renderer):
             else:
                 setter(_safe_limits(limits, log))
 
+        for axis, log in ((ax.xaxis, axes.x_log), (ax.yaxis, axes.y_log)):
+            _central_tick_format(axis, log, axes.tick_digits)
+
         ax.set_facecolor(st.background or "none")
         if self.owns_canvas:
             self.figure.set_facecolor(st.figure_background or "none")
@@ -325,6 +329,17 @@ class MatplotlibRenderer(Renderer):
         elif isinstance(item, Text):
             artist.set_position((item.x, item.y))
             artist.set_text(item.text)
+            # The offset is a shift in points after the data transform; it
+            # does not change the angle computed by transform_rotates_text.
+            from matplotlib.transforms import ScaledTranslation
+            dx, dy = item.offset_pt
+            transform = self.ax.transData
+            if dx or dy:
+                transform = transform + ScaledTranslation(dx / 72.0, dy / 72.0, self.figure.dpi_scale_trans)
+            artist.set_transform(transform)
+            artist.set_clip_on(item.clip)
+            if item.clip:
+                artist.set_clip_path(self.ax.patch)
             _apply_text_style(artist, s)
             artist.set_horizontalalignment(s.h_align)
             artist.set_verticalalignment(s.v_align)
@@ -348,7 +363,7 @@ class MatplotlibRenderer(Renderer):
     def describe_item(self, item_id: str) -> dict:
         artist = self._artists[item_id]   # KeyError for unknown ids, as required
         item = self._drawn[item_id]
-        out = {"visible": bool(artist.get_visible())}
+        out = {"visible": bool(artist.get_visible()), "clip": bool(artist.get_clip_on())}
         alpha = 1.0 if artist.get_alpha() is None else artist.get_alpha()
         if isinstance(item, Line):
             stroke = _stroke_effect(artist)
@@ -392,6 +407,13 @@ class MatplotlibRenderer(Renderer):
                        halo_color=_hex_or_none(stroke._gc["foreground"]) if stroke else None,   # private
                        halo_width_pt=stroke._gc["linewidth"] / 2.0 if stroke else 0.0,
                        screen_angle_deg=angle)
+            # Offset: where the text transform puts the anchor, compared with
+            # the plain data transform, in points
+            position = artist.get_position()
+            drawn = artist.get_transform().transform(position)
+            plain = self.ax.transData.transform(position)
+            scale = 72.0 / self.figure.dpi
+            out["offset_pt"] = (float(drawn[0] - plain[0]) * scale, float(drawn[1] - plain[1]) * scale)
         if out["visible"]:
             out["draw_rank"] = self._draw_rank(item_id)
         return out
@@ -434,6 +456,11 @@ class MatplotlibRenderer(Renderer):
         out.update(_font_description("y_label", ax.yaxis.label))
         out.update(_font_description("title", ax.title))
         out.update(_font_description("tick_label", tick.label1, full=False))
+        # Tick label texts as the axis formatters write them
+        for name, axis, limits in (("x", ax.xaxis, x_lim), ("y", ax.yaxis, y_lim)):
+            locations = [v for v in axis.get_majorticklocs() if limits[0] <= v <= limits[1]]
+            texts = axis.get_major_formatter().format_ticks(locations)
+            out[name + "_tick_labels"] = [(float(v), t) for v, t in zip(locations, texts) if t]
         return out
 
     # Read-back helpers -------------------------------------------------
@@ -500,6 +527,14 @@ class MatplotlibRenderer(Renderer):
         return [ours[id(a)] for a in drawn].index(item_id)
 
     # Output ------------------------------------------------------------
+    def plot_size_pt(self):
+        """Size of the plot area; lays out the figure first if it changed."""
+        if self.figure.stale:
+            # Constrained layout moves the axes only when the figure is drawn
+            self.figure.draw_without_rendering()
+        dpi = self.figure.dpi
+        return self.ax.bbox.width * 72.0 / dpi, self.ax.bbox.height * 72.0 / dpi
+
     def save(self, path, **kwargs):
         if str(path).endswith(".png"):
             kwargs.setdefault("metadata", {"Software": None})   # no version string, deterministic
@@ -527,3 +562,20 @@ def _upright(angle_deg: float) -> float:
     elif angle_deg <= -90.0:
         angle_deg += 180.0
     return angle_deg
+
+
+def _central_tick_format(axis, log: bool, digits: int):
+    """Write tick labels with the central number format.
+
+    matplotlib keeps deciding where ticks go and, on a log axis, which
+    minor ticks get a label (none over many decades, some over few); only
+    the text of each label is replaced.
+    """
+    from matplotlib.ticker import FuncFormatter, LogFormatterSciNotation
+
+    axis.set_major_formatter(FuncFormatter(lambda value, pos=None: format_number(value, digits)))
+    if log:
+        class MinorLabels(LogFormatterSciNotation):
+            def __call__(self, value, pos=None):
+                return format_number(value, digits) if super().__call__(value, pos) else ""
+        axis.set_minor_formatter(MinorLabels(labelOnlyBase=False))

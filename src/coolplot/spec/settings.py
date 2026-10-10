@@ -18,7 +18,9 @@ Presets cover the common cases; derive variants with :meth:`Settings.with_`.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, fields, replace
+from typing import Tuple
 
+from ..core.numbers import format_number
 from ..style.theme import Theme, get_theme
 
 SATURATION_SPACINGS = ("critical", "linear")
@@ -80,35 +82,102 @@ class CalcSettings:
         object.__setattr__(self, "warn_failed_fraction", float(self.warn_failed_fraction))
 
 
+LABEL_MODES = ("edge", "margin", "inline")
+EDGES = ("top", "right", "bottom", "left")
+
+#: Where the labels of each isoline family preferably go in "edge" mode.
+#: Families not listed accept any edge.
+DEFAULT_EDGES = (
+    ("Q", ("bottom", "top")),
+    ("T", ("top", "right")),
+    ("p", ("right", "left")),
+    ("h", ("top", "bottom")),
+    ("s", ("top", "right")),
+    ("rho", ("right", "top")),
+    ("u", ("top", "bottom")),
+)
+
+
 @dataclass(frozen=True)
 class LabelSettings:
     """What isoline labels say and where they sit
 
     Attributes
     ----------
+    mode : str
+        "edge": just inside the frame where the lines leave the plot,
+        clear of processes (the default). "margin": horizontal, outside the
+        frame, like a second set of tick labels. "inline": at ``position``
+        along each line, as in older versions.
+    keep_out_pt : float
+        Distance in points that labels keep from every process and its
+        state points in "edge" mode.
+    edges : tuple of (family, edges)
+        Preferred frame edges per isoline family, best first, for "edge"
+        mode; see DEFAULT_EDGES.
+    margin_edges : tuple of str
+        Edges that carry labels in "margin" mode. The default legend sits
+        outside on the right, so only "top" is used unless the legend is
+        moved.
+    fallback : bool
+        In "edge" mode, put a label further along its line when no spot
+        near the frame is free. Without it such lines stay unlabelled and
+        the middle of the chart stays clear.
+    every : int
+        Label every n-th line of a family (1: all lines).
     position : float
-        Where along the visible part of a line its label sits, from 0
-        (start) to 1 (end).
+        Where along the visible part of a line its label sits in "inline"
+        mode, from 0 (start) to 1 (end).
     digits : int
         Significant digits of the values shown in labels.
     show_units : bool
         Append the unit to every label value.
+    tick_digits : int
+        Significant digits of tick labels; every backend writes them with
+        :func:`coolplot.core.numbers.format_number`.
     """
+    mode: str = "edge"
+    keep_out_pt: float = 12.0
+    edges: Tuple[Tuple[str, Tuple[str, ...]], ...] = DEFAULT_EDGES
+    margin_edges: Tuple[str, ...] = ("top",)
+    fallback: bool = True
+    every: int = 1
     position: float = 0.5
     digits: int = 4
     show_units: bool = True
+    tick_digits: int = 6
 
     def __post_init__(self):
+        if self.mode not in LABEL_MODES:
+            raise ValueError("Unknown label mode '{0}', expected one of {1}.".format(self.mode, LABEL_MODES))
+        if not float(self.keep_out_pt) >= 0.0:
+            raise ValueError("LabelSettings.keep_out_pt has to be zero or positive.")
+        edges = tuple((str(family), tuple(e)) for family, e in (
+            self.edges.items() if isinstance(self.edges, dict) else self.edges))
+        margin_edges = tuple(self.margin_edges)
+        for edge in [e for _, es in edges for e in es] + list(margin_edges):
+            if edge not in EDGES:
+                raise ValueError("Unknown edge '{0}', expected one of {1}.".format(edge, EDGES))
+        if int(self.every) < 1:
+            raise ValueError("LabelSettings.every has to be at least 1.")
         if not 0.0 <= float(self.position) <= 1.0:
             raise ValueError("LabelSettings.position has to be between 0 and 1.")
-        if not 1 <= int(self.digits) <= 12:
-            raise ValueError("LabelSettings.digits has to be between 1 and 12.")
+        for name in ("digits", "tick_digits"):
+            if not 1 <= int(getattr(self, name)) <= 12:
+                raise ValueError("LabelSettings.{0} has to be between 1 and 12.".format(name))
+            object.__setattr__(self, name, int(getattr(self, name)))
+        object.__setattr__(self, "keep_out_pt", float(self.keep_out_pt))
+        object.__setattr__(self, "edges", edges)
+        object.__setattr__(self, "margin_edges", margin_edges)
+        object.__setattr__(self, "every", int(self.every))
         object.__setattr__(self, "position", float(self.position))
-        object.__setattr__(self, "digits", int(self.digits))
+
+    def preferred_edges(self, family: str) -> Tuple[str, ...]:
+        return dict(self.edges).get(family, EDGES)
 
     def format_value(self, value: float) -> str:
-        """A label value with the configured number of significant digits."""
-        return "{0:.{1}g}".format(value, self.digits)
+        """A label value in the central number format with ``digits`` digits."""
+        return format_number(value, self.digits)
 
 
 @dataclass(frozen=True)

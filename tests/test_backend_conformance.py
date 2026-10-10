@@ -14,6 +14,7 @@ import pytest
 
 from coolplot.render.svg import SvgRenderer
 from coolplot.render.testing import run_conformance
+from coolplot.scene import Text
 
 
 def _mpl_factory(cls=None):
@@ -106,6 +107,21 @@ class _HiddenItemsInAutoscale(SvgRenderer):
             self._items = saved
 
 
+class _OffsetIgnored(SvgRenderer):
+    def _text(self, item, to_px):
+        return super()._text(replace(item, offset_pt=(0.0, 0.0)), to_px)
+
+
+class _ClipsEverything(SvgRenderer):
+    def _open(self, item, extra=""):
+        return super()._open(replace(item, clip=True) if isinstance(item, Text) else item, extra)
+
+
+def _scientific_ticks(text):
+    return re.sub(r'(class="cp-tick-label[^"]*"[^>]*data-value="([^"]*)"[^>]*>)[^<]*<',
+                  lambda m: m.group(1) + "{0:.2e}".format(float(m.group(2))) + "<", text)
+
+
 SVG_DEFECTS = {
     "casing ignores dash": _svg_postprocessed(
         lambda t: re.sub(r'(class="cp-casing"[^>]*?) stroke-dasharray="[^"]*"', r"\1", t)),
@@ -121,7 +137,7 @@ SVG_DEFECTS = {
     "title font ignored": _svg_postprocessed(
         lambda t: re.sub(r'(class="cp-title"[^>]*?font-weight=")bold"', r'\1normal"', t)),
     "tick label font ignored": _svg_postprocessed(
-        lambda t: re.sub(r'(class="cp-tick-label"[^>]*?font-size=")[^"]*"', r'\g<1>14"', t)),
+        lambda t: re.sub(r'(class="cp-tick-label[^"]*"[^>]*?font-size=")[^"]*"', r'\g<1>14"', t)),
     "figure background ignored": _svg_postprocessed(
         lambda t: re.sub(r'(class="cp-figure"[^>]*?fill=")[^"]*"', r'\1white"', t)),
     "tick length ignored": _svg_style_override("_ticks_and_labels", tick_length_pt=3.5),
@@ -132,6 +148,9 @@ SVG_DEFECTS = {
     "text upside down": _svg_postprocessed(_upside_down),
     "hidden items in autoscale": _HiddenItemsInAutoscale,
     "markers drawn too small": _svg_postprocessed(lambda t: re.sub(r'(<circle [^>]*?r=")[^"]*"', r'\g<1>0.667"', t)),
+    "text offset ignored": _OffsetIgnored,
+    "unclipped text clipped": _ClipsEverything,
+    "tick labels not in the central format": _svg_postprocessed(_scientific_ticks),
 }
 
 
@@ -155,7 +174,7 @@ def _mpl_defects():
     pytest.importorskip("matplotlib")
     from matplotlib import patheffects
     from coolplot.render.mpl import MatplotlibRenderer
-    from coolplot.scene import Line, Markers, Text
+    from coolplot.scene import Line, Markers
 
     class CasingWithoutLine(MatplotlibRenderer):
         def _apply(self, artist, item):
@@ -198,13 +217,33 @@ def _mpl_defects():
         def _reorder(self, order):
             pass
 
+    class OffsetIgnored(MatplotlibRenderer):
+        def _apply(self, artist, item):
+            super()._apply(artist, item)
+            if isinstance(item, Text):
+                artist.set_transform(self.ax.transData)
+
+    class ClipsEverything(MatplotlibRenderer):
+        def _apply(self, artist, item):
+            super()._apply(artist, item)
+            artist.set_clip_on(True)
+
+    class DefaultTickFormat(MatplotlibRenderer):
+        def _set_axes(self, axes):
+            super()._set_axes(axes)
+            from matplotlib.ticker import LogFormatterSciNotation, ScalarFormatter
+            self.ax.yaxis.set_major_formatter(LogFormatterSciNotation() if axes.y_log else ScalarFormatter())
+
     return {"casing without line": CasingWithoutLine, "autoscale with hidden items": AutoscaleWithHidden,
             "text not upright": NotUpright, "log values clipped": ClipsLogValues, "dashes ignored": NoDashes,
-            "diamond too large": DiamondTooLarge, "no restacking": NoRestacking}
+            "diamond too large": DiamondTooLarge, "no restacking": NoRestacking,
+            "text offset ignored": OffsetIgnored, "unclipped text clipped": ClipsEverything,
+            "default tick format": DefaultTickFormat}
 
 
 MPL_DEFECTS = ["casing without line", "autoscale with hidden items", "text not upright", "log values clipped",
-               "dashes ignored", "diamond too large", "no restacking"]
+               "dashes ignored", "diamond too large", "no restacking", "text offset ignored",
+               "unclipped text clipped", "default tick format"]
 
 
 @pytest.mark.parametrize("defect", MPL_DEFECTS)

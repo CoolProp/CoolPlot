@@ -24,6 +24,7 @@ from xml.sax.saxutils import escape, quoteattr
 
 import numpy as np
 
+from ..core.numbers import format_number
 from ..scene import AxesSpec, Item, Line, Markers, Text
 from ..style.values import AxesStyle, TextStyle, dash_pattern_pt
 from .base import Renderer, SyncReport
@@ -281,9 +282,9 @@ class SvgRenderer(Renderer):
                 _num(bx), _num(by), _num(bw), _num(bh), st.background or "none"),
         ]
         out.extend(self._grid(to_px, axes))
-        out.append('<g clip-path="url(#{0})">'.format(clip))
+        # Every item clips itself (see _open), so that unclipped text keeps
+        # its place in the drawing order.
         out.extend(self._elements[i] for i in self._order if i in self._elements and self._elements[i])
-        out.append('</g>')
         out.append('<rect class="cp-frame" x="{0}" y="{1}" width="{2}" height="{3}" fill="none" '
                    'stroke="{4}" stroke-width="{5}"/>'.format(_num(bx), _num(by), _num(bw), _num(bh),
                                                             st.frame_color or "none", _px(st.frame_width_pt)))
@@ -291,6 +292,10 @@ class SvgRenderer(Renderer):
         out.extend(self._legend_elements())
         out.append('</svg>')
         return "\n".join(out).encode("ascii", "xmlcharrefreplace").decode("ascii")
+
+    def plot_size_pt(self):
+        bx, by, bw, bh = self._box
+        return bw / PX_PER_PT, bh / PX_PER_PT
 
     def save(self, path):
         with open(path, "w", encoding="ascii", newline="\n") as f:
@@ -300,6 +305,8 @@ class SvgRenderer(Renderer):
     def _open(self, item: Item, extra: str = "") -> str:
         classes = " ".join(c for c in ("cp-item", _css_class("cp-role-", item.role) if item.role else "",
                                        _css_class("cp-group-", item.group) if item.group else "") if c)
+        if getattr(item, "clip", True):
+            extra = ' clip-path="url(#{0}-plot-area)"'.format(self.id_prefix) + extra
         return '<g data-item={0} class="{1}"{2}>'.format(quoteattr(item.id), classes, extra)
 
     def _element(self, item: Item, to_px) -> str:
@@ -358,6 +365,9 @@ class SvgRenderer(Renderer):
         if not (math.isfinite(px) and math.isfinite(py)):
             return ""
         angle = 0.0
+        # The angle is measured at the anchor point; the offset moves the
+        # text afterwards. Screen y points down, the offset y up.
+        offset_x, offset_y = item.offset_pt[0] * PX_PER_PT, -item.offset_pt[1] * PX_PER_PT
         if item.direction is not None:
             dx, dy = item.direction
             step = 1e-3
@@ -374,7 +384,8 @@ class SvgRenderer(Renderer):
         baseline = {"bottom": "text-after-edge", "center": "central", "top": "text-before-edge"}[s.v_align]
         return (self._open(item) + '<text x="{0}" y="{1}" text-anchor="{2}" dominant-baseline="{3}" '
                 'transform="rotate({4} {0} {1})" {5}>{6}</text></g>').format(
-            _num(px), _num(py), anchor, baseline, _num(angle), _text_attrs(s), _xml_text(item.text))
+            _num(px + offset_x), _num(py + offset_y), anchor, baseline, _num(angle), _text_attrs(s),
+            _xml_text(item.text))
 
     # Axes decoration ---------------------------------------------------
     def _grid(self, to_px, axes: AxesSpec) -> List[str]:
@@ -410,16 +421,18 @@ class SvgRenderer(Renderer):
             px = float(to_px(value, y0)[0])
             out.append('<line class="cp-tick cp-tick-x" x1="{0}" y1="{1}" x2="{0}" y2="{2}" {3}/>'.format(
                 _num(px), _num(by + bh), _num(by + bh + length), tick))
-            out.append('<text class="cp-tick-label" x="{0}" y="{1}" text-anchor="middle" '
-                       'dominant-baseline="text-before-edge" {2}>{3}</text>'.format(
-                           _num(px), _num(by + bh + gap + 3.0), label_attrs, _fmt(value)))
+            out.append('<text class="cp-tick-label cp-tick-label-x" x="{0}" y="{1}" text-anchor="middle" '
+                       'dominant-baseline="text-before-edge" data-value="{4}" {2}>{3}</text>'.format(
+                           _num(px), _num(by + bh + gap + 3.0), label_attrs,
+                           format_number(value, axes.tick_digits), repr(float(value))))
         for value in _ticks(y0, y1, axes.y_log):
             py = float(to_px(x0, value)[1])
             out.append('<line class="cp-tick cp-tick-y" x1="{0}" y1="{1}" x2="{2}" y2="{1}" {3}/>'.format(
                 _num(bx), _num(py), _num(bx - length), tick))
-            out.append('<text class="cp-tick-label" x="{0}" y="{1}" text-anchor="end" '
-                       'dominant-baseline="central" {2}>{3}</text>'.format(
-                           _num(bx - gap - 3.0), _num(py), label_attrs, _fmt(value)))
+            out.append('<text class="cp-tick-label cp-tick-label-y" x="{0}" y="{1}" text-anchor="end" '
+                       'dominant-baseline="central" data-value="{4}" {2}>{3}</text>'.format(
+                           _num(bx - gap - 3.0), _num(py), label_attrs,
+                           format_number(value, axes.tick_digits), repr(float(value))))
         out.append('<text class="cp-x-label" x="{0}" y="{1}" text-anchor="middle" '
                    'dominant-baseline="text-after-edge" {2}>{3}</text>'.format(
                        _num(bx + bw / 2.0), _num(self.height - 8.0), _text_attrs(st.axis_label),
@@ -496,7 +509,8 @@ class SvgRenderer(Renderer):
         kind = {Line: "line", Markers: "markers", Text: "text"}[type(item)]
         if element is None:
             return {"visible": False, "kind": kind}
-        out = {"visible": True, "kind": kind, "draw_rank": groups.index(element)}
+        out = {"visible": True, "kind": kind, "draw_rank": groups.index(element),
+               "clip": element.get("clip-path") is not None}
         if kind == "line":
             paths = {p.get("class"): p for p in element.iter(_NS + "path")}
             main, casing = paths["cp-stroke"], paths.get("cp-casing")
@@ -527,6 +541,10 @@ class SvgRenderer(Renderer):
                        halo_width_pt=float(text.get("stroke-width")) / PX_PER_PT / 2.0 if halo else 0.0,
                        screen_angle_deg=-angle)   # SVG angles turn clockwise
             out["alpha"] = float(text.get("fill-opacity"))
+            # Offset: where the text was drawn, compared with its anchor
+            to_px, _ = self._mapper()
+            px, py = (float(v) for v in to_px(item.x, item.y))
+            out["offset_pt"] = ((float(text.get("x")) - px) / PX_PER_PT, (py - float(text.get("y"))) / PX_PER_PT)
         return out
 
     def describe_axes(self) -> dict:
@@ -554,6 +572,8 @@ class SvgRenderer(Renderer):
             frame_color=_color(frame.get("stroke")), frame_width_pt=float(frame.get("stroke-width")) / PX_PER_PT,
             plot_size_pt=(bw / PX_PER_PT, bh / PX_PER_PT),
             legend=self._legend_description(by_class),
+            x_tick_labels=[(float(t.get("data-value")), t.text or "") for t in by_class.get("cp-tick-label-x", [])],
+            y_tick_labels=[(float(t.get("data-value")), t.text or "") for t in by_class.get("cp-tick-label-y", [])],
         )
         tick = first("cp-tick-x")
         if tick is not None:
