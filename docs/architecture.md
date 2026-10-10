@@ -115,7 +115,7 @@ iterations with saturation brackets, robust near the critical point and
 for zeotropic blends). CoolPlot is frozen at the 2020 state. Two
 diverging copies of the same code was the most important organisational
 issue. Decision (October 2026): CoolPlot stays a separate package and owns
-the numerics as well; the tracer is ported, not imported (section 9).
+the numerics as well; the tracer is ported, not imported (section 10).
 
 
 ## 2. Decisions
@@ -132,6 +132,7 @@ the numerics as well; the tracer is ported, not imported (section 9).
 | CoolPlot decides what makes a chart recognisable and correct (colours, styles, all texts, label placement); each backend keeps its own defaults for page geometry and tick positions (section 6). | decided |
 | Minimum versions: Python 3.10; CoolProp 6.8, 7.x and 8.x, all tested in CI. | decided |
 | Property calculations run in the foreground in 0.2; background execution follows in 0.3. | decided |
+| 0.2 has a simple interface to overlay cycles on diagrams, including split and two-stage cycles, and cycle models that produce the same objects (section 7). | decided; interface proposed |
 
 
 ## 3. The pipeline
@@ -267,7 +268,83 @@ everything in the left column and nothing in the right one; for tick
 labels it checks that the texts follow the central number format, not
 where the ticks are.
 
-## 7. Styling
+## 7. Cycles on diagrams
+
+Overlaying a cycle on a diagram has to take a few lines, whether the
+states come from CoolPlot's own cycle models, from the user's own
+calculation or from measurements.
+
+### The interface (proposed)
+
+```python
+diagram.add_cycle("Heat pump", [
+    {"p": 3.0, "T": 0.0},                  # 1 compressor inlet, in the diagram's units
+    {"p": 15.0, "T": 75.0},                # 2 compressor outlet
+    {"p": 15.0, "Q": 0.0},                 # 3 condenser outlet
+    {"p": 3.0, "via": "isenthalpic"},      # 4 after the valve, h follows from the process
+])
+```
+
+* States are given by any two properties in the diagram's units (or SI
+  with `units="SI"`), by `StatePoint` objects, or as arrays
+  (`add_cycle(name, p=[...], h=[...])`). A state given with `via` takes
+  its missing property from the process that leads to it.
+* Paths between states follow the physics: equal pressure gives an
+  isobar (bending along the dome in heat exchangers), equal enthalpy an
+  isenthalp, equal entropy an isentrope, anything else a polytropic path
+  (linear in log p and s). Each connection can be set explicitly with
+  `paths=[...]`.
+* The cycle gets theme styles, markers, state numbers (shown by default,
+  `numbers=False` hides them), one legend entry and a keep-out zone for
+  isoline labels. Several cycles get different styles.
+* Calling `add_cycle` again with the same name replaces that cycle; only
+  it is recalculated and redrawn.
+
+### Split and two-stage cycles
+
+A cycle is a set of numbered states plus routes, given as chains of state
+numbers. Without `loops`, the states in order form one closed cycle.
+
+```python
+diagram.add_cycle("Two-stage, flash tank", states={
+        1: {"p": 1.5, "T": -30.0}, 2: {"p": 5.0, "via": "polytropic"},
+        3: {"p": 5.0, "Q": 1.0},   4: {"p": 18.0, "via": "polytropic"},
+        5: {"p": 18.0, "Q": 0.0},  6: {"p": 5.0, "via": "isenthalpic"},
+        7: {"p": 5.0, "Q": 0.0},   8: {"p": 1.5, "via": "isenthalpic"}},
+    loops=[[1, 2, 3, 4, 5, 6, 7, 8, 1]])        # one split cycle
+    # loops=[[1, 2, 7, 8, 1], [3, 4, 5, 6, 3]]  # or two closed cycles
+```
+
+* Each chain is one connected line; chains may share states, which
+  covers split cycles, two overlapping closed loops and injection branches
+  (economizer, vapour injection). A mixing point is an ordinary state.
+* Each state number is drawn once, however many chains pass through it.
+  Branches share the cycle's style unless restyled per chain.
+* In the scene a cycle is one group: one line item per chain, one marker
+  item, one text item per state number, so moving one state redraws only
+  that cycle.
+
+### Cycle models
+
+Models live in `thermo/cycles/` and return the same `Cycle` object that
+`add_cycle` accepts, with states, loops, mass-flow fractions per branch
+and results (COP, heat flows, power):
+
+* simple vapour compression (`T_evap_C`, `T_cond_C`, `dT_sh_K`,
+  `dT_sc_K`, `eta_is`);
+* two-stage compression with `intermediate="flash_tank"` or
+  `"economizer"`, intermediate pressure by default the geometric mean of
+  evaporating and condensing pressure (the legacy `TwoStage` and
+  `EconomizedCycle` functions are the starting point);
+* simple Rankine cycle.
+
+A cascade with two different fluids cannot share one diagram, because a
+property diagram belongs to one fluid. A cascade model returns one cycle
+per stage, each overlaid on the diagram of its fluid (for example two
+panels side by side). A cascade with one fluid is two closed loops on one
+diagram.
+
+## 8. Styling
 
 Summary of `docs/styling.md`:
 
@@ -287,7 +364,7 @@ Summary of `docs/styling.md`:
 * Changing the theme restyles items only; no property is recalculated.
 
 
-## 8. Backends and the conformance kit
+## 9. Backends and the conformance kit
 
 Summary of `docs/backends.md`:
 
@@ -327,7 +404,7 @@ What a change costs today:
 units, styles, one added line, cycles, zoom and themes.
 
 
-## 9. Plan
+## 10. Plan
 
 ### 0.2: replace the legacy API
 
@@ -339,8 +416,8 @@ units, styles, one added line, cycles, zoom and themes.
 | 2 | Specs and settings: `FluidSpec` (backend, components, fractions, interaction parameters), `DiagramSpec`, `Settings` with presets, pure `plan()` | |
 | 3 | Numerics: port `IsoLineTracer`, isolines built from phase segments with the saturation states inserted, mixture dome from the phase envelope, per-curve diagnostics | |
 | 4 | Label layout: edge labels with keep-out zones around processes, margin labels as an option, stable placement while dragging; central number formats | |
-| 5 | Close the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising) | |
-| 6 | Cycles as pure models (simple compression, Rankine), examples and user documentation | |
+| 5 | Cycles on diagrams (section 7): `add_cycle` with states, `via`, automatic paths, loops for split and two-stage cycles, state numbers; models for simple compression, two-stage (flash tank, economizer) and Rankine | |
+| 6 | Close the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising); examples and user documentation | |
 
 ### 0.3 and later
 
@@ -359,7 +436,7 @@ drag), plotly and web backends, psychrometric charts.
   backends closes with a kink; a failing line warns again on every update.
 * Step 2: item ids are built from values with 12 significant digits and
   can collide; rounded isoline values can be spaced unevenly.
-* Step 5: the conformance-kit findings listed there.
+* Step 6: the conformance-kit findings listed there.
 
 Calculation speed today: pure fluids are fast (a full ph chart of R290 in
 about 0.2 s). Zeotropic blends are not: one line of constant entropy for
