@@ -13,7 +13,7 @@ calculation. Use :meth:`Fluid.clone` to give a worker thread its own copy.
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -30,47 +30,107 @@ def parameter_index(key: str) -> int:
     return CP.get_parameter_index(get_quantity(key).coolprop_name)
 
 
-def _new_state(backend: str, fluids, mole_fractions) -> AbstractState:
-    state = AbstractState(backend, "&".join(fluids))
-    if len(fluids) > 1:
-        state.set_mole_fractions(list(mole_fractions))
+#: Binary interaction parameters copied when a state is snapshotted.
+INTERACTION_KEYS = ("betaT", "gammaT", "betaV", "gammaV", "Fij")
+
+
+def model_from_state(state: AbstractState) -> Tuple:
+    """Snapshot of the fluid model of an AbstractState, as plain data.
+
+    Returns (backend, components, fractions, basis, interactions) with the
+    same meaning as the fields of :class:`coolplot.spec.FluidSpec`. Later
+    changes to the state do not affect the snapshot, which is the point:
+    a diagram must not change behind the user's back.
+    """
+    backend = state.backend_name()
+    try:
+        components = tuple(state.fluid_names())
+    except Exception:
+        raise ValueError("CoolProp cannot report the fluid of this {0} state; pass a fluid string "
+                         "such as 'INCOMP::MEG[0.3]' instead.".format(backend))
+    fractions = ()
+    interactions = []
+    if len(components) > 1:
+        fractions = tuple(float(x) for x in state.get_mole_fractions())
+        for i in range(len(components)):
+            for j in range(i + 1, len(components)):
+                for key in INTERACTION_KEYS:
+                    try:
+                        interactions.append((i, j, key, float(state.get_binary_interaction_double(i, j, key))))
+                    except Exception:
+                        continue   # parameter not used by this backend
+    return backend, components, fractions, "mole", tuple(interactions)
+
+
+def model_from_string(text: str, basis: str = None) -> Tuple:
+    """Fluid model from a CoolProp fluid string, using CoolProp's own parser.
+
+    Fractions are mole fractions, except for the INCOMP backend, where
+    CoolProp reads them as mass fractions; ``basis`` overrides this.
+    """
+    backend, names = CP.extract_backend(text)
+    names, values = CP.extract_fractions(names)
+    if backend in ("?", ""):
+        backend = "HEOS"
+    if basis is None:
+        basis = "mass" if backend.upper() == "INCOMP" else "mole"
+    components = tuple(names.split("&")) if isinstance(names, str) else tuple(names)
+    fractions = tuple(float(v) for v in values) if len(values) == len(components) and (
+        len(components) > 1 or "[" in text) else ()
+    return backend, components, fractions, basis, ()
+
+
+def build_state(model: Tuple) -> AbstractState:
+    """A fresh AbstractState for a model tuple (see :func:`model_from_state`)."""
+    backend, components, fractions, basis, interactions = model
+    state = AbstractState(backend, "&".join(components))
+    if fractions:
+        if basis == "mole":
+            state.set_mole_fractions(list(fractions))
+        elif basis == "mass":
+            state.set_mass_fractions(list(fractions))
+        elif basis == "volu":
+            state.set_volu_fractions(list(fractions))
+        else:
+            raise ValueError("Unknown fraction basis '{0}'.".format(basis))
+    for i, j, key, value in interactions:
+        state.set_binary_interaction_double(int(i), int(j), key, float(value))
     return state
 
 
 class Fluid:
-    """A fluid model plus cached constants
+    """A fluid model with its own CoolProp state and cached constants
 
     Parameters
     ----------
-    fluid_ref : str or CoolProp.AbstractState
-        Either a CoolProp fluid string like "HEOS::R290" or
-        "HEOS::R32[0.5]&R125[0.5]", or an existing AbstractState. An
-        existing state is used as is and will be modified by calculations.
-    fractions : str
-        How fractions in a fluid string are interpreted: "mole", "mass"
-        or "volu".
+    fluid : FluidSpec, str or CoolProp.AbstractState
+        A :class:`coolplot.spec.FluidSpec` (or any object with the fields
+        backend, components, fractions, basis and interactions), a CoolProp
+        fluid string like "HEOS::R32[0.7]&R125[0.3]", or an AbstractState.
+        An AbstractState is copied: the Fluid never modifies it, and later
+        changes to it have no effect.
+    fractions : str, optional
+        Basis of the fractions in a fluid string: "mole", "mass" or "volu".
+        Default: "mass" for the INCOMP backend, "mole" otherwise.
     """
 
-    def __init__(self, fluid_ref: Union[str, AbstractState], fractions: str = "mole"):
-        if isinstance(fluid_ref, AbstractState):
-            self._state = fluid_ref
-        elif isinstance(fluid_ref, str):
-            backend, names = CP.extract_backend(fluid_ref)
-            names, values = CP.extract_fractions(names)
-            self._state = AbstractState(backend, "&".join(names))
-            if len(names) > 1 and len(values) == len(names):
-                if fractions == "mole":
-                    self._state.set_mole_fractions(values)
-                elif fractions == "mass":
-                    self._state.set_mass_fractions(values)
-                elif fractions == "volu":
-                    self._state.set_volu_fractions(values)
-                else:
-                    raise ValueError("Unknown fraction type '{0}'.".format(fractions))
+    def __init__(self, fluid, fractions: str = None):
+        if isinstance(fluid, AbstractState):
+            model = model_from_state(fluid)
+            name = "&".join(model[1])
+        elif isinstance(fluid, str):
+            model = model_from_string(fluid, fractions)
+            name = fluid
+        elif all(hasattr(fluid, f) for f in ("backend", "components", "fractions", "basis", "interactions")):
+            model = (fluid.backend, tuple(fluid.components), tuple(fluid.fractions), fluid.basis,
+                     tuple(tuple(x) for x in fluid.interactions))
+            name = str(fluid)
         else:
-            raise TypeError("Expected a fluid string or a CoolProp.AbstractState.")
+            raise TypeError("Expected a FluidSpec, a fluid string or a CoolProp.AbstractState.")
+        self._model = model
+        self._state = build_state(model)
         self._critical = None
-        self._name = fluid_ref if isinstance(fluid_ref, str) else "&".join(self._state.fluid_names())
+        self._name = name
 
     def __repr__(self):
         return "Fluid({0!r})".format(self._name)
@@ -87,22 +147,17 @@ class Fluid:
 
     @property
     def model_key(self) -> Tuple:
-        """Hashable description of the fluid model, used as a cache key.
-
-        Two Fluid objects with the same model key give the same properties,
-        so cached isolines can be shared between them. Binary interaction
-        parameters set after construction are not captured.
-        """
-        return (self._state.backend_name(),
-                tuple(self._state.fluid_names()),
-                tuple(np.round(self._state.get_mole_fractions(), 12)))
+        """(backend, components, fractions, basis, interactions): everything
+        that determines the properties, so it can serve as a cache key."""
+        return self._model
 
     def clone(self) -> "Fluid":
         """An independent Fluid with the same model, for example for a worker thread."""
-        backend, names, fractions = self.model_key
-        twin = Fluid(_new_state(backend, names, fractions))
-        twin._name = self._name
+        twin = Fluid.__new__(Fluid)
+        twin._model = self._model
+        twin._state = build_state(self._model)
         twin._critical = self._critical
+        twin._name = self._name
         return twin
 
     # Property evaluation ---------------------------------------------------
@@ -151,7 +206,7 @@ class Fluid:
 
     @property
     def is_pure(self) -> bool:
-        return len(self._state.fluid_names()) == 1
+        return len(self._model[1]) == 1
 
     @property
     def critical(self) -> dict:
@@ -164,18 +219,19 @@ class Fluid:
             self._critical = _critical_point(self)
         return self._critical
 
-    def saturation_range(self, key: str) -> Tuple[float, float]:
+    def saturation_range(self, key: str, margin: float = 1e-7) -> Tuple[float, float]:
         """Lowest and highest saturation temperature or pressure in SI units.
 
         The range starts slightly above the lowest valid temperature of the
         equation of state and ends slightly below the critical point, where
-        the saturation solvers are reliable.
+        the saturation solvers are reliable. ``margin`` is that distance,
+        relative to the critical value (``Settings.calc.critical_margin``).
         """
         key = get_quantity(key).key
         if key not in ("T", "p"):
             raise ValueError("Saturation ranges are defined in T or p, not in '{0}'.".format(key))
         crit = self.critical
-        rel_small = 1e-7
+        rel_small = float(margin)
         T_lo_K = max(v for v in (self.T_triple_K, self.T_min_K, 0.0) if v is not None)
         T_lo_K += crit["T"] * rel_small
         if key == "T":
@@ -204,8 +260,7 @@ def _critical_point(fluid: Fluid) -> dict:
 
     # Evaluate the remaining properties at the critical point on a separate
     # state, so the working state of the fluid is left alone.
-    backend, names, fractions = fluid.model_key
-    crit_state = _new_state(backend, names, fractions)
+    crit_state = build_state(fluid.model_key)
     errors = []
     attempts = []
     if np.isfinite(rho_crit_mol):

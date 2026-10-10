@@ -7,7 +7,8 @@ CoolProp = pytest.importorskip("CoolProp")
 from CoolProp.CoolProp import PropsSI  # noqa: E402
 
 from coolplot.thermo import (DiagramType, Fluid, Relative, TpLimits, compute_isoline,  # noqa: E402
-                             compute_quality_line, get_tp_limits, process_path, state_point)
+                             compute_quality_line, get_tp_limits, process_path, resolve_tp_box,
+                             state_point)
 
 
 @pytest.fixture(scope="module")
@@ -45,18 +46,18 @@ def test_fluid_constants(r290):
 
 
 def test_tp_limits(r290):
-    T_lo_K, T_hi_K, p_lo_Pa, p_hi_Pa = get_tp_limits("ACHP").resolve(r290)
+    T_lo_K, T_hi_K, p_lo_Pa, p_hi_Pa = resolve_tp_box(r290, get_tp_limits("ACHP"))
     assert (T_lo_K, T_hi_K, p_lo_Pa) == (173.15, 493.15, 0.25e5)
     assert p_hi_Pa == pytest.approx(2.25 * r290.critical["p"], rel=1e-6)
-    custom = TpLimits(250.0, Relative(1.1), 1e5, 5e6).resolve(r290)
+    custom = resolve_tp_box(r290, TpLimits(250.0, Relative(1.1), 1e5, 5e6))
     assert custom[1] == pytest.approx(1.1 * r290.critical["T"], rel=1e-6)
     with pytest.raises(ValueError):
-        TpLimits(400.0, 300.0).resolve(r290)
+        resolve_tp_box(r290, TpLimits(400.0, 300.0))
 
 
 def test_isotherm_matches_propssi(r290):
     ph = DiagramType.parse("ph")
-    box = get_tp_limits("ACHP").resolve(r290)
+    box = resolve_tp_box(r290, get_tp_limits("ACHP"))
     curve = compute_isoline(r290, ph, "T", 300.0, box, points=40)
     assert curve.n_failed == 0
     # Every point is a state at 300 K with the computed (p, h)
@@ -68,7 +69,7 @@ def test_isentrope_in_ts_is_vertical_free(r290):
     # Constant enthalpy in a Ts chart, which older versions computed with
     # the slow (h, s) input pair
     ts = DiagramType.parse("Ts")
-    box = get_tp_limits("ACHP").resolve(r290)
+    box = resolve_tp_box(r290, get_tp_limits("ACHP"))
     curve = compute_isoline(r290, ts, "h", 6e5, box, points=30)
     assert curve.n_valid >= 25
     ok = np.isfinite(curve.x)

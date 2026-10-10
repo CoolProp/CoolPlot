@@ -9,40 +9,19 @@ plotting anything.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import List, Sequence
 
 import numpy as np
 
 from ..core.quantities import quantity_key
+from ..core.state import STATE_KEYS, StatePoint
 from .fluid import Fluid
-
-_KEYS = ("T", "p", "h", "s", "rho", "u", "Q")
-
-
-@dataclass(frozen=True)
-class StatePoint:
-    """A fully defined thermodynamic state in SI units
-
-    ``Q`` is the vapour quality; CoolProp reports values outside 0 to 1
-    for single-phase states.
-    """
-    T: float
-    p: float
-    h: float
-    s: float
-    rho: float
-    u: float
-    Q: float
-
-    def __getitem__(self, key: str) -> float:
-        return getattr(self, quantity_key(key))
 
 
 def state_point(fluid: Fluid, key1: str, value1_SI: float, key2: str, value2_SI: float) -> StatePoint:
     """Evaluate a full state from two quantities, e.g. state_point(f, "p", 1e5, "T", 300)."""
     fluid.update(quantity_key(key1), value1_SI, quantity_key(key2), value2_SI)
-    return StatePoint(**{k: fluid.get(k) for k in _KEYS})
+    return StatePoint(**{k: fluid.get(k) for k in STATE_KEYS})
 
 
 def process_path(fluid: Fluid, start: StatePoint, end: StatePoint, along: Sequence[str] = ("p", "h"),

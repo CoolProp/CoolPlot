@@ -21,7 +21,7 @@ import CoolProp
 from CoolProp import CoolProp as CP
 
 from ..core.quantities import get_quantity, quantity_key
-from .diagram_type import DiagramType
+from ..core.diagram_type import DiagramType
 from .fluid import Fluid, parameter_index
 
 
@@ -104,19 +104,26 @@ def compute_isoline(fluid: Fluid, diagram: DiagramType, iso_key: str, value_SI: 
     return Curve(x, y, n_failed)
 
 
-def compute_quality_line(fluid: Fluid, diagram: DiagramType, quality: float, points: int = 250) -> Curve:
+def compute_quality_line(fluid: Fluid, diagram: DiagramType, quality: float, points: int = 250,
+                         margin: float = 1e-7, spacing: str = "critical") -> Curve:
     """Line of constant vapour quality from the lowest temperature to the critical point.
 
-    Quality 0 is the bubble line and quality 1 the dew line. The temperature
-    steps get denser towards the critical point, where the line bends most.
-    For pure fluids every quality line ends at the critical point, which is
-    appended so that the saturation dome closes.
+    Quality 0 is the bubble line and quality 1 the dew line. With
+    ``spacing="critical"`` the temperature steps get denser towards the
+    critical point, where the line bends most; "linear" spaces them evenly.
+    ``margin`` is passed to :meth:`Fluid.saturation_range`. For pure fluids
+    every quality line ends at the critical point, which is appended so
+    that the saturation dome closes.
     """
     if not 0.0 <= quality <= 1.0:
         raise ValueError("The vapour quality has to be between 0 and 1, not {0}.".format(quality))
-    T_lo_K, T_hi_K = fluid.saturation_range("T")
+    T_lo_K, T_hi_K = fluid.saturation_range("T", margin)
     u = np.linspace(0.0, 1.0, points)
-    T_K = T_lo_K + (T_hi_K - T_lo_K) * (1.0 - (1.0 - u) ** 2)
+    if spacing == "critical":
+        u = 1.0 - (1.0 - u) ** 2
+    elif spacing != "linear":
+        raise ValueError("Unknown saturation spacing '{0}'.".format(spacing))
+    T_K = T_lo_K + (T_hi_K - T_lo_K) * u
 
     x_index = parameter_index(diagram.x)
     y_index = parameter_index(diagram.y)

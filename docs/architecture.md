@@ -193,9 +193,27 @@ renderers; it contains no calculation, styling or layout logic of its own.
 ### Status of the move
 
 Step 1 moved the modules into `core`, `style`, `scene`, `thermo`,
-`engine` (the curve cache) and `render`, and removed the legacy code and
-old tooling. `spec` and `compose` arrive in step 2; until then the facade
-`diagram.py` still builds the scene itself.
+`engine` and `render`, and removed the legacy code and old tooling.
+Step 2 added `spec` (`FluidSpec`, `DiagramSpec`, `Settings`) and
+`compose`, and moved the plain data (`DiagramType`, `StatePoint`,
+`TpLimits`) into `core`. The facade now only holds a `DiagramSpec`:
+
+```
+update_scene():
+    domain = engine.domain(spec)                  # T-p box and quantity ranges, cached
+    curves = engine.curves(spec, domain, plan(spec, domain))
+    items, axes = compose(spec, domain, curves)   # units, styles, texts, labels
+    scene.replace_all(items, axes)                # renderers redraw only what changed
+```
+
+`plan()` is pure: it lists the isolines with snapped values (12
+significant digits, so -20 deg C and 253.15 K are the same line and the
+same id) and, with `rounding=True`, round values in display units with an
+even step (1, 2, 2.5 or 5 times a power of ten on linear axes, mantissas
+1-2-5 and finer on log axes). A Fluid built from an `AbstractState` is a
+snapshot of its fluid, fractions and interaction parameters, so later
+changes to the user's state cannot leave stale curves in the cache; the
+INCOMP backend takes mass fractions by default.
 
 Backends never see themes: the scene carries concrete styles on every
 item, so a backend cannot apply its own idea of a default.
@@ -216,10 +234,22 @@ change costs, because that decides what is recomputed:
 
 Defaults come from presets (`screen`, `print`, `publication`,
 `interactive`); the interactive preset uses few points while the user
-drags and full resolution when the drag ends. Settings can be overridden
-per isoline family. Values that are hard-coded today become settings:
-points per line (250, in three places), the saturation margin (1e-7 of
-the critical values), the quality-line spacing and the rounding rules.
+drags, and an application switches to `screen` when the drag ends. The
+number of points can be overridden per isoline family.
+
+Implemented in step 2 (`coolplot.spec.settings`):
+
+* `calc`: `points`, `saturation_points`, `saturation_spacing`
+  ("critical" or "linear"), `critical_margin` (1e-7 of the critical
+  values) and `warn_failed_fraction` (warn once per curve that lost more
+  points than this).
+* `look`: a `Theme`.
+* `labels`: `position` along the visible part of a line, `digits` of the
+  values shown, `show_units`. Edge placement and keep-out zones follow in
+  step 4.
+* `page`: `width_pt`, `height_pt` (used when the diagram creates its own
+  renderer) and `font_scale`, which compose applies to every font of the
+  theme.
 
 ## 6. What is central and what backends decide
 
@@ -388,8 +418,8 @@ units, styles, one added line, cycles, zoom and themes.
 | - | Layered skeleton, styling layer, backend guide, conformance kit, SVG and matplotlib backends | done |
 | - | Legacy release 0.1.7 | done, waiting for merge and upload |
 | 1 | Restructure into the package layout of section 4 (`src/coolplot`, `pyproject.toml`), remove the legacy code, CI on GitHub Actions with CoolProp 6.8, 7.x and 8.x | done |
-| 2 | Specs and settings: `FluidSpec` (backend, components, fractions, interaction parameters), `DiagramSpec`, `Settings` with presets, pure `plan()`, scene building moved from the facade into `compose` | next |
-| 3 | Numerics: port `IsoLineTracer`, isolines built from phase segments with the saturation states inserted, mixture dome from the phase envelope, per-curve diagnostics | |
+| 2 | Specs and settings: `FluidSpec` (backend, components, fractions, interaction parameters), `DiagramSpec`, `Settings` with presets, pure `plan()`, scene building moved from the facade into `compose` | done |
+| 3 | Numerics: port `IsoLineTracer`, isolines built from phase segments with the saturation states inserted, mixture dome from the phase envelope, per-curve diagnostics | next |
 | 4 | Label layout: edge labels with keep-out zones around processes, margin labels as an option, stable placement while dragging; central number formats | |
 | 5 | Cycles on diagrams (section 7): `add_cycle` with states, `via`, automatic paths, loops for split and two-stage cycles, state numbers; models for simple compression, two-stage (flash tank, economizer) and Rankine | |
 | 6 | Close the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising); examples and user documentation | |
@@ -402,15 +432,13 @@ drag), plotly and web backends, psychrometric charts.
 
 ### Open findings from the reviews
 
-* Step 2: cached curves can go stale when a caller changes a passed-in
-  `AbstractState` (fractions, interaction parameters), because the cache
-  key does not capture them; fractions given for a single fluid string
-  (`INCOMP::MEG[0.3]`) are dropped.
+* Fixed in step 2: stale curves after a caller changed a passed-in
+  `AbstractState` (the Fluid is now a snapshot), dropped fractions for
+  `INCOMP::MEG[0.3]`, colliding item ids, unevenly spaced rounded values,
+  and a failing line warning again on every update (now once per curve).
 * Step 3: lines of constant T or p cut diagonally across the two-phase
   region, because no saturation states are inserted; the dome of tabular
-  backends closes with a kink; a failing line warns again on every update.
-* Step 2: item ids are built from values with 12 significant digits and
-  can collide; rounded isoline values can be spaced unevenly.
+  backends closes with a kink.
 * Step 6: the conformance-kit findings listed there.
 
 Calculation speed today: pure fluids are fast (a full ph chart of R290 in

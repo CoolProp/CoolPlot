@@ -1,0 +1,163 @@
+# -*- coding: utf-8 -*-
+"""Which curves a diagram needs, decided without any property calculation.
+
+:func:`plan` reads a :class:`coolplot.spec.DiagramSpec` and the calculation
+:class:`Domain` and lists one :class:`CurveRequest` per isoline. It is a
+pure function: the same inputs always give the same requests, which makes
+the choice of isoline values easy to test and lets an application inspect
+what would be computed before anything is computed.
+"""
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+from typing import Tuple
+
+import numpy as np
+
+from ..core.quantities import get_quantity
+from ..spec.diagram import DiagramSpec, IsolineSet
+
+# Mantissas for round values on a logarithmic scale, from coarse to fine.
+# For each family the set whose number of values is closest to the
+# requested number is used.
+_LOG_MANTISSAS = (
+    (1.0,),
+    (1.0, 2.0, 5.0),
+    (1.0, 1.5, 2.0, 3.0, 5.0, 7.0),
+    (1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0),
+)
+
+# Round steps on a linear scale: 1, 2, 2.5 or 5 times a power of ten.
+_LINEAR_STEPS = (1.0, 2.0, 2.5, 5.0, 10.0)
+
+
+@dataclass(frozen=True)
+class Domain:
+    """The calculation region of a diagram in SI units
+
+    ``tp_box`` is (T_min_K, T_max_K, p_min_Pa, p_max_Pa). ``ranges_SI``
+    holds (min, max) of every quantity over that region, as pairs
+    (key, (min, max)) so the value stays hashable.
+    """
+    tp_box: Tuple[float, float, float, float]
+    ranges_SI: Tuple[Tuple[str, Tuple[float, float]], ...]
+
+    def range_SI(self, key: str) -> Tuple[float, float]:
+        ranges = dict(self.ranges_SI)
+        if key not in ranges:
+            raise ValueError("The range of '{0}' could not be determined for this fluid; "
+                             "give the isoline values or a range explicitly.".format(key))
+        return ranges[key]
+
+
+@dataclass(frozen=True)
+class CurveRequest:
+    """One isoline to compute: constant ``key`` at ``value_SI`` with ``points`` points"""
+    item_id: str
+    key: str
+    value_SI: float
+    points: int
+    labels: bool = False
+
+
+def snap(value: float) -> float:
+    """Round to 12 significant digits.
+
+    Values converted from display units carry rounding noise, e.g. -20 deg C
+    becomes 253.14999999999998 K. Snapping makes such values identical to
+    the intended 253.15 K, so that they get the same item id and the same
+    cache entry, and duplicates are recognised.
+    """
+    return float("{0:.12g}".format(value))
+
+
+def isoline_id(key: str, value_SI: float) -> str:
+    """Stable item id of an isoline, independent of units and styles.
+
+    The value is snapped to 12 significant digits first (see :func:`snap`),
+    so two values that get the same id are the same isoline.
+    """
+    return "iso/{0}/{1:.12g}".format(key, snap(value_SI))
+
+
+def linear_grid(lo: float, hi: float, num: int) -> np.ndarray:
+    """``num`` evenly spaced values from lo to hi."""
+    return np.linspace(lo, hi, num) if num > 1 else np.array([0.5 * (lo + hi)])
+
+
+def log_grid(lo: float, hi: float, num: int) -> np.ndarray:
+    """``num`` values from lo to hi with a constant ratio between neighbours."""
+    return np.geomspace(lo, hi, num) if num > 1 else np.array([math.sqrt(lo * hi)])
+
+
+def nice_linear(lo: float, hi: float, num: int) -> np.ndarray:
+    """Round values with a constant step of 1, 2, 2.5 or 5 times a power of ten.
+
+    The step is chosen so that about ``num`` values fall between lo and hi;
+    all values are whole multiples of the step, e.g. -20, -10, 0, 10.
+    """
+    if not hi > lo:
+        return np.array([lo])
+    raw = (hi - lo) / max(num - 1, 1)
+    power = 10.0 ** math.floor(math.log10(raw))
+    # Pick the round step closest to the raw step on a log scale
+    step = min((m * power for m in _LINEAR_STEPS), key=lambda s: abs(math.log(s / raw)))
+    first, last = math.ceil(lo / step - 1e-9), math.floor(hi / step + 1e-9)
+    values = np.arange(first, last + 1) * step
+    decimals = max(0, -int(math.floor(math.log10(step))) + 1)
+    return np.round(values, decimals)
+
+
+def nice_log(lo: float, hi: float, num: int) -> np.ndarray:
+    """Round values m * 10^k, with the mantissa set giving about ``num`` values.
+
+    For example 1, 2, 5, 10, 20, 50 bar, or 1, 1.5, 2, 3, 5, 7, 10 bar for
+    denser lines. The spacing looks even on a logarithmic axis.
+    """
+    if not (hi > lo > 0.0):
+        return nice_linear(lo, hi, num)
+    k_lo, k_hi = math.floor(math.log10(lo)), math.ceil(math.log10(hi))
+    best = None
+    for mantissas in _LOG_MANTISSAS:
+        values = [float("{0:.6g}".format(m * 10.0 ** k)) for k in range(k_lo, k_hi + 1) for m in mantissas]
+        values = np.array(sorted(v for v in values if lo * (1 - 1e-9) <= v <= hi * (1 + 1e-9)))
+        if best is None or abs(len(values) - num) < abs(len(best) - num):
+            best = values
+    return best
+
+
+def isoline_values_SI(spec: DiagramSpec, iso_set: IsolineSet, domain: Domain) -> np.ndarray:
+    """The constant values of one family in SI units, snapped and without duplicates."""
+    key = iso_set.key
+    if iso_set.values_SI is not None:
+        values = np.asarray(iso_set.values_SI, dtype=float)
+    else:
+        lo, hi = iso_set.range_SI or domain.range_SI(key)
+        log = get_quantity(key).log_scale and lo > 0.0
+        if iso_set.rounding:
+            # Round in display units, so that labels read 25 deg C, not 298.15 K
+            unit = spec.units[key]
+            lo_d, hi_d = sorted(float(v) for v in unit.from_SI([lo, hi]))
+            values_d = nice_log(lo_d, hi_d, iso_set.num) if log else nice_linear(lo_d, hi_d, iso_set.num)
+            values = unit.to_SI(values_d)
+        else:
+            values = log_grid(lo, hi, iso_set.num) if log else linear_grid(lo, hi, iso_set.num)
+    snapped = sorted({snap(float(v)) for v in np.atleast_1d(values) if np.isfinite(v)})
+    return np.array(snapped)
+
+
+def plan(spec: DiagramSpec, domain: Domain) -> Tuple[CurveRequest, ...]:
+    """All isolines the diagram needs, in the order of the families in the spec."""
+    calc = spec.settings.calc
+    requests = []
+    for iso_set in spec.isolines:
+        default_points = calc.saturation_points if iso_set.key == "Q" else calc.points
+        points = iso_set.points or default_points
+        for value_SI in isoline_values_SI(spec, iso_set, domain):
+            if iso_set.key == "Q" and not 0.0 <= value_SI <= 1.0:
+                continue   # a quality outside 0 to 1 has no line
+            requests.append(CurveRequest(isoline_id(iso_set.key, value_SI), iso_set.key, float(value_SI),
+                                         points, iso_set.labels))
+    return tuple(requests)
+

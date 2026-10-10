@@ -12,95 +12,50 @@ window in the scene and does not need new property calculations.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Tuple, Union
+from typing import Tuple
 
 import numpy as np
 
+from ..core.diagram_type import DiagramType
+from ..core.limits import Relative, TpLimits
 from ..core.quantities import quantity_key
-from .diagram_type import DiagramType
 from .fluid import Fluid
 
 
-@dataclass(frozen=True)
-class Relative:
-    """A bound given relative to the saturation range of the fluid
+def resolve_tp_box(fluid: Fluid, limits: TpLimits, margin: float = 1e-7) -> Tuple[float, float, float, float]:
+    """Absolute (T_min_K, T_max_K, p_min_Pa, p_max_Pa) for one fluid.
 
-    A lower bound is ``factor`` times the lowest saturation value, an upper
-    bound is ``factor`` times the highest one (just below the critical
-    point). Relative(2.25) as an upper pressure bound means 2.25 p_crit.
+    Relative bounds refer to the saturation range of the fluid, see
+    :meth:`Fluid.saturation_range` for ``margin``.
     """
-    factor: float
+    T_sat_lo_K, T_sat_hi_K = fluid.saturation_range("T", margin)
+    p_sat_lo_Pa, p_sat_hi_Pa = fluid.saturation_range("p", margin)
 
+    def absolute(bound, sat_value, fallback):
+        if bound is None:
+            return fallback
+        if isinstance(bound, Relative):
+            return bound.factor * sat_value
+        return float(bound)
 
-Bound = Union[None, float, Relative]
+    T_lo_K = absolute(limits.T_min, T_sat_lo_K, 0.0)
+    T_hi_K = absolute(limits.T_max, T_sat_hi_K, np.inf)
+    p_lo_Pa = absolute(limits.p_min, p_sat_lo_Pa, 0.0)
+    p_hi_Pa = absolute(limits.p_max, p_sat_hi_Pa, np.inf)
 
-
-@dataclass(frozen=True)
-class TpLimits:
-    """Temperature bounds in K and pressure bounds in Pa
-
-    Each bound is an absolute SI value, a :class:`Relative` factor, or None
-    to use the limit of the equation of state.
-    """
-    T_min: Bound = None
-    T_max: Bound = None
-    p_min: Bound = None
-    p_max: Bound = None
-
-    def resolve(self, fluid: Fluid) -> Tuple[float, float, float, float]:
-        """Absolute (T_min_K, T_max_K, p_min_Pa, p_max_Pa) for one fluid."""
-        T_sat_lo_K, T_sat_hi_K = fluid.saturation_range("T")
-        p_sat_lo_Pa, p_sat_hi_Pa = fluid.saturation_range("p")
-
-        def absolute(bound, sat_value, fallback):
-            if bound is None:
-                return fallback
-            if isinstance(bound, Relative):
-                return bound.factor * sat_value
-            return float(bound)
-
-        T_lo_K = absolute(self.T_min, T_sat_lo_K, 0.0)
-        T_hi_K = absolute(self.T_max, T_sat_hi_K, np.inf)
-        p_lo_Pa = absolute(self.p_min, p_sat_lo_Pa, 0.0)
-        p_hi_Pa = absolute(self.p_max, p_sat_hi_Pa, np.inf)
-
-        # Never leave the validity range of the equation of state
-        if fluid.T_min_K is not None:
-            T_lo_K = max(T_lo_K, fluid.T_min_K)
-        if fluid.T_max_K is not None:
-            T_hi_K = min(T_hi_K, fluid.T_max_K)
-        if fluid.p_min_Pa is not None:
-            p_lo_Pa = max(p_lo_Pa, fluid.p_min_Pa)
-        if fluid.p_max_Pa is not None:
-            p_hi_Pa = min(p_hi_Pa, fluid.p_max_Pa)
-        if not (T_lo_K < T_hi_K and p_lo_Pa < p_hi_Pa):
-            raise ValueError("Empty plotting region T=[{0}, {1}] K, p=[{2}, {3}] Pa.".format(
-                T_lo_K, T_hi_K, p_lo_Pa, p_hi_Pa))
-        return T_lo_K, T_hi_K, p_lo_Pa, p_hi_Pa
-
-
-TP_LIMITS = {
-    "NONE": TpLimits(),
-    "DEF": TpLimits(Relative(1.01), Relative(2.25), Relative(1.01), Relative(2.25)),
-    "ACHP": TpLimits(173.15, 493.15, 0.25e5, Relative(2.25)),
-    "ORC": TpLimits(273.15, 673.15, 0.25e5, Relative(2.25)),
-}
-
-
-def get_tp_limits(limits) -> TpLimits:
-    """Accept a TpLimits, a preset name, or a sequence [T_min, T_max, p_min, p_max] in SI."""
-    if isinstance(limits, TpLimits):
-        return limits
-    if isinstance(limits, str):
-        try:
-            return TP_LIMITS[limits.upper()]
-        except KeyError:
-            raise ValueError("Unknown limits preset '{0}', expected one of {1}.".format(
-                limits, sorted(TP_LIMITS)))
-    if len(limits) == 4:
-        return TpLimits(*limits)
-    raise ValueError("Expected a TpLimits, a preset name or four values.")
+    # Never leave the validity range of the equation of state
+    if fluid.T_min_K is not None:
+        T_lo_K = max(T_lo_K, fluid.T_min_K)
+    if fluid.T_max_K is not None:
+        T_hi_K = min(T_hi_K, fluid.T_max_K)
+    if fluid.p_min_Pa is not None:
+        p_lo_Pa = max(p_lo_Pa, fluid.p_min_Pa)
+    if fluid.p_max_Pa is not None:
+        p_hi_Pa = min(p_hi_Pa, fluid.p_max_Pa)
+    if not (T_lo_K < T_hi_K and p_lo_Pa < p_hi_Pa):
+        raise ValueError("Empty plotting region T=[{0}, {1}] K, p=[{2}, {3}] Pa.".format(
+            T_lo_K, T_hi_K, p_lo_Pa, p_hi_Pa))
+    return T_lo_K, T_hi_K, p_lo_Pa, p_hi_Pa
 
 
 def property_range_SI(fluid: Fluid, key: str, tp_box: Tuple[float, float, float, float]) -> Tuple[float, float]:
