@@ -540,6 +540,12 @@ height_pt)`. Backends that can produce them declare the capability
 `renderer.connect(callback)`. `coolplot.interaction.Interaction(diagram,
 renderer)` handles the common cases; dragging a state of a cycle replaces
 that state by the two axis properties at the new position.
+### Towards 1.0
+
+The review of the whole package and the plan for 1.0, including the
+question of a C++ core next to CoolProp, are in
+[v1_review.md](v1_review.md).
+
 ### Open findings from the reviews
 
 * Fixed in step 2: stale curves after a caller changed a passed-in

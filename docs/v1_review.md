@@ -21,19 +21,24 @@ reproducible with the scripts named in the text.
   library (a PDF parser, an HTTP server with inline JavaScript), 57 blanket
   `except Exception`, and a documentation set with no reference, no
   pictures and several wrong statements.
-* Performance is CoolProp's, not CoolPlot's. For pure fluids a full chart
-  takes 0.2 to 0.6 s, of which CoolPlot's own Python is 0.06 to 0.17 s.
-  For blends a chart takes 42 s, of which 39 s are CoolProp mixture
-  flashes at 3 ms each (108 ms for an h,p flash). Call overhead between
-  Python and CoolProp is 0.09 us per call, below 3 % of any chart.
-* A C++ rewrite of CoolPlot is therefore not worth it, and a standalone
-  C++ CoolPlot would have to bundle its own copy of CoolProp. What does
-  make sense, if reaching CoolProp's other 19 platforms is a real goal,
-  is a small numerics core (isoline tracing, dome, cycle states, humid-air
-  lines) inside CoolProp itself, reached through its existing wrappers,
-  with CoolPlot staying the Python presentation layer. Section 6 sets
-  this out with the numbers; the decision does not have to be taken
-  before the Python consolidation, which is needed either way.
+* The C++ question is about reach, not speed: CoolProp has 19 wrappers
+  besides Python and none of them can use a Python package. CoolProp's C++ library
+  already contains `CoolProp::Plot` (a port of the old Python
+  `PropertyPlot`), but it reaches no wrapper and uses the algorithm
+  CoolPlot replaced. The way to "mirror all wrappers" is to put the
+  numerics (isolines, dome, cycles, humid air) into `CoolProp::Plot` and
+  expose it where every wrapper already looks (the SWIG interface,
+  nanobind, `CoolPropLib.h`, emscripten), and to make the presentation
+  (layout, styles, SVG, PDF) a C++ library that does not depend on
+  CoolProp at all, so it links anywhere. CoolPlot's Python package then
+  becomes one of several thin presentation layers. Section 6 sets out
+  the design, the costs and the migration; it does not require the
+  Python consolidation to be finished first, but it does require the
+  contracts that the consolidation defines.
+* Performance, for the record: CoolPlot's own Python is 0.06 to 0.17 s
+  per pure-fluid chart; blends take 42 s of which 39 s are CoolProp
+  mixture flashes. Native code changes neither; cheaper flash inputs
+  and parallel lines do (section 2.2).
 
 ## 2. Numbers
 
@@ -259,71 +264,168 @@ units, presets and aliases; contributing (pipeline and layer rules only;
 the design log and the fix history move to a history page); a gallery;
 and a changelog in Keep-a-Changelog form with an upgrade guide.
 
-## 6. Should the core become a C++ library with Python bindings?
+## 6. A C++ plotting library next to the C++ calculation library
 
-### 6.1 What native code would and would not change
+### 6.1 The goal and what exists
 
-Speed of pure-fluid charts: no. CoolPlot's own Python time is 0.06 to
-0.17 s per chart, mostly the label layout, and the binding overhead is
-0.09 us per CoolProp call (under 3 % of a chart). Native code could save
-perhaps 0.1 s per chart.
+The goal is reach: CoolProp is a C++ library with wrappers (the
+`wrappers/` directory of CoolProp 8) for Android, Delphi, EES, Excel,
+Fluent, Fortran, JavaScript (WebAssembly), Julia, LabVIEW, LibreOffice,
+Lua, MATLAB, MathCAD, Mathematica, Modelica, Python, Rust, SMath and
+VB.NET. A C++ CoolPlot built the same way would
+give every one of them property diagrams. Today only Python has them
+(MATLAB reaches them through `matpy.m`, which calls Python).
 
-Speed of blend charts: not by itself. 93 % of 42 s is CoolProp's mixture
-flash. What helps is fewer and cheaper flashes: p,Q and T,rho inputs cost
-0.35 ms and microseconds where h,p costs 108 ms, so tracing isolines in
-the (T, rho) plane where the equation of state is explicit, with
-saturation bounds from the phase envelope, is the lever. That is an
-algorithm, not a language, and the numerics review (section 7) says how
-far the Python tracer already goes. Native code adds one thing Python
-cannot have today: parallel lines in threads, because CoolProp 8 holds
-the interpreter lock during flashes. The cheapest fix for that is a
-`gil_scoped_release` in CoolProp's own nanobind binding (one line
-upstream), after which CoolPlot's thread pool parallelises blend charts
-as it stands.
+What already exists upstream, found while writing this document:
 
-Reach: this is the real argument. CoolProp has wrappers for Android,
-Delphi, EES, Excel, Fluent, Fortran, JavaScript, Julia, LabVIEW,
-LibreOffice, Lua, MATLAB, MathCAD, Mathematica, Modelica, Python, Rust,
-SMath and VB.NET. None of them can use a Python package. Users of MATLAB,
-Excel or LabVIEW who want a log(p)-h diagram want the lines (polylines in
-SI) to plot with their own tools; they do not want CoolPlot's layout,
-themes or renderers, which are presentation and platform-specific anyway.
+* `include/CoolProp/plotting/CoolPropPlot.h` and `src/CoolPropPlot.cpp`
+  (about 1,000 lines with tests): `CoolProp::Plot::PropertyPlot` with
+  `calc_isolines`, `isoline_range`, `value_at`, `supported_isoline_keys`,
+  the seven diagram types and the `TPLimits` presets. It is a port of the
+  old Python `CoolProp.Plots.PropertyPlot`: isolines are a fixed grid of
+  x or y values with one flash per point, failures become NaN (and a
+  line on `std::cerr`), the two-phase region is not treated, and
+  `process_fluid_state` parses the fractions of a blend and then builds
+  the state without setting them.
+* It is wired to nothing: not in `src/CoolProp.i` (the SWIG interface
+  behind the scripted-language wrappers), not in
+  `nanobind_interface.cxx` (Python: `dir(CoolProp.CoolProp)` has no plot
+  names), not in `emscripten_interface.cxx` (JavaScript), not in
+  `CoolPropLib.h` (the C ABI with 81 exported functions that Excel,
+  LabVIEW, MathCAD and the MATLAB DLL route use).
+* `CoolProp.Plots` (the legacy Python module, with `PsychChart.py` and
+  `SimpleCycles.py`) still ships in the CoolProp 8 wheel.
 
-### 6.2 Three ways to do it
+So the ecosystem has three implementations of isolines (legacy Python,
+dormant C++, CoolPlot's tracer) and the one with the best algorithm is
+the one that cannot reach the wrappers.
 
-| | A. Python 1.0 (consolidation only) | B. Numerics core inside CoolProp | C. Standalone C++ CoolPlot |
-|---|---|---|---|
-| What moves to C++ | nothing | tracing, dome, cycle states, humid-air lines, about 2,700 Python lines today (thermo/, engine/plan.py) | all of it, including layout and renderers |
-| Reach | Python; MATLAB, Julia and Excel through their Python bridges | every CoolProp wrapper, through `CoolPropLib.h` and the SWIG interfaces that exist | each platform would need a new wrapper for CoolPlot |
-| CoolProp binary | the user's | the user's | a second copy bundled in CoolPlot's wheel (the Python wheel exports no linkable C++ symbols: 35 headers ship, 2 `AbstractState` symbols), version skew, fluids loaded twice, states not shareable |
-| Parallel blends | processes only (or the upstream GIL fix) | threads, inside CoolProp | threads |
-| Text, fonts, PDF | matplotlib, plotly, the SVG writer | unchanged, stays in Python | a TrueType subsetter and a PDF writer in C++, or platform libraries |
-| Cost (estimate) | 3 to 4 release cycles of refactoring | plus about 5,000 lines of C++ with tests, SWIG interface changes, upstream review; CoolPlot gains a fallback path | the largest by far, and the hardest build matrix |
-| Risk | low | medium: two implementations until the Python tracer is retired; coordination with CoolProp releases | high: duplicated CoolProp, no reach gained without wrapper work per platform |
+### 6.2 The design that mirrors the wrappers
 
-Note that CoolProp 8 still ships `CoolProp.Plots` (the legacy module
-CoolPlot was forked from, with `PsychChart.py` and `SimpleCycles.py`), so
-the ecosystem already carries two implementations. Option B would also
-settle that: `CoolProp.Plots` becomes a thin call into the numerics
-core, or is retired in favour of CoolPlot.
+Three parts, split by what they depend on:
 
-### 6.3 Recommendation
+1. **Numerics in CoolProp: `CoolProp::Plot`.** Everything that needs an
+   `AbstractState`: isoline tracing (CoolPlot's tracer ported, with
+   saturation bounds from the phase envelope, two-phase handling,
+   saturation points inserted where a line meets the dome), the dome,
+   quality lines, cycle state resolution (`via` relations, efficiencies,
+   loops), humid-air lines (`HAPropsSI`), `value_at` for hover. Input:
+   fluid string, chart kind, line family, values, region, calculation
+   settings. Output: polylines in SI with diagnostics (points failed,
+   gaps, method). No units, no text, no styles. This replaces the
+   dormant code in place and keeps its name.
+   Exposure, once each, in the places every wrapper already consumes:
+   `%include "CoolProp/plotting/CoolPropPlot.h"` in `CoolProp.i` (all
+   SWIG targets), a nanobind module (Python), the emscripten interface
+   (JavaScript), and a handful of C functions in `CoolPropLib.h` in the
+   style of `AbstractState_*` (a handle, `errcode`, `message_buffer`,
+   arrays by pointer and length) for Excel, LabVIEW, MathCAD, Fortran and
+   the MATLAB DLL route. The fluid, backend and REFPROP configuration
+   stay the user's: there is no second copy of CoolProp.
+2. **Presentation as a C++ library that does not depend on CoolProp.**
+   `coolplot-core`: the chart description (today `DiagramSpec`, as JSON
+   in and out, which already exists), units and number formatting, line
+   values with rounding, the scene (items with ids, styles resolved from
+   a theme), the edge label layout (it estimates text width from the
+   character count and the font size, so it needs no font engine), an
+   SVG writer, and a PDF writer with TrueType subsetting (the knowledge
+   is in `render/pdf_reader.py` today). Input: a spec and the polylines
+   from part 1. Output: scene JSON, SVG, PDF. Because it links nothing
+   but the C++ standard library, it compiles in CoolProp's wrapper
+   builds, to WebAssembly, and into any application, and it can be
+   wrapped with the same SWIG and nanobind machinery or used through a
+   two-function C ABI (`coolplot_scene_json(spec_json, curves)`,
+   `coolplot_svg(...)`). Rasters (PNG) are left to the platform or an
+   optional dependency later.
+3. **Native renderers per platform, where they add something.** Python:
+   matplotlib, plotly and the browser backend, consuming scene JSON (the
+   `Scene` -> `Renderer.sync` design stays as it is). MATLAB: a small
+   `.m` that draws scene JSON with `plot` and `text`. JavaScript: a
+   canvas or SVG renderer of scene JSON, which makes the browser backend
+   server-free (today it needs a Python process and SSE). Excel,
+   LabVIEW, Julia: the polylines of part 1 into their own charts, or the
+   SVG and PDF of part 2 as files.
 
-1. Do the Python 1.0 (option A) first. It is needed under every option,
-   and it produces the contract that any native core would have to
-   implement: `(fluid, chart kind, line family, value, region, settings)
-   -> polyline with diagnostics`. Keep that contract free of Python types
-   (plain numbers, strings, arrays) from the start.
-2. Decide option B on two facts, not on taste: whether reaching the
-   non-Python platforms is a stated goal of the project, and the numerics
-   review's verdict on the tracing algorithm (section 7). If both say
-   yes, propose a `CoolProp::Plot` numerics module upstream with C entry
-   points in `CoolPropLib.h`, port the tracer there, and let CoolPlot use
-   it when the installed CoolProp has it and its own tracer otherwise.
-   One sentence of the plan should go to CoolProp first: a
-   `gil_scoped_release` in the Python binding, which costs nothing and
-   helps every user.
-3. Do not take option C.
+What each platform gets:
+
+| Platform | Through | Gets |
+|---|---|---|
+| Python | nanobind (part 1) and the CoolPlot package (parts 2, 3) | everything, as today, with the tracer in C++ and threads that run in parallel |
+| MATLAB, Julia | `matpy.m` (Python) or the C ABI; `ccall` | polylines for native plots; SVG and PDF files from part 2 |
+| Excel, LibreOffice, LabVIEW, MathCAD, Fortran, Delphi, VB.NET | the C ABI (`CoolPropLib.h`) | polylines as arrays; SVG and PDF files from part 2 |
+| JavaScript | emscripten | charts in the browser without a server |
+| Lua, Rust, Android | SWIG or FFI | polylines; SVG and PDF |
+| EES, Fluent, Modelica, Mathematica, SMath | their CoolProp interfaces | polylines where arrays can cross the interface; otherwise files |
+
+### 6.3 Costs, risks and what it does not solve
+
+* Size: part 1 replaces about 2,700 lines of Python (`thermo/`,
+  `engine/plan.py`) and 1,000 lines of upstream C++; expect 4,000 to
+  5,000 lines of C++ with Catch2 tests. Part 2 replaces about 3,500
+  lines of Python (`spec/`, `style/`, `compose/`, `scene.py`,
+  `render/svg.py`, `render/ticks.py`) plus a new PDF writer; expect
+  5,000 to 7,000 lines. Together this is of the order of the Python
+  package as it stands (13,000 lines over three release cycles), so one
+  to two person-years including the wrapper work and documentation.
+* Two implementations until the Python tracer and composer are retired.
+  The mitigation is to make CoolPlot's Python tests the acceptance tests
+  of the C++ code: the same spec must give the same curves (within
+  tolerance) and the same scene, and the conformance kit must stay green
+  with the C++ scene feeding the existing renderers.
+* Coordination with CoolProp releases: part 1 ships with CoolProp, so a
+  CoolPlot feature that needs a new line family waits for a CoolProp
+  release. Keep the Python tracer as a fallback for one or two releases.
+* Interactivity stays per platform: events, dragging states and the
+  background engine are Python and browser code and will remain so; part
+  2 only has to make a scene fast enough to re-lay out on every drag
+  (0.2 to 0.3 s today in Python; C++ will be well under that).
+* Text metrics: the layout estimates widths, as today; it does not
+  measure fonts. That is a known approximation, acceptable because labels
+  sit at the edges with keep-out margins.
+* Performance is not the reason and should not be promised as one:
+  the tracer in C++ removes CoolPlot's 0.06 to 0.17 s per chart and
+  allows parallel lines (CoolProp 8 holds the interpreter lock in
+  flashes, measured at 1.2x on two threads), but blend charts stay
+  dominated by CoolProp's mixture flashes until the tracer uses cheaper
+  inputs (p,Q and T,rho against h,p: a factor 300 per call, section
+  2.2). That change belongs in part 1 regardless of language.
+* What a standalone C++ CoolPlot with its own CoolProp inside would get
+  wrong: the Python wheel exports no linkable C++ symbols, so it would
+  bundle a second CoolProp (40 MB), with version skew, fluids loaded
+  twice, states not shareable with the user's CoolProp, and each
+  platform would need a new wrapper for it. Parts 1 and 2 avoid this:
+  the numerics live where the wrappers are, and the presentation needs
+  no CoolProp.
+
+### 6.4 Recommendation
+
+Yes, in this form: numerics into `CoolProp::Plot`, presentation as a
+CoolProp-free `coolplot-core`, thin native layers per platform. Order of
+work:
+
+1. Fix the contracts in Python first, where change is cheap (sections 4.1
+   to 4.3): one chart model, the spec JSON schema, the curve record
+   (`family, value, x[], y[], diagnostics`), a scene JSON schema (the
+   `Scene` is not serialisable today; the web backend serialises SVG
+   elements instead), units and vocabulary. These are the interfaces of
+   parts 1 and 2; getting them right in Python with the existing tests
+   costs weeks, in C++ with wrappers it costs months.
+2. Upstream, in parallel: a pull request that replaces the body of
+   `CoolProp::Plot` with the tracer, fixes the blend fractions, adds the
+   dome, quality lines and cycle states, and includes the header in
+   `CoolProp.i`, nanobind and `CoolPropLib.h`; plus the one-line
+   `gil_scoped_release` in the Python binding. CoolPlot uses
+   `CoolProp.Plot` when the installed CoolProp has it.
+3. `coolplot-core` (part 2) as its own repository with CMake, Catch2 and
+   the SVG writer first (the PDF writer second), built in CoolProp's
+   wrapper matrix as an optional component and published as a Python
+   wheel for CoolPlot.
+4. CoolPlot 1.0: the Python package keeps `PropertyDiagram`,
+   `PsychrometricChart`, the matplotlib, plotly and browser renderers,
+   interaction and the background engine, over the C++ core, and retires
+   its own tracer and composer once the C++ passes the full suite.
+   `CoolProp.Plots` in CoolProp is retired or re-pointed in the same
+   step.
 
 ## 7. Numerics and thermodynamics
 
@@ -333,28 +435,33 @@ core, or is retired in favour of CoolPlot.
 
 | Release | Scope | Removes |
 |---|---|---|
-| 0.4 | one `Chart` over a quantity table and property providers; psychrometry as configuration; one compose module; `Interaction` generic | `compose/psychro.py`, `spec/psychro.py`, the second unit table |
-| 0.5 | frozen vocabulary and units model (section 4.2, 4.3); `PropertyError`; constructor validation; unit-aware state printing; IP units | old method names (with warnings) |
+| 0.4 | one `Chart` over a quantity table and property providers; psychrometry as configuration; one compose module; `Interaction` generic; the curve record and the scene JSON schema written down | `compose/psychro.py`, `spec/psychro.py`, the second unit table |
+| 0.5 | frozen vocabulary and units model (4.2, 4.3); `PropertyError`; constructor validation; unit-aware state printing; IP units | old method names (with warnings) |
 | 0.6 | scope split: `coolplot.testing` (kit, PDF check), web server to an example or its own package, PDF parser test-only; background engine and `compute_isoline` as state machines | `render/pdf_reader.py` from the runtime |
-| 0.7 | numerics (section 7): tracing in (T, rho) for blends, fewer flashes, the open physics items | |
+| 0.7 | numerics (section 7) in the Python tracer, and the same algorithm proposed upstream for `CoolProp::Plot` with the Python tests as acceptance tests | |
 | 0.8 | documentation set (section 5), gallery, API reference, changelog with upgrade guide | |
-| 0.9 | deprecation period: warnings on, nothing removed | |
-| 1.0 | removals, stable API, release | |
+| 0.9 | CoolPlot runs on `CoolProp.Plot` where available, `coolplot-core` feeds the renderers; deprecation period: warnings on, nothing removed | |
+| 1.0 | removals, stable API, release; the Python tracer and composer retired when the C++ passes the full suite | `thermo/tracer.py`, `compose/` (kept only as fallback if the C++ is not released in time) |
 
 Each release keeps the conformance kit green on all backends and the
-test suite under five minutes. The C++ decision (6.3) can be taken at
-0.6, when the curve contract is fixed; the upstream GIL request can go
-now.
+test suite under five minutes. The upstream pull request for
+`CoolProp::Plot` and the `gil_scoped_release` can start at 0.4, as soon
+as the curve record is fixed.
 
 ## 9. Open decisions for the maintainers
 
-1. Is reaching MATLAB, Excel, LabVIEW and the other wrappers a goal of
-   CoolPlot, or is Python the product? This decides option B.
-2. What happens to `CoolProp.Plots` in CoolProp 8.x: retire it, point it
-   at CoolPlot, or keep both?
-3. Unit vocabulary: `"engineering"` or another name for the bar/deg C/kJ
-   set that replaces `"EUR"`; and whether IP units are in 1.0.
-4. Which of `set_process` (SI state points) and `add_cycle` (display
+1. Where `coolplot-core` (the presentation library) lives: its own
+   repository built into CoolProp's wrapper matrix as an optional
+   component (recommended: its own release cadence, no CoolProp
+   dependency), or inside the CoolProp tree.
+2. Which wrappers get a native renderer (part 3) in 1.0, and which get
+   polylines and files only. The recommendation: Python and JavaScript
+   native, MATLAB a small `.m`, everything else arrays, SVG and PDF.
+3. What happens to `CoolProp.Plots` in CoolProp 8.x: retire it, point it
+   at `CoolProp.Plot` plus CoolPlot, or keep it.
+4. Unit vocabulary: the name for the bar/deg C/kJ set that replaces
+   `"EUR"`, and whether IP units are in 1.0.
+5. Which of `set_process` (SI state points) and `add_cycle` (display
    units) survives; the recommendation is `add_cycle` with `units=`.
-5. Whether `WebServer` lives on anywhere; if nobody uses it, drop it and
-   keep `WebRenderer` with its tests.
+6. Whether `WebServer` lives on anywhere; with a JavaScript renderer of
+   scene JSON (6.2, part 3) it becomes unnecessary.
