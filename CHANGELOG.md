@@ -1,6 +1,30 @@
 Changelog
 =========
 
+0.3.0
+-----
+
+* Background calculation: `PropertyDiagram(..., background="threads"` or
+  `"processes")` never waits for a line; coarse previews first, then the
+  final lines, with `on_ready`, `progress`, `wait()` and `close()`.
+  Failed lines are tried again and then reported.
+* Events from the backends (hover, click, drag, view changes, resizes)
+  in the axes' units, and `Interaction` for zoom, hover and dragging the
+  states of cycles, in matplotlib and in the browser.
+* New backends: plotly, and a browser backend that streams small patches
+  to a JavaScript client, with a dependency-free development server
+  (localhost only, input checked).
+* Psychrometric charts (`PsychrometricChart`): lines of relative
+  humidity, wet-bulb temperature, enthalpy and specific volume cut at
+  saturation, air processes on top, any total pressure.
+* PDF as a first-class output: fonts embedded as TrueType, texts kept as
+  text (labels with halos included), theme colours, the chart title as
+  PDF title, reproducible files, `save_pdf` for several charts in one
+  file, `Font(files=...)`, `strict_fonts` and `fonts_used()`. A PDF check
+  in the conformance kit reads files back without external tools. plotly
+  writes PDF through kaleido (extra "images").
+* Texts are always plain text: "$5 or $6" is never typeset as math.
+
 0.2.0
 -----
 
