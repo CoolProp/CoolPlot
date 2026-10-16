@@ -235,6 +235,44 @@ text = json.dumps(diagram.spec.to_dict())
 diagram.spec = DiagramSpec.from_dict(json.loads(text))
 ```
 
+### PDF for papers, reports and print
+
+```python
+diagram.settings = diagram.settings.with_(page={"width_pt": 252, "height_pt": 190})   # one journal column
+diagram.savefig("R290_ph.pdf")                        # vector PDF, fonts embedded as TrueType
+
+from coolplot import save_pdf
+save_pdf("report.pdf", [diagram, other_diagram, chart], metadata={"Author": "Heat pump team"})
+```
+
+PDF is a first-class output of the matplotlib backend:
+
+* The page has the size of `settings.page`, and font sizes are in points,
+  so a figure placed at 100 % in a document has exactly the type sizes
+  of the theme. Set the page to the column or text width of the document
+  instead of scaling the figure there.
+* Fonts are embedded as TrueType (or `savefig(..., pdf_fonts="type3")`),
+  as journals and print shops expect. Texts stay text: they can be
+  selected, searched and edited, labels with a halo included.
+* Matplotlib cannot embed fonts installed as CFF OpenType (many .otf
+  files, often Inter) as TrueType. Such a text uses the next TrueType
+  font of its family list in the PDF, with a warning naming both; the
+  window keeps the original. Install the .ttf files of the font, or name
+  them with `Font(files=...)`, to keep it.
+* `MatplotlibRenderer(strict_fonts=True)` raises instead of falling back
+  when a font is missing, and `renderer.fonts_used()` lists the fonts
+  really drawn with: for print work, where a replaced font must not slip
+  through.
+* Colours are exactly those of the theme, as sRGB. There is no CMYK and
+  no colour profile; print shops convert sRGB, or convert the PDF
+  yourself (for example with Ghostscript) if a CMYK file is required.
+* The same chart gives the same file (no date, no version strings), and
+  the chart title becomes the PDF title. `save_pdf` writes one chart per
+  page, each at its own page size.
+* EPS and PS embed TrueType fonts the same way. `PlotlyRenderer` writes
+  PDF too when kaleido is installed (`pip install "coolplot[images]"`,
+  plus Chrome); SVG and web renderers write only their own formats.
+
 ## 7. Interactive applications
 
 A diagram only computes what changed and a renderer only redraws what

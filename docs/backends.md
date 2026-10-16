@@ -283,6 +283,29 @@ A backend that writes files declares `"file_output"`, implements
   several outputs can share one web page.
 * Text output MUST be ASCII; escape everything else (XML character
   references in SVG).
+* `save(path)` MUST refuse a file name whose extension promises a format
+  the backend does not write (ValueError), instead of writing its own
+  format under that name.
+
+### PDF [pdf]
+
+A backend that writes PDF for a ".pdf" path declares `"pdf_output"` and
+then MUST:
+
+* embed every font, as TrueType or Type 1 (no Type 3, which print checks
+  refuse), with the font program matching its declared type;
+* keep texts as text, word for word: no math markup ("$5 or $6" stays as
+  written), no text drawn as outlines (a halo must not turn the label
+  into shapes);
+* paint only colours of the scene's styles;
+* write the chart title as the document title, and no dates or version
+  strings, so the same scene gives the same file.
+
+`check_pdf` reads the file back with `coolplot.render.pdf_reader` (no
+external tools) and checks all of this; `run_conformance` calls it for
+backends with the capability. `pdf_reader.replace_info` rewrites the
+document information of a PDF made by another program (the plotly
+backend uses it on kaleido's output).
 
 
 ## 7b. Limitations [limitations]
@@ -319,6 +342,8 @@ Declare optional abilities in the class attribute `capabilities`:
 | `file_output` | `save(path)` writes a file |
 | `interactive` | draws into a live window or widget |
 | `css_classes` | exposes item roles and groups as CSS classes |
+| `events` | reports pointer input and view changes, see section 6b |
+| `pdf_output` | `save("x.pdf")` writes print-ready PDF, see section 7 |
 
 
 ## 9. Packaging

@@ -482,6 +482,7 @@ units, styles, one added line, cycles, zoom and themes.
 | 4 | Web backend: the SVG elements of the SVG backend streamed as patches to a small JavaScript client, events back from the browser, a dependency-free development server; conformance checked in a real browser (headless Chromium) | done |
 | 5 | Psychrometric charts for humid air (CoolProp HAPropsSI): dry-bulb temperature over humidity ratio, lines of relative humidity, wet-bulb temperature, enthalpy and specific volume, air processes on top | done |
 | 6 | Examples, user documentation, adversarial review of the 0.3 work | done |
+| 7 | PDF as a first-class output: TrueType fonts, texts stay text, theme colours, title, reproducible files, several charts per file, a PDF check in the kit | done |
 
 #### Background calculation (step 1)
 
@@ -571,6 +572,18 @@ that state by the two axis properties at the new position.
   30 s to reconnect, huge JSON numbers raised OverflowError, -100 deg C
   was refused by rounding, and a garbage collected diagram kept its
   background engine claimed.
+
+#### PDF output (0.3 step 7)
+
+PDF is a checked capability ("pdf_output"). The matplotlib backend embeds
+TrueType fonts, falls back to the next TrueType family for fonts it can
+only find as CFF OpenType (embedding those as TrueType gives damaged
+files), writes the chart title and no dates, and draws text halos as a
+second text artist so labels stay text. `export.save_pdf` puts several
+charts into one file. `render/pdf_reader.py` reads PDF files back without
+external tools, for the conformance kit (fonts, texts, painted colours,
+title, reproducibility), and rewrites document information for the plotly
+backend, which prints through kaleido and Chrome.
 
 Known trade-offs, from the adversarial review of the 0.3 work:
 

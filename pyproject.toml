@@ -26,6 +26,8 @@ classifiers = [
 # Plotting backends are optional; the core and the SVG backend need neither.
 matplotlib = ["matplotlib>=3.8"]
 plotly = ["plotly>=5.22"]
+# PDF and images from the plotly backend; kaleido also needs Chrome
+images = ["plotly>=5.22", "kaleido>=1.0"]
 test = ["pytest>=7", "matplotlib>=3.8", "plotly>=5.22"]
 
 [project.urls]

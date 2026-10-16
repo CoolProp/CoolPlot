@@ -20,7 +20,9 @@ library are kept apart, so matplotlib is one backend among several (SVG
 without dependencies, plotly, and a browser backend with a small
 development server) and interactive applications only redraw what
 changed. Lines can be calculated in the background, and zoom, hover and
-dragging cycle states work in matplotlib and in the browser.
+dragging cycle states work in matplotlib and in the browser. PDF output
+is print-ready: fonts embedded as TrueType, texts kept as text, the
+theme colours exactly, and several charts per file with `save_pdf`.
 
 The code was forked from the main [CoolProp repository] at v6.3.0 with its
 history preserved, hence the old commits. Expect some breaking changes
