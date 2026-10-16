@@ -26,6 +26,7 @@ import math
 import os
 import re
 import tempfile
+import unicodedata
 from dataclasses import replace
 from typing import Callable, List
 
@@ -681,7 +682,10 @@ def check_pdf(factory) -> List[str]:
             renderer = factory()
             renderer.sync(scene)
             path = os.path.join(folder, name)
-            renderer.save(path)
+            try:
+                renderer.save(path)
+            except Exception as e:
+                return ["save() of a PDF raised {0!r} [pdf]".format(e)]
             with open(path, "rb") as f:
                 outputs.append(f.read())
         try:
@@ -701,9 +705,10 @@ def check_pdf(factory) -> List[str]:
     for font in content.fonts:
         for problem in font.problems:
             failures.append("PDF font {0}: {1} [pdf]".format(font.name, problem))
-    found = {" ".join(t.split()) for t in content.texts}
+    # NFKC folds ligatures that PDF writers may use ("fi" as one glyph) back into letters
+    found = {" ".join(unicodedata.normalize("NFKC", t).split()) for t in content.texts}
     for text in sorted(_scene_texts(scene)):
-        if " ".join(text.split()) not in found:
+        if " ".join(unicodedata.normalize("NFKC", text).split()) not in found:
             failures.append("PDF lacks the text {0!r} as written [pdf]".format(text))
     palette = _scene_colors(scene)
     for color in sorted(content.colors):

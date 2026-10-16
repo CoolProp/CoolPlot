@@ -195,3 +195,14 @@ def test_text_direction_has_to_be_finite():
     for direction in ((float("nan"), 1.0), (0.0, 0.0), (1.0, float("inf"))):
         with pytest.raises(ValueError):
             Text(id="t", x=0.0, y=0.0, text="t", direction=direction)
+
+
+def test_svg_and_web_refuse_other_formats(tmp_path):
+    from coolplot.render.svg import SvgRenderer
+    from coolplot.render.web import WebRenderer
+    with pytest.raises(ValueError, match="SvgRenderer writes SVG"):
+        SvgRenderer().save(str(tmp_path / "chart.pdf"))
+    with pytest.raises(ValueError, match="WebRenderer writes HTML"):
+        WebRenderer().save(str(tmp_path / "chart.svg"))
+    SvgRenderer().save(str(tmp_path / "chart.SVG"))
+    WebRenderer().save(str(tmp_path / "chart.htm"))

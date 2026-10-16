@@ -15,6 +15,11 @@ finds what a print check cares about:
 
 It is not a general PDF parser: compressed object streams are refused
 with ValueError, so the kit reports them instead of guessing.
+
+:func:`replace_info` writes such a file back with new document
+information (and no file identifier), e.g. to give a PDF from another
+program the chart title and drop its creation date, so that the same
+chart gives the same file.
 """
 from __future__ import annotations
 
@@ -23,7 +28,7 @@ import zlib
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set
 
-_OBJECT = re.compile(rb"(\d+)\s+(\d+)\s+obj\b(.*?)\bendobj", re.S)
+_OBJECT_START = re.compile(rb"(?<![0-9])(\d+)\s+(\d+)\s+obj\b")
 _REF = rb"\s+(\d+)\s+\d+\s+R"
 
 
@@ -52,16 +57,66 @@ class PdfContent:
 # ---------------------------------------------------------------------------
 # Objects and streams
 # ---------------------------------------------------------------------------
+def _skip_dictionary(data: bytes, i: int) -> int:
+    """Index just after the << >> dictionary starting at data[i], skipping strings inside."""
+    depth = 0
+    while i < len(data):
+        if data.startswith(b"<<", i):
+            depth, i = depth + 1, i + 2
+        elif data.startswith(b">>", i):
+            depth, i = depth - 1, i + 2
+            if depth == 0:
+                return i
+        elif data[i:i + 1] == b"(":
+            _, i = _literal(data, i)
+        elif data[i:i + 1] == b"<":
+            i = data.index(b">", i) + 1   # a hex string
+        else:
+            i += 1
+    raise ValueError("Unterminated dictionary in the PDF file.")
+
+
 class _Pdf:
     def __init__(self, data: bytes):
         if b"/Encrypt" in data:
             raise ValueError("Encrypted PDF files are not supported.")
-        self.data = data
-        self.objects: Dict[int, bytes] = {}
-        for match in _OBJECT.finditer(data):
-            self.objects[int(match.group(1))] = match.group(3)
-        if any(re.search(rb"/Type\s*/ObjStm", body) for body in self.objects.values()):
+        if re.search(rb"/Type\s*/(ObjStm|XRef)\b", data):
             raise ValueError("PDF files with compressed object streams are not supported.")
+        self.data = data
+        self.objects: Dict[int, bytes] = {}   # object number -> everything between "obj" and "endobj"
+        self.first_object = None              # where the first object starts
+        i = 0
+        while True:
+            match = _OBJECT_START.search(data, i)
+            if not match:
+                break
+            if self.first_object is None:
+                self.first_object = match.start()
+            start = j = match.end()
+            while data[j:j + 1].isspace():
+                j += 1
+            if data.startswith(b"<<", j):
+                j = _skip_dictionary(data, j)
+                after = re.match(rb"\s*stream\r?\n", data[j:j + 20])
+                if after:
+                    # Stream data is binary: skip it by its length, never by searching
+                    length = self._length(data, data[match.end():j])
+                    j += after.end() + length
+            end = data.index(b"endobj", j)
+            self.objects[int(match.group(1))] = data[start:end]
+            i = end + len(b"endobj")
+
+    @staticmethod
+    def _length(data: bytes, dictionary: bytes) -> int:
+        direct = re.search(rb"/Length\s+(\d+)\b(?!\s+\d+\s+R)", dictionary)   # not "12 0 R"
+        if direct:
+            return int(direct.group(1))
+        ref = re.search(rb"/Length" + _REF, dictionary)
+        if ref:
+            value = re.search(rb"(?<![0-9])" + ref.group(1) + rb"\s+0\s+obj\s*(\d+)\s*endobj", data)
+            if value:
+                return int(value.group(1))
+        raise ValueError("A stream in the PDF file has no readable /Length.")
 
     def dictionary(self, number: int) -> bytes:
         """The dictionary part of an object (everything before its stream)."""
@@ -74,7 +129,7 @@ class _Pdf:
         match = re.search(rb"\bstream\r?\n", body)
         if not match:
             return b""
-        raw = body[match.end():body.rfind(b"endstream")]
+        raw = body[match.end():match.end() + self._length(self.data, body[:match.start()])]
         if b"/FlateDecode" in body[:match.start()]:
             return zlib.decompressobj().decompress(raw)
         return raw.rstrip(b"\r\n")
@@ -371,8 +426,14 @@ def _read_content(pdf: _Pdf, data: bytes, fonts: Dict[str, tuple], xobjects: Dic
         elif value == "Do" and depth < 8:
             names = [v for k, v in stack if k == "name"]
             number = xobjects.get(names[-1]) if names else None
-            if number is not None and re.search(rb"/Subtype\s*/Form\b", pdf.dictionary(number)):
-                cmyk |= _read_content(pdf, pdf.stream(number), fonts, xobjects, texts, colors, state, depth + 1)
+            form = pdf.dictionary(number) if number is not None else b""
+            if re.search(rb"/Subtype\s*/Form\b", form):
+                # A form (a marker symbol, a transparency group) may bring its own fonts and forms
+                resources = pdf.sub_dictionary(form, "Resources")
+                form_fonts = {n: _to_unicode(pdf, r) for n, r in _names(pdf, pdf.sub_dictionary(resources, "Font")).items()}
+                form_xobjects = _names(pdf, pdf.sub_dictionary(resources, "XObject"))
+                cmyk |= _read_content(pdf, pdf.stream(number), form_fonts or fonts, form_xobjects or xobjects,
+                                      texts, colors, state, depth + 1)
         stack = []
     return cmyk
 
@@ -408,3 +469,51 @@ def read_pdf(path) -> PdfContent:
             cmyk |= _read_content(pdf, pdf.stream(ref), by_name, xobjects, texts, colors)
     return PdfContent(pages=len(pages), info=_info(pdf), fonts=list(fonts.values()), texts=texts,
                       colors=colors, cmyk=cmyk)
+
+
+# ---------------------------------------------------------------------------
+# Writing the document information
+# ---------------------------------------------------------------------------
+def _pdf_string(text: str) -> bytes:
+    """A PDF text string: plain ASCII in parentheses, anything else as UTF-16 hex."""
+    try:
+        raw = text.encode("ascii")
+    except UnicodeEncodeError:
+        return b"<FEFF" + text.encode("utf-16-be").hex().upper().encode() + b">"
+    return b"(" + raw.replace(b"\\", b"\\\\").replace(b"(", b"\\(").replace(b")", b"\\)") + b")"
+
+
+def replace_info(path, info: Dict[str, str]):
+    """Write a PDF file again with ``info`` as its document information.
+
+    ``info`` replaces all old entries (creation dates, producer strings);
+    the file identifier is dropped too, so the same content gives the same
+    file. Objects keep their numbers and content; a new cross-reference
+    table is written.
+    """
+    with open(path, "rb") as f:
+        data = f.read()
+    pdf = _Pdf(data)
+    trailer = re.findall(rb"trailer\s*<<(.*?)>>\s*startxref", data, re.S)
+    root = pdf.ref(trailer[-1], "Root") if trailer else None
+    if root is None or pdf.first_object is None:
+        raise ValueError("The PDF file has no readable trailer.")
+    info_number = pdf.ref(trailer[-1], "Info") or max(pdf.objects) + 1
+    entries = b"".join(b"/" + key.encode("ascii") + b" " + _pdf_string(value) + b"\n"
+                       for key, value in sorted(info.items()) if value is not None)
+    objects = dict(pdf.objects)
+    objects[info_number] = b"\n<<" + entries + b">>\n"
+    out = bytearray(data[:pdf.first_object])
+    offsets = {}
+    for number in sorted(objects):
+        offsets[number] = len(out)
+        out += b"%d 0 obj" % number + objects[number] + b"endobj\n"
+    size = max(objects) + 1
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % size
+    for number in range(1, size):
+        out += (b"%010d 00000 n \n" % offsets[number]) if number in offsets else b"0000000000 00000 f \n"
+    out += b"trailer\n<< /Size %d /Root %d 0 R /Info %d 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (
+        size, root, info_number, xref)
+    with open(path, "wb") as f:
+        f.write(bytes(out))

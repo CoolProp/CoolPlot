@@ -45,7 +45,7 @@ import numpy as np
 from ..core.events import Click, Drag, DragEnd, DragStart, Hover, ViewChanged
 from ..scene import AxesSpec, Line, Markers
 from .base import SyncReport
-from .svg import PX_PER_PT, SvgRenderer
+from .svg import PX_PER_PT, SvgRenderer, check_suffix
 
 #: The JavaScript client. Plain ES2017, no libraries; ASCII only.
 CLIENT_JS = r"""
@@ -261,6 +261,8 @@ class WebRenderer(SvgRenderer):
         return text.encode("ascii", "xmlcharrefreplace").decode("ascii")
 
     def save(self, path):
+        """Write a static page with the chart; the file name has to end in ".html"."""
+        check_suffix(path, (".html", ".htm"), type(self).__name__, "HTML")
         with open(path, "w", encoding="ascii", newline="\n") as f:
             f.write(self.page())
 

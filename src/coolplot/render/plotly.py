@@ -34,8 +34,10 @@ sample trace that overlays the line and marker styles of the entry.
 from __future__ import annotations
 
 import html
+import importlib.util
 import json
 import math
+import os
 import re
 from typing import Dict, List, Optional, Tuple
 
@@ -46,6 +48,7 @@ from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
 from ..core.numbers import format_number
 from ..style.values import AxesStyle, LineStyle, TextStyle, dash_pattern_pt
 from .base import Renderer, SyncReport
+from .pdf_reader import replace_info
 from .ticks import ticks
 
 PX_PER_PT = 4.0 / 3.0
@@ -72,16 +75,34 @@ _LEGEND = {"upper left": dict(x=0.01, y=0.99, xanchor="left", yanchor="top"),
 
 
 
+
+#: File formats drawn by kaleido.
+IMAGE_SUFFIXES = (".pdf", ".png", ".svg", ".jpg", ".jpeg", ".webp")
+
+
+def kaleido_available() -> bool:
+    """True if plotly can draw images and PDF: kaleido is installed and finds a Chrome."""
+    if importlib.util.find_spec("kaleido") is None:
+        return False
+    try:
+        from choreographer.browsers.chromium import Chromium   # kaleido's own browser lookup
+        return Chromium.find_browser(skip_local=False) is not None
+    except Exception:
+        return True   # cannot tell: let kaleido try, and report what it says
+
 def _escape(text: str) -> str:
     """Text for plotly, which reads a few HTML tags: escape <, > and &, but
-    not quotes, which plotly would show as &quot;."""
-    return html.escape(text, quote=False)
+    not quotes, which plotly would show as &quot;. A dollar sign becomes an
+    entity: where MathJax is loaded (as in kaleido, which draws images and
+    PDF) plotly would typeset "$5 or $6" as math."""
+    return html.escape(text, quote=False).replace("$", "&#36;")
 
 
 def _unescape(text: str) -> str:
     """The reverse of _escape and nothing more: a stray &quot; stays visible
     in the read-back, as it does in the browser."""
-    return text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+    return text.replace("&#36;", "$").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+
 
 def _color(value: Optional[str]) -> str:
     return value if value is not None else TRANSPARENT
@@ -153,6 +174,9 @@ class PlotlyRenderer(Renderer):
     def __init__(self, width: int = 800, height: int = 600, margins=(80, 30, 50, 60), figure=None,
                  div_id: str = "coolplot"):
         super().__init__()
+        if kaleido_available():
+            # Images and PDF need the optional kaleido package (and Chrome)
+            self.capabilities = type(self).capabilities | {"pdf_output"}
         self.width, self.height, self.margins = int(width), int(height), tuple(margins)
         self.div_id = re.sub(r"[^A-Za-z0-9_-]+", "-", div_id) or "coolplot"
         self.figure = figure if figure is not None else go.Figure()
@@ -434,16 +458,46 @@ class PlotlyRenderer(Renderer):
 
     # Output -------------------------------------------------------------
     def save(self, path: str, include_plotlyjs="cdn"):
-        """Write an HTML page (plotly.js from its CDN by default) or, for a
-        ".json" path, the figure as JSON."""
-        if str(path).lower().endswith(".json"):
+        """Write the chart; the format follows the file name.
+
+        ".html": a page (plotly.js from its CDN by default); ".json": the
+        figure as JSON; ".pdf", ".png", ".svg", ".jpg", ".webp": an image
+        drawn by kaleido, an optional package (pip install kaleido) that
+        needs Chrome. A PDF gets the chart title as its title and no
+        creation date, so the same chart gives the same file.
+        """
+        suffix = os.path.splitext(os.fspath(path))[1].lower()
+        if suffix in IMAGE_SUFFIXES:
+            self._write_image(path, suffix)
+            return
+        if suffix == ".json":
             text = json.dumps(self.figure.to_plotly_json(), sort_keys=True, ensure_ascii=True,
                               cls=_PlotlyEncoder)
+        elif suffix not in (".html", ".htm"):
+            raise ValueError("PlotlyRenderer writes .html, .json and, with kaleido, {0}; not {1!r}.".format(
+                ", ".join(IMAGE_SUFFIXES), suffix or "a name without extension"))
         else:
             text = self.figure.to_html(include_plotlyjs=include_plotlyjs, full_html=True, div_id=self.div_id)
             text = text.encode("ascii", "xmlcharrefreplace").decode("ascii")
         with open(path, "w", encoding="ascii", newline="\n") as f:
             f.write(text)
+
+    def _write_image(self, path, suffix: str):
+        if importlib.util.find_spec("kaleido") is None:
+            raise RuntimeError("Writing {0} files with plotly needs kaleido: pip install kaleido. Kaleido also "
+                               "needs Chrome (plotly_get_chrome installs one).".format(suffix))
+        # Sizes in CSS pixels; a PDF page comes out in points (0.75 per pixel), as the scene is laid out.
+        # Full Chrome now and then refuses to print a PDF ("Printing is not available"): try twice.
+        for attempt in (1, 2):
+            try:
+                self.figure.write_image(path, width=self.width, height=self.height)
+                break
+            except Exception as e:
+                if attempt == 2:
+                    raise RuntimeError("Kaleido could not write {0}: {1}".format(path, e)) from e
+        if suffix == ".pdf":
+            title = self._axes.title if self._axes is not None else ""
+            replace_info(path, {"Title": title} if title else {})
 
     def show(self):
         self.figure.show()

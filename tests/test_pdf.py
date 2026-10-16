@@ -186,3 +186,26 @@ def test_reader_finds_fonts_texts_colours_and_pages(tmp_path):
         bad = tmp_path / "objstm.pdf"
         bad.write_bytes(b"%PDF-1.5\n1 0 obj\n<< /Type /ObjStm /N 1 >>\nstream\n\nendstream\nendobj\n")
         read_pdf(str(bad))
+
+
+def test_replace_info_keeps_the_content(tmp_path):
+    from coolplot.render.pdf_reader import replace_info
+    path = tmp_path / "ph.pdf"
+    _diagram().draw(MatplotlibRenderer(use_pyplot=False)).save(str(path))
+    before = read_pdf(str(path))
+    replace_info(str(path), {"Title": "Neuer Titel (mit Klammern)", "Author": "J\u00f6rg"})
+    after = read_pdf(str(path))
+    assert after.info == {"Title": "Neuer Titel (mit Klammern)", "Author": "J\u00f6rg"}
+    assert after.texts == before.texts and after.colors == before.colors and after.pages == 1
+    data = path.read_bytes()
+    xref = int(re.search(rb"startxref\s+(\d+)", data).group(1))
+    assert data[xref:xref + 4] == b"xref"     # the new table is where the trailer says
+
+
+def test_stream_data_is_skipped_by_its_length():
+    from coolplot.render.pdf_reader import _Pdf
+    payload = b"BT (endobj endstream) Tj ET"
+    data = (b"%PDF-1.4\n1 0 obj\n<< /Length " + str(len(payload)).encode() + b" >>\nstream\n" + payload
+            + b"\nendstream\nendobj\n2 0 obj\n<< /Type /Catalog >>\nendobj\n")
+    pdf = _Pdf(data)
+    assert pdf.stream(1) == payload and sorted(pdf.objects) == [1, 2]

@@ -51,6 +51,15 @@ def _num(value: float) -> str:
 _CONTROL = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
 
 
+def check_suffix(path, suffixes, renderer: str, what: str):
+    """Refuse a file name whose extension promises another format than ``what``."""
+    import os
+    suffix = os.path.splitext(os.fspath(path))[1].lower()
+    if suffix not in suffixes:
+        raise ValueError("{0} writes {1} files ({2}), not {3!r}; MatplotlibRenderer writes PDF, PNG and "
+                         "EPS.".format(renderer, what, ", ".join(suffixes), suffix or "a name without extension"))
+
+
 def _ascii(text: str) -> str:
     """Non-ASCII characters as XML character references."""
     return text.encode("ascii", "xmlcharrefreplace").decode("ascii")
@@ -368,6 +377,8 @@ class SvgRenderer(Renderer):
         return bw / PX_PER_PT, bh / PX_PER_PT
 
     def save(self, path):
+        """Write the SVG document; the file name has to end in ".svg"."""
+        check_suffix(path, (".svg",), type(self).__name__, "SVG")
         with open(path, "w", encoding="ascii", newline="\n") as f:
             f.write(self.to_svg())
 

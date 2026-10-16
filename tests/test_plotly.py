@@ -105,3 +105,26 @@ def test_plotly_draws_markers_as_wide_as_asked(shape):
         width = page.evaluate("document.querySelector('.scatterlayer path.point').getBBox().width")
         browser.close()
     assert width == pytest.approx(40.0, rel=0.01), SYMBOL_WIDTH
+
+
+def test_plotly_files_follow_their_name(tmp_path):
+    from coolplot.render import plotly as plotly_backend
+    from coolplot.scene import AxesSpec, Scene
+    renderer = PlotlyRenderer()
+    renderer.sync(Scene(AxesSpec(x_limits=(0.0, 1.0), y_limits=(0.0, 1.0), title="Costs $5")))
+    with pytest.raises(ValueError, match="writes .html, .json"):
+        renderer.save(str(tmp_path / "chart.docx"))
+    if not plotly_backend.kaleido_available():
+        with pytest.raises(RuntimeError, match="kaleido"):
+            renderer.save(str(tmp_path / "chart.pdf"))
+        pytest.skip("kaleido or Chrome is not installed")
+    renderer.save(str(tmp_path / "chart.pdf"))
+    from coolplot.render.pdf_reader import read_pdf
+    content = read_pdf(str(tmp_path / "chart.pdf"))
+    assert content.info == {"Title": "Costs $5"}
+    assert "pdf_output" in renderer.capabilities
+
+
+def test_dollar_signs_are_not_math():
+    from coolplot.render.plotly import _escape, _unescape
+    assert "$" not in _escape("costs $5 or $6") and _unescape(_escape("costs $5 or $6")) == "costs $5 or $6"
