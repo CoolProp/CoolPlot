@@ -26,6 +26,7 @@ from .__version__ import __version__  # noqa: F401
 _LAZY = {
     "PropertyDiagram": ".diagram",
     "PsychrometricChart": ".psychrometric",
+    "save_pdf": ".export",
     "Cycle": ".core.cycle",
     "CycleSpec": ".spec",
     "StateInput": ".core.cycle",

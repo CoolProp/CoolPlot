@@ -22,7 +22,7 @@ PACKAGE = os.path.join(SRC, "coolplot")
 LIBS = {"CoolProp", "matplotlib", "plotly"}
 ALL_LAYERS = ["coolplot.core", "coolplot.style", "coolplot.scene", "coolplot.spec", "coolplot.thermo",
               "coolplot.engine", "coolplot.compose", "coolplot.render", "coolplot.diagram",
-              "coolplot.psychrometric", "coolplot.interaction"]
+              "coolplot.psychrometric", "coolplot.export", "coolplot.interaction"]
 
 
 def _after(layer):
@@ -66,6 +66,9 @@ RULES = {
     "coolplot.diagram": {"matplotlib", "coolplot.render", "coolplot.interaction"},
     "coolplot.psychrometric": {"matplotlib", "plotly", "coolplot.render", "coolplot.interaction",
                                "coolplot.diagram"},
+    # Writing several charts into one file uses the matplotlib backend only.
+    "coolplot.export": {"CoolProp", "plotly", "coolplot.interaction", "coolplot.render.svg",
+                        "coolplot.render.plotly", "coolplot.render.web"},
     # The interaction helper works with any backend through the Renderer API.
     "coolplot.interaction": LIBS | {"coolplot.render.mpl", "coolplot.render.svg", "coolplot.thermo",
                                     "coolplot.engine"},

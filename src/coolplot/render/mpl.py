@@ -29,9 +29,17 @@ Points to note for maintainers
 * Fonts named by file in ``Font.files`` are registered with matplotlib's
   font manager before the family is looked up. ``strict_fonts=True``
   raises instead of falling back when the first family is not available.
+* PDF, PS and EPS embed their fonts as TrueType (fonttype 42), which print
+  checks accept and which keeps text editable; matplotlib's default,
+  Type 3, is refused by many journals. Matplotlib can only embed fonts
+  with TrueType outlines that way: a font installed as CFF OpenType
+  (.otf starting with "OTTO") would give a damaged file. Such a text uses
+  the next TrueType family of its list in the file, with a warning, see
+  :meth:`MatplotlibRenderer._truetype_fonts`.
 """
 from __future__ import annotations
 
+import contextlib
 import math
 import os
 import warnings
@@ -58,6 +66,12 @@ _LEGEND_Z = 1e6
 _GENERIC = {"sans-serif", "serif", "monospace", "cursive", "fantasy"}
 _installed = None
 _registered = set()   # font files given in Font.files, registered once per process
+_outlines = {}        # font file -> True if it has TrueType outlines
+_substituted = set()  # (font, replacement) pairs already reported
+#: File formats with embedded fonts, and the rcParam saying how they are embedded.
+_FONTTYPE_RC = {"pdf": "pdf.fonttype", "ps": "ps.fonttype", "eps": "ps.fonttype"}
+#: Fonts that ship with matplotlib as TrueType: the last resort for embedding.
+_LAST_RESORT = "DejaVu Sans"
 
 
 def _mpl_dashes(dash, width_pt):
@@ -175,6 +189,28 @@ def _font_file_family(text):
     return get_font(path).family_name, path
 
 
+def _has_truetype_outlines(path: str) -> bool:
+    """True for TrueType fonts; False for CFF OpenType ("OTTO") and collections."""
+    if path not in _outlines:
+        with open(path, "rb") as f:
+            _outlines[path] = f.read(4) in (b"\x00\x01\x00\x00", b"true")
+    return _outlines[path]
+
+
+def _truetype_family(families, weight, style) -> str:
+    """The first family of the list whose font file has TrueType outlines."""
+    from matplotlib.font_manager import fontManager
+    for name in families:
+        try:
+            path = fontManager.findfont(FontProperties(family=[name], weight=weight, style=style),
+                                        fallback_to_default=False)
+        except ValueError:
+            continue
+        if _has_truetype_outlines(str(os.fspath(path))):
+            return name
+    return _LAST_RESORT
+
+
 def _visible_texts(figure):
     from matplotlib.text import Text as _MplText
     return [t for t in figure.findobj(_MplText) if t.get_visible() and t.get_text().strip()]
@@ -220,6 +256,7 @@ class MatplotlibRenderer(Renderer):
     def __init__(self, ax=None, use_pyplot: bool = True, figsize=(8.0, 6.0), strict_fonts: bool = False):
         super().__init__()
         self.strict_fonts = bool(strict_fonts)
+        self._tick_families = ["sans-serif"]   # set with the axes
         self.owns_canvas = ax is None
         if ax is None:
             if use_pyplot:
@@ -243,6 +280,7 @@ class MatplotlibRenderer(Renderer):
     # Backend hooks -----------------------------------------------------
     def _set_axes(self, axes: AxesSpec):
         ax, st = self.ax, axes.style
+        self._tick_families = _resolve(st.tick_label.font, self.strict_fonts)
         # nonpositive="mask" turns values that a log axis cannot show into
         # gaps, like NaN; matplotlib's default would drop the line to the
         # bottom edge instead.
@@ -275,7 +313,7 @@ class MatplotlibRenderer(Renderer):
         ax.tick_params(axis="both", which="both", color=st.tick_color or "none",
                        direction=st.tick_direction, width=st.tick_width_pt,
                        labelcolor=st.tick_label.color or "none", labelsize=st.tick_label.font.size_pt,
-                       labelfontfamily=_resolve(st.tick_label.font, self.strict_fonts))
+                       labelfontfamily=self._tick_families)
         ax.tick_params(axis="both", which="major", length=st.tick_length_pt)
         ax.tick_params(axis="both", which="minor", length=0.6 * st.tick_length_pt)
         for which, grid in (("major", st.grid_major), ("minor", st.grid_minor)):
@@ -807,14 +845,112 @@ class MatplotlibRenderer(Renderer):
         dpi = self.figure.dpi
         return self.ax.bbox.width * 72.0 / dpi, self.ax.bbox.height * 72.0 / dpi
 
-    def save(self, path, **kwargs):
-        if str(path).endswith(".png"):
-            kwargs.setdefault("metadata", {"Software": None})   # no version string, deterministic
-        self.figure.savefig(path, **kwargs)
+    def save(self, path, pdf_fonts: str = "truetype", **kwargs):
+        """Write the figure to a file; the format follows the file name.
+
+        PDF, PS and EPS embed their fonts. ``pdf_fonts="truetype"`` (the
+        default) embeds TrueType fonts, as print checks and journals expect;
+        a text whose font is only installed as CFF OpenType then uses the
+        next TrueType family of its list, with a warning. ``"type3"`` keeps
+        every font but embeds it as Type 3. PDF, SVG and PNG files carry no
+        date or version, so the same scene gives the same file, and a PDF
+        gets the chart title as its title. Further keyword arguments go to
+        matplotlib's savefig.
+        """
+        fmt = (kwargs.get("format") or os.path.splitext(str(path))[1].lstrip(".") or "png").lower()
+        metadata = dict(kwargs.pop("metadata", None) or {})
+        rc = {}
+        if fmt == "png":
+            metadata.setdefault("Software", None)
+        elif fmt == "pdf":
+            for key in ("Creator", "Producer", "CreationDate"):
+                metadata.setdefault(key, None)
+            if self._axes is not None and self._axes.title:
+                metadata.setdefault("Title", self._axes.title)
+        elif fmt == "svg":
+            metadata.setdefault("Date", None)
+            rc["svg.hashsalt"] = "coolplot"   # fixed ids instead of random ones
+        if metadata:
+            kwargs["metadata"] = metadata
+        if fmt in _FONTTYPE_RC:
+            rc[_FONTTYPE_RC[fmt]] = _fonttype(pdf_fonts)
+        with matplotlib.rc_context(rc), self._truetype_fonts(fmt in _FONTTYPE_RC and pdf_fonts == "truetype"):
+            self.figure.savefig(path, **kwargs)
+
+    @staticmethod
+    def save_pages(path, renderers, pdf_fonts: str = "truetype", metadata: dict = None):
+        """Write the figures of several renderers into one PDF, one per page.
+
+        Fonts and metadata as for :meth:`save`; the title is that of the
+        first page with a title, unless ``metadata`` gives one.
+        """
+        from matplotlib.backends.backend_pdf import PdfPages
+        metadata = dict(metadata or {})
+        for key in ("Creator", "Producer", "CreationDate"):
+            metadata.setdefault(key, None)
+        titles = [r._axes.title for r in renderers if r._axes is not None and r._axes.title]
+        if titles:
+            metadata.setdefault("Title", titles[0])
+        # The font type has to hold until the file is closed: fonts are written last
+        with matplotlib.rc_context({"pdf.fonttype": _fonttype(pdf_fonts)}):
+            with PdfPages(path, metadata=metadata) as pages:
+                for renderer in renderers:
+                    with renderer._truetype_fonts(pdf_fonts == "truetype"):
+                        pages.savefig(renderer.figure)
+
+    @contextlib.contextmanager
+    def _truetype_fonts(self, active: bool = True):
+        """Inside: every visible text uses a font with TrueType outlines.
+
+        A context manager (a ``with`` block): texts get a replacement
+        family on entry and their own families back on exit, so the figure
+        on screen is unchanged.
+        """
+        if not active:
+            yield
+            return
+        self.figure.draw_without_rendering()   # creates the tick labels
+        changed = []
+        tick_families = None
+        for text in _visible_texts(self.figure):
+            _, path = _font_file_family(text)
+            if _has_truetype_outlines(path):
+                continue
+            families = list(text.get_fontfamily())
+            used = _font_file_family(text)[0]
+            rest = families[families.index(used) + 1:] if used in families else families
+            replacement = _truetype_family(rest, text.get_fontweight(), text.get_fontstyle())
+            if (used, replacement) not in _substituted:
+                _substituted.add((used, replacement))
+                warnings.warn("{0} is installed here only as CFF OpenType, which matplotlib cannot embed as "
+                              "TrueType (the file would be damaged); the file uses {1} instead. Install the "
+                              "TrueType (.ttf) files of {0}, or save with pdf_fonts='type3'.".format(used, replacement),
+                              UserWarning, stacklevel=4)
+            changed.append((text, families))
+            text.set_fontfamily([replacement])
+            if any(text in (tick.label1, tick.label2) for axis in (self.ax.xaxis, self.ax.yaxis)
+                   for tick in axis.get_major_ticks() + axis.get_minor_ticks()):
+                tick_families = [replacement]
+        if tick_families is not None:
+            # Ticks are created again while drawing: they take the family from tick_params
+            self.ax.tick_params(axis="both", which="both", labelfontfamily=tick_families)
+        try:
+            yield
+        finally:
+            for text, families in changed:
+                text.set_fontfamily(families)
+            if tick_families is not None:
+                self.ax.tick_params(axis="both", which="both", labelfontfamily=self._tick_families)
 
     def show(self):
         import matplotlib.pyplot as plt
         plt.show()
+
+
+def _fonttype(pdf_fonts: str) -> int:
+    if pdf_fonts not in ("truetype", "type3"):
+        raise ValueError("pdf_fonts is 'truetype' or 'type3', not {0!r}.".format(pdf_fonts))
+    return 42 if pdf_fonts == "truetype" else 3
 
 
 def _safe_limits(limits, log):
