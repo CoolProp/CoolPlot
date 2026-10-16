@@ -98,3 +98,91 @@ def test_eps_embeds_truetype_fonts(tmp_path):
     _diagram().draw(MatplotlibRenderer(use_pyplot=False)).save(str(path))
     text = path.read_bytes()
     assert b"/FontType 42" in text and b"/FontType 3" not in text
+
+
+# ---------------------------------------------------------------------------
+# The conformance check for PDF output, and backends that should fail it
+# ---------------------------------------------------------------------------
+from coolplot.render.pdf_reader import read_pdf  # noqa: E402
+from coolplot.render.testing import check_pdf  # noqa: E402
+
+
+def _factory(cls=MatplotlibRenderer):
+    return lambda: cls(use_pyplot=False)
+
+
+def test_matplotlib_passes_the_pdf_check():
+    assert check_pdf(_factory()) == []
+
+
+class _Type3Fonts(MatplotlibRenderer):
+    def save(self, path, **kwargs):
+        super().save(path, pdf_fonts="type3")
+
+
+class _NoTitle(MatplotlibRenderer):
+    def save(self, path, **kwargs):
+        super().save(path, metadata={"Title": None})
+
+
+class _MathText(MatplotlibRenderer):
+    def _apply(self, artist, item):
+        super()._apply(artist, item)
+        if isinstance(item, Text):
+            artist.set_parse_math(True)
+
+
+class _HaloAsPathEffect(MatplotlibRenderer):
+    """The old way: the halo as a path effect turns the label into outlines."""
+    def _apply_halo(self, item, artist):
+        from matplotlib import patheffects
+        s = item.style
+        if s.halo_color is not None and s.halo_width_pt > 0.0:
+            artist.set_path_effects([patheffects.withStroke(linewidth=2.0 * s.halo_width_pt,
+                                                            foreground=s.halo_color)])
+
+
+class _ForeignColour(MatplotlibRenderer):
+    def save(self, path, **kwargs):
+        self.ax.set_facecolor("#ff0000")
+        super().save(path, **kwargs)
+
+
+class _NotReproducible(MatplotlibRenderer):
+    _count = 0
+
+    def save(self, path, **kwargs):
+        _NotReproducible._count += 1
+        super().save(path, metadata={"Subject": "save number {0}".format(_NotReproducible._count)})
+
+
+class _DamagedFont(MatplotlibRenderer):
+    """Declares the TrueType font program as a CFF one (same length, so the file stays readable)."""
+    def save(self, path, **kwargs):
+        super().save(path, **kwargs)
+        with open(path, "rb") as f:
+            data = f.read()
+        with open(path, "wb") as f:
+            f.write(data.replace(b"/FontFile2", b"/FontFile3"))
+
+
+@pytest.mark.parametrize("defect", [_Type3Fonts, _NoTitle, _MathText, _HaloAsPathEffect, _ForeignColour,
+                                    _NotReproducible, _DamagedFont])
+def test_the_pdf_check_rejects_defects(defect):
+    assert check_pdf(_factory(defect)) != []
+
+
+def test_reader_finds_fonts_texts_colours_and_pages(tmp_path):
+    path = tmp_path / "ph.pdf"
+    d = _diagram()
+    d.draw(MatplotlibRenderer(use_pyplot=False)).save(str(path))
+    content = read_pdf(str(path))
+    assert content.pages == 1 and content.info["Title"] == "R290, costs $5"
+    assert all(f.program_kind == "truetype" and not f.problems for f in content.fonts)
+    assert {"R290, costs $5", "T=50 deg C", "x=0.5", "Saturation"} <= set(content.texts)
+    theme = d.spec.settings.look
+    assert theme.saturation.color in content.colors and not content.cmyk
+    with pytest.raises(ValueError):
+        bad = tmp_path / "objstm.pdf"
+        bad.write_bytes(b"%PDF-1.5\n1 0 obj\n<< /Type /ObjStm /N 1 >>\nstream\n\nendstream\nendobj\n")
+        read_pdf(str(bad))

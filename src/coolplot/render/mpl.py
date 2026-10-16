@@ -12,9 +12,13 @@ Points to note for maintainers
   ``lines.scale_dashes`` is on. CoolPlot dash patterns are already final
   lengths in points, so they are divided by the width before they are
   handed over (see :func:`_mpl_dashes`).
-* Casings and text halos are path effects: a wider stroke in the casing or
-  halo colour drawn underneath the normal rendering. The stroke inherits
-  the dash pattern and alpha of the line, as docs/backends.md requires.
+* Casings are path effects: a wider stroke in the casing colour drawn
+  underneath the normal rendering. The stroke inherits the dash pattern
+  and alpha of the line, as docs/backends.md requires.
+* A text halo is a second text artist just below the text, drawn with a
+  stroke in the halo colour. Matplotlib draws any text with path effects
+  as glyph outlines, so a halo on the text itself would turn every label
+  into shapes in PDF and SVG files: not selectable, not searchable.
 * Stacking: the axes with their grid and ticks sit at z order 0.5
   (``set_axisbelow``), items at 1 + z_order plus a tiny fraction per
   position, so the scene order breaks ties, and the frame and legend above
@@ -148,7 +152,8 @@ def _font(font, strict: bool = False) -> FontProperties:
                           style=font.style)
 
 
-def _apply_text_style(text, style, strict: bool = False):
+def _apply_text_style(text, style, strict: bool = False, halo: bool = True):
+    """Font, colour and (with ``halo``) a halo as a path effect on ``text``."""
     _plain_text(text)
     text.set_fontfamily(_resolve(style.font, strict))
     text.set_fontsize(style.font.size_pt)
@@ -156,11 +161,15 @@ def _apply_text_style(text, style, strict: bool = False):
     text.set_fontstyle(style.font.style)
     text.set_color(style.color or "none")
     text.set_alpha(style.alpha)
-    if style.halo_color is not None and style.halo_width_pt > 0.0:
+    if halo and _has_halo(style):
         text.set_path_effects([patheffects.withStroke(linewidth=2.0 * style.halo_width_pt,
                                                       foreground=style.halo_color)])
     else:
         text.set_path_effects([])
+
+
+def _has_halo(style) -> bool:
+    return style.halo_color is not None and style.halo_width_pt > 0.0
 
 
 def _marker_scale(shape: str) -> float:
@@ -249,7 +258,7 @@ class MatplotlibRenderer(Renderer):
         silently replaced font would go unnoticed.
     """
 
-    capabilities = frozenset({"in_place_updates", "file_output", "interactive", "events"})
+    capabilities = frozenset({"in_place_updates", "file_output", "interactive", "events", "pdf_output"})
     default_suffix = ".png"
     text_output = False
 
@@ -269,6 +278,7 @@ class MatplotlibRenderer(Renderer):
         self.ax = ax
         self.figure = ax.figure
         self._artists = {}
+        self._halos = {}   # item id -> the text artist drawing its halo
         self._rank = {}
         # The frame goes above all items. Matplotlib draws grid lines as part
         # of the axis artists, so the axes (with their ticks) stay below the
@@ -356,6 +366,9 @@ class MatplotlibRenderer(Renderer):
         self._rank.pop(item.id, None)
         if artist is not None:
             artist.remove()
+        halo = self._halos.pop(item.id, None)
+        if halo is not None:
+            halo.remove()
 
     def _reorder(self, order):
         # matplotlib z orders come from the position in the drawing order,
@@ -364,6 +377,8 @@ class MatplotlibRenderer(Renderer):
         self._rank = {item_id: i for i, item_id in enumerate(order)}
         for item_id, artist in self._artists.items():
             artist.set_zorder(_ITEM_BASE + self._rank[item_id] * _RANK_STEP)
+        for item_id, halo in self._halos.items():
+            halo.set_zorder(self._artists[item_id].get_zorder() - 0.5 * _RANK_STEP)   # just below its text
 
     def _set_legend(self, entries, style):
         old = self.ax.get_legend()
@@ -444,7 +459,7 @@ class MatplotlibRenderer(Renderer):
             artist.set_clip_on(item.clip)
             if item.clip:
                 artist.set_clip_path(self.ax.patch)
-            _apply_text_style(artist, s, self.strict_fonts)
+            _apply_text_style(artist, s, self.strict_fonts, halo=False)
             artist.set_horizontalalignment(s.h_align)
             artist.set_verticalalignment(s.v_align)
             # With transform_rotates_text, matplotlib interprets the rotation
@@ -459,6 +474,35 @@ class MatplotlibRenderer(Renderer):
                 dx, dy = item.direction
                 artist.set_rotation(_upright(math.degrees(math.atan2(dy, dx))))
             artist.set_visible(item.visible and math.isfinite(item.x) and math.isfinite(item.y))
+            self._apply_halo(item, artist)
+
+    def _apply_halo(self, item: Text, artist):
+        """Create, update or remove the halo artist of a text item."""
+        s = item.style
+        halo = self._halos.get(item.id)
+        if not _has_halo(s):
+            if halo is not None:
+                halo.remove()
+                del self._halos[item.id]
+            return
+        if halo is None:
+            halo = self._halos[item.id] = self.ax.text(0.0, 0.0, "", rotation_mode="anchor",
+                                                       transform_rotates_text=True)
+        _plain_text(halo)
+        halo.set_text(artist.get_text())
+        halo.set_position(artist.get_position())
+        halo.set_transform(artist.get_transform())
+        halo.set_clip_on(artist.get_clip_on())
+        halo.set_clip_path(artist.get_clip_path())
+        halo.set_fontproperties(artist.get_fontproperties())
+        halo.set_horizontalalignment(artist.get_horizontalalignment())
+        halo.set_verticalalignment(artist.get_verticalalignment())
+        halo.set_rotation(artist._rotation)   # private: the angle as set, before transform_rotates_text
+        halo.set_color(s.halo_color)
+        halo.set_alpha(s.alpha)
+        halo.set_path_effects([patheffects.Stroke(linewidth=2.0 * s.halo_width_pt, foreground=s.halo_color)])
+        halo.set_visible(artist.get_visible())
+        halo.set_zorder(artist.get_zorder() - 0.5 * _RANK_STEP)
 
     # Events ------------------------------------------------------------
     #: Points within this distance (in points) of a marker or line hit it.
@@ -646,7 +690,8 @@ class MatplotlibRenderer(Renderer):
                        n_points=self._n_drawable(artist), drawn_points=self._drawn_points(artist),
                        connected=artist.get_linestyle() not in ("None", "none", "", " "))
         elif isinstance(item, Text):
-            stroke = _stroke_effect(artist)
+            halo = self._halos.get(item_id)
+            stroke = _stroke_effect(halo) if halo is not None and halo.get_visible() else None
             weight = artist.get_fontweight()
             if not isinstance(weight, str):
                 weight = "bold" if weight >= 600 else "normal"

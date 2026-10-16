@@ -34,7 +34,7 @@ import numpy as np
 from ..core.numbers import format_number
 from ..scene import AxesSpec, Line, Markers, Scene, Text, drawable_limits
 from ..style.values import (AxesStyle, Font, GENERIC_FONTS, LegendStyle, LineStyle, MarkerStyle, MARKER_SHAPES,
-                     TextStyle, dash_pattern_pt)
+                     TextStyle, dash_pattern_pt, style_to_dict)
 
 #: Tolerances for read-back numbers. Lengths may be rounded in the output
 #: (an SVG keeps three decimals of a pixel), but by no more than 0.005 pt,
@@ -112,7 +112,7 @@ def conformance_scene() -> Scene:
             style=MarkerStyle(shape=shape, size_pt=6.0 + i, face_color=None if hollow else "#0b0b0b",
                               edge_color="#4a3aa7", edge_width_pt=1.0 + 0.25 * i, alpha=0.9)))
     items += [
-        Text(id="text/plain", role="annotation", x=5.0, y=1.0, text="plain <&> 'text' \"quoted\"",
+        Text(id="text/plain", role="annotation", x=5.0, y=1.0, text="plain <&> 'text' \"quoted\" $5 or $6",
              z_order=4.0, style=TextStyle(font=Font(size_pt=9.0), color="#0b0b0b")),
         Text(id="text/styled", role="isoline_label", x=3.0, y=3.0, text="T=25 deg C", z_order=4.0,
              direction=(1.0, 1.0),
@@ -551,6 +551,10 @@ def run_conformance(factory: Callable[[], object]) -> List[str]:
     # 12. File output: valid, ASCII, no NaN, deterministic
     if "file_output" in getattr(renderer, "capabilities", ()):
         failures.extend(_check_file_output(factory))
+
+    # 13. PDF: fonts, texts, colours, title, reproducible
+    if "pdf_output" in getattr(renderer, "capabilities", ()):
+        failures.extend(check_pdf(factory))
     return failures
 
 
@@ -619,6 +623,95 @@ def _check_file_output(factory) -> List[str]:
             return failures + ["text output is not ASCII [file output]"]
         if re.search(r"(?<![A-Za-z_/-])nan(?![A-Za-z])", text, re.IGNORECASE):
             failures.append("text output contains 'nan' [robustness]")
+    return failures
+
+
+def _scene_colors(scene: Scene) -> set:
+    """Every "#rrggbb" colour the styles of a scene name (visible items, axes, legend)."""
+    found = set()
+
+    def walk(value):
+        if isinstance(value, dict):
+            for v in value.values():
+                walk(v)
+        elif isinstance(value, (list, tuple)):
+            for v in value:
+                walk(v)
+        elif isinstance(value, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", value):
+            found.add(value.lower())
+    styles = [item.style for item in scene if item.visible and getattr(item, "style", None) is not None]
+    for style in styles + [scene.axes.style]:
+        walk(style_to_dict(style))
+    return found
+
+
+def _close_color(color: str, palette: set) -> bool:
+    """True if a colour is in the palette, within rounding to 1/255 per channel."""
+    rgb = [int(color[i:i + 2], 16) for i in (1, 3, 5)]
+    return any(all(abs(a - int(p[i:i + 2], 16)) <= 1 for a, i in zip(rgb, (1, 3, 5))) for p in palette)
+
+
+def _scene_texts(scene: Scene) -> set:
+    """Texts a PDF of the scene has to contain, word for word."""
+    texts = {item.text for item in scene if isinstance(item, Text) and item.visible
+             and math.isfinite(item.x) and math.isfinite(item.y) and item.text.strip()}
+    axes = scene.axes
+    texts |= {t for t in (axes.title, axes.x_label, axes.y_label) if t}
+    if axes.style.legend.visible:
+        texts |= {item.legend for item in scene if item.visible and item.legend}
+    return texts
+
+
+def check_pdf(factory) -> List[str]:
+    """Check the PDF of a backend with the "pdf_output" capability.
+
+    The file is read back with :mod:`coolplot.render.pdf_reader`: every
+    font is embedded as TrueType or Type 1 and matches its declared type,
+    every text of the scene is in the file as written (no math markup,
+    nothing lost), only colours of the scene's styles paint, the title is
+    the document title, and the same scene gives the same file.
+    """
+    from .pdf_reader import read_pdf
+    failures = []
+    scene = conformance_scene()
+    folder = tempfile.mkdtemp()
+    try:
+        outputs = []
+        for name in ("a.pdf", "b.pdf"):
+            renderer = factory()
+            renderer.sync(scene)
+            path = os.path.join(folder, name)
+            renderer.save(path)
+            with open(path, "rb") as f:
+                outputs.append(f.read())
+        try:
+            content = read_pdf(os.path.join(folder, "a.pdf"))
+        except Exception as e:
+            return ["the PDF could not be read back: {0!r} [pdf]".format(e)]
+    finally:
+        for name in os.listdir(folder):
+            os.remove(os.path.join(folder, name))
+        os.rmdir(folder)
+    if outputs[0] != outputs[1]:
+        failures.append("the same scene gave different PDF files [pdf]")
+    if content.pages != 1:
+        failures.append("the PDF has {0} pages, expected 1 [pdf]".format(content.pages))
+    if not content.fonts:
+        failures.append("the PDF has no fonts, so its texts are not text [pdf]")
+    for font in content.fonts:
+        for problem in font.problems:
+            failures.append("PDF font {0}: {1} [pdf]".format(font.name, problem))
+    found = {" ".join(t.split()) for t in content.texts}
+    for text in sorted(_scene_texts(scene)):
+        if " ".join(text.split()) not in found:
+            failures.append("PDF lacks the text {0!r} as written [pdf]".format(text))
+    palette = _scene_colors(scene)
+    for color in sorted(content.colors):
+        if not _close_color(color, palette):
+            failures.append("PDF paints with {0}, a colour no style asked for [pdf]".format(color))
+    if scene.axes.title and content.info.get("Title") != scene.axes.title:
+        failures.append("PDF title is {0!r}, expected {1!r} [pdf]".format(content.info.get("Title"),
+                                                                          scene.axes.title))
     return failures
 
 

@@ -26,6 +26,7 @@ CAPABILITIES = {
     "interactive": "draws into a live window or widget",
     "css_classes": "exposes item roles and groups as CSS classes",
     "events": "reports hover, click, drag, view changes and resizes with connect(callback)",
+    "pdf_output": "save(path) writes print-ready PDF for a .pdf path: TrueType or Type 1 fonts, all embedded",
 }
 
 
