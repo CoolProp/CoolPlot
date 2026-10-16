@@ -26,7 +26,7 @@ import math
 import os
 import re
 import tempfile
-import unicodedata
+import time
 from dataclasses import replace
 from typing import Callable, List
 
@@ -86,7 +86,7 @@ def conformance_scene() -> Scene:
     x = np.linspace(0.5, 9.5, 20)
     items = [
         Line(id="line/solid", role="isoline", group="lines", x=x, y=np.geomspace(0.2, 50.0, 20),
-             legend="Solid", style=LineStyle(color="#2a78d6", width_pt=0.75)),
+             legend="Solid <$1>", style=LineStyle(color="#2a78d6", width_pt=0.75)),
         Line(id="line/dashed", role="isoline", group="lines", x=x, y=np.geomspace(0.3, 60.0, 20),
              legend="Dashed", style=LineStyle(color="#eb6834", width_pt=1.5, dash="dashed")),
         Line(id="line/dotted", role="isoline", group="lines", x=x, y=np.geomspace(0.4, 70.0, 20),
@@ -663,6 +663,18 @@ def _scene_texts(scene: Scene) -> set:
     return texts
 
 
+#: Ligatures that PDF writers may use for letter pairs ("fi" as one glyph).
+_LIGATURES = {"\ufb00": "ff", "\ufb01": "fi", "\ufb02": "fl", "\ufb03": "ffi", "\ufb04": "ffl",
+              "\ufb05": "st", "\ufb06": "st"}
+
+
+def _unligated(text: str) -> str:
+    """A text with ligatures spelled out and white space collapsed (nothing else is changed)."""
+    for ligature, letters in _LIGATURES.items():
+        text = text.replace(ligature, letters)
+    return " ".join(text.split())
+
+
 def check_pdf(factory) -> List[str]:
     """Check the PDF of a backend with the "pdf_output" capability.
 
@@ -679,6 +691,8 @@ def check_pdf(factory) -> List[str]:
     try:
         outputs = []
         for name in ("a.pdf", "b.pdf"):
+            if outputs:
+                time.sleep(1.1)   # a date with one-second resolution has to change between the two files
             renderer = factory()
             renderer.sync(scene)
             path = os.path.join(folder, name)
@@ -705,10 +719,13 @@ def check_pdf(factory) -> List[str]:
     for font in content.fonts:
         for problem in font.problems:
             failures.append("PDF font {0}: {1} [pdf]".format(font.name, problem))
-    # NFKC folds ligatures that PDF writers may use ("fi" as one glyph) back into letters
-    found = {" ".join(unicodedata.normalize("NFKC", t).split()) for t in content.texts}
+    for what in content.unchecked:
+        failures.append("PDF paints with {0}, whose colours cannot be checked [pdf]".format(what))
+    if content.cmyk:
+        failures.append("PDF uses CMYK colours; the scene's colours are sRGB [pdf]")
+    found = {_unligated(t) for t in content.texts}
     for text in sorted(_scene_texts(scene)):
-        if " ".join(unicodedata.normalize("NFKC", text).split()) not in found:
+        if _unligated(text) not in found:
             failures.append("PDF lacks the text {0!r} as written [pdf]".format(text))
     palette = _scene_colors(scene)
     for color in sorted(content.colors):

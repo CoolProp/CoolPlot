@@ -255,21 +255,26 @@ PDF is a first-class output of the matplotlib backend:
   as journals and print shops expect. Texts stay text: they can be
   selected, searched and edited, labels with a halo included.
 * Matplotlib cannot embed fonts installed as CFF OpenType (many .otf
-  files, often Inter) as TrueType. Such a text uses the next TrueType
-  font of its family list in the PDF, with a warning naming both; the
+  files, often Inter) as TrueType. Such fonts are left out of the family
+  lists in the PDF (matplotlib falls back character by character through
+  the whole list), so a text whose first font is CFF uses the next
+  TrueType font of its list there, with a warning naming both; the
   window keeps the original. Install the .ttf files of the font, or name
-  them with `Font(files=...)`, to keep it.
+  them with `Font(files=...)`, to keep it. Font collections (.ttc, as on
+  macOS) are checked face by face and embed fine.
 * `MatplotlibRenderer(strict_fonts=True)` raises instead of falling back
-  when a font is missing, and `renderer.fonts_used()` lists the fonts
-  really drawn with: for print work, where a replaced font must not slip
-  through.
+  when a font is missing, also when saving would have to replace a CFF
+  font. `renderer.fonts_used()` lists the fonts on screen and
+  `renderer.fonts_used(pdf=True)` those a PDF gets: for print work, where a
+  replaced font must not slip through.
 * Colours are exactly those of the theme, as sRGB. There is no CMYK and
   no colour profile; print shops convert sRGB, or convert the PDF
   yourself (for example with Ghostscript) if a CMYK file is required.
 * The same chart gives the same file (no date, no version strings), and
   the chart title becomes the PDF title. `save_pdf` writes one chart per
   page, each at its own page size.
-* EPS and PS embed TrueType fonts the same way. `PlotlyRenderer` writes
+* EPS and PS embed TrueType fonts the same way, and carry no date when
+  saved to a file name. `PlotlyRenderer` writes
   PDF too when kaleido is installed (`pip install "coolplot[images]"`,
   plus Chrome); SVG and web renderers write only their own formats.
 

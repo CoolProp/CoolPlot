@@ -46,6 +46,7 @@ from __future__ import annotations
 import contextlib
 import math
 import os
+import re
 import warnings
 
 import numpy as np
@@ -71,7 +72,6 @@ _GENERIC = {"sans-serif", "serif", "monospace", "cursive", "fantasy"}
 _installed = None
 _registered = set()   # font files given in Font.files, registered once per process
 _outlines = {}        # font file -> True if it has TrueType outlines
-_substituted = set()  # (font, replacement) pairs already reported
 #: File formats with embedded fonts, and the rcParam saying how they are embedded.
 _FONTTYPE_RC = {"pdf": "pdf.fonttype", "ps": "ps.fonttype", "eps": "ps.fonttype"}
 #: Fonts that ship with matplotlib as TrueType: the last resort for embedding.
@@ -115,18 +115,24 @@ def _families(family):
 
 
 def _register_files(files):
-    """Make the font files of a Font known to matplotlib."""
+    """Make the font files of a Font known to matplotlib (each file once, with one warning if unusable)."""
     global _installed
-    for path in files:
+    for name in files:
+        path = os.path.abspath(name)
         if path in _registered:
             continue
         _registered.add(path)
         if not os.path.isfile(path):
-            warnings.warn("Font file {0!r} does not exist; the next family is used.".format(path), UserWarning,
+            warnings.warn("Font file {0!r} does not exist; the next family is used.".format(name), UserWarning,
                           stacklevel=4)
             continue
         from matplotlib.font_manager import fontManager
-        fontManager.addfont(path)
+        try:
+            fontManager.addfont(path)
+        except Exception as e:
+            warnings.warn("Font file {0!r} could not be loaded ({1}); the next family is used.".format(name, e),
+                          UserWarning, stacklevel=4)
+            continue
         _installed = None   # look again which families exist
 
 
@@ -198,26 +204,51 @@ def _font_file_family(text):
     return get_font(path).family_name, path
 
 
-def _has_truetype_outlines(path: str) -> bool:
-    """True for TrueType fonts; False for CFF OpenType ("OTTO") and collections."""
-    if path not in _outlines:
-        with open(path, "rb") as f:
-            _outlines[path] = f.read(4) in (b"\x00\x01\x00\x00", b"true")
-    return _outlines[path]
-
-
-def _truetype_family(families, weight, style) -> str:
-    """The first family of the list whose font file has TrueType outlines."""
+def _font_file(family: str, weight, style):
+    """(file, face index) matplotlib takes for one family, or None if it is not installed."""
     from matplotlib.font_manager import fontManager
+    try:
+        found = fontManager.findfont(FontProperties(family=[family], weight=weight, style=style),
+                                     fallback_to_default=False)
+    except ValueError:
+        return None
+    return str(os.fspath(found)), int(getattr(found, "face_index", 0) or 0)
+
+
+def _has_truetype_outlines(path: str, face: int = 0) -> bool:
+    """True for TrueType fonts, also inside collections (.ttc); False for CFF OpenType ("OTTO")."""
+    key = (path, face)
+    if key not in _outlines:
+        with open(path, "rb") as f:
+            head = f.read(4)
+            if head == b"ttcf":
+                # A collection: a table of offsets to its fonts follows the 12-byte header
+                f.seek(12 + 4 * face)
+                f.seek(int.from_bytes(f.read(4), "big"))
+                head = f.read(4)
+        _outlines[key] = head in (b"\x00\x01\x00\x00", b"true")
+    return _outlines[key]
+
+
+def _embeddable(families, weight, style):
+    """(families to embed, families left out): only fonts with TrueType outlines.
+
+    Matplotlib falls back through the whole family list glyph by glyph, so
+    every family of the list counts, not just the first one.
+    """
+    keep, dropped = [], []
     for name in families:
-        try:
-            path = fontManager.findfont(FontProperties(family=[name], weight=weight, style=style),
-                                        fallback_to_default=False)
-        except ValueError:
-            continue
-        if _has_truetype_outlines(str(os.fspath(path))):
-            return name
-    return _LAST_RESORT
+        found = _font_file(name, weight, style)
+        if found is not None:
+            (keep if _has_truetype_outlines(*found) else dropped).append(name)
+    return (keep or [_LAST_RESORT]), dropped
+
+
+def _family_name(families, weight, style) -> str:
+    """The family name of the font a family list resolves to."""
+    from matplotlib.font_manager import fontManager, get_font
+    path = fontManager.findfont(FontProperties(family=list(families), weight=weight, style=style))
+    return get_font(str(os.fspath(path))).family_name
 
 
 def _visible_texts(figure):
@@ -266,6 +297,7 @@ class MatplotlibRenderer(Renderer):
         super().__init__()
         self.strict_fonts = bool(strict_fonts)
         self._tick_families = ["sans-serif"]   # set with the axes
+        self._font_warnings = set()            # font messages already given when saving
         self.owns_canvas = ax is None
         if ax is None:
             if use_pyplot:
@@ -691,7 +723,13 @@ class MatplotlibRenderer(Renderer):
                        connected=artist.get_linestyle() not in ("None", "none", "", " "))
         elif isinstance(item, Text):
             halo = self._halos.get(item_id)
-            stroke = _stroke_effect(halo) if halo is not None and halo.get_visible() else None
+            # The halo counts only where it really sits under this label: same text, place, angle and font
+            matches = halo is not None and halo.get_visible() and (
+                halo.get_text() == artist.get_text() and halo.get_position() == artist.get_position()
+                and halo.get_rotation() == artist.get_rotation()
+                and halo.get_fontproperties() == artist.get_fontproperties()
+                and artist.get_zorder() - _RANK_STEP < halo.get_zorder() < artist.get_zorder())
+            stroke = _stroke_effect(halo) if matches else None
             weight = artist.get_fontweight()
             if not isinstance(weight, str):
                 weight = "bold" if weight >= 600 else "normal"
@@ -871,16 +909,28 @@ class MatplotlibRenderer(Renderer):
         return [ours[id(a)] for a in drawn].index(item_id)
 
     # Output ------------------------------------------------------------
-    def fonts_used(self) -> dict:
-        """Family name -> font file of every font the visible texts use.
+    def fonts_used(self, pdf: bool = False) -> dict:
+        """Font file -> family name of the font of every visible text.
 
-        These are the fonts matplotlib really draws with, after falling back
+        These are the fonts matplotlib really draws with, after going
         through each family list: the place to check that a print font is
-        there.
+        there. With ``pdf=True``: the fonts a PDF, PS or EPS file gets, after
+        fonts that cannot be embedded as TrueType are left out (see
+        :meth:`save`). Fonts that only supply single missing characters are
+        not listed.
         """
+        from matplotlib.font_manager import fontManager, get_font
         if self.figure.stale:
             self.figure.draw_without_rendering()
-        return dict(_font_file_family(text) for text in _visible_texts(self.figure))
+        out = {}
+        for text in _visible_texts(self.figure):
+            families = text.get_fontfamily()
+            if pdf:
+                families = _embeddable(families, text.get_fontweight(), text.get_fontstyle())[0]
+            path = str(os.fspath(fontManager.findfont(FontProperties(
+                family=list(families), weight=text.get_fontweight(), style=text.get_fontstyle()))))
+            out[path] = get_font(path).family_name
+        return out
 
     def plot_size_pt(self):
         """Size of the plot area; lays out the figure first if it changed."""
@@ -915,12 +965,21 @@ class MatplotlibRenderer(Renderer):
         elif fmt == "svg":
             metadata.setdefault("Date", None)
             rc["svg.hashsalt"] = "coolplot"   # fixed ids instead of random ones
+        elif fmt in ("ps", "eps"):
+            metadata.setdefault("Creator", "CoolPlot")   # no version string
         if metadata:
             kwargs["metadata"] = metadata
         if fmt in _FONTTYPE_RC:
             rc[_FONTTYPE_RC[fmt]] = _fonttype(pdf_fonts)
         with matplotlib.rc_context(rc), self._truetype_fonts(fmt in _FONTTYPE_RC and pdf_fonts == "truetype"):
             self.figure.savefig(path, **kwargs)
+        if fmt in ("ps", "eps") and isinstance(path, (str, os.PathLike)):
+            # PostScript takes its date from the clock (or SOURCE_DATE_EPOCH, for the whole
+            # process); the comment line is optional, so it is left out of the file
+            with open(path, "rb") as f:
+                data = f.read()
+            with open(path, "wb") as f:
+                f.write(re.sub(rb"%%CreationDate:[^\r\n]*\r?\n", b"", data, count=1))
 
     @staticmethod
     def save_pages(path, renderers, pdf_fonts: str = "truetype", metadata: dict = None):
@@ -945,47 +1004,60 @@ class MatplotlibRenderer(Renderer):
 
     @contextlib.contextmanager
     def _truetype_fonts(self, active: bool = True):
-        """Inside: every visible text uses a font with TrueType outlines.
+        """Inside: every visible text uses only fonts with TrueType outlines.
 
-        A context manager (a ``with`` block): texts get a replacement
-        family on entry and their own families back on exit, so the figure
-        on screen is unchanged.
+        A context manager (a ``with`` block): texts get family lists without
+        CFF OpenType fonts on entry and their own lists back on exit, also
+        when saving fails, so the figure on screen is unchanged. With
+        ``strict_fonts`` a needed change raises ValueError instead.
         """
         if not active:
             yield
             return
-        self.figure.draw_without_rendering()   # creates the tick labels
         changed = []
         tick_families = None
-        for text in _visible_texts(self.figure):
-            _, path = _font_file_family(text)
-            if _has_truetype_outlines(path):
-                continue
-            families = list(text.get_fontfamily())
-            used = _font_file_family(text)[0]
-            rest = families[families.index(used) + 1:] if used in families else families
-            replacement = _truetype_family(rest, text.get_fontweight(), text.get_fontstyle())
-            if (used, replacement) not in _substituted:
-                _substituted.add((used, replacement))
-                warnings.warn("{0} is installed here only as CFF OpenType, which matplotlib cannot embed as "
-                              "TrueType (the file would be damaged); the file uses {1} instead. Install the "
-                              "TrueType (.ttf) files of {0}, or save with pdf_fonts='type3'.".format(used, replacement),
-                              UserWarning, stacklevel=4)
-            changed.append((text, families))
-            text.set_fontfamily([replacement])
-            if any(text in (tick.label1, tick.label2) for axis in (self.ax.xaxis, self.ax.yaxis)
-                   for tick in axis.get_major_ticks() + axis.get_minor_ticks()):
-                tick_families = [replacement]
-        if tick_families is not None:
-            # Ticks are created again while drawing: they take the family from tick_params
-            self.ax.tick_params(axis="both", which="both", labelfontfamily=tick_families)
         try:
+            self.figure.draw_without_rendering()   # creates the tick labels
+            ticks = {id(label) for axis in (self.ax.xaxis, self.ax.yaxis)
+                     for tick in axis.get_major_ticks() + axis.get_minor_ticks() for label in (tick.label1, tick.label2)}
+            for text in _visible_texts(self.figure):
+                families = list(text.get_fontfamily())
+                weight, style = text.get_fontweight(), text.get_fontstyle()
+                keep, dropped = _embeddable(families, weight, style)
+                if not dropped:
+                    continue
+                self._report_cff(families, keep, dropped, weight, style)
+                changed.append((text, families))
+                text.set_fontfamily(keep)
+                if id(text) in ticks:
+                    tick_families = keep
+            if tick_families is not None:
+                # Ticks are created again while drawing: they take the family from tick_params
+                self.ax.tick_params(axis="both", which="both", labelfontfamily=tick_families)
             yield
         finally:
             for text, families in changed:
                 text.set_fontfamily(families)
             if tick_families is not None:
                 self.ax.tick_params(axis="both", which="both", labelfontfamily=self._tick_families)
+
+    def _report_cff(self, families, keep, dropped, weight, style):
+        """Warn (or with strict_fonts, raise) about fonts left out of an embedded file."""
+        before = _family_name(families, weight, style)
+        after = _family_name(keep, weight, style)
+        if before != after:
+            message = ("{0} is installed here only as CFF OpenType, which matplotlib cannot embed as TrueType "
+                       "(the file would be damaged); the file uses {1} instead. Install the TrueType (.ttf) "
+                       "files of {0}, or save with pdf_fonts='type3'.".format(before, after))
+        else:
+            message = ("{0} (CFF OpenType) cannot be embedded as TrueType and is left out of the file; "
+                       "characters only it has are missing there. Install the TrueType (.ttf) files, or save "
+                       "with pdf_fonts='type3'.".format(", ".join(dropped)))
+        if self.strict_fonts:
+            raise ValueError("strict_fonts: " + message)
+        if message not in self._font_warnings:
+            warnings.warn(message, UserWarning, stacklevel=5)
+            self._font_warnings.add(message)   # once per renderer, after the warning really went out
 
     def show(self):
         import matplotlib.pyplot as plt

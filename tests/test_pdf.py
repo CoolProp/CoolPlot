@@ -65,8 +65,7 @@ def test_fonts_without_truetype_outlines_are_replaced_in_the_file(tmp_path, monk
     # Pretend DejaVu Sans were installed only as CFF OpenType, as Inter often is
     real = mpl_backend._has_truetype_outlines
     monkeypatch.setattr(mpl_backend, "_has_truetype_outlines",
-                        lambda path: False if path.endswith("DejaVuSans.ttf") else real(path))
-    monkeypatch.setattr(mpl_backend, "_substituted", set())
+                        lambda path, face=0: False if path.endswith("DejaVuSans.ttf") else real(path, face))
     font = Font(family=("DejaVu Sans", "DejaVu Serif", "serif"))
     scene = Scene(AxesSpec(x_limits=(0.0, 1.0), y_limits=(0.0, 1.0), title="Title"),
                   [Text(id="t", x=0.5, y=0.5, text="label", style=TextStyle(font=font))])
@@ -209,3 +208,162 @@ def test_stream_data_is_skipped_by_its_length():
             + b"\nendstream\nendobj\n2 0 obj\n<< /Type /Catalog >>\nendobj\n")
     pdf = _Pdf(data)
     assert pdf.stream(1) == payload and sorted(pdf.objects) == [1, 2]
+
+
+# ---------------------------------------------------------------------------
+# Review findings
+# ---------------------------------------------------------------------------
+def _pretend_cff(monkeypatch, suffix):
+    """Pretend the font file ending in ``suffix`` were CFF OpenType."""
+    real = mpl_backend._has_truetype_outlines
+    monkeypatch.setattr(mpl_backend, "_has_truetype_outlines",
+                        lambda path, face=0: False if path.endswith(suffix) else real(path, face))
+
+
+def _one_text(font, text="label"):
+    scene = Scene(AxesSpec(x_limits=(0.0, 1.0), y_limits=(0.0, 1.0)),
+                  [Text(id="t", x=0.5, y=0.5, text=text, style=TextStyle(font=font))])
+    renderer = MatplotlibRenderer(use_pyplot=False)
+    renderer.sync(scene)
+    return renderer
+
+
+def test_a_cff_font_later_in_the_list_is_left_out_too(tmp_path, monkeypatch):
+    # Matplotlib falls back glyph by glyph: a CFF font anywhere in the list could damage the file
+    _pretend_cff(monkeypatch, "DejaVuSerif.ttf")
+    renderer = _one_text(Font(family=("DejaVu Sans", "DejaVu Serif", "sans-serif")))
+    with pytest.warns(UserWarning, match="DejaVu Serif \\(CFF OpenType\\) cannot be embedded"):
+        renderer.save(str(tmp_path / "a.pdf"))
+    assert renderer.backend_object("t").get_fontfamily() == ["DejaVu Sans", "DejaVu Serif", "sans-serif"]
+
+
+def test_strict_fonts_refuse_a_replacement_and_the_screen_stays(tmp_path, monkeypatch):
+    import warnings
+    _pretend_cff(monkeypatch, "DejaVuSans.ttf")
+    font = Font(family=("DejaVu Sans", "DejaVu Serif", "serif"))
+    renderer = _one_text(font)
+    renderer.strict_fonts = True
+    with pytest.raises(ValueError, match="strict_fonts"):
+        renderer.save(str(tmp_path / "a.pdf"))
+    assert renderer.backend_object("t").get_fontfamily() == ["DejaVu Sans", "DejaVu Serif", "serif"]
+    # A failure while replacing (warnings turned into errors) leaves every text as it was
+    renderer = _one_text(font)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        with pytest.raises(UserWarning):
+            renderer.save(str(tmp_path / "b.pdf"))
+    assert renderer.backend_object("t").get_fontfamily() == ["DejaVu Sans", "DejaVu Serif", "serif"]
+    # Each renderer warns for itself, so a second figure does not stay silent
+    for _ in range(2):
+        with pytest.warns(UserWarning, match="instead"):
+            _one_text(font).save(str(tmp_path / "c.pdf"))
+    # fonts_used tells the fonts on screen and the fonts in the file
+    renderer = _one_text(font)
+    assert "DejaVu Sans" in renderer.fonts_used().values()
+    assert set(renderer.fonts_used(pdf=True).values()) >= {"DejaVu Serif"}
+
+
+def test_font_collections_are_checked_face_by_face(tmp_path):
+    def collection(face_head):
+        # "ttcf", version, one font, offset 16 -> the face starts with face_head
+        return b"ttcf" + b"\x00\x01\x00\x00" + (1).to_bytes(4, "big") + (16).to_bytes(4, "big") + face_head
+    truetype, cff = tmp_path / "t.ttc", tmp_path / "c.ttc"
+    truetype.write_bytes(collection(b"\x00\x01\x00\x00"))
+    cff.write_bytes(collection(b"OTTO"))
+    assert mpl_backend._has_truetype_outlines(str(truetype))
+    assert not mpl_backend._has_truetype_outlines(str(cff))
+
+
+def test_a_font_file_that_is_no_font_warns_once(tmp_path):
+    bad = tmp_path / "broken.ttf"
+    bad.write_bytes(b"not a font")
+    font = Font(family=("DejaVu Sans",), files=(str(bad),))
+    with pytest.warns(UserWarning, match="could not be loaded"):
+        _one_text(font)
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _one_text(font)   # reported once, not again
+
+
+def test_eps_files_are_reproducible(tmp_path):
+    import time
+    paths = [tmp_path / "a.eps", tmp_path / "b.eps"]
+    for path in paths:
+        _diagram().draw(MatplotlibRenderer(use_pyplot=False)).save(str(path))
+        time.sleep(1.1)
+    assert paths[0].read_bytes().replace(b"a.eps", b"b.eps") == paths[1].read_bytes()
+
+
+def _minimal_pdf(content: bytes, resources: bytes = b"<< >>") -> bytes:
+    objects = [b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+               b"<< /Type /Page /Parent 2 0 R /Resources " + resources + b" /Contents 4 0 R >>",
+               b"<< /Length " + str(len(content)).encode() + b" >>\nstream\n" + content + b"\nendstream"]
+    out = b"%PDF-1.4\n"
+    for i, body in enumerate(objects, start=1):
+        out += str(i).encode() + b" 0 obj\n" + body + b"\nendobj\n"
+    return out + b"trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n0\n%%EOF\n"
+
+
+@pytest.mark.parametrize("content, unchecked, cmyk", [
+    (b"/DeviceCMYK cs 0 1 1 0 sc 0 0 10 10 re f", [], True),
+    (b"0 1 1 0 k 0 0 10 10 re f", [], True),
+    (b"/Sh0 sh", ["shading"], False),
+    (b"BI /W 1 /H 1 /CS /G /BPC 8 ID ) EI 1 0 0 rg 0 0 10 10 re f", ["inline image"], False),
+    (b"/Pattern cs /P0 scn 0 0 10 10 re f", ["pattern"], False),
+    (b"/Lab cs 50 0 0 sc 0 0 10 10 re f", ["colour space Lab"], False),
+])
+def test_reader_reports_paint_it_cannot_check(tmp_path, content, unchecked, cmyk):
+    path = tmp_path / "x.pdf"
+    path.write_bytes(_minimal_pdf(content))
+    found = read_pdf(str(path))
+    assert found.unchecked == unchecked and found.cmyk == cmyk
+    if content.startswith(b"BI"):
+        assert found.colors == {"#ff0000"}   # what follows the inline image is still read
+
+
+def test_reader_refuses_what_it_cannot_read(tmp_path):
+    path = tmp_path / "x.pdf"
+    path.write_bytes(_minimal_pdf(b"(unterminated \\"))
+    with pytest.raises(ValueError):
+        read_pdf(str(path))
+    path.write_bytes(_minimal_pdf(b"1 0 0 rg ) 0 0 1 1 re f"))   # a stray closing parenthesis
+    with pytest.raises(ValueError):
+        read_pdf(str(path))
+
+
+def test_reader_is_not_slowed_down_by_many_trailers(tmp_path):
+    import time
+    path = tmp_path / "x.pdf"
+    path.write_bytes(_minimal_pdf(b"0 0 1 1 re f") + b"trailer <<" * 20000)
+    start = time.monotonic()
+    with pytest.raises(ValueError):
+        read_pdf(str(path))   # the last trailer is unterminated
+    assert time.monotonic() - start < 2.0
+
+
+def test_replace_info_refuses_other_generations(tmp_path):
+    from coolplot.render.pdf_reader import replace_info
+    path = tmp_path / "x.pdf"
+    path.write_bytes(_minimal_pdf(b"0 0 1 1 re f").replace(b"4 0 obj", b"4 2 obj").replace(b"4 0 R", b"4 2 R"))
+    with pytest.raises(ValueError, match="generations"):
+        replace_info(str(path), {"Title": "x"})
+
+
+def test_plotly_escapes_legend_names():
+    pytest.importorskip("plotly")
+    from coolplot.render.plotly import PlotlyRenderer
+    from coolplot.scene import Line
+    renderer = PlotlyRenderer()
+    renderer.sync(Scene(AxesSpec(x_limits=(0.0, 1.0), y_limits=(0.0, 1.0)),
+                        [Line(id="l", x=[0, 1], y=[0, 1], legend="costs $5 <b>or</b> $6")]))
+    names = [trace.name for trace in renderer.figure.data]
+    assert all("$" not in n and "<b>" not in n for n in names)
+    assert renderer.describe_axes()["legend"][0][0] == "costs $5 <b>or</b> $6"
+
+
+def test_kaleido_is_not_promised_without_a_browser(monkeypatch):
+    pytest.importorskip("plotly")
+    from coolplot.render import plotly as plotly_backend
+    monkeypatch.setenv("BROWSER_PATH", "/no/such/chrome")
+    assert plotly_backend.kaleido_available() is False

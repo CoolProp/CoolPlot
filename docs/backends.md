@@ -297,7 +297,9 @@ then MUST:
 * keep texts as text, word for word: no math markup ("$5 or $6" stays as
   written), no text drawn as outlines (a halo must not turn the label
   into shapes);
-* paint only colours of the scene's styles;
+* paint only colours of the scene's styles, as RGB or grey: no CMYK, no
+  images, shadings, patterns or other colour spaces, whose colours the
+  check cannot read;
 * write the chart title as the document title, and no dates or version
   strings, so the same scene gives the same file.
 

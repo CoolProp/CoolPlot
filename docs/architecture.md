@@ -585,6 +585,15 @@ external tools, for the conformance kit (fonts, texts, painted colours,
 title, reproducibility), and rewrites document information for the plotly
 backend, which prints through kaleido and Chrome.
 
+Known limits of PDF output, from its adversarial review: the reader is
+meant for files of plotting libraries, not for every PDF (it refuses
+object streams, encryption and unreadable content, and reports images,
+shadings, patterns and other colour spaces as unchecked); `replace_info`
+keeps only the catalogue and the information in the trailer and refuses
+objects of other generations than 0; EPS and PS written to a file object
+(not a file name) keep matplotlib's date line; fonts that only supply
+single missing characters are not listed by `fonts_used`.
+
 Known trade-offs, from the adversarial review of the 0.3 work:
 
 * Conformance limitations are declared by the backend itself. With

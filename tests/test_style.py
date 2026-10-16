@@ -205,7 +205,8 @@ def test_font_files_strict_fonts_and_fonts_used(tmp_path):
     renderer = _mpl_renderer(strict_fonts=True)   # strict: the file must really be used
     renderer.sync(_text_scene(brand))
     assert renderer.describe_item("t")["font_used"] == "CoolPlot Test Mono"
-    assert renderer.fonts_used()["CoolPlot Test Mono"] == str(copy)
+    assert renderer.fonts_used()[str(copy)] == "CoolPlot Test Mono"
+    assert Font(family=("Brand",), files=copy).files == (str(copy),)   # one pathlib.Path
     # A missing first family falls back, unless strict_fonts is on
     missing = Font(family=("No Such Font", "DejaVu Sans", "sans-serif"))
     renderer = _mpl_renderer()

@@ -19,6 +19,7 @@ This module imports neither CoolProp nor a plotting library.
 from __future__ import annotations
 
 import math
+import os
 import re
 from dataclasses import dataclass, field, fields, replace
 from typing import Optional, Tuple, Union
@@ -297,8 +298,10 @@ class Font:
         if not family:
             raise ValueError("Font: give at least one family.")
         object.__setattr__(self, "family", family)
-        files = (self.files,) if isinstance(self.files, str) else tuple(str(f) for f in self.files)
-        object.__setattr__(self, "files", files)
+        files = self.files
+        if isinstance(files, (str, bytes)) or hasattr(files, "__fspath__"):
+            files = (files,)   # one file, also as a pathlib.Path
+        object.__setattr__(self, "files", tuple(os.fsdecode(os.fspath(f)) for f in files))
         _check_length(self.size_pt, "Font", "size_pt")
         if self.weight not in ("normal", "bold"):
             raise ValueError("Font weight has to be 'normal' or 'bold'.")

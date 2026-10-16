@@ -50,8 +50,9 @@ class PdfContent:
     info: Dict[str, str]
     fonts: List[PdfFont]
     texts: List[str]
-    colors: Set[str]            # "#rrggbb" of every stroke and fill colour
-    cmyk: bool                  # True if any CMYK colour operator is used
+    colors: Set[str]            # "#rrggbb" of every RGB or grey stroke and fill colour
+    cmyk: bool                  # True if any CMYK colour is used
+    unchecked: List[str] = field(default_factory=list)   # paint whose colour is not read: images, shadings, ...
 
 
 # ---------------------------------------------------------------------------
@@ -84,6 +85,7 @@ class _Pdf:
             raise ValueError("PDF files with compressed object streams are not supported.")
         self.data = data
         self.objects: Dict[int, bytes] = {}   # object number -> everything between "obj" and "endobj"
+        self.generations = set()              # generation numbers seen
         self.first_object = None              # where the first object starts
         i = 0
         while True:
@@ -104,6 +106,7 @@ class _Pdf:
                     j += after.end() + length
             end = data.index(b"endobj", j)
             self.objects[int(match.group(1))] = data[start:end]
+            self.generations.add(int(match.group(2)))
             i = end + len(b"endobj")
 
     @staticmethod
@@ -168,6 +171,8 @@ def _literal(data: bytes, i: int):
         c = data[i]
         if c == 0x5C:   # backslash
             i += 1
+            if i >= len(data):
+                break
             c = data[i]
             if c in escapes:
                 out.append(escapes[c])
@@ -190,7 +195,7 @@ def _literal(data: bytes, i: int):
         else:
             out.append(c)
         i += 1
-    return bytes(out), i
+    raise ValueError("An unterminated string in the PDF file.")
 
 
 def _text_string(raw: bytes) -> str:
@@ -200,9 +205,18 @@ def _text_string(raw: bytes) -> str:
     return raw.decode("latin-1")
 
 
+def _trailer(data: bytes) -> bytes:
+    """The dictionary of the last trailer, or b"" (found from the end, never by a search through the file)."""
+    at = data.rfind(b"trailer")
+    start = data.find(b"<<", at) if at >= 0 else -1
+    if start < 0:
+        return b""
+    return data[start:_skip_dictionary(data, start)]
+
+
 def _info(pdf: _Pdf) -> Dict[str, str]:
-    trailer = re.findall(rb"trailer\s*<<(.*?)>>", pdf.data, re.S)
-    number = pdf.ref(trailer[-1], "Info") if trailer else None
+    trailer = _trailer(pdf.data)
+    number = pdf.ref(trailer, "Info") if trailer else None
     if number is None:
         return {}
     body = pdf.dictionary(number)
@@ -315,22 +329,30 @@ def _to_unicode(pdf: _Pdf, number: int):
 # ---------------------------------------------------------------------------
 # Content streams: texts and colours
 # ---------------------------------------------------------------------------
-_TOKEN = re.compile(rb"\s*(%[^\r\n]*|/[^\s/<>\[\]()%{}]*|<<|>>|<[0-9A-Fa-f\s]*>|\[|\]|\(|[^\s/<>\[\]()%{}]+)")
+_TOKEN = re.compile(rb"\s*(%[^\r\n]*|/[^\s/<>\[\]()%{}]*|<<|>>|<[0-9A-Fa-f\s]*>|\[|\]|\(|\{|\}"
+                    rb"|[^\s/<>\[\]()%{}]+)")
+_INLINE_IMAGE_END = re.compile(rb"\sEI(?=\s|$)")
 
 
 def _tokens(data: bytes):
-    """Tokens of a content stream: ("str", bytes), ("name", ...), ("num", float), ("op", ...), brackets."""
+    """Tokens of a content stream: ("str", bytes), ("name", ...), ("num", float), ("op", ...), brackets.
+
+    An inline image (BI ... ID data EI) comes out as one ("image", None);
+    anything that cannot be read raises ValueError instead of being skipped.
+    """
     i = 0
     while i < len(data):
         match = _TOKEN.match(data, i)
         if not match or not match.group(1):
+            if data[i:].strip():
+                raise ValueError("Unreadable content stream near byte {0}.".format(i))
             break
         token = match.group(1)
         i = match.end()
         if token == b"(":
             raw, i = _literal(data, match.start(1))
             yield "str", raw
-        elif token.startswith(b"%"):
+        elif token.startswith(b"%") or token in (b"{", b"}"):
             continue
         elif token.startswith(b"<") and token != b"<<":
             digits = re.sub(rb"[\s<>]", b"", token).decode()
@@ -339,6 +361,12 @@ def _tokens(data: bytes):
             yield "name", token[1:].decode("latin-1")
         elif token in (b"[", b"]", b"<<", b">>"):
             yield token.decode(), token
+        elif token == b"ID":
+            end = _INLINE_IMAGE_END.search(data, i)
+            if end is None:
+                raise ValueError("An inline image without its end (EI) in the PDF file.")
+            i = end.end()
+            yield "image", None
         else:
             try:
                 yield "num", float(token)
@@ -350,23 +378,89 @@ def _hex_color(values) -> str:
     return "#" + "".join("{0:02x}".format(max(0, min(255, round(v * 255)))) for v in values)
 
 
-def _read_content(pdf: _Pdf, data: bytes, fonts: Dict[str, tuple], xobjects: Dict[str, int],
-                  texts: List[str], colors: Set[str], state=None, depth: int = 0) -> bool:
+#: Colour spaces whose values are read, by the number of components.
+_SPACES = {"DeviceRGB": "rgb", "CalRGB": "rgb", "DeviceGray": "gray", "CalGray": "gray", "DeviceCMYK": "cmyk"}
+
+
+class _Found:
+    """What the content streams of a file hold, collected while reading them."""
+    def __init__(self):
+        self.texts: List[str] = []
+        self.colors: Set[str] = set()
+        self.cmyk = False
+        self.unchecked: List[str] = []
+
+    def note(self, what: str):
+        if what not in self.unchecked:
+            self.unchecked.append(what)
+
+
+class _Resources:
+    """Fonts, forms and colour spaces of a page or form."""
+    def __init__(self, pdf: _Pdf, resources: bytes, inherited: "_Resources" = None):
+        self.fonts = {n: _to_unicode(pdf, r) for n, r in _names(pdf, pdf.sub_dictionary(resources, "Font")).items()}
+        self.xobjects = _names(pdf, pdf.sub_dictionary(resources, "XObject"))
+        table = pdf.sub_dictionary(resources, "ColorSpace")
+        self.spaces = {}
+        for name, value in re.findall(rb"/([^\s/<>\[\]()]+)\s*(\[[^\]]*\]|\d+\s+\d+\s+R|/\w+)", table):
+            ref = re.fullmatch(rb"(\d+)\s+\d+\s+R", value)
+            definition = pdf.dictionary(int(ref.group(1))) if ref else value
+            self.spaces[name.decode()] = _space_kind(pdf, definition)
+        if inherited is not None:
+            self.fonts = self.fonts or inherited.fonts
+            self.xobjects = self.xobjects or inherited.xobjects
+            self.spaces = dict(inherited.spaces, **self.spaces)
+
+
+def _space_kind(pdf: _Pdf, definition: bytes) -> str:
+    """"rgb", "gray", "cmyk" or the name of a colour space whose values are not read."""
+    family = re.search(rb"/(\w+)", definition)
+    family = family.group(1).decode() if family else "?"
+    if family in _SPACES:
+        return _SPACES[family]
+    if family == "ICCBased":
+        ref = re.search(rb"(\d+)\s+\d+\s+R", definition)
+        components = re.search(rb"/N\s+(\d)", pdf.dictionary(int(ref.group(1)))) if ref else None
+        return {"3": "rgb", "1": "gray", "4": "cmyk"}.get(components.group(1).decode() if components else "", family)
+    return family
+
+
+def _read_content(pdf: _Pdf, data: bytes, res: _Resources, found: _Found, state=None, depth: int = 0):
     """Collect the texts and the painted colours of one content stream.
 
     Only colours that paint something count: the current stroke and fill
-    colours are followed through q/Q (save and restore), and added when a
-    path is stroked or filled, text is shown or a form (e.g. a marker
-    symbol) is drawn with them. Returns True if CMYK is used.
+    colours (and their colour spaces) are followed through q/Q (save and
+    restore), and added when a path is stroked or filled, text is shown
+    or a form (e.g. a marker symbol) is drawn with them. Paint whose
+    colour is not read (images, shadings, patterns, other colour spaces)
+    is noted in ``found.unchecked``.
     """
-    state = dict(state or {"stroke": "#000000", "fill": "#000000"})
+    state = dict(state or {"stroke": "#000000", "fill": "#000000", "stroke_space": "gray", "fill_space": "gray"})
     saved = []
     stack: list = []
     block: List[str] = []
     in_text = False
     current = (1, {})
-    cmyk = False
     array = None
+
+    def set_color(which: str, numbers, names):
+        space = state[which + "_space"]
+        if names:
+            found.note("pattern")
+        elif space == "rgb" and len(numbers) == 3:
+            state[which] = _hex_color(numbers)
+        elif space == "gray" and len(numbers) == 1:
+            state[which] = _hex_color(numbers * 3)
+        elif space == "cmyk":
+            found.cmyk = True
+        else:
+            found.note("colour space " + space)
+
+    def paint(*which):
+        for w in which:
+            if state[w + "_space"] in ("rgb", "gray"):
+                found.colors.add(state[w])
+
     for kind, value in _tokens(data):
         if kind == "[":
             array = []
@@ -378,10 +472,15 @@ def _read_content(pdf: _Pdf, data: bytes, fonts: Dict[str, tuple], xobjects: Dic
         if array is not None:
             array.append((kind, value))
             continue
+        if kind == "image":
+            found.note("inline image")
+            stack = []
+            continue
         if kind != "op":
             stack.append((kind, value))
             continue
         numbers = [v for k, v in stack if k == "num"]
+        names = [v for k, v in stack if k == "name"]
         if value == "q":
             saved.append(dict(state))
         elif value == "Q" and saved:
@@ -390,14 +489,13 @@ def _read_content(pdf: _Pdf, data: bytes, fonts: Dict[str, tuple], xobjects: Dic
             in_text, block = True, []
         elif value == "ET":
             if in_text and block:
-                texts.append("".join(block))
+                found.texts.append("".join(block))
             in_text = False
         elif value == "Tf":
-            names = [v for k, v in stack if k == "name"]
             if names:
-                current = fonts.get(names[-1], (1, {}))
+                current = res.fonts.get(names[-1], (1, {}))
         elif value in ("Tj", "'", '"', "TJ"):
-            colors.add(state["fill"])
+            paint("fill")
             strings = [v for k, v in stack if k == "str"]
             for k, v in stack:
                 if k == "array":
@@ -407,35 +505,38 @@ def _read_content(pdf: _Pdf, data: bytes, fonts: Dict[str, tuple], xobjects: Dic
                 for j in range(0, len(raw) - width + 1, width):
                     code = int.from_bytes(raw[j:j + width], "big")
                     block.append(table.get(code, chr(code) if width == 1 else ""))
-        elif value in ("rg", "sc", "scn") and len(numbers) == 3:
-            state["fill"] = _hex_color(numbers)
-        elif value in ("RG", "SC", "SCN") and len(numbers) == 3:
-            state["stroke"] = _hex_color(numbers)
-        elif value in ("g", "sc", "scn") and len(numbers) == 1:
-            state["fill"] = _hex_color(numbers * 3)
-        elif value in ("G", "SC", "SCN") and len(numbers) == 1:
-            state["stroke"] = _hex_color(numbers * 3)
-        elif value in ("k", "K"):
-            cmyk = True
+        elif value in ("cs", "CS") and names:
+            which = "fill" if value == "cs" else "stroke"
+            name = names[-1]
+            state[which + "_space"] = _SPACES.get(name) or res.spaces.get(name, name)
+            state[which] = "#000000"   # a new colour space starts at its initial colour
+        elif value in ("sc", "scn"):
+            set_color("fill", numbers, names)
+        elif value in ("SC", "SCN"):
+            set_color("stroke", numbers, names)
+        elif value in ("rg", "RG", "g", "G", "k", "K"):
+            which = "fill" if value.islower() else "stroke"
+            space = {"rg": "rgb", "g": "gray", "k": "cmyk"}[value.lower()]
+            state[which + "_space"] = space
+            set_color(which, numbers, [])
         elif value in ("S", "s"):
-            colors.add(state["stroke"])
+            paint("stroke")
         elif value in ("f", "F", "f*"):
-            colors.add(state["fill"])
+            paint("fill")
         elif value in ("B", "B*", "b", "b*"):
-            colors.update((state["stroke"], state["fill"]))
-        elif value == "Do" and depth < 8:
-            names = [v for k, v in stack if k == "name"]
-            number = xobjects.get(names[-1]) if names else None
+            paint("stroke", "fill")
+        elif value == "sh":
+            found.note("shading")
+        elif value == "Do" and names and depth < 8:
+            number = res.xobjects.get(names[-1])
             form = pdf.dictionary(number) if number is not None else b""
-            if re.search(rb"/Subtype\s*/Form\b", form):
+            if re.search(rb"/Subtype\s*/Image\b", form):
+                found.note("image")
+            elif re.search(rb"/Subtype\s*/Form\b", form):
                 # A form (a marker symbol, a transparency group) may bring its own fonts and forms
-                resources = pdf.sub_dictionary(form, "Resources")
-                form_fonts = {n: _to_unicode(pdf, r) for n, r in _names(pdf, pdf.sub_dictionary(resources, "Font")).items()}
-                form_xobjects = _names(pdf, pdf.sub_dictionary(resources, "XObject"))
-                cmyk |= _read_content(pdf, pdf.stream(number), form_fonts or fonts, form_xobjects or xobjects,
-                                      texts, colors, state, depth + 1)
+                inner = _Resources(pdf, pdf.sub_dictionary(form, "Resources"), res)
+                _read_content(pdf, pdf.stream(number), inner, found, state, depth + 1)
         stack = []
-    return cmyk
 
 
 def _names(pdf: _Pdf, table: bytes) -> Dict[str, int]:
@@ -452,23 +553,19 @@ def read_pdf(path) -> PdfContent:
         if re.search(rb"/Type\s*/Font\b", pdf.dictionary(number)) and not re.search(
                 rb"/Subtype\s*/CIDFontType", pdf.dictionary(number)):
             fonts[number] = _font(pdf, number)
-    texts: List[str] = []
-    colors: Set[str] = set()
-    cmyk = False
+    found = _Found()
     pages = [n for n in pdf.objects if re.search(rb"/Type\s*/Page\b(?!s)", pdf.dictionary(n))]
     for page in pages:
         page_dict = pdf.dictionary(page)
-        resources = pdf.sub_dictionary(page_dict, "Resources")
-        by_name = {name: _to_unicode(pdf, ref) for name, ref in _names(pdf, pdf.sub_dictionary(resources, "Font")).items()}
-        xobjects = _names(pdf, pdf.sub_dictionary(resources, "XObject"))
+        res = _Resources(pdf, pdf.sub_dictionary(page_dict, "Resources"))
         contents = re.search(rb"/Contents\s*(\[[^\]]*\]|\d+\s+\d+\s+R)", page_dict)
         refs = [int(n) for n in re.findall(rb"(\d+)\s+\d+\s+R", contents.group(1))] if contents else []
         if len(refs) == 1 and pdf.stream(refs[0]) == b"" and b"[" in pdf.dictionary(refs[0]):
             refs = [int(n) for n in re.findall(rb"(\d+)\s+\d+\s+R", pdf.dictionary(refs[0]))]
         for ref in refs:
-            cmyk |= _read_content(pdf, pdf.stream(ref), by_name, xobjects, texts, colors)
-    return PdfContent(pages=len(pages), info=_info(pdf), fonts=list(fonts.values()), texts=texts,
-                      colors=colors, cmyk=cmyk)
+            _read_content(pdf, pdf.stream(ref), res, found)
+    return PdfContent(pages=len(pages), info=_info(pdf), fonts=list(fonts.values()), texts=found.texts,
+                      colors=found.colors, cmyk=found.cmyk, unchecked=found.unchecked)
 
 
 # ---------------------------------------------------------------------------
@@ -489,16 +586,20 @@ def replace_info(path, info: Dict[str, str]):
     ``info`` replaces all old entries (creation dates, producer strings);
     the file identifier is dropped too, so the same content gives the same
     file. Objects keep their numbers and content; a new cross-reference
-    table is written.
+    table is written, and the trailer keeps only the catalogue and the
+    information. Files with objects of other generations than 0 are
+    refused (ValueError), as are encrypted ones.
     """
     with open(path, "rb") as f:
         data = f.read()
     pdf = _Pdf(data)
-    trailer = re.findall(rb"trailer\s*<<(.*?)>>\s*startxref", data, re.S)
-    root = pdf.ref(trailer[-1], "Root") if trailer else None
+    if pdf.generations - {0}:
+        raise ValueError("PDF files with objects of other generations than 0 are not rewritten.")
+    trailer = _trailer(data)
+    root = pdf.ref(trailer, "Root")
     if root is None or pdf.first_object is None:
         raise ValueError("The PDF file has no readable trailer.")
-    info_number = pdf.ref(trailer[-1], "Info") or max(pdf.objects) + 1
+    info_number = pdf.ref(trailer, "Info") or max(pdf.objects) + 1
     entries = b"".join(b"/" + key.encode("ascii") + b" " + _pdf_string(value) + b"\n"
                        for key, value in sorted(info.items()) if value is not None)
     objects = dict(pdf.objects)

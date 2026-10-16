@@ -84,11 +84,13 @@ def kaleido_available() -> bool:
     """True if plotly can draw images and PDF: kaleido is installed and finds a Chrome."""
     if importlib.util.find_spec("kaleido") is None:
         return False
+    if os.environ.get("BROWSER_PATH"):
+        return os.path.isfile(os.environ["BROWSER_PATH"])
     try:
         from choreographer.browsers.chromium import Chromium   # kaleido's own browser lookup
         return Chromium.find_browser(skip_local=False) is not None
     except Exception:
-        return True   # cannot tell: let kaleido try, and report what it says
+        return False   # cannot tell: do not promise PDF (saving still tries)
 
 def _escape(text: str) -> str:
     """Text for plotly, which reads a few HTML tags: escape <, > and &, but
@@ -293,7 +295,7 @@ class PlotlyRenderer(Renderer):
         x_log, y_log = self._log()
         s = item.style
         data = dict(x=self._shown(item.x, x_log), y=self._shown(item.y, y_log), visible=item.visible,
-                    opacity=s.alpha, name=item.legend or item.id, cliponaxis=True, connectgaps=False,
+                    opacity=s.alpha, name=_escape(item.legend or item.id), cliponaxis=True, connectgaps=False,
                     meta=dict(item=item.id))
         if isinstance(item, Line):
             trace.update(mode="lines", line=dict(color=_color(s.color), width=s.width_pt * PX_PER_PT,
@@ -325,7 +327,7 @@ class PlotlyRenderer(Renderer):
             lines = [i for i in items if isinstance(i, Line)]
             markers = [i for i in items if isinstance(i, Markers)]
             mode = "+".join(m for m, used in (("lines", lines), ("markers", markers)) if used)
-            sample = dict(x=[None], y=[None], mode=mode, name=text, showlegend=True, hoverinfo="skip",
+            sample = dict(x=[None], y=[None], mode=mode, name=_escape(text), showlegend=True, hoverinfo="skip",
                           legendrank=rank + 1, meta=dict(legend=True))
             if lines:
                 ls = lines[0].style
@@ -632,7 +634,7 @@ class PlotlyRenderer(Renderer):
                 colors.add(_color_back(sample.line.color))
             if "markers" in sample.mode:
                 colors.add(_color_back(sample.marker.line.color) or _color_back(sample.marker.color))
-            rows.append((sample.name, tuple(sorted(colors - {None}))))
+            rows.append((_unescape(sample.name), tuple(sorted(colors - {None}))))
         return rows
 
 
