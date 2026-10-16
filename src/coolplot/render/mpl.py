@@ -23,10 +23,18 @@ Points to note for maintainers
   size by matplotlib; it is scaled down so its bounding box is size_pt.
 * Read-back uses a few private attributes where matplotlib has no public
   getter; each one is marked "private:".
+* Texts are plain text: matplotlib would otherwise read "$...$" as math
+  (and with the rcParam text.usetex, all text as LaTeX), changing both the
+  words and the font.
+* Fonts named by file in ``Font.files`` are registered with matplotlib's
+  font manager before the family is looked up. ``strict_fonts=True``
+  raises instead of falling back when the first family is not available.
 """
 from __future__ import annotations
 
 import math
+import os
+import warnings
 
 import numpy as np
 import matplotlib
@@ -49,6 +57,7 @@ _DECORATION_Z = 1e5   # the frame above all items
 _LEGEND_Z = 1e6
 _GENERIC = {"sans-serif", "serif", "monospace", "cursive", "fantasy"}
 _installed = None
+_registered = set()   # font files given in Font.files, registered once per process
 
 
 def _mpl_dashes(dash, width_pt):
@@ -87,13 +96,47 @@ def _families(family):
     return kept or ["sans-serif"]
 
 
-def _font(font) -> FontProperties:
-    return FontProperties(family=_families(font.family), size=font.size_pt, weight=font.weight,
+def _register_files(files):
+    """Make the font files of a Font known to matplotlib."""
+    global _installed
+    for path in files:
+        if path in _registered:
+            continue
+        _registered.add(path)
+        if not os.path.isfile(path):
+            warnings.warn("Font file {0!r} does not exist; the next family is used.".format(path), UserWarning,
+                          stacklevel=4)
+            continue
+        from matplotlib.font_manager import fontManager
+        fontManager.addfont(path)
+        _installed = None   # look again which families exist
+
+
+def _resolve(font, strict: bool = False):
+    """The families of a Font that matplotlib can use, in order."""
+    _register_files(font.files)
+    families = _families(font.family)
+    wanted = font.family[0]
+    if strict and wanted.lower() not in _GENERIC and families[0].lower() != wanted.lower():
+        raise ValueError("Font {0!r} is not available and strict_fonts is on. Install it, or name its file "
+                         "in Font(files=...).".format(wanted))
+    return families
+
+
+def _plain_text(text):
+    """Draw the characters as given: no "$...$" math, no LaTeX."""
+    text.set_parse_math(False)
+    text.set_usetex(False)
+
+
+def _font(font, strict: bool = False) -> FontProperties:
+    return FontProperties(family=_resolve(font, strict), size=font.size_pt, weight=font.weight,
                           style=font.style)
 
 
-def _apply_text_style(text, style):
-    text.set_fontfamily(_families(style.font.family))
+def _apply_text_style(text, style, strict: bool = False):
+    _plain_text(text)
+    text.set_fontfamily(_resolve(style.font, strict))
     text.set_fontsize(style.font.size_pt)
     text.set_fontweight(style.font.weight)
     text.set_fontstyle(style.font.style)
@@ -125,6 +168,18 @@ def _draws_itself(artist) -> bool:
     return not effects or any(isinstance(e, (patheffects.Normal, patheffects.withStroke)) for e in effects)
 
 
+def _font_file_family(text):
+    """(family name, file) of the font matplotlib uses for a text."""
+    from matplotlib.font_manager import fontManager, get_font
+    path = str(os.fspath(fontManager.findfont(text.get_fontproperties())))   # newer versions return a FontPath
+    return get_font(path).family_name, path
+
+
+def _visible_texts(figure):
+    from matplotlib.text import Text as _MplText
+    return [t for t in figure.findobj(_MplText) if t.get_visible() and t.get_text().strip()]
+
+
 def _font_description(prefix, text, full=True) -> dict:
     out = {prefix + "_font_family": tuple(text.get_fontfamily()),
            prefix + "_font_size_pt": text.get_fontsize(), prefix + "_color": _hex_or_none(text.get_color())}
@@ -152,14 +207,19 @@ class MatplotlibRenderer(Renderer):
         False in servers and GUIs, where pyplot's global state is unwanted.
     figsize : tuple
         Size of a newly created figure in inches.
+    strict_fonts : bool
+        Raise ValueError when the first family of a font is not available,
+        instead of using the next one. Useful for print work, where a
+        silently replaced font would go unnoticed.
     """
 
     capabilities = frozenset({"in_place_updates", "file_output", "interactive", "events"})
     default_suffix = ".png"
     text_output = False
 
-    def __init__(self, ax=None, use_pyplot: bool = True, figsize=(8.0, 6.0)):
+    def __init__(self, ax=None, use_pyplot: bool = True, figsize=(8.0, 6.0), strict_fonts: bool = False):
         super().__init__()
+        self.strict_fonts = bool(strict_fonts)
         self.owns_canvas = ax is None
         if ax is None:
             if use_pyplot:
@@ -195,7 +255,7 @@ class MatplotlibRenderer(Renderer):
                                    (ax.yaxis.label, axes.y_label, st.axis_label),
                                    (ax.title, axes.title, st.title)):
             label.set_text(text)
-            _apply_text_style(label, style)
+            _apply_text_style(label, style, self.strict_fonts)
         for limits, setter, log, axis in ((axes.x_limits, ax.set_xlim, axes.x_log, "x"),
                                           (axes.y_limits, ax.set_ylim, axes.y_log, "y")):
             if limits is None:
@@ -215,7 +275,7 @@ class MatplotlibRenderer(Renderer):
         ax.tick_params(axis="both", which="both", color=st.tick_color or "none",
                        direction=st.tick_direction, width=st.tick_width_pt,
                        labelcolor=st.tick_label.color or "none", labelsize=st.tick_label.font.size_pt,
-                       labelfontfamily=_families(st.tick_label.font.family))
+                       labelfontfamily=_resolve(st.tick_label.font, self.strict_fonts))
         ax.tick_params(axis="both", which="major", length=st.tick_length_pt)
         ax.tick_params(axis="both", which="minor", length=0.6 * st.tick_length_pt)
         for which, grid in (("major", st.grid_major), ("minor", st.grid_minor)):
@@ -280,12 +340,14 @@ class MatplotlibRenderer(Renderer):
         kwargs = dict(loc=style.location)
         if style.location == "outside right":
             kwargs = dict(loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.0)
-        legend = self.ax.legend(handles, labels, prop=_font(style.text.font),
+        legend = self.ax.legend(handles, labels, prop=_font(style.text.font, self.strict_fonts),
                                 labelcolor=style.text.color or "none",
                                 frameon=style.background is not None or style.frame_color is not None,
                                 facecolor=style.background or "none",
                                 edgecolor=style.frame_color or "none", framealpha=1.0, **kwargs)
         legend.set_zorder(_LEGEND_Z)
+        for text in legend.get_texts():
+            _plain_text(text)
 
     def _finish(self, report: SyncReport):
         if not report.changed:
@@ -344,7 +406,7 @@ class MatplotlibRenderer(Renderer):
             artist.set_clip_on(item.clip)
             if item.clip:
                 artist.set_clip_path(self.ax.patch)
-            _apply_text_style(artist, s)
+            _apply_text_style(artist, s, self.strict_fonts)
             artist.set_horizontalalignment(s.h_align)
             artist.set_verticalalignment(s.v_align)
             # With transform_rotates_text, matplotlib interprets the rotation
@@ -555,6 +617,7 @@ class MatplotlibRenderer(Renderer):
             angle = artist.get_rotation() if out["visible"] else 0.0
             angle = (angle + 180.0) % 360.0 - 180.0
             out.update(kind="text", text=artist.get_text(), font_family=tuple(artist.get_fontfamily()),
+                       font_used=_font_file_family(artist)[0],
                        font_size_pt=artist.get_fontsize(), font_weight=weight,
                        font_style=artist.get_fontstyle(), color=_hex_or_none(artist.get_color()),
                        alpha=alpha, h_align=artist.get_horizontalalignment(),
@@ -725,6 +788,17 @@ class MatplotlibRenderer(Renderer):
         return [ours[id(a)] for a in drawn].index(item_id)
 
     # Output ------------------------------------------------------------
+    def fonts_used(self) -> dict:
+        """Family name -> font file of every font the visible texts use.
+
+        These are the fonts matplotlib really draws with, after falling back
+        through each family list: the place to check that a print font is
+        there.
+        """
+        if self.figure.stale:
+            self.figure.draw_without_rendering()
+        return dict(_font_file_family(text) for text in _visible_texts(self.figure))
+
     def plot_size_pt(self):
         """Size of the plot area; lays out the figure first if it changed."""
         if self.figure.stale:

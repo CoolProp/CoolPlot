@@ -162,3 +162,62 @@ def test_theme_loading_is_strict(path, value):
     target[path[-1]] = value
     with pytest.raises((TypeError, ValueError)):
         Theme.from_dict(data)
+
+
+# ---------------------------------------------------------------------------
+# Fonts in the matplotlib backend
+# ---------------------------------------------------------------------------
+def _mpl_renderer(**kwargs):
+    pytest.importorskip("matplotlib")
+    from coolplot.render.mpl import MatplotlibRenderer
+    return MatplotlibRenderer(use_pyplot=False, **kwargs)
+
+
+def _text_scene(font, text="T = 25 deg C"):
+    from coolplot.scene import AxesSpec, Scene, Text
+    from coolplot.style.values import TextStyle
+    return Scene(AxesSpec(x_limits=(0.0, 1.0), y_limits=(0.0, 1.0), title="Price $5 and $6"),
+                 [Text(id="t", x=0.5, y=0.5, text=text, style=TextStyle(font=font))])
+
+
+def test_texts_are_plain_text_not_math():
+    from coolplot.style.values import Font
+    renderer = _mpl_renderer()
+    renderer.sync(_text_scene(Font(), text="costs $5 or $6"))
+    for artist in (renderer.backend_object("t"), renderer.ax.title):
+        assert artist.get_parse_math() is False and artist.get_usetex() is False
+
+
+def test_font_files_strict_fonts_and_fonts_used(tmp_path):
+    import matplotlib
+    from coolplot.style.values import Font
+    # A font that is not installed: DejaVu Sans Mono under a family name of its own
+    from fontTools.ttLib import TTFont
+    font = TTFont(matplotlib.get_data_path() + "/fonts/ttf/DejaVuSansMono.ttf")
+    for record in font["name"].names:
+        if record.nameID in (1, 4, 16):
+            record.string = "CoolPlot Test Mono"
+        elif record.nameID == 6:
+            record.string = "CoolPlotTestMono"
+    copy = tmp_path / "CoolPlotTestMono.ttf"
+    font.save(str(copy))
+    brand = Font(family=("CoolPlot Test Mono", "sans-serif"), files=(str(copy),))
+    renderer = _mpl_renderer(strict_fonts=True)   # strict: the file must really be used
+    renderer.sync(_text_scene(brand))
+    assert renderer.describe_item("t")["font_used"] == "CoolPlot Test Mono"
+    assert renderer.fonts_used()["CoolPlot Test Mono"] == str(copy)
+    # A missing first family falls back, unless strict_fonts is on
+    missing = Font(family=("No Such Font", "DejaVu Sans", "sans-serif"))
+    renderer = _mpl_renderer()
+    renderer.sync(_text_scene(missing))
+    assert renderer.describe_item("t")["font_used"] == "DejaVu Sans"
+    with pytest.raises(ValueError, match="No Such Font"):
+        _mpl_renderer(strict_fonts=True).sync(_text_scene(missing))
+    with pytest.warns(UserWarning, match="does not exist"):
+        _mpl_renderer().sync(_text_scene(Font(family=("DejaVu Sans",), files=(str(tmp_path / "gone.ttf"),))))
+
+
+def test_font_files_survive_json():
+    from coolplot.style.values import Font, TextStyle, style_from_dict, style_to_dict
+    style = TextStyle(font=Font(family=("Brand", "sans-serif"), files=("fonts/Brand.ttf",)))
+    assert style_from_dict(TextStyle, style_to_dict(style)) == style

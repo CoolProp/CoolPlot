@@ -119,6 +119,7 @@ class BackgroundEngine(Engine):
         self._failed: Dict[Tuple, Tuple[int, str]] = {}   # key -> (attempts, last error)
         self._suspects = set()    # keys lost with a crashed pool, retried alone
         self._planning = False    # True while curves() works out a new plan
+        self.finished_jobs = 0    # jobs that ran to the end, successful or not
         self._submitting = None   # the thread that is queueing work right now
         self.claimed = False      # set by the diagram this engine serves
         # Re-entrant: a job that is already done when it is submitted runs
@@ -243,6 +244,7 @@ class BackgroundEngine(Engine):
             if self._jobs.get(key) is future:
                 del self._jobs[key]
             if not future.cancelled():
+                self.finished_jobs += 1
                 error = future.exception()
                 if error is None:
                     self.cache.put(key, future.result())

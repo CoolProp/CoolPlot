@@ -281,17 +281,24 @@ class Font:
 
     family lists font names in order of preference and should end with
     one of the generic families "sans-serif", "serif" or "monospace".
+    files names font files (.ttf, .otf) that backends able to load fonts
+    register before they look for the family, e.g. a company font that is
+    not installed on every machine. A missing file is reported, and the
+    next family in the list is used.
     """
     family: Tuple[str, ...] = ("DejaVu Sans", "Helvetica", "Arial", "sans-serif")
     size_pt: float = 9.0
     weight: str = "normal"       # "normal" or "bold"
     style: str = "normal"        # "normal" or "italic"
+    files: Tuple[str, ...] = ()
 
     def __post_init__(self):
         family = (self.family,) if isinstance(self.family, str) else tuple(self.family)
         if not family:
             raise ValueError("Font: give at least one family.")
         object.__setattr__(self, "family", family)
+        files = (self.files,) if isinstance(self.files, str) else tuple(str(f) for f in self.files)
+        object.__setattr__(self, "files", files)
         _check_length(self.size_pt, "Font", "size_pt")
         if self.weight not in ("normal", "bold"):
             raise ValueError("Font weight has to be 'normal' or 'bold'.")
