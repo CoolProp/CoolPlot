@@ -14,6 +14,14 @@ reproducible with the scripts named in the text.
   composition into a backend-neutral scene -> renderers that only draw
   what changed, with SI units inside and display units at the edges, and
   a conformance kit that holds every backend to one contract.
+* The numerics review found wrong physics in released behaviour:
+  blend isochores inside the dome drawn 20 to 30 % off when the flash
+  solver is used (CoolProp 8 returns an inconsistent T,rho mixture state
+  without raising, and CoolPlot accepts it), blend charts empty on
+  CoolProp 6.8 and 7.2 for all but isotherms and quality lines,
+  incompressibles not plottable although documented, and cache keys that
+  ignore CoolProp's reference state. These go into a 0.3.1 before any
+  1.0 work (section 7.1).
 * Everything around the spine has grown by accretion over three release
   cycles and is not yet 1.0 material: two parallel chart implementations
   (property diagrams and psychrometric charts), an inconsistent public
@@ -429,7 +437,125 @@ work:
 
 ## 7. Numerics and thermodynamics
 
-(Section completed from the numerics review; see below.)
+From the numerics review (scripts and logs under `scratchpad/numrev/`,
+run on CoolProp 8.0.0, 7.2.0 and 6.8.0: every fluid of a set of awkward
+ones, all seven diagram types, all line families, every point of every
+ph line round-tripped through an h,p flash).
+
+### 7.1 Wrong, fix in 0.3.1 before anything else
+
+1. **Blend isochores inside the dome are drawn 20 to 30 % off with
+   `solver="flash"`, and at every point where the tracer falls back to a
+   flash.** CoolProp 8's T,rho mixture flash returns an inconsistent
+   state without raising (it reports Q = -1 while p and h belong to
+   another density: `AbstractState("HEOS", "R407C.mix").update(DmassT_INPUTS,
+   100, 264.16)` gives p = 307067 Pa, h = 285269 J/kg, and the h,p flash
+   at that point returns rho = 27.5 kg/m3, T = 258.6 K). `isolines.py:166`
+   accepts it. On the R410A rho = 100 line, 66 of 242 flash points are
+   wrong, the worst by a factor 14; the tracer gets the same line right.
+   Fix: never accept a mixture T,rho flash unverified; check every
+   accepted point with an explicit (T, rho) evaluation against the line's
+   constant (one call), and report the CoolProp defect upstream.
+2. **With CoolProp 6.8 and 7.2, which `pyproject.toml` declares
+   supported, every blend isoline except isotherms and quality lines is
+   empty** (`robust.py R410A.mix` on 7.2: s, rho and u lines with 0 valid
+   points of 60). The h,s,u-p flash of a mixture needs the phase envelope
+   built on the working state, and `fluid.py:208-219` only retries on the
+   envelope-built guide state when Q is an input. Fix: build the envelope
+   on the working state of every mixture.
+3. **Incompressibles cannot be plotted at all**, although the user guide
+   lists `INCOMP::MEG[0.3]`: `limits.py:31` asks for the saturation range
+   unconditionally and `fluid.py:404` fails on the critical point. INCOMP
+   reports T_min, T_max and all properties; only the dome and the
+   crossings have to be skipped. Fix: resolve saturation-relative limits
+   only for `Relative` bounds and give fluids a `has_critical_point`
+   capability.
+4. **Cache keys ignore CoolProp's global state.** After
+   `set_reference_state("R134a", "NBP")` a cached isotherm is served
+   unchanged while a new diagram computes h = 256 instead of 422, and an
+   old `Engine` keeps the old reference even after `cache.clear()`. Fix:
+   a CoolProp configuration fingerprint (reference states, configuration
+   JSON, version) in the key, and a fresh working state after a change.
+5. `_W_by_search` (humid_air.py:144) returns "ok" after 60 iterations
+   without convergence; it has to return "failed".
+
+### 7.2 Unverified and to be settled
+
+6. Tracer isochores of R32/R1234yf 50/50 in a ph chart disagree with
+   h,p round-trips at p < 300 Pa (worst by a factor 1400 on the
+   rho = 1 line, 20 points on rho = 10), near the bottom of the default
+   region (p_min = 1.01 p_triple = 24 Pa). Isentropes, isenthalps,
+   u-lines and isotherms of the same blends round-trip to 2e-4 on all
+   250 points, so it is specific to the T,rho pair there; either the
+   tracer's unbracketed root (tracer.py:759-799) or CoolProp's h,p flash
+   is wrong. To be decided with a third evaluation (T, rho explicit).
+
+### 7.3 Robustness
+
+7. Quality lines of zeotropes break 10 to 15 K below the critical point
+   (R32/R1234yf, Q = 0.7: 58 of 250 points fail from 344 K to
+   T_c = 357.7 K with 16 gaps; R407C Q = 0.3: 17 failures), because
+   `compute_quality_line` does one Q,T flash per point while the dew and
+   bubble lines come from the envelope and are fine. The default region's
+   T_min = 1.01 T_triple is also too close for R410A at 100 bar (one NaN
+   at 149.98 K).
+8. Cycle models: the physics is right (a hand calculation of the R134a
+   -10/40 deg C cycle matches to all digits, COP 2.89354; flash-tank and
+   economiser balances close to 1e-8; dew and bubble conventions for
+   blends verified). The messages are not: a condensing temperature above
+   the critical point gives CoolProp's raw text, a huge superheat a raw
+   flash error, `via="isothermal"` with key `"p"` silently returns the
+   previous state, and h,T is unsupported for blends without a hint.
+9. Humid air: no physics error; Twb, h and v lines round-trip through
+   HAPropsSI to 1e-7 at 101.3, 80 and 60 kPa, start exactly on saturation
+   and end at W = 0. The review measured the direct W(T, Twb) call as
+   fast at its sample points; the search exists because of the gaps and
+   slow calls near 0 deg C found earlier (humid_air.py docstring), so the
+   choice should be made per CoolProp version with a table of measured
+   failures, not by assumption.
+
+### 7.4 The algorithm, and what a 1.0 core should do
+
+Today every line is a fixed grid of 250 points in T (linear) or p (log)
+with one flash or one traced solve per point, no adaptivity. The
+consequences, measured: a 5 bar isobar of R407C in a Ts chart has 6 of
+252 points inside the dome (glide 6.2 K against a step of 1.19 K), so the
+curved two-phase part is a chord; ends outside the equation of state are
+still paid for (Water s = 12500: 143 of 250 flashes wasted; Ammonia
+s = 0: 62); blends rebuild the saturation bracket at every pressure (two
+p,Q flashes per point) and run a regula falsi of p,Q flashes inside the
+dome (R407C s = 1700 in ph: 738 p,Q and 681 T,rho updates for 100
+points). The tracer itself is sound: where tracer and flash both converge
+they agree to 1e-11, every pure-fluid line round-trips to 1e-9, CO2
+isotherms and isobars within 0.05 K and 0.1 % of the critical point
+trace cleanly, and quality lines close at the critical point.
+
+A 1.0 core, in Python now and in `CoolProp::Plot` later (section 6):
+
+* one continuation tracer for every line, pure or blend, parametrised by
+  arc length in plot coordinates with curvature-controlled steps, never
+  a per-point cold flash;
+* the phase boundary handled once per fluid: build the envelope or
+  saturation curve, intersect each line with it, trace the two-phase
+  branch in quality (for pure fluids h, s, u and v are linear in Q: one
+  secant step);
+* clip the sweep to the domain box before tracing and stop lines at the
+  limits with a reason, not NaN;
+* validate every accepted point by an explicit (T, rho) evaluation
+  against the line's constant;
+* a fluid abstraction with explicit capabilities (critical point,
+  envelope, supported input pairs), so incompressibles and tabular
+  backends have a path and mixture states always carry an envelope;
+* cheaper inputs for blends (p,Q and T,rho against h,p, section 2.2);
+* an error taxonomy for cycles (above critical, outside the equation of
+  state, unsupported pair) with messages in the user's units;
+* units: add specific volume, temperature differences and gauge pressure
+  (the latter needs care on log axes).
+
+The label layout is deterministic and O(N^2) in the number of labels:
+20 labels 0.02 s, 100 labels 0.18 s, 400 labels 1.5 s. Good enough for
+interactive use up to about 100 labels; vectorise `Piece.project` and
+`visible_pieces` beyond that.
 
 ## 8. Roadmap
 
