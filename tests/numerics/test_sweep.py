@@ -17,7 +17,8 @@ from coolplot.core.limits import get_tp_limits  # noqa: E402
 from coolplot.core.quantities import get_quantity  # noqa: E402
 from coolplot.engine.plan import nice_linear, nice_log  # noqa: E402
 from coolplot.thermo.fluid import Fluid, build_state  # noqa: E402
-from coolplot.thermo.isolines import _LineSolver, _Sweep, _metric, compute_isoline, compute_quality_line  # noqa: E402
+from coolplot.thermo.isolines import (_LineSolver, _Sweep, _build_line, _metric, compute_isoline,  # noqa: E402
+                                      compute_quality_line)
 from coolplot.thermo.limits import property_range_SI, resolve_tp_box  # noqa: E402
 
 pytestmark = pytest.mark.slow
@@ -114,7 +115,7 @@ def test_pure_fluid_lines_round_trip_and_are_smooth(pure):
         curve = compute_isoline(fluid, diagram, key, value, box, 250)
         where = "{0} {1}={2:g}".format(diagram.name, key, value)
         assert curve.n_gaps == 0, where
-        assert curve.n_outside <= 30, where   # locating the edges costs a few points, whatever the line
+        assert curve.n_outside <= 64, where   # scanning the whole range outside costs 32 points, plus the edges
         outside[0] += curve.n_outside
         outside[1] += curve.n_evaluated
         if curve.n_valid < 2:
@@ -133,7 +134,7 @@ def test_pure_fluid_lines_round_trip_and_are_smooth(pure):
             sample = solver.sample(sweep.value(u))
             if sample is None or not sample.inside:
                 continue
-            w, T_K, p_Pa, Q = sample.extra
+            w, T_K, p_Pa, Q, rho = sample.extra
             if _on_the_saturation_curve(fluid, T_K, p_Pa):
                 continue
             if 0.0 <= Q <= 1.0:
@@ -152,57 +153,45 @@ def test_pure_fluid_lines_round_trip_and_are_smooth(pure):
 
 
 def test_blend_lines_are_confirmed_states_and_are_smooth(blend):
-    """Every traced point of a blend is a state at the line's constant, re-evaluated explicitly."""
+    """Every point of every traced line is a state at the line's constant.
+
+    Each sample of the line is re-evaluated from the (T, rho) root the
+    tracer converged on, an explicit evaluation of the equation of state
+    with the phase imposed, or from (p, Q) for a two-phase point.
+    CoolProp's p,T flash of a mixture is not a usable check: next to the
+    bubble line it can return a state with h = -12 MJ/kg without raising.
+    """
     fluid, box = blend
     check = build_state(fluid.model_key)
     check.build_phase_envelope("veryfine")   # the p,Q flash near the critical point needs its guesses
     outside = [0, 0]
     for diagram, key, value in _lines(fluid, box):
-        curve = compute_isoline(fluid, diagram, key, value, box, 250)
+        line = _build_line(fluid, diagram, key, value, box, 250, "auto")
+        curve = line.curve()
         where = "{0} {1}={2:g}".format(diagram.name, key, value)
         assert curve.method == "tracer", where
         assert curve.n_gaps <= 2, where
-        assert curve.n_outside <= 30, where   # locating the edges costs a few points, whatever the line
+        assert curve.n_outside <= 64, where
+        assert curve.reason == "" or curve.n_valid < 2, where
         outside[0] += curve.n_outside
         outside[1] += curve.n_evaluated
         if curve.n_valid < 2:
             continue
         points = _normalised(curve, diagram, fluid, box)
         assert _largest_turn_deg(points) < 160.0, where
-        if curve.n_valid < 20:
-            continue   # a line that only clips a corner of the chart
-        # Re-evaluate a sample of points from the (T, rho) root the tracer
-        # converged on, an explicit evaluation of the equation of state,
-        # or from (p, Q) for two-phase points. CoolProp's p,T flash of a
-        # mixture is not a usable check: next to the bubble line it can
-        # return a state with h = -12 MJ/kg without raising.
-        sweep_key = diagram.sweep_quantity(key)
-        metric = _metric(fluid, diagram, box, None)
-        solver = _LineSolver(fluid, key, value, sweep_key, diagram, metric, "auto")
-        sweep = _Sweep(sweep_key, *(box[:2] if sweep_key == "T" else box[2:]))
-        confirmed = 0
-        for u in np.linspace(0.02, 0.98, 40):   # a line may be inside the axes for part of the sweep only
-            sample = solver.sample(sweep.value(u))
-            if sample is None or not sample.inside:
+        for sample in line.samples:
+            if sample is None:
                 continue
-            w, T_K, p_Pa, Q = sample.extra
+            w, T_K, p_Pa, Q, rho = sample.extra
             if 0.0 <= Q <= 1.0:
                 check.unspecify_phase()
                 check.update(CoolProp.PQ_INPUTS, p_Pa, Q)
             else:
-                try:
-                    root = solver.tracer.state   # the single-phase root, (T, rhomolar) with the phase imposed
-                except ValueError:
-                    continue   # a fallback flash answered this point, not the tracer
-                if abs(root.T() - T_K) > 1e-9 * T_K:
-                    continue
                 check.specify_phase(CoolProp.iphase_gas)
-                check.update(CoolProp.DmolarT_INPUTS, root.rhomolar(), T_K)
+                check.update(CoolProp.DmassT_INPUTS, rho, T_K)
             assert check.keyed_output(CP_INDEX[key]) == pytest.approx(value, rel=1e-6), where
             assert (check.keyed_output(CP_INDEX[diagram.x]), check.keyed_output(CP_INDEX[diagram.y])) == \
                 pytest.approx((sample.x, sample.y), rel=1e-6), where
-            confirmed += 1
-        assert confirmed >= 4, where
     assert outside[0] <= 0.1 * outside[1]
 
 

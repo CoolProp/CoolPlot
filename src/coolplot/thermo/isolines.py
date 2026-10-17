@@ -35,7 +35,7 @@ calculation problems visible.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -256,14 +256,14 @@ class _LineSolver:
             return None
         x, y, T_K, p_Pa = values
         return Sample(x, y, _inside(self.metric, x, y), _two_phase(_quality_or_nan(state)),
-                      (w, T_K, p_Pa, _quality_or_nan(state)))
+                      (w, T_K, p_Pa, _quality_or_nan(state), state.rhomass()))
 
 
 def _saturation_sample(fluid: Fluid, key: str, value_SI: float, quality: float, diagram: DiagramType,
                        metric: Optional[Metric], sweep_key: str) -> Optional[Sample]:
     """The saturation state at T or p = value_SI and the given quality, or None.
 
-    The sample's ``extra`` is (w, T, p, Q) with w its value of ``sweep_key``.
+    The sample's ``extra`` is (w, T, p, Q, rho) with w its value of ``sweep_key``.
     """
     try:
         state = fluid.update(key, value_SI, "Q", quality)
@@ -275,7 +275,7 @@ def _saturation_sample(fluid: Fluid, key: str, value_SI: float, quality: float, 
     if not all(np.isfinite(v) for v in (x, y, T_K, p_Pa)):
         return None
     w = T_K if sweep_key == "T" else p_Pa
-    return Sample(x, y, _inside(metric, x, y), True, (w, T_K, p_Pa, quality))
+    return Sample(x, y, _inside(metric, x, y), True, (w, T_K, p_Pa, quality, state.rhomass()))
 
 
 def compute_isoline(fluid: Fluid, diagram: DiagramType, iso_key: str, value_SI: float,
@@ -304,6 +304,12 @@ def compute_isoline(fluid: Fluid, diagram: DiagramType, iso_key: str, value_SI: 
     if sweep_key is None:
         raise ValueError("Lines of constant '{0}' cannot be drawn in a {1} diagram.".format(
             iso_key, diagram.name))
+    return _build_line(fluid, diagram, iso_key, value_SI, tp_box, points, solver, ranges).curve()
+
+
+def _build_line(fluid, diagram, iso_key, value_SI, tp_box, points, solver, ranges=None) -> "_Line":
+    """The assembled line with its samples (T, p, Q, rho per point); the sweep tests check those."""
+    sweep_key = diagram.sweep_quantity(iso_key)
     T_lo_K, T_hi_K, p_lo_Pa, p_hi_Pa = tp_box
     sweep = _Sweep(sweep_key, *((T_lo_K, T_hi_K) if sweep_key == "T" else (p_lo_Pa, p_hi_Pa)))
     metric = _metric(fluid, diagram, tp_box, ranges)
@@ -313,7 +319,7 @@ def compute_isoline(fluid: Fluid, diagram: DiagramType, iso_key: str, value_SI: 
         line.through_the_dome()
     else:
         line.across_the_dome()
-    return line.curve()
+    return line
 
 
 class _Line:
@@ -327,6 +333,7 @@ class _Line:
         self.samples: List[Optional[Sample]] = []   # None marks a gap
         self.n_inserted = 0
         self.n_evaluated = self.n_outside = self.n_failed = 0
+        self.stopped = ""   # why a part ended before the end of its range, if it did
 
     # Parts -------------------------------------------------------------
     def _evaluate(self, u: float, careful: bool) -> Optional[Sample]:
@@ -337,10 +344,15 @@ class _Line:
         if u_hi <= u_lo:
             return
         found = trace(self._evaluate, self.metric, self.points, u_lo, u_hi, start, end)
+        self._count(found)
+        self._extend(found.samples)
+
+    def _count(self, found):
         self.n_evaluated += found.n_evaluated
         self.n_outside += found.n_outside
         self.n_failed += found.n_failed
-        self._extend(found.samples)
+        if found.stopped and not found.stopped.startswith("the end of the range"):
+            self.stopped = found.stopped   # the line was cut short; the curve says so
 
     def _extend(self, samples):
         for sample in samples:
@@ -360,9 +372,19 @@ class _Line:
         u_b = min(max(self.sweep.parameter(w_b), 0.0), 1.0)
         if w_b < self.sweep.lo or w_a > self.sweep.hi:
             return self._part(0.0, 1.0)   # the dome lies outside the stepped range
-        self._part(0.0, u_a, end=sample_a)
+        self._part(0.0, u_a, end=self._in_sweep_range(sample_a))
         self._quality_branch(q_a, sample_a, q_b, sample_b)
-        self._part(u_b, 1.0, start=sample_b)
+        self._part(u_b, 1.0, start=self._in_sweep_range(sample_b))
+
+    def _in_sweep_range(self, sample: Optional[Sample]) -> Optional[Sample]:
+        """The sample marked outside when its stepped quantity lies beyond the range of the T-p box.
+
+        The dome part of an isobar in an h-s chart runs in temperature,
+        which is no axis there; the box's temperature limits still apply.
+        """
+        if sample is None or self.sweep.lo <= sample.extra[0] <= self.sweep.hi:
+            return sample
+        return replace(sample, inside=False)
 
     def _dome_interval(self):
         """((w, Q, sample), (w, Q, sample)) of the saturation states the line meets, in order of w, or None.
@@ -380,6 +402,7 @@ class _Line:
                                         self.sweep.key)
             self.n_evaluated += 1
             if sample is not None:
+                self.n_outside += 0 if sample.inside else 1
                 ends.append((sample.extra[0], q, sample))
         if len(ends) < 2:
             ends = self._envelope_ends()
@@ -403,12 +426,11 @@ class _Line:
         """The part of an isotherm or isobar inside the dome, stepped in vapour quality."""
         def evaluate(u, careful):
             q = q_a + (q_b - q_a) * u
-            return _saturation_sample(self.fluid, self.iso_key, self.value_SI, q, self.diagram, self.metric,
-                                      self.sweep.key)
+            return self._in_sweep_range(_saturation_sample(self.fluid, self.iso_key, self.value_SI, q, self.diagram,
+                                                           self.metric, self.sweep.key))
+        sample_a, sample_b = self._in_sweep_range(sample_a), self._in_sweep_range(sample_b)
         found = trace(evaluate, self.metric, self.points, 0.0, 1.0, sample_a, sample_b, skip_failures=True)
-        self.n_evaluated += found.n_evaluated
-        self.n_outside += found.n_outside
-        self.n_failed += found.n_failed
+        self._count(found)
         self.n_inserted += sum(1 for s in found.samples if s is sample_a or s is sample_b)
         self._extend(found.samples)
 
@@ -475,7 +497,7 @@ class _Line:
             self.samples.pop()
         x = np.array([np.nan if s is None else s.x for s in self.samples], dtype=float)
         y = np.array([np.nan if s is None else s.y for s in self.samples], dtype=float)
-        reason = ""
+        reason = self.stopped
         if len(self.samples) < 2 and self.n_failed == 0 and self.n_outside > 0:
             x_lo, x_hi = self.metric.x_range
             y_lo, y_hi = self.metric.y_range
@@ -491,7 +513,7 @@ class _Line:
 # ---------------------------------------------------------------------------
 def _saturation_state(fluid: Fluid, sat_key: str, sat_value: float, quality: float, diagram: DiagramType,
                       iso_key: str):
-    """(iso value, x, y, T, p) of the saturation state at T or p = sat_value, or None.
+    """(iso value, x, y, T, p, rho) of the saturation state at T or p = sat_value, or None.
 
     Through :meth:`Fluid.update`, which retries a mixture on the scratch
     state with the phase envelope built; a mixture's trivial solution
@@ -501,7 +523,8 @@ def _saturation_state(fluid: Fluid, sat_key: str, sat_value: float, quality: flo
         state = fluid.update(sat_key, sat_value, "Q", quality)
         if not fluid.is_pure and not _phases_are_distinct(state):
             return None
-        result = tuple(state.keyed_output(parameter_index(k)) for k in (iso_key, diagram.x, diagram.y, "T", "p"))
+        result = tuple(state.keyed_output(parameter_index(k))
+                       for k in (iso_key, diagram.x, diagram.y, "T", "p", "rho"))
     except Exception:
         return None
     return result if all(np.isfinite(result)) else None
@@ -520,7 +543,7 @@ def _solve_crossing(fluid, diagram, iso_key, value_SI, sweep_key, a, b, quality,
 
     def result(w, found):
         return (w, quality, Sample(found[1], found[2], _inside(metric, found[1], found[2]), None,
-                                   (w, found[3], found[4], quality)))
+                                   (w, found[3], found[4], quality, found[5])))
     fa, fb = ends[0][0] - value_SI, ends[1][0] - value_SI
     if fa == 0.0:
         return result(a, ends[0])
@@ -559,7 +582,7 @@ def _envelope_crossings(envelope, diagram, iso_key, value_SI, sweep_key, metric,
     quantity.
     """
     k = envelope.values(iso_key)
-    columns = [envelope.values(key) for key in (sweep_key, diagram.x, diagram.y, "T", "p")]
+    columns = [envelope.values(key) for key in (sweep_key, diagram.x, diagram.y, "T", "p", "rho")]
     found = []
     f = k - value_SI
     for i in range(len(f) - 1):
@@ -569,13 +592,13 @@ def _envelope_crossings(envelope, diagram, iso_key, value_SI, sweep_key, metric,
         if b == 0.0 and i + 1 < len(f) - 1:
             continue   # an exact hit on a point is counted once, by the next pair
         t = a / (a - b)
-        w, x, y, T_K, p_Pa = [v[i] + t * (v[i + 1] - v[i]) for v in columns]
-        if not all(np.isfinite((w, x, y, T_K, p_Pa))):
+        w, x, y, T_K, p_Pa, rho = [v[i] + t * (v[i + 1] - v[i]) for v in columns]
+        if not all(np.isfinite((w, x, y, T_K, p_Pa, rho))):
             continue
         if sweep_range is not None and not sweep_range[0] <= w <= sweep_range[1]:
             continue
         quality = envelope.Q[i] if t < 0.5 else envelope.Q[i + 1]
-        found.append((w, quality, Sample(x, y, _inside(metric, x, y), None, (w, T_K, p_Pa, quality))))
+        found.append((w, quality, Sample(x, y, _inside(metric, x, y), None, (w, T_K, p_Pa, quality, rho))))
     return found
 
 
@@ -610,7 +633,9 @@ def compute_quality_line(fluid: Fluid, diagram: DiagramType, quality: float, poi
     envelope, which follows the dome through the critical region where
     the saturation flash fails. They have as many points as the refined
     envelope (about 300), independent of ``points``. A mixture's line of
-    intermediate quality runs up to the top of the envelope, which is
+    intermediate quality runs up to the hottest point of the envelope
+    (the critical point, or for a blend with a wide glide the
+    cricondentherm a few hundredths of a kelvin above it), which is
     appended as its last point so that it meets the dome there.
     """
     if not 0.0 <= quality <= 1.0:
@@ -697,7 +722,8 @@ def _mixture_quality_line(fluid: Fluid, diagram: DiagramType, quality: float, po
     found = trace(evaluate, metric, points, 0.0, 1.0, end=top, skip_failures=True)
     x = np.array([np.nan if s is None else s.x for s in found.samples], dtype=float)
     y = np.array([np.nan if s is None else s.y for s in found.samples], dtype=float)
-    return Curve(x, y, found.n_failed, n_evaluated=found.n_evaluated)
+    stopped = "" if found.stopped.startswith("the end of the range") else found.stopped
+    return Curve(x, y, found.n_failed, reason=stopped, n_evaluated=found.n_evaluated)
 
 
 def _envelope_line(fluid: Fluid, diagram: DiagramType, quality: float):

@@ -663,7 +663,7 @@ for log axes): a step is accepted when the drawn segment is shorter than
 the segment before; otherwise it is halved and tried again. The next
 step is aimed at four fifths of those limits, so that a rejected step
 (which costs an evaluation) is rare. A straight line across the chart
-gets about `points / 2.5` points, a bend as many as its curvature
+gets about `points / 2` points, a bend as many as its curvature
 needs. The axis ranges come from the engine's `Domain` (the ranges of
 the axis quantities over the T-p box), so the same line is stepped the
 same way in every unit system and the curve cache stays valid.

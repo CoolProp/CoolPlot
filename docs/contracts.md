@@ -103,7 +103,7 @@ and the engine caches it (`coolplot.thermo.isolines.Curve`).
 
 The number of points is not fixed: lines are stepped with steps chosen
 from their shape in plot coordinates (`coolplot.thermo.stepping`), so a
-straight line has about `points / 2.5` points and a bent one more.
+straight line has about `points / 2` points and a bent one more.
 
 A curve is identified by the cache key `(fluid, fingerprint, diagram,
 key, value_SI, points, ...)`: the fingerprint names the CoolProp version

@@ -110,9 +110,12 @@ MIN_STEP = 1e-4
 #: Nor by more than this fraction.
 MAX_STEP = 1.0 / 8.0
 #: While the line is outside the domain the step starts at this fraction
-#: of the range and doubles at every point, so that a long outside stretch
-#: costs a handful of points.
+#: of the range and doubles at every point up to SCAN_MAX, so that a long
+#: outside stretch costs a handful of points. A stretch inside the domain
+#: shorter than SCAN_MAX can be missed while scanning; a chart whose axes
+#: are the ranges of the domain gives no line that leaves and comes back.
 SCAN_STEP = 1.0 / 64.0
+SCAN_MAX = 1.0 / 32.0
 #: A domain edge is located to this fraction of the parameter range.
 EDGE_TOLERANCE = 1e-3
 
@@ -169,7 +172,10 @@ class _Walk:
         self.trace.n_evaluated += 1
         sample = self.evaluate(u, careful)
         if sample is None:
-            self.trace.n_failed += 1
+            if careful:
+                self.trace.n_failed += 1
+            else:
+                self.trace.n_outside += 1   # a cheap look that found nothing, while the line is outside
         elif not sample.inside:
             self.trace.n_outside += 1
         return sample
@@ -219,18 +225,22 @@ class _Walk:
 
     # The walk ----------------------------------------------------------
     def run(self):
+        """Alternate between fine steps inside the domain and scanning outside until the end."""
         u = self.u_lo
         sample = self.sample_at(u)
-        if sample is not None and sample.inside:
+        inside = sample is not None and sample.inside
+        if inside:
             self.accept(u, sample, self.normalised(sample))
-            self.walk_inside(u)
         else:
             self.last_outside_u = u
-            self.scan_outside(u)
+        while u < self.u_hi and not self.over_budget():
+            u, inside = self.walk_inside(u) if inside else self.scan_outside(u)
+        if u >= self.u_hi and not self.trace.stopped:
+            self.trace.stopped = "the end of the range"
         self.trace.close()
 
     def walk_inside(self, u: float):
-        """Fine steps while the line is inside the domain."""
+        """Fine steps while the line is inside the domain; returns (u, whether still inside)."""
         du = self.span / self.points
         min_du = self.span * MIN_STEP
         while u < self.u_hi and not self.over_budget():
@@ -249,10 +259,10 @@ class _Walk:
                 # Cannot get past this point: leave a gap and look further on
                 self.trace.add(u_try, None)
                 self.last_outside_u = u_try
-                return self.scan_outside(u_try)
+                return u_try, False
             if not sample.inside:
                 self.leave_domain(u, u_try)
-                return self.scan_outside(u_try)
+                return u_try, False
             point = self.normalised(sample)
             if not self.step_ok(point, sample) and du > min_du:
                 du *= 0.5
@@ -260,8 +270,7 @@ class _Walk:
             self.accept(u_try, sample, point)
             u = u_try
             du = self.next_step(du)
-        if u >= self.u_hi:
-            self.trace.stopped = "the end of the range"
+        return u, True
 
     def next_step(self, du: float) -> float:
         """The step to try next: aimed at four fifths of the longest and sharpest allowed
@@ -299,17 +308,17 @@ class _Walk:
         return u_in, found
 
     def scan_outside(self, u: float):
-        """Large, growing steps while the line is outside the domain or cannot be computed."""
+        """Growing steps while the line is outside the domain or cannot be computed; returns (u, inside)."""
         du = self.span * SCAN_STEP
         while u < self.u_hi and not self.over_budget():
             u_try = min(u + du, self.u_hi)
             sample = self.sample_at(u_try, careful=False)
             if sample is not None and sample.inside:
                 self.enter_domain(u, u_try, sample)
-                return self.walk_inside(u_try)
+                return u_try, True
             u = u_try
-            du *= 2.0
-        self.trace.stopped = "the end of the range"
+            du = min(du * 2.0, self.span * SCAN_MAX)
+        return u, False
 
     def enter_domain(self, u_out: float, u_in: float, sample: Sample):
         """The line came back between u_out and u_in: start the piece on the edge."""

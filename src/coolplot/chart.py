@@ -492,8 +492,8 @@ class Chart:
         if cycle.fluid and self._other_fluid(cycle.fluid):
             raise ValueError("Cycle '{0}' was computed for {1}, but this chart shows {2}.".format(
                 cycle.name, cycle.fluid, self.spec.fluid))
-        for _, state in cycle.states:
-            check_state(state, self.fluid)
+        states = tuple((n, check_state(state, self.fluid)) for n, state in cycle.states)
+        cycle = replace(cycle, states=states)   # with v filled in for a cycle computed before 0.7
         return CycleSpec.from_cycle(cycle, name=name, loops=loops, paths=paths, numbers=numbers,
                                     line_style=line_style, marker_style=marker_style, steps=steps)
 

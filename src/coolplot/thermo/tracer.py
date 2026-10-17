@@ -131,8 +131,13 @@ class IsoLineTracer(object):
     #: Above the top of a closed envelope by this much (0.07 K at 344 K,
     #: twice the 0.04 K above) there is no dome: a root there is accepted
     #: without the density check of TOP_DENSITY_MARGIN. Between the top and
-    #: this, the density check applies.
+    #: this, the density check applies. Only for an envelope whose two
+    #: densities at the top agree to TOP_GAP_RTOL: with the coexistence
+    #: curve going as (1 - T/Tc)^0.33, that puts the top within a few
+    #: millikelvin of the critical point, where a gap of 35 % (the
+    #: closedness test) could still leave it 0.3 K short.
     ABOVE_TOP_RTOL = 2e-4
+    TOP_GAP_RTOL = 0.05
     #: A phase envelope that ends with its two densities still this far apart
     #: did not run to the critical point, so where its dome ends is unknown
     #: and has to be found the expensive way.
@@ -620,15 +625,17 @@ class IsoLineTracer(object):
     # Two-phase point: solve for the vapour quality
     # -------------------------------------------------------------------
     @staticmethod
-    def _quality_scale(target_index):
+    def _quality_scale(target_index, target):
         """The function of the target property that is close to linear in the quality
 
         Enthalpy, entropy and internal energy are (for a pure fluid exactly)
         linear in the vapour quality; density is not, but the specific
         volume is. Solving in that function lets the secant iteration below
-        settle in two or three saturation calls instead of six.
+        settle in two or three saturation calls instead of six. A density
+        target that is not positive (nonsense, but possible) is solved as
+        it is.
         """
-        if target_index in (CoolProp.iDmolar, CoolProp.iDmass):
+        if target_index in (CoolProp.iDmolar, CoolProp.iDmass) and target > 0.0:
             return lambda value: 1.0 / value
         return lambda value: value
 
@@ -652,7 +659,7 @@ class IsoLineTracer(object):
         two-phase point costs (an isentrope of R410A in a p-h chart spent
         60 % of its time in them).
         """
-        scale = bracket['scale'] = self._quality_scale(bracket['target_index'])
+        scale = bracket['scale'] = self._quality_scale(bracket['target_index'], bracket['target'])
         target = scale(bracket['target'])
         fa, fb = scale(bracket['liq'][0]) - target, scale(bracket['vap'][0]) - target
         if fa * fb > 0.0:
@@ -898,7 +905,9 @@ class IsoLineTracer(object):
         """
         if self._dome_densities is None:
             return False
-        if T > self._envelope_top[0] * (1.0 + self.ABOVE_TOP_RTOL):
+        rho_liq_top, rho_vap_top = self._envelope_top[2], self._envelope_top[3]
+        top_is_critical = abs(rho_liq_top - rho_vap_top) <= self.TOP_GAP_RTOL * max(rho_liq_top, rho_vap_top)
+        if top_is_critical and T > self._envelope_top[0] * (1.0 + self.ABOVE_TOP_RTOL):
             return True
         bounds = []
         for T_table, rho_table in self._dome_densities:

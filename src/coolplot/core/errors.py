@@ -89,7 +89,10 @@ class PropertyError(ValueError):
             text = "{0}: {1}".format(self.where, text[0].lower() + text[1:])
         details = []
         if self.reason:
-            details.append(self.reason.format(*[describe(k, v) for k, v in self.limits]))
+            # Formatted only for the limits, so a fluid name with braces in a
+            # reason without limits cannot break the message
+            reason = self.reason.format(*[describe(k, v) for k, v in self.limits]) if self.limits else self.reason
+            details.append(reason)
         if self.cause:
             details.append(("CoolProp: " if self.reason else "") + self.cause)
         return "{0} ({1}).".format(text, "; ".join(details)) if details else text + "."

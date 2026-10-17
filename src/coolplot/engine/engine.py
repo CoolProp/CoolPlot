@@ -142,6 +142,9 @@ class Engine:
                 self._warn(spec, domain, request, "Skipping the line {0}={1:.6g} in {2}: {3}.".format(
                     request.key, request.value_SI, spec.fluid.name, why))
                 continue
+            if curve.reason:
+                self._warn(spec, domain, request, "The line {0}={1:.6g} in {2} is incomplete: {3}.".format(
+                    request.key, request.value_SI, spec.fluid.name, curve.reason))
             if total and curve.n_gaps > tolerance * total:
                 self._warn(spec, domain, request, "The line {0}={1:.6g} in {2} has gaps: CoolProp failed for "
                            "{3} of {4} points inside the line.".format(request.key, request.value_SI,
