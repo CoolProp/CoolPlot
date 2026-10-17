@@ -4,7 +4,7 @@
 ``cpp/`` holds coolplot-core, a C++ port of :mod:`coolplot.compose`,
 :mod:`coolplot.scene`, :mod:`coolplot.style` and the SVG writer, built as
 the nanobind module ``coolplot_core``. When that module can be imported and
-the native mode is "on" (:func:`coolplot.set_native_mode`, or the
+the native mode is "on" (:func:`coolplot.core.implementation.set_native_mode`, or the
 environment variable ``COOLPLOT_NATIVE=1``), the chart composes its
 scene there (:func:`coolplot.compose.compose`) and the SVG renderer
 writes its document there. This module sits below both layers. The scene
@@ -56,7 +56,7 @@ def enabled() -> bool:
     """Whether charts are composed and SVG is written by coolplot-core.
 
     Only when the module is available and the native mode is "on"
-    (:func:`coolplot.set_native_mode`, or ``COOLPLOT_NATIVE=1``). In the
+    (:func:`coolplot.core.implementation.set_native_mode`, or ``COOLPLOT_NATIVE=1``). In the
     default mode "auto" the Python code does it: from Python it is the
     faster path, because the records cross the boundary as JSON (for a
     p-h chart with labels about 12 ms in C++ against 25 ms in Python, plus

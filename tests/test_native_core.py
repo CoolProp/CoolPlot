@@ -89,13 +89,18 @@ def test_the_switch(monkeypatch):
         assert numerics.enabled() == numerics.available()
     # The setting overrides the environment variable until it is reset with None
     monkeypatch.setenv("COOLPLOT_NATIVE", "0")
-    assert set_native_mode("on") == "off"
+    assert set_native_mode("on") is None   # the environment variable decided before
     assert native_mode() == "on" and native.enabled() == native.available()
     assert set_native_mode("Auto") == "on" and native_mode() == "auto"
     assert set_native_mode(None) == "auto" and native_mode() == "off"
     with pytest.raises(ValueError, match="expected one of"):
         set_native_mode("fast")
     assert native_mode() == "off"
+    # Passing the returned value back restores what was there, here the environment
+    previous = set_native_mode("on")
+    set_native_mode(previous)
+    monkeypatch.setenv("COOLPLOT_NATIVE", "1")
+    assert native_mode() == "on"
 
 
 def test_compose_falls_back_without_the_module(monkeypatch):

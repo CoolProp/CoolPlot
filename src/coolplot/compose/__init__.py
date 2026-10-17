@@ -17,8 +17,8 @@ __all__ = ["compose", "compose_python", "label_text", "scaled_theme"]
 def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycles=None):
     """All scene items and the axes for a diagram, see :func:`coolplot.compose.builder.compose`.
 
-    Composed by coolplot-core when it is installed and ``COOLPLOT_NATIVE``
-    is set (see :func:`coolplot.corelib.enabled`), by the Python composer
+    Composed by coolplot-core when it is installed and the native mode is
+    "on" (see :func:`coolplot.corelib.enabled`), by the Python composer
     otherwise; both give the same scene.
     """
     if corelib.enabled():

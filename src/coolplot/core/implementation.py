@@ -55,8 +55,8 @@ def native_mode() -> str:
     return _mode if _mode is not None else _mode_from_environment()
 
 
-def set_native_mode(mode: Optional[str]) -> str:
-    """Choose the implementation for the rest of the program and return the previous mode.
+def set_native_mode(mode: Optional[str]) -> Optional[str]:
+    """Choose the implementation for the rest of the program and return the previous setting.
 
     Parameters
     ----------
@@ -65,9 +65,24 @@ def set_native_mode(mode: Optional[str]) -> str:
         they are installed, "auto" (the default) the numerics port only.
         None goes back to the environment variable ``COOLPLOT_NATIVE``.
 
+    Returns
+    -------
+    str or None
+        The previous setting: a mode, or None if the environment variable
+        decided. Passing it back restores exactly what was there before.
+        The mode in effect is :func:`native_mode`.
+
+    Notes
+    -----
+    The setting holds for the whole program (every chart and thread). A
+    background engine with worker processes takes it from the chart's
+    process, not from the workers' environment.
+
     Examples
     --------
     >>> previous = set_native_mode("off")   # the Python reference
+    >>> native_mode()
+    'off'
     >>> set_native_mode(previous)
     'off'
     """
@@ -76,6 +91,6 @@ def set_native_mode(mode: Optional[str]) -> str:
         mode = str(mode).strip().lower()
         if mode not in NATIVE_MODES:
             raise ValueError("Unknown native mode '{0}', expected one of {1} or None.".format(mode, NATIVE_MODES))
-    previous = native_mode()
+    previous = _mode
     _mode = mode
     return previous

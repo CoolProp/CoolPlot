@@ -203,3 +203,36 @@ def test_the_provider_uses_the_port_when_enabled(r290, monkeypatch):
     python = compute_curve(r290, TS, "p", 5e5, box, 20, "auto", 1e-7, "critical")
     assert port.x == pytest.approx(python.x, rel=1e-9, nan_ok=True)
     assert port.n_inserted == python.n_inserted == 2
+
+
+def test_the_flag_of_the_cache_key_decides_not_the_mode_at_compute_time(monkeypatch, r290):
+    """A worker process does not see set_native_mode of its parent, and the mode
+    may change while jobs are queued: the curve is computed the way its key says."""
+    from coolplot import PropertyDiagram, set_native_mode
+    from coolplot.engine import Engine, plan
+    box = resolve_tp_box(r290, get_tp_limits("ACHP"))
+    sentinel = Curve([1.0, 2.0], [3.0, 4.0], method="port")
+    monkeypatch.setattr(native, "available", lambda: True)
+    monkeypatch.setattr(native, "compute_curve", lambda *args: sentinel)
+    set_native_mode("on")
+    assert compute_curve(r290, TS, "p", 5e5, box, 20, "auto", 1e-7, "critical", use_native=False) is not sentinel
+    set_native_mode("off")
+    assert compute_curve(r290, TS, "p", 5e5, box, 20, "auto", 1e-7, "critical", use_native=True) is sentinel
+    # The engine hands the flag of the key to the computation
+    chart = PropertyDiagram("R290", "Ts", tp_limits="ACHP", settings="interactive")
+    chart.set_lines("p", values=[5.0])
+    spec = chart.spec
+    engine = Engine()
+    domain = engine.domain(spec)
+    request = [r for r in plan(spec, domain) if r.key == "p"][0]
+    set_native_mode("on")
+    key = engine.cache_key(spec, domain, request)
+    assert Engine.key_uses_native(key)
+    seen = []
+    import coolplot.engine.engine as engine_module
+    real = engine_module.compute_curve
+    monkeypatch.setattr(engine_module, "compute_curve", lambda *a, **k: seen.append(k) or real(*a, **k))
+    assert engine.curve(spec, domain, request) is sentinel and seen[-1]["use_native"] is True
+    set_native_mode("off")
+    assert not Engine.key_uses_native(engine.cache_key(spec, domain, request))
+    assert engine.curve(spec, domain, request) is not sentinel and seen[-1]["use_native"] is False

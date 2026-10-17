@@ -51,7 +51,7 @@ checkout to build offline. The JSON reader (nlohmann/json 3.12, MIT) is
 vendored in `cpp/third_party`. zlib is used for the PDF streams when CMake
 finds it.
 
-In the native mode "on" ({func}`coolplot.set_native_mode`, or
+In the native mode "on" ({func}`coolplot.core.implementation.set_native_mode`, or
 `COOLPLOT_NATIVE=1`; see {mod}`coolplot.core.implementation`) and with
 `coolplot_core` importable, {func}`coolplot.compose.compose` composes there
 and {class}`~coolplot.render.svg.SvgRenderer` writes there. In the default

@@ -228,5 +228,7 @@ def test_every_old_name_is_in_the_upgrade_guide():
                 if getattr(member, "deprecated", False):
                     found.add(name)
     assert found >= OLD_NAMES | OLD_DIAGRAM_NAMES | OLD_PSYCHRO_NAMES
-    missing = sorted(name for name in found if "`{0}".format(name) not in guide)
+    import re
+    # The whole name in code quotes, "`name`" or "`name(", not a longer name starting with it
+    missing = sorted(name for name in found if not re.search(r"`{0}[`(]".format(re.escape(name)), guide))
     assert not missing, missing

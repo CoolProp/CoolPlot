@@ -10,7 +10,7 @@ its isolines there: the same algorithm, point for point, with the GIL
 released while it runs (the time of a chart is mostly CoolProp's own
 solvers, so the gain is the Python overhead: half of a pure-fluid chart,
 a tenth of a blend's). Without it, or with the native mode "off"
-(:func:`coolplot.set_native_mode`, or the environment variable
+(:func:`coolplot.core.implementation.set_native_mode`, or the environment variable
 ``COOLPLOT_NATIVE=0``), the Python modules do the work. Both give the same
 curves up to the noise of CoolProp's solvers; the Python copy stays the
 reference the tests check.
@@ -61,7 +61,7 @@ def available() -> bool:
 def enabled() -> bool:
     """Whether the engine uses the port: it is available and the native mode is not "off".
 
-    See :func:`coolplot.set_native_mode`.
+    See :func:`coolplot.core.implementation.set_native_mode`.
     """
     return available() and native_mode() != "off"
 

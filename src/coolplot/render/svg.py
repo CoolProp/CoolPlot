@@ -150,7 +150,7 @@ class SvgRenderer(Renderer):
         SVG embedded in the same HTML page its own prefix.
     native : bool, optional
         Write the document with coolplot-core (:mod:`coolplot.corelib`).
-        None (the default) follows ``COOLPLOT_NATIVE``, see
+        None (the default) follows the native mode, see
         :func:`coolplot.corelib.enabled`; the document is the same either way.
     """
 

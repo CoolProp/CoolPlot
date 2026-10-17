@@ -69,10 +69,14 @@ def _worker_fluid(fluid_spec):
 
 def compute_curve(fluid_spec, diagram, key: str, value_SI: float, points: int,
                   tp_box: Tuple[float, float, float, float], solver: str, margin: float, spacing: str,
-                  ranges=None) -> Curve:
-    """One curve from plain data; runs in a worker thread or process."""
+                  ranges=None, use_native: bool = False) -> Curve:
+    """One curve from plain data; runs in a worker thread or process.
+
+    ``use_native`` comes from the parent's cache key: a worker process does
+    not see :func:`coolplot.core.implementation.set_native_mode` called in the parent.
+    """
     return _compute_curve(_worker_fluid(fluid_spec), diagram, key, value_SI, tp_box, points, solver, margin,
-                          spacing, ranges)
+                          spacing, ranges, use_native=use_native)
 
 
 class BackgroundEngine(Engine):
@@ -244,7 +248,7 @@ class BackgroundEngine(Engine):
         pool = self._new_pool(workers=1) if alone else self._pool
         future = pool.submit(compute_curve, spec.fluid, spec.diagram, request.key, request.value_SI,
                              request.points, domain.tp_box, calc.solver, calc.critical_margin,
-                             calc.saturation_spacing, domain.ranges_SI)
+                             calc.saturation_spacing, domain.ranges_SI, self.key_uses_native(key))
         if alone:
             pool.shutdown(wait=False)   # the process ends after this one job
         self._jobs[key] = future
