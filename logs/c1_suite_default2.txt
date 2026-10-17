@@ -1,0 +1,38 @@
+ssssss.................................................................. [ 17%]
+........................................................................ [ 35%]
+..................................sssssssssssssssssss................... [ 53%]
+.................................................ssssssss............... [ 71%]
+...................s.................................................... [ 89%]
+........................sssss.......s.....                               [100%]
+=============================== warnings summary ===============================
+tests/test_diagram.py::test_moving_a_cycle_touches_only_the_cycle
+  /home/user/CoolPlot/tests/test_diagram.py:93: DeprecationWarning: set_process() is an old name since CoolPlot 0.5 and will go in 1.0; use add_cycle, which computes the paths between the states itself.
+    diagram.set_process("cycle", *cycle(15e5))
+
+tests/test_diagram.py::test_moving_a_cycle_touches_only_the_cycle
+  /home/user/CoolPlot/tests/test_diagram.py:100: DeprecationWarning: set_process() is an old name since CoolPlot 0.5 and will go in 1.0; use add_cycle, which computes the paths between the states itself.
+    diagram.set_process("cycle", *cycle(18e5))
+
+tests/test_pdf.py::test_pdf_embeds_truetype_fonts_and_the_title
+tests/test_pdf.py::test_pdf_files_are_reproducible
+tests/test_pdf.py::test_pdf_files_are_reproducible
+tests/test_pdf.py::test_eps_embeds_truetype_fonts
+tests/test_pdf.py::test_reader_finds_fonts_texts_colours_and_pages
+tests/test_pdf.py::test_replace_info_keeps_the_content
+tests/test_pdf.py::test_eps_files_are_reproducible
+tests/test_pdf.py::test_eps_files_are_reproducible
+  /home/user/CoolPlot/src/coolplot/render/mpl.py:1078: UserWarning: Inter is installed here only as CFF OpenType, which matplotlib cannot embed as TrueType (the file would be damaged); the file uses DejaVu Sans instead. Install the TrueType (.ttf) files of Inter, or save with pdf_fonts='type3'.
+    self._truetype_fonts(fmt in _FONTTYPE_RC and pdf_fonts == "truetype"):
+
+tests/test_pdf.py::test_fonts_without_truetype_outlines_are_replaced_in_the_file
+tests/test_pdf.py::test_strict_fonts_refuse_a_replacement_and_the_screen_stays
+tests/test_pdf.py::test_strict_fonts_refuse_a_replacement_and_the_screen_stays
+  /home/user/CoolPlot/src/coolplot/render/mpl.py:1078: UserWarning: DejaVu Sans, sans-serif (CFF OpenType) cannot be embedded as TrueType and is left out of the file; characters only it has are missing there. Install the TrueType (.ttf) files, or save with pdf_fonts='type3'.
+    self._truetype_fonts(fmt in _FONTTYPE_RC and pdf_fonts == "truetype"):
+
+tests/test_pdf.py::test_several_charts_in_one_pdf
+  /home/user/CoolPlot/src/coolplot/render/mpl.py:1101: UserWarning: Inter is installed here only as CFF OpenType, which matplotlib cannot embed as TrueType (the file would be damaged); the file uses DejaVu Sans instead. Install the TrueType (.ttf) files of Inter, or save with pdf_fonts='type3'.
+    with renderer._truetype_fonts(pdf_fonts == "truetype"):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+362 passed, 40 skipped, 14 warnings in 287.13s (0:04:47)
