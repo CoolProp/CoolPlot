@@ -173,4 +173,3 @@ def plan(spec: DiagramSpec, domain: Domain) -> Tuple[CurveRequest, ...]:
             requests.append(CurveRequest(isoline_id(iso_set.key, value_SI), iso_set.key, float(value_SI),
                                          points, iso_set.labels))
     return tuple(requests)
-

@@ -1,0 +1,217 @@
+# -*- coding: utf-8 -*-
+"""Sweeps over every line family of every diagram type, for a few fluids.
+
+These are the acceptance checks of the 0.7 numerics (docs/v1_plan.md):
+every point of a line is a state that CoolProp confirms, lines have no
+gaps or kinks, and almost nothing is computed outside the chart. They
+take minutes per fluid and run only with ``pytest --run-slow``.
+"""
+import numpy as np
+import pytest
+
+CoolProp = pytest.importorskip("CoolProp")
+from CoolProp.CoolProp import PropsSI  # noqa: E402
+
+from coolplot.core.diagram_type import DiagramType  # noqa: E402
+from coolplot.core.limits import get_tp_limits  # noqa: E402
+from coolplot.core.quantities import get_quantity  # noqa: E402
+from coolplot.engine.plan import nice_linear, nice_log  # noqa: E402
+from coolplot.thermo.fluid import Fluid, build_state  # noqa: E402
+from coolplot.thermo.isolines import _LineSolver, _Sweep, _metric, compute_isoline, compute_quality_line  # noqa: E402
+from coolplot.thermo.limits import property_range_SI, resolve_tp_box  # noqa: E402
+
+pytestmark = pytest.mark.slow
+
+TYPES = ("ph", "Ts", "hs", "ps", "prho", "Trho", "pT")
+CP_NAME = {"T": "T", "p": "P", "h": "Hmass", "s": "Smass", "rho": "Dmass", "u": "Umass"}
+CP_INDEX = {"T": CoolProp.iT, "p": CoolProp.iP, "h": CoolProp.iHmass, "s": CoolProp.iSmass,
+            "rho": CoolProp.iDmass, "u": CoolProp.iUmass}
+
+
+def _values(fluid, key, box, num=5):
+    lo, hi = property_range_SI(fluid, key, box)
+    values = nice_log(lo, hi, num) if get_quantity(key).log_scale and lo > 0.0 else nice_linear(lo, hi, num)
+    return list(values[:: max(1, len(values) // num)])[:num + 1]
+
+
+def _span(fluid, key, box):
+    lo, hi = property_range_SI(fluid, key, box)
+    return hi - lo
+
+
+def _normalised(curve, diagram, fluid, box):
+    """The valid points of a curve in normalised plot coordinates."""
+    metric = _metric(fluid, diagram, box, None)
+    ok = np.isfinite(curve.x) & np.isfinite(curve.y)
+    points = np.array([metric.point(x, y) for x, y in zip(curve.x[ok], curve.y[ok])])
+    return points
+
+
+def _largest_turn_deg(points):
+    """The largest turn between consecutive segments of a polyline, in degrees.
+
+    Segments shorter than a hundredth of a percent of the chart are left
+    out: a turn between two sub-pixel segments is invisible.
+    """
+    if len(points) < 3:
+        return 0.0
+    d = np.diff(points, axis=0)
+    length = np.hypot(d[:, 0], d[:, 1])
+    keep = length > 1e-4
+    d = d[keep] / length[keep, None]
+    if len(d) < 2:
+        return 0.0
+    cos = np.clip(np.sum(d[:-1] * d[1:], axis=1), -1.0, 1.0)
+    return float(np.degrees(np.arccos(cos)).max())
+
+
+def _lines(fluid, box):
+    for name in TYPES:
+        diagram = DiagramType.parse(name)
+        for key in diagram.supported_isolines():
+            if key == "Q":
+                continue
+            for value in _values(fluid, key, box):
+                yield diagram, key, float(value)
+
+
+@pytest.fixture(scope="module", params=["HEOS::R290", "HEOS::CO2"])
+def pure(request):
+    fluid = Fluid(request.param)
+    limits = "ACHP" if "R290" in request.param else "DEF"
+    return fluid, resolve_tp_box(fluid, get_tp_limits(limits))
+
+
+@pytest.fixture(scope="module", params=["HEOS::R410A.mix", "HEOS::R32[0.7]&R125[0.3]"])
+def blend(request):
+    fluid = Fluid(request.param)
+    return fluid, resolve_tp_box(fluid, get_tp_limits("DEF"))
+
+
+def _on_the_saturation_curve(fluid, T_K, p_Pa):
+    """Whether a state sits on the saturation curve, where an inverse flash may answer from either side."""
+    try:
+        if T_K >= fluid.critical["T"]:
+            return False
+        p_sat = PropsSI("P", "T", T_K, "Q", 0, fluid.name)
+    except Exception:
+        return False
+    return abs(p_Pa - p_sat) <= 1e-6 * p_sat
+
+
+def test_pure_fluid_lines_round_trip_and_are_smooth(pure):
+    """Every point of every line is a state at the line's constant.
+
+    Sampled points are re-evaluated from their (T, p) or (p, Q) with a
+    different input pair, which confirms them to 1e-9; the drawn points
+    are also sent through CoolProp's inverse flash (T from h and p, say),
+    which is looser (1e-7 for h,s inputs) and ambiguous on the saturation
+    curve, so those points are left out of that check.
+    """
+    fluid, box = pure
+    outside = [0, 0]
+    for diagram, key, value in _lines(fluid, box):
+        curve = compute_isoline(fluid, diagram, key, value, box, 250)
+        where = "{0} {1}={2:g}".format(diagram.name, key, value)
+        assert curve.n_gaps == 0, where
+        assert curve.n_outside <= 30, where   # locating the edges costs a few points, whatever the line
+        outside[0] += curve.n_outside
+        outside[1] += curve.n_evaluated
+        if curve.n_valid < 2:
+            continue   # a line that touches the axes' area at one point
+        points = _normalised(curve, diagram, fluid, box)
+        assert _largest_turn_deg(points) < 160.0, where   # no reversals; a hairpin on the dome is real
+        if curve.n_valid < 20:
+            continue
+        sweep_key = diagram.sweep_quantity(key)
+        metric = _metric(fluid, diagram, box, None)
+        solver = _LineSolver(fluid, key, value, sweep_key, diagram, metric, "auto")
+        sweep = _Sweep(sweep_key, *(box[:2] if sweep_key == "T" else box[2:]))
+        span = _span(fluid, key, box)
+        confirmed = 0
+        for u in np.linspace(0.02, 0.98, 40):   # a line may be inside the axes for part of the sweep only
+            sample = solver.sample(sweep.value(u))
+            if sample is None or not sample.inside:
+                continue
+            w, T_K, p_Pa, Q = sample.extra
+            if _on_the_saturation_curve(fluid, T_K, p_Pa):
+                continue
+            if 0.0 <= Q <= 1.0:
+                inputs = ("P", p_Pa, "Q", Q)
+            else:
+                inputs = ("P", p_Pa, "T", T_K)
+            # CoolProp's flashes agree with each other to about 1e-9
+            assert PropsSI(CP_NAME[key], *inputs, fluid.name) == pytest.approx(value, abs=1e-8 * span), where
+            assert PropsSI(CP_NAME[diagram.x], *inputs, fluid.name) == pytest.approx(sample.x, rel=1e-8), where
+            assert PropsSI(CP_NAME[diagram.y], *inputs, fluid.name) == pytest.approx(sample.y, rel=1e-8), where
+            back = PropsSI(CP_NAME[key], CP_NAME[diagram.x], sample.x, CP_NAME[diagram.y], sample.y, fluid.name)
+            assert back == pytest.approx(value, abs=1e-6 * span), where
+            confirmed += 1
+        assert confirmed >= 4, where
+    assert outside[0] <= 0.1 * outside[1]   # over the whole sweep, a tenth of the evaluations at most
+
+
+def test_blend_lines_are_confirmed_states_and_are_smooth(blend):
+    """Every traced point of a blend is a state at the line's constant, re-evaluated explicitly."""
+    fluid, box = blend
+    check = build_state(fluid.model_key)
+    outside = [0, 0]
+    for diagram, key, value in _lines(fluid, box):
+        curve = compute_isoline(fluid, diagram, key, value, box, 250)
+        where = "{0} {1}={2:g}".format(diagram.name, key, value)
+        assert curve.method == "tracer", where
+        assert curve.n_gaps <= 2, where
+        assert curve.n_outside <= 30, where   # locating the edges costs a few points, whatever the line
+        outside[0] += curve.n_outside
+        outside[1] += curve.n_evaluated
+        if curve.n_valid < 2:
+            continue
+        points = _normalised(curve, diagram, fluid, box)
+        assert _largest_turn_deg(points) < 160.0, where
+        if curve.n_valid < 20:
+            continue   # a line that only clips a corner of the chart
+        # Re-evaluate a sample of points from the (T, rho) root the tracer
+        # converged on, an explicit evaluation of the equation of state,
+        # or from (p, Q) for two-phase points. CoolProp's p,T flash of a
+        # mixture is not a usable check: next to the bubble line it can
+        # return a state with h = -12 MJ/kg without raising.
+        sweep_key = diagram.sweep_quantity(key)
+        metric = _metric(fluid, diagram, box, None)
+        solver = _LineSolver(fluid, key, value, sweep_key, diagram, metric, "auto")
+        sweep = _Sweep(sweep_key, *(box[:2] if sweep_key == "T" else box[2:]))
+        confirmed = 0
+        for u in np.linspace(0.02, 0.98, 40):   # a line may be inside the axes for part of the sweep only
+            sample = solver.sample(sweep.value(u))
+            if sample is None or not sample.inside:
+                continue
+            w, T_K, p_Pa, Q = sample.extra
+            if 0.0 <= Q <= 1.0:
+                check.unspecify_phase()
+                check.update(CoolProp.PQ_INPUTS, p_Pa, Q)
+            else:
+                root = solver.tracer.state   # the single-phase root, (T, rhomolar) with the phase imposed
+                if abs(root.T() - T_K) > 1e-9 * T_K:
+                    continue   # a fallback flash answered this point, not the tracer
+                check.specify_phase(CoolProp.iphase_gas)
+                check.update(CoolProp.DmolarT_INPUTS, root.rhomolar(), T_K)
+            assert check.keyed_output(CP_INDEX[key]) == pytest.approx(value, rel=1e-6), where
+            assert (check.keyed_output(CP_INDEX[diagram.x]), check.keyed_output(CP_INDEX[diagram.y])) == \
+                pytest.approx((sample.x, sample.y), rel=1e-6), where
+            confirmed += 1
+        assert confirmed >= 4, where
+    assert outside[0] <= 0.1 * outside[1]
+
+
+def test_quality_lines_reach_the_top_of_the_dome(blend):
+    fluid, box = blend
+    envelope = fluid.phase_envelope()
+    assert envelope is not None and envelope.closed
+    for name in ("ph", "Ts"):
+        diagram = DiagramType.parse(name)
+        for quality in (0.25, 0.5, 0.75):
+            curve = compute_quality_line(fluid, diagram, quality)
+            assert curve.n_valid >= 50 and curve.n_gaps == 0
+            assert (curve.x[-1], curve.y[-1]) == (envelope.top(diagram.x), envelope.top(diagram.y))
+            # The last computed state before the top is within a few kelvin of it
+            if name == "Ts":
+                assert curve.y[-2] >= envelope.top("T") - 5.0

@@ -14,9 +14,8 @@ pip install coolplot                # core, with the SVG backend
 pip install "coolplot[matplotlib]"  # with the matplotlib backend
 ```
 
-CoolPlot needs Python 3.10 or later and CoolProp 6.8 or later; it is
-tested with CoolProp 6.8, 7.2 and 8.0. Refrigerant blends are much faster
-with CoolProp 8 (section 8).
+CoolPlot needs Python 3.10 or later and CoolProp 8.0 or later (the
+mixture flashes and the phase envelope it relies on, see section 9).
 
 ## 2. A first diagram
 
@@ -75,14 +74,28 @@ units = ENGINEERING.with_unit("p", Unit("MPa", 1e-6), name="engineering-MPa")
 diagram.units = units
 ```
 
-States are SI values; `state.describe("engineering")` writes one out in
-a unit system, `state.in_units("IP")` gives a dict, and
+A `Unit` is `Unit(label, scale, offset, difference_label)`: display =
+SI * scale + offset. The last field names the unit of a *difference*,
+which the offset does not apply to: temperatures in deg C have
+differences in K, and `ENGINEERING.describe_difference("T", 5.0)` writes
+"5 K" (a superheat, say), where `describe` would write "-268.15 deg C".
+Gauge pressures are units with an offset: `BAR_GAUGE` ("bar(g)",
+relative to 1.01325 bar) and `PSI_GAUGE`, used as
+`ENGINEERING.with_unit("p", BAR_GAUGE)`. A pressure axis in a gauge unit
+is drawn linear, because the offset makes a log scale impossible.
+
+A fluid state holds T, p, h, s, rho, v, u and Q; the specific volume v is
+1/rho and a state can be given by it (`{"T": 20, "v": 0.05}`). States
+are SI values; `state.describe("engineering")` writes one out in a unit
+system, `state.in_units("IP")` gives a dict, and
 `diagram.cycle_states("hp", units="engineering")` does that for a whole
 cycle. An error about a state that cannot be computed names the fluid
-and the inputs in the chart's units:
+and the inputs in the chart's units, and says what is wrong where the
+fluid can tell:
 
 ```
-PropertyError: State 2 of the cycle 'hp': no state of HEOS::R290 at p = 300000 bar, s = 2.48 kJ/kg/K (...).
+PropertyError: State 1 of the cycle 'hp': no state of HEOS::R290 at p = 60 bar, Q = 0 (p is above the
+critical pressure 42.5117 bar, where there is no two-phase region to give a quality in; CoolProp: ...).
 ```
 
 ### The region covered
@@ -118,8 +131,18 @@ x or y quantity (isobars in a ph chart) are straight lines parallel to an
 axis and are not offered; use the grid.
 
 Where an isoline enters or leaves the two-phase region, the saturation
-state is inserted, so the kink sits exactly on the dome; an isobar in a
-T-s chart runs horizontally through the dome.
+state is inserted, so the kink sits exactly on the dome. An isotherm or
+isobar is followed through the dome in vapour quality: for a pure fluid
+that is the straight tie line (horizontal for an isobar in a T-s chart),
+for a blend the temperature glide.
+
+Lines are stepped with the step chosen from their shape on the page:
+straight parts get few points, bends more, and nothing is computed
+outside the area the axes show. `Settings.calc.points` (250) is the
+resolution, about the number of points a line gets that crosses the
+whole chart; a line with bends gets more. The lines of a refrigerant
+blend are traced point by point from the previous one, which is what
+makes a blend chart take seconds rather than minutes (section 9).
 
 `diagram.set_line_style("T", color="#000000", width_pt=1.0)` overrides
 the theme for one family.
@@ -228,7 +251,7 @@ a change costs:
 
 | Part | Examples | A change costs |
 |------|----------|----------------|
-| `calc` | `points`, `saturation_points`, `solver`, `critical_margin` | recalculating the affected lines |
+| `calc` | `points` (the resolution of a line), `saturation_points`, `solver`, `critical_margin` | recalculating the affected lines |
 | `look` | the theme | restyling only |
 | `labels` | `mode`, `keep_out_pt`, `digits` | new label layout only |
 | `page` | `width_pt`, `height_pt`, `font_scale` | page layout only |
@@ -430,22 +453,24 @@ its lines come from `set_lines` with rounding and labels on by default.
 ## 9. Refrigerant blends and other mixtures
 
 For mixtures CoolPlot traces isolines point by point, starting each point
-from the previous one (`Settings.calc.solver = "auto"`). That needs
-CoolProp 8: the flashes that CoolProp 6 and 7 offer for mixtures cover
-only p,T and saturation inputs, so with those versions a blend chart gets
-its isotherms, isobars, quality lines and the dome, and lines of constant
-s, h, u or rho are skipped with a warning that says so. With CoolProp 8 a
-default chart of R32/R125 takes seconds. The bubble and dew lines come
-from CoolProp's phase envelope, so the dome closes properly through the
-critical region, and isotherms show the temperature glide. A blend chart
-starts at the highest triple-point temperature of its components (R32 is
-solid below -137 deg C whatever it is mixed with).
+from the previous one (`Settings.calc.solver = "auto"`): a Newton
+iteration in temperature and density for single-phase points, a
+one-dimensional solve for the vapour quality inside the dome. A default
+p-h chart of R410A takes about five seconds, of R407C about ten; a cold
+CoolProp flash per point would take minutes. The bubble and dew lines
+come from CoolProp's phase envelope, so the dome closes properly through
+the critical region; lines of intermediate quality run up to the top of
+the envelope; isotherms and isobars show the temperature glide through
+the dome. A blend chart starts at the highest triple-point temperature of
+its components (R32 is solid below -137 deg C whatever it is mixed with).
 
 Every state CoolProp returns for a mixture is checked against the
 saturated densities at its temperature: CoolProp 8 answers some inputs
 inside the two-phase region with a "gas" at a wrong pressure, and such
 points are left out instead of drawn (with the flash solver they show as
-gaps; the tracer gets them right).
+gaps; the tracer gets them right). CoolProp solves a mixture state from p
+with any other quantity and from T with p, rho or Q; a state given by T
+and h, say, raises a `PropertyError` that says so.
 
 Incompressible fluids (`"INCOMP::..."`) have no saturation curve: give
 absolute limits, `tp_limits=[T_min_K, T_max_K, p_min_Pa, p_max_Pa]`, and
@@ -468,6 +493,13 @@ so a curve made under other settings is never served.
 * `add_cycle` raises right away, naming the state, if a state cannot be
   computed (for example a pressure above the critical pressure with
   `"Q": 0.0`), and refuses a cycle a model computed for another fluid.
+  The error says what is wrong where the fluid can tell (a temperature
+  or pressure outside the equation of state, a quality above the
+  critical point, an input pair CoolProp does not solve for mixtures),
+  with the limit in the chart's units, and then what CoolProp said.
+* A line that lies outside the area the axes show (a value at the very
+  edge of the range) is left out without a warning; `Curve.reason` on
+  the engine's curve says so.
 * The cycle models check their inputs: the condensing temperature has to
   be above the evaporating one, live steam above its saturation
   temperature.

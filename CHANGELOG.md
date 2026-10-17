@@ -1,6 +1,55 @@
 Changelog
 =========
 
+0.7.0 (unreleased)
+------------------
+
+Numerics (docs/v1_plan.md, package 0.7):
+
+* Isolines are stepped with steps chosen from their shape on the page
+  (`coolplot.thermo.stepping`): straight parts get few points, bends
+  more, and nothing is computed outside the area the axes show except
+  the points that locate where a line enters or leaves it. The number of
+  points of a line is no longer fixed; `Settings.calc.points` is the
+  resolution (about the points of a line across the whole chart).
+* An isotherm or isobar is followed through the dome in vapour quality,
+  so a blend's temperature glide is drawn (the 5 bar isobar of R407C in
+  a T-s chart has 44 points inside the dome, before 5) and a pure
+  fluid's tie line is exact.
+* The tracer of blends is much cheaper: the quality of a two-phase
+  point is found by a secant iteration from the previous point (two or
+  three saturation calls instead of six), densities are solved on the
+  specific volume, and roots near the critical point are judged by the
+  densities of the phase envelope instead of being handed to a cold
+  flash. The default p-h chart of R410A draws in 5 s (before 23 s), of
+  R407C in 11 s (before 27 s).
+* Lines of intermediate quality of a blend run up to the top of the
+  phase envelope, the critical point, and are stepped like other lines.
+* CoolProp 8 is required (plan decision D2); the paths for CoolProp 6
+  and 7, which could not flash mixtures from h, s, u or rho, are gone.
+* Fluid states carry the specific volume `v` (1/rho) and can be given by
+  it; `Unit` has a label for differences (`ENGINEERING.difference("T")`
+  is K) and `BAR_GAUGE`, `PSI_GAUGE` are gauge pressures, drawn on a
+  linear axis. A spec's custom unit record may carry the difference
+  label as a fourth element.
+* `PropertyError` says what is wrong where the fluid can tell (a
+  temperature or pressure outside the equation of state, a quality
+  above the critical point, an input pair CoolProp does not solve for
+  mixtures), with the limit in the chart's units, before CoolProp's own
+  message (`reason`, `limits`, `with_reason`).
+* `Curve` records `n_evaluated` and `n_outside`; a line that lies
+  outside the axes (a value at the edge of the range) is left out
+  without a warning, with `Curve.reason` saying so.
+* The label layout clips lines to the frame with numpy
+  (`visible_pieces`, `Piece.project`), a few times faster.
+* The numerics sweeps of the review live in `tests/numerics` and run
+  with `pytest --run-slow` (`make test-slow`).
+
+Behaviour changes: a chart has different (fewer, on straight lines)
+points per isoline, and lines are cut at the edges of the axes instead
+of continuing outside; `Curve` has two more fields; `STATE_KEYS` has
+`v`; `Unit` has a fourth field.
+
 0.6.0 (unreleased)
 ------------------
 

@@ -346,7 +346,8 @@ def _units_to_dict(units: UnitSystem):
     if UNIT_SYSTEMS.get(units.name.upper()) == units:
         return units.name
     return {"name": units.name,
-            "units": {k: [u.label, u.scale, u.offset] for k, u in units.units.items()}}
+            "units": {k: [u.label, u.scale, u.offset] + ([u.difference_label] if u.difference_label else [])
+                      for k, u in units.units.items()}}
 
 
 def _units_from_dict(data) -> UnitSystem:

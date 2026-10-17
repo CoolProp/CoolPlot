@@ -105,7 +105,7 @@ class Engine:
         def compute():
             return compute_curve(self.fluid(spec.fluid), spec.diagram, request.key, request.value_SI,
                                  domain.tp_box, request.points, calc.solver, calc.critical_margin,
-                                 calc.saturation_spacing)
+                                 calc.saturation_spacing, domain.ranges_SI)
 
         return self.cache.get_or_compute(self.cache_key(spec, domain, request), compute)
 
@@ -136,6 +136,8 @@ class Engine:
                     result.append((request, curve))
                 continue
             if curve.n_valid < 2:
+                if curve.n_failed == 0 and curve.n_outside > 0:
+                    continue   # the line lies outside the calculation domain: nothing to draw, nothing wrong
                 why = curve.reason or "CoolProp failed for {0} of {1} points".format(curve.n_failed, total)
                 self._warn(spec, domain, request, "Skipping the line {0}={1:.6g} in {2}: {3}.".format(
                     request.key, request.value_SI, spec.fluid.name, why))

@@ -219,7 +219,8 @@ Step 3 added the numerics in `thermo`: `tracer.py` (the `IsoLineTracer`
 ported from CoolProp 8), saturation states inserted where an isoline
 meets the dome, the bubble and dew lines of mixtures from the phase
 envelope, and diagnostics on every `Curve` (`n_failed`, `n_gaps`,
-`n_fallback`, `n_inserted`, `method`).
+`n_fallback`, `n_inserted`, `method`). Package 0.7 of the 1.0 plan
+replaced the fixed grid of points by adaptive stepping, see section 11.
 
 Step 4 added `compose/layout.py`, the label layout (section 6): edge
 labels just inside the frame where the lines leave the plot, keep-out
@@ -642,3 +643,85 @@ several minutes. What remains are near-critical points the tracer hands
 back to a plain flash, at up to 2 s each; the 0.3 background engine
 addresses that. Before CoolProp 8 the tracer is switched off, because
 some of its saturation calls abort the Python process there.
+
+
+## 11. Numerics (0.7)
+
+How one isoline is computed, in `thermo/isolines.py`,
+`thermo/stepping.py` and `thermo/tracer.py`. Nothing here knows about
+units, styles or plotting libraries; the result is a `Curve` in SI units
+(docs/contracts.md, section 2).
+
+**Stepping.** A line of constant property is parametrised by the
+quantity that is stepped along it (temperature or pressure, chosen per
+family in `core/diagram_type.py`), mapped to a parameter u in 0..1,
+logarithmically for pressure. `stepping.trace` walks u from one end to
+the other with steps chosen from the shape of the line in *normalised
+plot coordinates* (each axis range mapped to 0..1, the logarithm taken
+for log axes): a step is accepted when the drawn segment is shorter than
+`STEP_FACTOR / points` and turns by less than `MAX_ANGLE_DEG` against
+the segment before; otherwise it is halved and tried again. The next
+step is aimed at four fifths of those limits, so that a rejected step
+(which costs an evaluation) is rare. A straight line across the chart
+gets about `points / 2.5` points, a bend as many as its curvature
+needs. The axis ranges come from the engine's `Domain` (the ranges of
+the axis quantities over the T-p box), so the same line is stepped the
+same way in every unit system and the curve cache stays valid.
+
+**The domain.** A point outside the area the axes show is never drawn,
+so it is not computed either, except to locate where the line leaves or
+enters that area: the exit point is found by bisection (to 1e-3 of the
+parameter range) and the line continues outside in doubling steps only
+to see whether it comes back. `Curve.n_outside` counts those points;
+the sweeps in `tests/numerics` check that they stay below a tenth of
+the evaluations. A line that touches the area at one point only (a
+value at the very edge of a range, which the default line values
+produce) is left out silently, with `Curve.reason` saying so.
+
+**Points.** A pure fluid is flashed: CoolProp's flashes of pure fluids
+are fast and reliable, and the inverse flash confirms every point to
+about 1e-9. A mixture is traced (`tracer.IsoLineTracer`): each
+single-phase point is a two-by-two Newton iteration in (T, rho) started
+from the previous point, each two-phase point a one-dimensional solve
+for the vapour quality between the saturation states at its temperature
+or pressure. The 0.7 changes to the tracer are a secant iteration for
+the quality that starts from the previous point's quality and settles
+in two or three saturation calls (a regula falsi over the whole dome is
+kept for the first point and as the fallback), solving densities on the
+specific volume (which is nearly linear in the quality), and judging a
+root near the critical point, where the saturation solver stops
+answering, by the densities of the phase envelope at its temperature:
+a root well outside them cannot be in the dome and is accepted, the
+rest is handed to a flash as before. Those three changes took the
+default R410A p-h chart from 23 s to 5 s; a cold h,p flash of a blend
+costs up to 0.5 s, so every avoided fallback counts.
+
+**The phase boundary.** An isotherm or isobar meets the dome at one
+temperature or pressure: its single-phase parts are stepped up to the
+bubble and dew states (known exactly, from the saturation solver or,
+near the critical point of a mixture, interpolated on the phase
+envelope), and the part between them is stepped in vapour quality with
+the same stepping rule, which draws the temperature glide of a blend
+and the exact tie line of a pure fluid. Every other line crosses the
+boundary where the phase of its points changes; the saturation state
+there is found on the saturation curve (pure fluids, a regula falsi
+along it) or interpolated on the phase envelope (mixtures) and inserted,
+so the kink sits on the dome. A step that crosses the boundary is
+accepted whatever its turn: the kink is real.
+
+**Quality lines.** Pure fluids: saturation states on a temperature grid
+that is denser towards the critical point, which is appended. Mixtures:
+the bubble and dew lines are the two branches of CoolProp's phase
+envelope (about 300 points, through the critical region); a line of
+intermediate quality is stepped in temperature up to the top of a
+closed envelope (the critical point, appended as its last point), and
+the saturation solver's occasional failures in the last kelvins are
+left out rather than left as gaps.
+
+**Acceptance (docs/v1_plan.md, 0.7)**, measured on this machine: every
+pure-fluid line of R290 and CO2 round-trips through CoolProp's inverse
+flash to 1e-8 and every traced point of R410A and R32/R125 is confirmed
+by an independent p,T or p,Q flash to 1e-6 (`tests/numerics`); no line
+spends more than a tenth of its evaluations outside the axes; the
+default R410A p-h chart draws in 5 s; the 5 bar isobar of R407C in a
+T-s chart has 44 points inside the dome.

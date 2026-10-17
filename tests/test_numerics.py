@@ -8,9 +8,6 @@ from CoolProp.CoolProp import PropsSI  # noqa: E402
 
 from coolplot.thermo import (DiagramType, Fluid, compute_isoline, compute_quality_line,  # noqa: E402
                              get_tp_limits, resolve_tp_box)
-from coolplot.thermo.tracer import TRACER_AVAILABLE  # noqa: E402
-
-needs_tracer = pytest.mark.skipif(not TRACER_AVAILABLE, reason="the tracer needs CoolProp 8")
 
 TS = DiagramType.parse("Ts")
 PH = DiagramType.parse("ph")
@@ -34,9 +31,11 @@ def test_isobar_runs_horizontally_through_the_dome(r290):
     T_sat_K = PropsSI("T", "P", p_Pa, "Q", 0, "R290")
     s_liq, s_vap = (PropsSI("S", "P", p_Pa, "Q", q, "R290") for q in (0, 1))
     i = int(np.argmin(np.abs(curve.x - s_liq)))
-    # The bubble state is followed directly by the dew state at the same T
-    assert curve.x[i] == pytest.approx(s_liq) and curve.x[i + 1] == pytest.approx(s_vap)
-    assert curve.y[i] == pytest.approx(T_sat_K) and curve.y[i + 1] == pytest.approx(T_sat_K)
+    j = int(np.argmin(np.abs(curve.x - s_vap)))
+    # The bubble and dew states are on the line, exactly, with the tie line
+    # between them at the saturation temperature
+    assert curve.x[i] == pytest.approx(s_liq, rel=1e-9) and curve.x[j] == pytest.approx(s_vap, rel=1e-9)
+    assert j > i + 1 and curve.y[i:j + 1] == pytest.approx(T_sat_K, rel=1e-9)
     # T rises monotonically along the isobar; s too
     assert np.all(np.diff(curve.y) >= -1e-9) and np.all(np.diff(curve.x) > 0.0)
 
@@ -61,9 +60,9 @@ def test_isenthalp_meets_the_bubble_line_exactly(r290):
     assert np.min(np.abs(s_line - s_liq)) < 1e-6 * np.max(s_liq)
 
 
-@needs_tracer
 def test_tracer_agrees_with_flash_and_is_faster(blend):
     import time
+    from coolplot.thermo.isolines import _LineSolver
     box = resolve_tp_box(blend, get_tp_limits("ACHP"))
     t0 = time.perf_counter()
     traced = compute_isoline(blend, TS, "h", 4e5, box, points=25, solver="tracer")
@@ -71,19 +70,22 @@ def test_tracer_agrees_with_flash_and_is_faster(blend):
     flashed = compute_isoline(blend, TS, "h", 4e5, box, points=25, solver="flash")
     t2 = time.perf_counter()
     assert traced.method == "tracer" and flashed.method == "flash"
-    ok = np.isfinite(traced.x) & np.isfinite(flashed.x)
-    assert ok.sum() >= 20
-    assert traced.x[ok] == pytest.approx(flashed.x[ok], rel=1e-6)
-    assert traced.y[ok] == pytest.approx(flashed.y[ok], rel=1e-6)
+    assert traced.n_valid >= 20 and flashed.n_valid >= 20
     assert (t1 - t0) < (t2 - t1)
+    # The two lines step the pressure differently, so compare the two ways
+    # of computing a point at the same pressures: inside and outside the dome
+    tracer = _LineSolver(blend, "h", 4e5, "p", TS, None, "tracer")
+    flash = _LineSolver(blend, "h", 4e5, "p", TS, None, "flash")
+    for p_Pa in np.geomspace(1e5, 3e6, 7):
+        a, b = tracer.sample(p_Pa), flash.sample(p_Pa)
+        assert (a.x, a.y) == pytest.approx((b.x, b.y), rel=1e-8)
 
 
 def test_auto_solver_traces_mixtures_only(r290, blend):
     box = resolve_tp_box(r290, get_tp_limits("ACHP"))
     assert compute_isoline(r290, TS, "p", 5e5, box, points=10).method == "flash"
     box = resolve_tp_box(blend, get_tp_limits("ACHP"))
-    expected = "tracer" if TRACER_AVAILABLE else "flash"
-    assert compute_isoline(blend, TS, "p", 5e5, box, points=10).method == expected
+    assert compute_isoline(blend, TS, "p", 5e5, box, points=10).method == "tracer"
     with pytest.raises(ValueError):
         compute_isoline(blend, TS, "p", 5e5, box, points=10, solver="newton")
 
@@ -135,11 +137,9 @@ def test_gaps_count_only_inside_the_line():
 def test_blend_lines_meet_the_dome_near_the_critical_point(blend):
     # The saturation flash of the blend fails above about 340 K, so these
     # crossings can only come from the phase envelope
-    from coolplot.thermo.tracer import TRACER_AVAILABLE
     box = resolve_tp_box(blend, get_tp_limits("ACHP"))
-    if TRACER_AVAILABLE:   # CoolProp 6 and 7 cannot compute an isochore of a blend
-        isochore = compute_isoline(blend, PH, "rho", 300.0, box, points=40)
-        assert isochore.n_inserted == 1
+    isochore = compute_isoline(blend, PH, "rho", 300.0, box, points=40)
+    assert isochore.n_inserted == 1
     isotherm = compute_isoline(blend, PH, "T", 340.0, box, points=40)
     assert isotherm.n_inserted == 2
     # The two inserted states of the isotherm sit at 340 K on the envelope

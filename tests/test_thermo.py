@@ -103,14 +103,7 @@ def test_process_path(r290):
 # ---------------------------------------------------------------------------
 # 0.3.1: states CoolProp gets wrong, limits of mixtures, incompressibles
 # ---------------------------------------------------------------------------
-def _needs_coolprop_8():
-    from coolplot.thermo.tracer import TRACER_AVAILABLE
-    if not TRACER_AVAILABLE:
-        pytest.skip("CoolProp 6 and 7 cannot flash rho,T for mixtures at all")
-
-
 def test_inconsistent_mixture_states_are_refused():
-    _needs_coolprop_8()
     # CoolProp 8 answers (rho = 100 kg/m3, T = 264.16 K) of R407C, a two-phase
     # state, with a "gas" whose pressure belongs to another density
     from coolplot.thermo.fluid import Fluid
@@ -126,7 +119,6 @@ def test_inconsistent_mixture_states_are_refused():
 
 
 def test_flash_isochore_of_a_blend_round_trips():
-    _needs_coolprop_8()
     import CoolProp
     from CoolProp.CoolProp import AbstractState
     from coolplot.core.diagram_type import DiagramType
@@ -169,25 +161,15 @@ def test_incompressibles_plot_with_absolute_limits():
     diagram.set_lines("h", num=4)
     scene = diagram.update_scene((400.0, 300.0))
     lines = [item for item in scene if item.group.startswith("iso/")]
-    assert len(lines) == 8 and all(np.isfinite(line.x).sum() >= 100 for line in lines)
+    # The lowest and highest enthalpy touch the T-p box at one corner only
+    # and are left out; the isobars cross the chart, the isenthalps of an
+    # incompressible fluid are short (h and s both follow T)
+    assert len(lines) == 6
+    assert all(np.isfinite(line.x).sum() >= 100 for line in lines if line.group == "iso/p")
+    assert all(np.isfinite(line.x).sum() >= 10 for line in lines if line.group == "iso/h")
     with pytest.raises(ValueError, match="no two-phase region"):
         diagram.set_lines("Q", num=3)
         diagram.update_scene()
-
-
-def test_blend_lines_that_need_coolprop_8_are_skipped_with_a_reason(monkeypatch):
-    import warnings
-    from coolplot import PropertyDiagram
-    from coolplot.thermo import isolines
-    monkeypatch.setattr(isolines, "TRACER_AVAILABLE", False)   # as on CoolProp 6 and 7
-    diagram = PropertyDiagram("HEOS::R32[0.697615]&R125[0.302385]", "ph", tp_limits="ACHP")
-    diagram.set_lines("T", values=[0.0])
-    diagram.set_lines("s", values=[1.5])
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        scene = diagram.update_scene((400.0, 300.0))
-    assert [i.group for i in scene if i.group.startswith("iso/")] == ["iso/T"]
-    assert any("need CoolProp 8" in str(w.message) for w in caught)
 
 
 # Regression tests from the adversarial review of 0.2 ------------------------

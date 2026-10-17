@@ -17,5 +17,8 @@ test:
 test-all:   ## also the tests that need a browser and Kaleido
 	python -m pytest -v --run-browser --run-kaleido
 
+test-slow:  ## the numerics sweeps over every line of every diagram type
+	python -m pytest -v --run-slow tests/numerics
+
 build:
 	python -m build

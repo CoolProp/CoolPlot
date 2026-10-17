@@ -39,6 +39,15 @@ def parameter_index(key: str) -> int:
 INTERACTION_KEYS = ("betaT", "gammaT", "betaV", "gammaV", "Fij", "kij")
 
 
+def _as_density(key: str, value_SI: float) -> Tuple[str, float]:
+    """A specific volume given as an input becomes the density CoolProp works with."""
+    if key == "v":
+        if not value_SI > 0.0:
+            raise ValueError("A specific volume has to be positive, not {0}.".format(value_SI))
+        return "rho", 1.0 / value_SI
+    return key, value_SI
+
+
 def model_from_state(state: AbstractState) -> Tuple:
     """Snapshot of the fluid model of an AbstractState, as plain data.
 
@@ -208,15 +217,58 @@ class Fluid:
         See :meth:`update_pair` for what happens with mixtures. Returns the
         state that holds the result; :meth:`get` reads it.
         """
-        pair, v1, v2 = CP.generate_update_pair(parameter_index(key1), value1_SI,
-                                               parameter_index(key2), value2_SI)
+        inputs = ((quantity_key(key1), float(value1_SI)), (quantity_key(key2), float(value2_SI)))
         try:
+            (key1, value1_SI), (key2, value2_SI) = (_as_density(k, v) for k, v in inputs)
+            pair, v1, v2 = CP.generate_update_pair(parameter_index(key1), value1_SI,
+                                                   parameter_index(key2), value2_SI)
             return self.update_pair(pair, v1, v2)
         except PropertyError:
             raise
         except ValueError as e:
-            raise PropertyError(self.name, ((quantity_key(key1), value1_SI), (quantity_key(key2), value2_SI)),
-                                str(e)) from None
+            reason, limits = self.diagnose(inputs, str(e))
+            raise PropertyError(self.name, inputs, str(e), reason=reason, limits=limits) from None
+
+    def diagnose(self, inputs, message: str = "") -> Tuple[str, Tuple]:
+        """Why a state cannot be computed, in plain words, as far as the fluid can tell.
+
+        Returns (reason, limits) for :class:`coolplot.core.errors.PropertyError`:
+        an input outside the range of the equation of state, a vapour
+        quality above the critical point, or an input pair CoolProp does
+        not solve for mixtures. ``message`` is what CoolProp said. The
+        reason is empty when nothing is obviously wrong.
+        """
+        given = {quantity_key(k): float(v) for k, v in inputs}
+        for key, low, high, what in (("T", self.T_min_K, self.T_max_K, "temperature"),
+                                     ("p", self.p_min_Pa, self.p_max_Pa, "pressure")):
+            value = given.get(key)
+            if value is None:
+                continue
+            if low is not None and value < low * (1.0 - 1e-9):
+                return "{0} is below the lowest {1} of the equation of state, {{0}}".format(key, what), ((key, low),)
+            if high is not None and value > high * (1.0 + 1e-9):
+                return "{0} is above the highest {1} of the equation of state, {{0}}".format(key, what), ((key, high),)
+        if "Q" in given:
+            return self._diagnose_quality(given)
+        if "not yet supported" in message or "not ready for mixtures" in message:
+            keys = " and ".join(sorted(given))
+            return ("CoolProp does not solve a mixture from {0}; it solves p with any other quantity, and T with "
+                    "p, rho or Q".format(keys)), ()
+        return "", ()
+
+    def _diagnose_quality(self, given: dict) -> Tuple[str, Tuple]:
+        Q = given["Q"]
+        if not self.has_critical_point:
+            return "{0} has no two-phase region, so no state can be given by Q".format(self.name), ()
+        if not 0.0 <= Q <= 1.0:
+            return "a vapour quality has to be between 0 and 1", ()
+        crit = self.critical
+        for key, name in (("T", "temperature"), ("p", "pressure")):
+            value = given.get(key)
+            if value is not None and value > crit[key] * (1.0 - 1e-9):
+                return ("{0} is above the critical {1} {{0}}, where there is no two-phase region to give a quality "
+                        "in".format(key, name)), ((key, crit[key]),)
+        return "", ()
 
     def update_pair(self, pair, value1: float, value2: float) -> AbstractState:
         """Set the working state from a CoolProp input pair and its two values.
@@ -303,6 +355,8 @@ class Fluid:
 
     def get(self, key: str) -> float:
         """Read one quantity of the state set by the last :meth:`update`, in SI units."""
+        if quantity_key(key) == "v":
+            return 1.0 / self._current.keyed_output(CoolProp.iDmass)
         return self._current.keyed_output(parameter_index(key))
 
     def state_point(self, key1: str, value1_SI: float, key2: str, value2_SI: float) -> StatePoint:
@@ -494,7 +548,16 @@ class PhaseEnvelope:
     CoolProp stores the bulk phase in the "vap" fields and the incipient
     phase in the "liq" fields on both branches, so the bulk density is
     always ``rhomolar_vap``.
+
+    ``closed`` says whether the envelope ran up to the critical point: its
+    two densities then meet at its hottest point, which :meth:`top` gives.
+    An envelope that stopped early (R504's ends 37 K below the critical
+    point) says nothing about where the dome ends.
     """
+
+    #: An envelope whose two densities at the hottest point still differ by
+    #: more than this, relatively, did not reach the critical point.
+    CLOSED_RTOL = 0.35
 
     def __init__(self, fluid: "Fluid"):
         work = build_state(fluid.model_key)
@@ -516,6 +579,13 @@ class PhaseEnvelope:
         self._rhomolar = rhomolar
         if not (np.any(self.Q == 0.0) and np.any(self.Q == 1.0)):
             raise ValueError("The phase envelope of {0} has no bubble or no dew line.".format(fluid.name))
+        self._hot = int(np.argmax(self._values["T"]))
+        rho_liq, rho_vap = float(data.rhomolar_liq[self._hot]), float(rhomolar[self._hot])
+        self.closed = bool(abs(rho_liq - rho_vap) <= self.CLOSED_RTOL * max(rho_liq, rho_vap))
+
+    def top(self, key: str) -> float:
+        """A property at the hottest point of the envelope, the critical point when ``closed``."""
+        return float(self.values(key)[self._hot])
 
     def __len__(self):
         return len(self.Q)

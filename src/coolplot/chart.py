@@ -74,8 +74,7 @@ def state_input(entry, units, provider) -> StateInput:
     if isinstance(entry, StateInput):
         return entry
     if isinstance(entry, StatePoint):
-        check_state(entry, provider)
-        return StateInput(state=entry)
+        return StateInput(state=check_state(entry, provider))
     if not isinstance(entry, dict):
         raise TypeError("A state is a StatePoint or a dict of properties, not {0}.".format(type(entry).__name__))
     entry = dict(entry)
@@ -127,8 +126,14 @@ def _checked_range(family, label: str, range_SI):
     return range_SI
 
 
-def check_state(state: StatePoint, provider):
-    """Raise ValueError if a complete state does not belong to ``provider``."""
+def check_state(state: StatePoint, provider) -> StatePoint:
+    """The complete state, or ValueError if it does not belong to ``provider``.
+
+    A fluid state saved before 0.7 lacks the specific volume; it is
+    filled in from the density.
+    """
+    if "v" not in state and "rho" in state and provider.kind == "fluid" and state.rho > 0.0:
+        state = StatePoint(v=1.0 / state.rho, **state.to_dict())
     missing = [k for k in provider.quantities if k not in state]
     if missing:
         raise ValueError("The state {0} is not a state of {1}: it lacks {2}.".format(state, provider.name, missing))
@@ -136,6 +141,7 @@ def check_state(state: StatePoint, provider):
     if p_Pa is not None and abs(state.p - p_Pa) > 1e-6 * p_Pa:
         raise ValueError("The state {0} is at {1:.6g} Pa, but the chart shows {2}.".format(
             state, state.p, provider.name))
+    return state
 
 
 class Chart:

@@ -31,27 +31,48 @@ class PropertyError(ValueError):
         What asked for the state, e.g. "State 2 of cycle 'heat pump'".
     units : UnitSystem or None
         The unit system the message is written in; SI if None.
+    reason : str
+        What is wrong with the request, in plain words, as far as the
+        thermo layer can tell: a temperature outside the equation of
+        state, a quality above the critical point, an input pair CoolProp
+        does not solve for mixtures. Empty when it cannot tell. It may
+        hold placeholders ``{0}``, ``{1}`` for the values in ``limits``.
+    limits : tuple of (key, value_SI)
+        The values the reason refers to, written in the message's units.
     """
 
     def __init__(self, fluid: str, inputs: Tuple[Tuple[str, float], ...], cause: str, where: str = "",
-                 units=None):
+                 units=None, reason: str = "", limits: Tuple[Tuple[str, float], ...] = ()):
         self.fluid = str(fluid)
         self.inputs = tuple((str(k), float(v)) for k, v in inputs)
         self.cause = str(cause).strip()
         self.where = str(where)
         self.units = units
+        self.reason = str(reason)
+        self.limits = tuple((str(k), float(v)) for k, v in limits)
         super().__init__(str(self))
+
+    def _copy(self, **changes) -> "PropertyError":
+        fields = dict(fluid=self.fluid, inputs=self.inputs, cause=self.cause, where=self.where, units=self.units,
+                      reason=self.reason, limits=self.limits)
+        fields.update(changes)
+        return PropertyError(**fields)
 
     def with_units(self, units) -> "PropertyError":
         """The same error, written in another unit system."""
-        return PropertyError(self.fluid, self.inputs, self.cause, self.where, units)
+        return self._copy(units=units)
 
     def with_where(self, where: str) -> "PropertyError":
-        return PropertyError(self.fluid, self.inputs, self.cause, where, self.units)
+        return self._copy(where=where)
+
+    def with_reason(self, reason: str, limits=()) -> "PropertyError":
+        """The same error with the plain-words diagnosis attached."""
+        return self._copy(reason=reason, limits=limits)
 
     def __reduce__(self):
         # Rebuilt through the constructor, so the error travels between processes
-        return (PropertyError, (self.fluid, self.inputs, self.cause, self.where, self.units))
+        return (PropertyError, (self.fluid, self.inputs, self.cause, self.where, self.units, self.reason,
+                                self.limits))
 
     def __str__(self) -> str:
         from .units import SI, get_unit_system
@@ -66,7 +87,12 @@ class PropertyError(ValueError):
         text = "No state of {0} at {1}".format(self.fluid, given)
         if self.where:
             text = "{0}: {1}".format(self.where, text[0].lower() + text[1:])
-        return "{0} ({1}).".format(text, self.cause) if self.cause else text + "."
+        details = []
+        if self.reason:
+            details.append(self.reason.format(*[describe(k, v) for k, v in self.limits]))
+        if self.cause:
+            details.append(("CoolProp: " if self.reason else "") + self.cause)
+        return "{0} ({1}).".format(text, "; ".join(details)) if details else text + "."
 
 
 def deprecated(replacement: str, since: str = "0.5"):
