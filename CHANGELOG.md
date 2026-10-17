@@ -6,6 +6,22 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### 0.9.0
+
+#### Added
+- Fluid lines are computed by CoolProp's C++ port of the numerics
+  (`CoolProp.CoolProp.Plot`, in CoolProp after 8.0.0) when the installed
+  CoolProp has it: the same stepping, tracer and dome crossings, point
+  for point, with the GIL released; a pure-fluid chart takes half the
+  time, a blend's a tenth less (CoolProp's solvers take the rest).
+  `COOLPLOT_NATIVE=0` keeps the Python numerics, which stay the reference
+  and do the work for models the port cannot name
+  (`coolplot.thermo.native`).
+- Labels next to the bottom of a log axis that starts close to zero (the
+  isotherm labels of R290 with the default limits) got a NaN angle from
+  matplotlib and made saving the chart fail; they get their angle computed
+  once instead.
+
 ### 0.8.0: documentation
 
 #### Added

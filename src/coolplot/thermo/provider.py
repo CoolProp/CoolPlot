@@ -29,6 +29,7 @@ from typing import Tuple
 from ..core.quantities import quantity_key
 from .fluid import Fluid
 from .humid_air import HumidAir
+from . import native
 from .isolines import Curve, compute_isoline, compute_quality_line
 from .limits import property_range_SI, resolve_tp_box
 
@@ -65,10 +66,17 @@ def compute_curve(provider, diagram, key: str, value_SI: float, tp_box, points: 
     the ``solver``; humid-air lines are sampled in dry-bulb temperature.
     ``ranges`` are the (key, (min, max)) pairs of :func:`chart_domain`,
     which the stepping of fluid lines measures its steps by.
+
+    Fluid lines are computed by CoolProp's C++ port of the numerics when
+    the installed CoolProp has it, see :mod:`coolplot.thermo.native`.
     """
     key = quantity_key(key)
     if provider.kind == "humid_air":
         return provider.line(key, value_SI, tp_box, points)
+    if native.enabled():
+        curve = native.compute_curve(provider, diagram, key, value_SI, tp_box, points, solver, margin, spacing)
+        if curve is not None:
+            return curve
     if key == "Q":
         return compute_quality_line(provider, diagram, value_SI, points, margin, spacing)
     return compute_isoline(provider, diagram, key, value_SI, tp_box, points, solver, margin,

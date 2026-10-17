@@ -54,3 +54,21 @@ appended. For a mixture, the bubble and dew lines are the two branches
 of CoolProp's phase envelope, which follows the dome through the
 critical region where the saturation solver fails; a line of
 intermediate quality is stepped up to the top of the envelope.
+
+## The C++ port in CoolProp
+
+CoolProp carries a C++ port of the three modules above as
+`CoolProp::Plot` (`src/CoolPropPlot.cpp` in the CoolProp repository),
+exposed to Python as `CoolProp.CoolProp.Plot`. When the installed
+CoolProp has it, {func}`coolplot.thermo.provider.compute_curve` sends
+every fluid line there, see {mod}`coolplot.thermo.native`: the same
+stepping, tracer and crossings, point for point, with the GIL released
+while the line is computed, so background calculation keeps a window
+responsive. The time of a chart is mostly CoolProp's own solvers, so the
+port saves the Python overhead only: half the time of a pure-fluid chart,
+a tenth of a blend's. The Python modules stay the reference the tests
+check, and do the work when the port is absent, when the environment
+variable `COOLPLOT_NATIVE` is `0`, or for a model the port cannot take
+(binary interaction parameters set on the state, mass fractions on a
+Helmholtz backend). Humid-air lines and the states of cycles are not
+part of the port.

@@ -566,10 +566,21 @@ class MatplotlibRenderer(Renderer):
         # +-90 degrees keeps the screen angle upright as well, because
         # the axes are never inverted.
         angle = 0.0
+        artist.set_transform_rotates_text(True)
         if item.direction is not None:
             dx, dy = item.direction
             angle = _upright(math.degrees(math.atan2(dy, dx)))
         artist.set_rotation(angle)
+        if item.direction is not None and not math.isfinite(artist.get_rotation()):
+            # matplotlib finds the screen angle by moving the anchor a fixed
+            # 1e-5 in data units, which lands below zero next to the bottom
+            # of a log axis that starts close to it (an isotherm label at
+            # 2e-8 bar on a p axis from 1.7e-9 bar, R290 with the default
+            # limits) and gives NaN, which breaks the drawing. Such a label
+            # gets its screen angle computed here, once, instead.
+            angle = _screen_angle(transform, item.x, item.y, dx, dy)
+            artist.set_transform_rotates_text(False)
+            artist.set_rotation(angle)
         self._text_angles[item.id] = angle
         artist.set_visible(item.visible and math.isfinite(item.x) and math.isfinite(item.y))
         self._apply_halo(item, artist)
@@ -595,6 +606,7 @@ class MatplotlibRenderer(Renderer):
         halo.set_fontproperties(artist.get_fontproperties())
         halo.set_horizontalalignment(artist.get_horizontalalignment())
         halo.set_verticalalignment(artist.get_verticalalignment())
+        halo.set_transform_rotates_text(artist.get_transform_rotates_text())
         halo.set_rotation(self._text_angles.get(item.id, 0.0))   # the angle as set, before transform_rotates_text
         halo.set_color(s.halo_color)
         halo.set_alpha(s.alpha)
@@ -1171,6 +1183,23 @@ def _fonttype(pdf_fonts: str) -> int:
 def _safe_limits(limits, log):
     """Limits matplotlib can draw; the common rule of :func:`coolplot.scene.drawable_limits`."""
     return drawable_limits(limits, log)
+
+
+def _screen_angle(transform, x: float, y: float, dx: float, dy: float) -> float:
+    """The angle on screen, in degrees, of the data direction (dx, dy) at (x, y).
+
+    The direction is followed for a thousandth of the coordinates, a step
+    that stays inside a log axis for any positive value; a direction that
+    cannot be transformed gives 0.
+    """
+    step = 1e-3 * min(abs(x / dx) if dx else math.inf, abs(y / dy) if dy else math.inf)
+    if not math.isfinite(step) or step == 0.0:
+        step = 1e-3
+    x0, y0 = transform.transform((x, y))
+    x1, y1 = transform.transform((x + dx * step, y + dy * step))
+    if not all(math.isfinite(v) for v in (x0, y0, x1, y1)):
+        return 0.0
+    return _upright(math.degrees(math.atan2(y1 - y0, x1 - x0)))
 
 
 def _upright(angle_deg: float) -> float:
