@@ -145,8 +145,11 @@ class Fluid:
 
     def _reset_caches(self):
         self._critical = None
+        self._has_critical = None
         self._envelope = None
         self._guide = None         # scratch state for difficult saturation states, see update()
+        self._components = None    # pure states of the components of a mixture, see _component_states()
+        self._fingerprint = None
         self._current = self._state   # the state the last update() set; get() reads it
 
     def __repr__(self):
@@ -192,31 +195,83 @@ class Fluid:
     def update(self, key1: str, value1_SI: float, key2: str, value2_SI: float) -> AbstractState:
         """Set the working state from two quantities given by CoolPlot keys.
 
-        For a mixture, a saturation state (vapour quality as one input)
-        that CoolProp cannot find is tried once more on a separate scratch
-        state that has the phase envelope built: CoolProp's mixture
-        saturation solvers take their starting values from it. That rescues
-        most condenser and evaporator states of blends, for example the dew
-        point of R32/R125 (70/30) at 26.6 bar. The working state is never
-        changed by this, so every other calculation gives the same result
-        whatever was computed before.
-
-        Returns the state that holds the result; :meth:`get` reads it.
+        See :meth:`update_pair` for what happens with mixtures. Returns the
+        state that holds the result; :meth:`get` reads it.
         """
         pair, v1, v2 = CP.generate_update_pair(parameter_index(key1), value1_SI,
                                                parameter_index(key2), value2_SI)
+        return self.update_pair(pair, v1, v2)
+
+    def update_pair(self, pair, value1: float, value2: float) -> AbstractState:
+        """Set the working state from a CoolProp input pair and its two values.
+
+        For a mixture, a state that CoolProp cannot find is tried once more
+        on a separate scratch state that has the phase envelope built:
+        CoolProp's mixture solvers take their starting values from it. That
+        rescues most condenser and evaporator states of blends, for example
+        the dew point of R32/R125 (70/30) at 26.6 bar. The working state is
+        never changed by this, so every other calculation gives the same
+        result whatever was computed before.
+
+        A mixture state that CoolProp returns without raising is also
+        checked, see :meth:`inconsistency`: CoolProp 8 answers some inputs
+        inside the two-phase region with a single-phase state whose pressure
+        and enthalpy belong to another density. Such a state raises
+        ValueError here instead of being drawn.
+
+        Returns the state that holds the result; :meth:`get` reads it.
+        """
         self._current = self._state
         try:
-            self._state.update(pair, v1, v2)
+            self._state.update(pair, value1, value2)
         except Exception:
-            guide = None
-            if not self.is_pure and "Q" in (get_quantity(key1).key, get_quantity(key2).key):
-                guide = self._guide_state()
+            guide = self._guide_state() if not self.is_pure else None
             if guide is None:
                 raise
-            guide.update(pair, v1, v2)
+            guide.update(pair, value1, value2)
             self._current = guide
+        problem = self.inconsistency(self._current)
+        if problem is not None:
+            raise ValueError("CoolProp returned an inconsistent state for {0}: {1}".format(self.name, problem))
         return self._current
+
+    def inconsistency(self, state: AbstractState) -> Optional[str]:
+        """Why a state of a mixture cannot be right, or None if it passes.
+
+        Below the critical temperature of the mixture a single-phase state
+        cannot be denser than the saturated vapour and less dense than the
+        saturated liquid at its temperature: those densities bound the
+        two-phase region. CoolProp 8's T,rho flash of mixtures reports such
+        states as "gas" with Q = -1 (R407C at 100 kg/m3 and 264 K, for
+        example), with a pressure and enthalpy that belong to a different
+        density. Pure fluids are not checked: their flashes are reliable.
+        """
+        if self.is_pure:
+            return None
+        try:
+            Q = state.Q()
+            if 0.0 <= Q <= 1.0:
+                return None   # two-phase states come out of the saturation solver itself
+            T_K, rho = state.T(), state.rhomolar()
+        except Exception:
+            return None
+        if not self.has_critical_point or T_K >= self.critical["T"] * (1.0 - 1e-6):
+            return None   # above the critical temperature there is no dome to be in (retrograde regions excluded)
+        guide = self._guide_state()
+        if guide is None:
+            return None
+        try:
+            guide.update(CoolProp.QT_INPUTS, 1.0, T_K)
+            rho_vap = guide.rhomolar()
+            guide.update(CoolProp.QT_INPUTS, 0.0, T_K)
+            rho_liq = guide.rhomolar()
+        except Exception:
+            return None   # no saturation state at this temperature: nothing to compare with
+        if rho_vap * (1.0 + 1e-6) < rho < rho_liq * (1.0 - 1e-6):
+            return ("reported as single phase at T = {0:.2f} K with rho = {1:.4g} mol/m3, between the saturated "
+                    "vapour ({2:.4g}) and liquid ({3:.4g}) densities, i.e. inside the two-phase region"
+                    .format(T_K, rho, rho_vap, rho_liq))
+        return None
 
     def _guide_state(self) -> Optional[AbstractState]:
         """A scratch state with the phase envelope built, made once; None if that fails."""
@@ -246,13 +301,48 @@ class Fluid:
             return None
         return value if np.isfinite(value) else None
 
+    def _component_states(self):
+        """One pure state per component of a mixture (None if that fails), made once."""
+        if self._components is None:
+            self._components = False
+            if not self.is_pure:
+                try:
+                    self._components = [AbstractState(self._model[0], name) for name in self._model[1]]
+                except Exception:
+                    pass
+        return self._components or None
+
+    def _lowest_temperature(self, index) -> Optional[float]:
+        """A lower temperature limit: for a mixture the highest one of its components.
+
+        CoolProp reports the mole-weighted average of the components' values
+        for a mixture (129 K for R32/R1234yf 50/50, although R32 is solid
+        below 136.3 K), which is below where any component's equation of
+        state is valid, and CoolProp's own flashes contradict each other
+        there.
+        """
+        value = self._trivial(index)
+        components = self._component_states()
+        if components:
+            found = []
+            for component in components:
+                try:
+                    v = component.trivial_keyed_output(index)
+                except Exception:
+                    continue
+                if np.isfinite(v):
+                    found.append(v)
+            if found:
+                value = max(found) if value is None else max([value] + found)
+        return value
+
     @property
     def T_triple_K(self) -> Optional[float]:
-        return self._trivial(CoolProp.iT_triple)
+        return self._lowest_temperature(CoolProp.iT_triple)
 
     @property
     def T_min_K(self) -> Optional[float]:
-        return self._trivial(CoolProp.iT_min)
+        return self._lowest_temperature(CoolProp.iT_min)
 
     @property
     def T_max_K(self) -> Optional[float]:
@@ -269,6 +359,54 @@ class Fluid:
     @property
     def is_pure(self) -> bool:
         return len(self._model[1]) == 1
+
+    @property
+    def has_critical_point(self) -> bool:
+        """Whether CoolProp provides a critical point, i.e. a saturation curve and a dome.
+
+        Incompressible fluids (INCOMP backend) have none: no saturation range,
+        no quality lines, no saturation states inserted into lines."""
+        if self._has_critical is None:
+            try:
+                self.critical
+                self._has_critical = True
+            except ValueError:
+                self._has_critical = False
+        return self._has_critical
+
+    @property
+    def fingerprint(self) -> Tuple:
+        """What identifies CoolProp's answers for this model beyond the model itself.
+
+        CoolProp's version, its global configuration, and the enthalpy and
+        entropy at one probe state (which move with the reference state set
+        by ``set_reference_state``). Part of every cache key, so a curve
+        computed under other settings is never served.
+        """
+        if self._fingerprint is None:
+            version = getattr(CoolProp, "__version__", "")
+            try:
+                config = CP.get_config_as_json_string()
+            except Exception:
+                config = ""
+            h = s = float("nan")
+            try:
+                probe = build_state(self._model)
+                T_K = (self.T_max_K or 300.0) * (1.0 - 1e-6)
+                p_Pa = max(self.p_min_Pa or 0.0, 1e5)
+                probe.update(CoolProp.PT_INPUTS, p_Pa, T_K)
+                h, s = probe.hmass(), probe.smass()
+            except Exception:
+                pass
+            self._fingerprint = (version, hash(config), round(h, 6), round(s, 6))
+        return self._fingerprint
+
+    def configuration_changed(self) -> bool:
+        """Whether CoolProp's global configuration differs from the one this fluid was made under."""
+        try:
+            return hash(CP.get_config_as_json_string()) != self.fingerprint[1]
+        except Exception:
+            return False
 
     @property
     def critical(self) -> dict:
@@ -304,6 +442,10 @@ class Fluid:
         key = get_quantity(key).key
         if key not in ("T", "p"):
             raise ValueError("Saturation ranges are defined in T or p, not in '{0}'.".format(key))
+        if not self.has_critical_point:
+            raise ValueError("{0} has no saturation curve (CoolProp provides no critical point for it); give "
+                             "absolute temperature and pressure limits, e.g. tp_limits=[T_min_K, T_max_K, "
+                             "p_min_Pa, p_max_Pa].".format(self.name))
         crit = self.critical
         rel_small = float(margin)
         T_lo_K = max(v for v in (self.T_triple_K, self.T_min_K, 0.0) if v is not None)

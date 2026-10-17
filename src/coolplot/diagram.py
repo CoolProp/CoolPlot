@@ -135,6 +135,14 @@ class PropertyDiagram:
     def cache(self) -> CurveCache:
         return self.engine.cache
 
+    def refresh(self):
+        """Make the engine forget its CoolProp states, after a change CoolProp does not report.
+
+        Call it after ``CoolProp.CoolProp.set_reference_state``; changes made
+        with ``set_config_*`` are noticed by themselves. The next update
+        computes every line again."""
+        self.engine.refresh()
+
     @property
     def fluid(self) -> Fluid:
         """The working Fluid of the engine, e.g. for :func:`coolplot.thermo.state_point`."""

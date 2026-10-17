@@ -152,3 +152,55 @@ def test_two_diagrams_share_an_engine():
     ph.update_scene()
     ts.update_scene()
     assert ph.cache.misses == 4   # same values, different axes
+
+
+# ---------------------------------------------------------------------------
+# 0.3.1: CoolProp's global state and the cache
+# ---------------------------------------------------------------------------
+def test_a_changed_reference_state_never_serves_old_curves():
+    from CoolProp.CoolProp import set_reference_state
+    from coolplot import PropertyDiagram
+
+    def first_h(diagram):
+        line = [i for i in diagram.update_scene((400.0, 300.0)) if i.id.startswith("iso/T")][0]
+        return line.x[0]
+
+    first = PropertyDiagram("R134a", "ph")
+    first.set_isolines("T", values=[20.0])
+    h_default = first_h(first)
+    try:
+        set_reference_state("R134a", "NBP")
+        second = PropertyDiagram("R134a", "ph", cache=first.cache)   # shares the cache
+        second.set_isolines("T", values=[20.0])
+        assert first_h(second) != pytest.approx(h_default)            # not the stale curve
+        assert first_h(first) == pytest.approx(h_default)             # the old engine still has old states
+        first.refresh()
+        assert first_h(first) == pytest.approx(first_h(second))
+    finally:
+        set_reference_state("R134a", "DEF")
+
+
+def test_a_changed_configuration_rebuilds_the_fluid():
+    import CoolProp.CoolProp as CP
+    from coolplot.engine import Engine
+    from coolplot.spec import FluidSpec
+    engine = Engine()
+    spec = FluidSpec.parse("R134a")
+    before = engine.fluid(spec)
+    assert engine.fluid(spec) is before
+    # Through the JSON string, which every CoolProp version offers the same way
+    import json
+    config = json.loads(CP.get_config_as_json_string())
+    changed = dict(config, NORMALIZE_GAS_CONSTANTS=not config["NORMALIZE_GAS_CONSTANTS"])
+    try:
+        CP.set_config_as_json_string(json.dumps(changed))
+        assert engine.fluid(spec) is not before
+    finally:
+        CP.set_config_as_json_string(json.dumps(config))
+
+
+def test_a_curve_that_cannot_be_computed_names_its_reason():
+    from coolplot.thermo.isolines import Curve
+    import pickle
+    curve = Curve([], [], reason="needs CoolProp 8")
+    assert pickle.loads(pickle.dumps(curve)).reason == "needs CoolProp 8"

@@ -7,7 +7,7 @@ web backend draws it. Changing the theme never recalculates properties;
 only the restyled items are redrawn.
 
 ```python
-from CoolPlot import PropertyDiagram
+from coolplot import PropertyDiagram
 diagram = PropertyDiagram("HEOS::R290", "ph", units="EUR", theme="default")
 diagram.theme = "dark"                                 # switch at any time
 diagram.set_isoline_style("T", width_pt=1.0)           # one family, this diagram only
