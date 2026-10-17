@@ -184,14 +184,8 @@ def test_blend_lines_are_confirmed_states_and_are_smooth(blend):
                 continue
             w, T_K, p_Pa, Q, rho, source = sample.extra
             if 0.0 <= Q <= 1.0:
-                check.unspecify_phase()
-                try:
-                    check.update(CoolProp.PQ_INPUTS, p_Pa, Q)
-                except Exception:
-                    unverifiable += 1   # the checking flash fails near the critical point
-                    continue
-                if not _phases_are_distinct(check):
-                    unverifiable += 1   # the checking flash itself collapsed onto the trivial solution
+                if not _two_phase_check(check, T_K, p_Pa, Q):
+                    unverifiable += 1   # neither checking flash reproduces the point's T and p
                     continue
             else:
                 check.specify_phase(CoolProp.iphase_gas)
@@ -212,6 +206,27 @@ def test_blend_lines_are_confirmed_states_and_are_smooth(blend):
             confirmed += 1
         assert unverifiable <= 0.05 * (confirmed + unverifiable) + 2, where
     assert outside[0] <= 0.1 * outside[1]
+
+
+def _two_phase_check(check, T_K, p_Pa, Q):
+    """Put the checking state at (p, Q) or (T, Q); False if neither flash reproduces the sample's T and p.
+
+    CoolProp's p,Q flash of a mixture can converge on a wrong state (at
+    2.1 bar and quality 0.58 of R32/R125 it returned 275 K instead of
+    237 K) and both flashes fail near the critical point; such a point
+    cannot be checked with CoolProp.
+    """
+    check.unspecify_phase()
+    for pair, a, b in ((CoolProp.PQ_INPUTS, p_Pa, Q), (CoolProp.QT_INPUTS, Q, T_K)):
+        try:
+            check.update(pair, a, b)
+        except Exception:
+            continue
+        if not _phases_are_distinct(check):
+            continue   # the trivial solution, both phases at one density
+        if abs(check.T() - T_K) <= 1e-5 * T_K and abs(check.p() - p_Pa) <= 1e-5 * p_Pa:
+            return True
+    return False
 
 
 def test_quality_lines_reach_the_top_of_the_dome(blend):
