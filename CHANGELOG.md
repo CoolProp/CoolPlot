@@ -56,4 +56,19 @@ PropertyPlot`) is gone. Stay on `pip install "coolplot<0.2"` if you need it.
   (keep-out zones); one central number format for all labels.
 * Cycles on diagrams, given state by state in the diagram's units or from
   cycle models, including split and two-stage cycles.
-* Works with CoolProp 6.8, 7.2 and 8.
+* Works with CoolProp 6.8, 7.2 and 8. With CoolProp 6 and 7, lines of
+  constant s, h, u or rho of a blend are skipped with a warning that says
+  so (their flashes do not support mixtures there); isotherms, isobars
+  and quality lines work.
+* Every state CoolProp returns for a mixture is checked against the
+  saturated densities at its temperature: CoolProp 8's T,rho flash
+  answers some inputs inside the two-phase region with a "gas" at a
+  wrong pressure, and such points are left out instead of drawn.
+* Blends start at the highest triple-point temperature of their
+  components, not at CoolProp's mole-weighted average, below which one
+  component is solid.
+* Incompressibles (`INCOMP::...`) plot with absolute limits; relative
+  limits and quality lines give a clear error at once.
+* Cache keys carry a fingerprint of CoolProp's version, configuration and
+  reference state; a changed configuration rebuilds the states, and
+  `diagram.refresh()` does the same after `set_reference_state`.
