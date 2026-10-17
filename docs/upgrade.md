@@ -1,5 +1,37 @@
 # Upgrade guide
 
+## Stability from 1.0
+
+From 1.0 to 2.0 the public API is stable: the names importable from
+`coolplot` (frozen in tests/test_api_vocabulary.py), the chart verbs and
+properties, the keyword names, and the records of
+{doc}`reference/contracts`. A name that has to change in 1.x keeps working
+with a `DeprecationWarning` and goes in 2.0. Modules and names starting
+with an underscore, `coolplot.testing` and the scene item ids are not part
+of that promise; neither are the exact coordinates of a chart (better
+numerics may move points).
+
+## From 0.9 to 1.0
+
+The names deprecated since 0.5 are removed (the table under "From 0.4 to
+0.5" lists their replacements). A removed chart method raises an
+AttributeError that names its replacement, for example
+`PropertyDiagram.set_process() was removed in CoolPlot 1.0; use add_cycle
+...`. In detail:
+
+* the chart methods `set_isolines`, `set_default_isolines`,
+  `remove_isolines`, `isoline_sets`, `set_isoline_style`, `savefig`,
+  `set_process`, `remove_process`, and on psychrometric charts
+  `add_process`, `move_process_state`, `process_states`;
+* the unit system name `units="EUR"` and the constant `coolplot.EUR`
+  (use `"engineering"` and `coolplot.ENGINEERING`);
+* the keywords `eta_turbine=` and `eta_pump=` of `rankine` (use
+  `eta_is_turbine=` and `eta_is_pump=`).
+
+Specs that hold processes (written by `set_process`) still read and draw.
+If your code ran under 0.9 without a `DeprecationWarning`, it runs under
+1.0 unchanged.
+
 ## From 0.8 to 0.9
 
 0.9 is the deprecation release: nothing is removed, and every name that

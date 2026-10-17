@@ -9,15 +9,14 @@ change of unit system never triggers a new property calculation.
 One unit system covers every quantity of :mod:`coolplot.core.quantities`,
 for fluids and for humid air alike. The presets are "SI", "KSI" (kJ and
 kPa), "engineering" (deg C, bar, kJ, g/kg, %) and "IP" (deg F, psi,
-Btu/lb, grains per lb). "EUR" is the old name of "engineering" and still
-accepted with a warning.
+Btu/lb, grains per lb). "EUR", the name of "engineering" before 0.5, was
+removed in 1.0.
 
 This module is plain data and imports neither CoolProp nor a plotting
 library.
 """
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass, field, replace
 from typing import Mapping
 
@@ -60,7 +59,7 @@ class UnitSystem:
     """A named set of units, one per quantity key
 
     Unit systems are immutable. Use :meth:`with_unit` to derive a modified
-    copy, for example to show pressure in MPa in an otherwise EUR system.
+    copy, for example to show pressure in MPa in an otherwise engineering system.
     """
     name: str
     units: Mapping[str, Unit] = field(hash=False)
@@ -175,27 +174,23 @@ SI = UnitSystem("SI", _SI)
 KSI = UnitSystem("KSI", _KSI)
 ENGINEERING = UnitSystem("engineering", _ENGINEERING)
 IP = UnitSystem("IP", _IP)
-#: The old name of the engineering system, kept for existing code.
-EUR = ENGINEERING
-
 UNIT_SYSTEMS = {u.name.upper(): u for u in (SI, KSI, ENGINEERING, IP)}
-_OLD_NAMES = {"EUR": "engineering"}
+# Names removed in 1.0, with the name to use instead
+_REMOVED_NAMES = {"EUR": "engineering"}
 
 
 def get_unit_system(units, stacklevel: int = 2) -> UnitSystem:
     """Accept a UnitSystem or the name of a preset: "SI", "KSI", "engineering" or "IP".
 
-    ``stacklevel`` is where the warning about an old name is attributed
-    to; a public method that passes its argument on gives one more than
-    its own depth, so that the warning names the user's line.
+    ``stacklevel`` is kept for callers of 0.x, where it placed the warning
+    about an old name; it has no effect.
     """
     if isinstance(units, UnitSystem):
         return units
     name = str(units).upper()
-    if name in _OLD_NAMES:
-        warnings.warn("The unit system 'EUR' is called 'engineering' now (deg C, bar, kJ); the old name "
-                      "will go in 1.0.", DeprecationWarning, stacklevel=stacklevel)
-        name = _OLD_NAMES[name].upper()
+    if name in _REMOVED_NAMES:
+        raise ValueError("The unit system '{0}' was renamed '{1}' (deg C, bar, kJ) in CoolPlot 0.5 and the old "
+                         "name removed in 1.0.".format(units, _REMOVED_NAMES[name]))
     try:
         return UNIT_SYSTEMS[name]
     except KeyError:

@@ -6,6 +6,27 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### 1.0.0rc1
+
+#### Removed
+- The names deprecated since 0.5: the chart methods `set_isolines`,
+  `set_default_isolines`, `remove_isolines`, `isoline_sets`,
+  `set_isoline_style`, `savefig`, `set_process`, `remove_process`, the
+  psychrometric `add_process`, `move_process_state`, `process_states`;
+  the unit system name "EUR" and `coolplot.EUR`; the `rankine` keywords
+  `eta_turbine` and `eta_pump`. A removed chart method raises an
+  AttributeError naming its replacement; "EUR" raises a ValueError
+  naming "engineering". See the upgrade guide.
+
+#### Changed
+- The public API is stable from 1.0 to 2.0 (upgrade guide, "Stability
+  from 1.0"); deprecations in 1.x go in 2.0.
+- The Python numerics and composer stay, behind `set_native_mode`: they
+  are the reference, CoolProp's numerics port is not in a released
+  CoolProp yet, and coolplot-core is slower from Python than the Python
+  composer (plan, 1.0: they go only when the C++ passes the full suite as
+  the default).
+
 ### 0.9.0
 
 #### Added

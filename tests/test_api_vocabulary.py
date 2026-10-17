@@ -2,8 +2,8 @@
 """The public vocabulary is frozen (docs/v1_plan.md, 0.5).
 
 A name added here is a promise kept until 2.0; a name removed here needs
-a deprecation period. The old names of 0.4 and before still work and
-warn once per call.
+a deprecation period. The old names of 0.4 and before warned through 0.9
+and are gone in 1.0, with a message that names their replacement.
 """
 import warnings
 
@@ -18,7 +18,7 @@ PACKAGE_NAMES = {
     "Settings", "CalcSettings", "LabelSettings", "PageSettings", "Engine", "Fluid", "DiagramType",
     "TpLimits", "Relative", "Region", "StatePoint", "state_point", "process_path", "PropertyError",
     "Theme", "get_theme", "LineStyle", "MarkerStyle", "TextStyle", "Font", "AxesStyle", "LegendStyle",
-    "Scene", "UnitSystem", "Unit", "SI", "KSI", "ENGINEERING", "IP", "EUR",
+    "Scene", "UnitSystem", "Unit", "SI", "KSI", "ENGINEERING", "IP",
     "native_mode", "set_native_mode",
 }
 
@@ -33,12 +33,11 @@ CHART_METHODS = {
 CHART_PROPERTIES = {"cache", "progress", "fluid", "diagram_type", "units", "settings", "theme", "title", "kind"}
 CHART_ATTRIBUTES = {"spec", "engine", "scene"}
 
-#: Old names: they warn and call the new one.
-OLD_NAMES = {
+#: Names removed in 1.0 (deprecated from 0.5 to 0.9).
+REMOVED = {
     "set_isolines", "set_default_isolines", "remove_isolines", "isoline_sets", "set_isoline_style", "savefig",
+    "set_process", "remove_process", "add_process", "move_process_state", "process_states",
 }
-OLD_DIAGRAM_NAMES = {"set_process", "remove_process"}
-OLD_PSYCHRO_NAMES = {"add_process", "move_process_state", "remove_process", "process_states"}
 
 
 def _public(cls):
@@ -54,11 +53,11 @@ def test_package_names_are_frozen():
 def test_chart_vocabulary_is_frozen():
     from coolplot.chart import Chart
     names = _public(Chart)
-    methods = {n for n in names if callable(getattr(Chart, n)) and not getattr(getattr(Chart, n), "deprecated", False)}
+    methods = {n for n in names if callable(getattr(Chart, n))}
     properties = {n for n in names if isinstance(getattr(Chart, n), property)} | {"kind"}
     assert methods == CHART_METHODS
     assert properties == CHART_PROPERTIES
-    assert {n for n in names if getattr(getattr(Chart, n), "deprecated", False)} == OLD_NAMES
+    assert not any(getattr(getattr(Chart, n), "deprecated", False) for n in names)
     pytest.importorskip("CoolProp")
     from coolplot import PropertyDiagram
     chart = PropertyDiagram("R290", "ph")
@@ -68,48 +67,31 @@ def test_chart_vocabulary_is_frozen():
 def test_constructors_add_only_their_own_names():
     from coolplot.diagram import PropertyDiagram
     from coolplot.psychrometric import PsychrometricChart
-    own = {n for n in _public(PropertyDiagram) if not getattr(getattr(PropertyDiagram, n), "deprecated", False)}
-    assert own == {"kind", "fluid", "diagram_type", "tp_limits"}
-    assert {n for n in _public(PropertyDiagram) if getattr(getattr(PropertyDiagram, n), "deprecated", False)} \
-        == OLD_DIAGRAM_NAMES
-    own = {n for n in _public(PsychrometricChart) if not getattr(getattr(PsychrometricChart, n), "deprecated", False)}
-    assert own == {"kind", "p_Pa", "points"}
-    assert {n for n in _public(PsychrometricChart) if getattr(getattr(PsychrometricChart, n), "deprecated", False)} \
-        == OLD_PSYCHRO_NAMES
+    assert _public(PropertyDiagram) == {"kind", "fluid", "diagram_type", "tp_limits"}
+    assert _public(PsychrometricChart) == {"kind", "p_Pa", "points"}
 
 
-def test_old_names_warn_and_work(tmp_path):
+def test_removed_names_say_what_to_use_instead():
     pytest.importorskip("CoolProp")
     from coolplot import PropertyDiagram, PsychrometricChart
+    from coolplot.chart import REMOVED_NAMES
+    from coolplot.thermo.cycles import rankine
+    assert set(REMOVED_NAMES) == REMOVED
     diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP")
-    with pytest.warns(DeprecationWarning, match="set_lines"):
-        diagram.set_isolines("T", num=3)
-    with pytest.warns(DeprecationWarning, match="line_sets"):
-        assert set(diagram.isoline_sets()) == {"T"}
-    with pytest.warns(DeprecationWarning, match="set_line_style"):
-        diagram.set_isoline_style("T", color="red")
-    with pytest.warns(DeprecationWarning, match="remove_lines"):
-        diagram.remove_isolines("T")
-    with pytest.warns(DeprecationWarning, match="set_default_lines"):
-        diagram.set_default_isolines(num=3)
-    assert set(diagram.line_sets()) == {"T", "s", "rho", "Q"}
-    with pytest.warns(DeprecationWarning, match="'EUR' is called 'engineering'"):
-        assert PropertyDiagram("R290", "ph", units="EUR").units.name == "engineering"
     chart = PsychrometricChart(T_range=(0, 40), W_range=(0, 20))
-    with pytest.warns(DeprecationWarning, match="closed=False"):
-        chart.add_process("Heating", [{"T": 5, "RH": 80}, {"T": 25, "W": 4.3}])
-    with pytest.warns(DeprecationWarning, match="cycle_states"):
-        states = chart.process_states("Heating")
-    assert states[1].T == pytest.approx(298.15)
-    with pytest.warns(DeprecationWarning, match="move_cycle_state"):
-        chart.move_process_state("Heating", 2, 30.0, 4.3)
-    with pytest.warns(DeprecationWarning, match="remove_cycle"):
-        chart.remove_process("Heating")
-    assert chart.spec.cycles == ()
-    pytest.importorskip("matplotlib")
-    with pytest.warns(DeprecationWarning, match="use save"):
-        diagram.savefig(str(tmp_path / "old.svg"))
-    assert (tmp_path / "old.svg").stat().st_size > 1000
+    for name in sorted(REMOVED):
+        for c in (diagram, chart):
+            with pytest.raises(AttributeError, match="removed in CoolPlot 1.0; " + REMOVED_NAMES[name].split("(")[0]):
+                getattr(c, name)
+            assert not hasattr(c, name)
+    with pytest.raises(AttributeError, match="has no attribute 'nonsense'"):
+        diagram.nonsense
+    with pytest.raises(ValueError, match="renamed 'engineering'"):
+        PropertyDiagram("R290", "ph", units="EUR")
+    with pytest.raises(TypeError, match="eta_turbine"):
+        rankine("Water", 50e5, 0.1e5, eta_turbine=0.8)
+    import coolplot
+    assert not hasattr(coolplot, "EUR")
 
 
 def test_new_names_do_not_warn():
@@ -214,21 +196,24 @@ def test_set_lines_defaults_and_units_per_call():
     assert chart.line_sets()["RH"].labels is True and chart.line_sets()["RH"].rounding is True
 
 
-def test_every_old_name_is_in_the_upgrade_guide():
-    """0.9 is the deprecation release: whatever warns is listed with its replacement."""
+def test_every_removed_name_is_in_the_upgrade_guide():
+    """What 1.0 removed is listed in the upgrade guide with its replacement."""
+    import os
+    import re
+    guide = open(os.path.join(os.path.dirname(__file__), "..", "docs", "upgrade.md"), encoding="utf-8").read()
+    # The whole name in code quotes, "`name`" or "`name(", not a longer name starting with it
+    names = REMOVED | {"EUR", "eta_turbine", "eta_pump"}
+    missing = sorted(n for n in names if not re.search(r"`(units=\")?{0}[`(\"=]".format(re.escape(n)), guide))
+    assert not missing, missing
+
+
+def test_nothing_is_deprecated_right_after_1_0():
+    """A deprecation added in 1.x lists its name here and in the upgrade guide."""
     import importlib
     import inspect
-    import os
-    guide = open(os.path.join(os.path.dirname(__file__), "..", "docs", "upgrade.md"), encoding="utf-8").read()
     found = set()
     for module_name in ("coolplot.chart", "coolplot.diagram", "coolplot.psychrometric"):
         module = importlib.import_module(module_name)
         for _, cls in inspect.getmembers(module, inspect.isclass):
-            for name, member in vars(cls).items():
-                if getattr(member, "deprecated", False):
-                    found.add(name)
-    assert found >= OLD_NAMES | OLD_DIAGRAM_NAMES | OLD_PSYCHRO_NAMES
-    import re
-    # The whole name in code quotes, "`name`" or "`name(", not a longer name starting with it
-    missing = sorted(name for name in found if not re.search(r"`{0}[`(]".format(re.escape(name)), guide))
-    assert not missing, missing
+            found |= {name for name, member in vars(cls).items() if getattr(member, "deprecated", False)}
+    assert found == set()

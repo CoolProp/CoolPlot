@@ -40,9 +40,9 @@ The messages CoolPlot gives, and what to do.
 : A font of the theme cannot go into a PDF as TrueType and the next font
   of its list is used in the file. See {doc}`pdf_print`.
 
-**`DeprecationWarning: set_process() is an old name since CoolPlot 0.5 ...`**
-: The old name still works and names its replacement; it goes in 1.0.
-  See {doc}`../upgrade`.
+**`AttributeError: PropertyDiagram.set_process() was removed in CoolPlot 1.0; use add_cycle ...`**
+: The names deprecated from 0.5 to 0.9 are gone in 1.0; the message
+  names the replacement. See {doc}`../upgrade`.
 
 **A line is missing without a warning**
 : A line whose value sits at the very edge of the region touches the

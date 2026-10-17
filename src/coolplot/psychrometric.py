@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from .chart import Chart
 from .core.diagram_type import DiagramType
-from .core.errors import deprecated
 from .core.limits import Region
 from .core.units import get_unit_system
 from .engine import CurveCache, Engine
@@ -89,23 +88,3 @@ class PsychrometricChart(Chart):
     @points.setter
     def points(self, value):
         self.settings = self.spec.settings.with_(calc={"points": int(value)})
-
-    # Old names (0.4 and before); they warn and will go in 1.0 ---------------
-    # An air process is a cycle: add_cycle(name, states, closed=False) draws
-    # heating, cooling and reheating as an open chain of straight lines.
-    @deprecated("use add_cycle(name, states, closed=False)")
-    def add_process(self, name, states, closed=False, numbers=True, line_style=None, marker_style=None):
-        return self.add_cycle(name, states, numbers=numbers, line_style=line_style, marker_style=marker_style,
-                              steps=1, closed=closed)
-
-    @deprecated("use move_cycle_state")
-    def move_process_state(self, name, number, x, y):
-        self.move_cycle_state(name, number, x, y)
-
-    @deprecated("use remove_cycle")
-    def remove_process(self, name):
-        self.remove_cycle(name)
-
-    @deprecated("use cycle_states, which lists the states by number")
-    def process_states(self, name):
-        return list(self.cycle_states(name).values())

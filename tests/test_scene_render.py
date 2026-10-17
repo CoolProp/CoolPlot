@@ -9,7 +9,7 @@ from coolplot.render.base import Renderer
 from coolplot.render.svg import SvgRenderer
 from coolplot.render.ticks import ticks as _ticks
 from coolplot.scene import AxesSpec, Line, LineStyle, Markers, Scene, Text, items_equal
-from coolplot.core.units import EUR, SI, Unit
+from coolplot.core.units import ENGINEERING, SI, Unit
 
 
 class RecordingRenderer(Renderer):
@@ -43,14 +43,14 @@ def _line(item_id, y0=0.0, color="black"):
 
 
 def test_unit_round_trip():
-    for system in (SI, EUR):
+    for system in (SI, ENGINEERING):
         for key in ("T", "p", "h", "s", "rho", "u", "Q"):
             assert system[key].to_SI(system[key].from_SI(123.4)) == pytest.approx(123.4)
-    assert EUR["T"].from_SI(273.15) == pytest.approx(0.0)
-    assert EUR["P"].to_SI(1.0) == pytest.approx(1e5)  # aliases are accepted
-    mpa = EUR.with_unit("p", Unit("MPa", 1e-6))
+    assert ENGINEERING["T"].from_SI(273.15) == pytest.approx(0.0)
+    assert ENGINEERING["P"].to_SI(1.0) == pytest.approx(1e5)  # aliases are accepted
+    mpa = ENGINEERING.with_unit("p", Unit("MPa", 1e-6))
     assert mpa["p"].from_SI(1e6) == pytest.approx(1.0)
-    assert EUR["p"].label == "bar"  # the original is untouched
+    assert ENGINEERING["p"].label == "bar"  # the original is untouched
 
 
 def test_items_are_immutable_and_compared_by_value():

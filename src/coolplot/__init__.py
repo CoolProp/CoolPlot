@@ -66,7 +66,6 @@ _LAZY = {
     "KSI": ".core.units",
     "ENGINEERING": ".core.units",
     "IP": ".core.units",
-    "EUR": ".core.units",
     "PropertyError": ".core.errors",
     "native_mode": ".core.implementation",
     "set_native_mode": ".core.implementation",

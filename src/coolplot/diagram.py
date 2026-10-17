@@ -10,19 +10,15 @@ units, styling, drawing) is what every chart offers. See
 from __future__ import annotations
 
 import warnings
-from typing import Sequence
 
 from CoolProp import AbstractState
 
 from .chart import Chart, check_fluid
 from .core.diagram_type import DiagramType
-from .core.errors import deprecated
 from .core.limits import get_tp_limits
-from .core.state import StatePoint
 from .core.units import get_unit_system
 from .engine import CurveCache, Engine
-from .spec import DiagramSpec, FluidSpec, ProcessSpec, get_settings
-from .style.values import LineStyle, MarkerStyle
+from .spec import DiagramSpec, FluidSpec, get_settings
 from .thermo.fluid import Fluid
 
 
@@ -134,21 +130,3 @@ class PropertyDiagram(Chart):
     @tp_limits.setter
     def tp_limits(self, value):
         self.spec = self.spec.with_(limits=get_tp_limits(value))
-
-    # Old names (0.4 and before); they warn and will go in 1.0 ---------------
-    @deprecated("use add_cycle, which computes the paths between the states itself")
-    def set_process(self, name: str, line_states: Sequence[StatePoint],
-                    marker_states: Sequence[StatePoint] = (),
-                    line_style: LineStyle = None, marker_style: MarkerStyle = None):
-        """Add or replace a process or cycle, given as states in SI units.
-
-        ``line_states`` are connected by a line, ``marker_states`` get a
-        marker. Use :func:`coolplot.thermo.process_path` to fill in the
-        states along a compression or heat exchange.
-        """
-        self.spec = self.spec.with_process(ProcessSpec(name, tuple(line_states), tuple(marker_states),
-                                                       line_style, marker_style))
-
-    @deprecated("use remove_cycle")
-    def remove_process(self, name: str):
-        self.spec = self.spec.without_process(name)

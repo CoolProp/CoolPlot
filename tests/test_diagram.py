@@ -7,7 +7,7 @@ import pytest
 
 pytest.importorskip("CoolProp")
 
-from coolplot import PropertyDiagram  # noqa: E402
+from coolplot import ProcessSpec, PropertyDiagram  # noqa: E402
 from coolplot.render.svg import SvgRenderer  # noqa: E402
 from coolplot.scene import Line, Markers, Text  # noqa: E402
 from coolplot.thermo import process_path, state_point  # noqa: E402
@@ -90,14 +90,15 @@ def test_moving_a_cycle_touches_only_the_cycle(diagram):
                 + [cond_out, valve_out, evap_out])
         return line, [evap_out, comp_out, cond_out, valve_out]
 
-    diagram.set_process("cycle", *cycle(15e5))
+    # A process of complete states, as kept in the spec (contracts.md, "processes")
+    diagram.spec = diagram.spec.with_process(ProcessSpec("cycle", *map(tuple, cycle(15e5))))
     scene = diagram.update_scene()
     assert isinstance(scene["process/cycle/line"], Line)
     assert isinstance(scene["process/cycle/points"], Markers)
     renderer.sync(scene)
 
     misses = diagram.cache.misses
-    diagram.set_process("cycle", *cycle(18e5))
+    diagram.spec = diagram.spec.with_process(ProcessSpec("cycle", *map(tuple, cycle(18e5))))
     report = renderer.sync(diagram.update_scene())
     assert diagram.cache.misses == misses
     assert sorted(report.updated) == ["process/cycle/line", "process/cycle/points"]

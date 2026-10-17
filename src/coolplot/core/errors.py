@@ -99,18 +99,19 @@ class PropertyError(ValueError):
         return "{0} ({1}).".format(text, "; ".join(details)) if details else text + "."
 
 
-def deprecated(replacement: str, since: str = "0.5"):
+def deprecated(replacement: str, since: str, removal: str = "2.0"):
     """Mark a method as an old name: it warns and calls the new one.
 
-    Used for the names that 1.0 drops; the warning tells the user what
-    to write instead. ``replacement`` is a short instruction such as
-    "use set_lines".
+    For names that a later release drops (the API is stable from 1.0 to
+    2.0, so a name deprecated in 1.x goes in 2.0); the warning tells the
+    user what to write instead. ``replacement`` is a short instruction
+    such as "use set_lines".
     """
     def decorate(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            warnings.warn("{0}() is an old name since CoolPlot {1} and will go in 1.0; {2}.".format(
-                func.__name__, since, replacement), DeprecationWarning, stacklevel=2)
+            warnings.warn("{0}() is an old name since CoolPlot {1} and will go in {2}; {3}.".format(
+                func.__name__, since, removal, replacement), DeprecationWarning, stacklevel=2)
             return func(*args, **kwargs)
         wrapper.__doc__ = "Old name: {0}.\n\n{1}".format(replacement, func.__doc__ or "")
         wrapper.deprecated = True
@@ -118,10 +119,11 @@ def deprecated(replacement: str, since: str = "0.5"):
     return decorate
 
 
-def check_old_keyword(kwargs: dict, old: str, new: str, func_name: str) -> Optional[object]:
+def check_old_keyword(kwargs: dict, old: str, new: str, func_name: str, since: str,
+                      removal: str = "2.0") -> Optional[object]:
     """Take an old keyword out of ``kwargs`` with a warning; returns its value or None."""
     if old not in kwargs:
         return None
-    warnings.warn("{0}(): the keyword '{1}' is called '{2}' since CoolPlot 0.5; the old name will go in 1.0.".format(
-        func_name, old, new), DeprecationWarning, stacklevel=3)
+    warnings.warn("{0}(): the keyword '{1}' is called '{2}' since CoolPlot {3}; the old name will go in {4}.".format(
+        func_name, old, new, since, removal), DeprecationWarning, stacklevel=3)
     return kwargs.pop(old)
