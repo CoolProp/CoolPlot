@@ -24,16 +24,16 @@ with CoolProp 8 (section 8).
 from coolplot import PropertyDiagram
 from coolplot.render.svg import SvgRenderer
 
-diagram = PropertyDiagram("HEOS::R290", "ph", units="EUR", tp_limits="ACHP")
-diagram.set_isolines("Q", num=11, labels=True)                 # vapour quality
-diagram.set_isolines("T", num=12, rounding=True, labels=True)  # isotherms
-diagram.set_isolines("s", num=10, rounding=True, labels=True)  # isentropes
+diagram = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP")
+diagram.set_lines("Q", num=11, labels=True)                 # vapour quality
+diagram.set_lines("T", num=12, rounding=True, labels=True)  # isotherms
+diagram.set_lines("s", num=10, rounding=True, labels=True)  # isentropes
 
 diagram.draw(SvgRenderer()).save("R290_ph.svg")
 ```
 
 `diagram.draw()` without a renderer uses matplotlib; `diagram.show()` and
-`diagram.savefig("R290_ph.png")` are shortcuts for scripts.
+`diagram.save("R290_ph.png")` are shortcuts for scripts.
 
 Three backends come with CoolPlot and draw the same scene:
 `coolplot.render.svg.SvgRenderer` (no dependencies),
@@ -61,15 +61,28 @@ Vertical axis first: `"ph"`, `"Ts"`, `"hs"`, `"ps"`, `"prho"`, `"Trho"`,
 
 ### Units
 
-`"SI"` (K, Pa, J/kg), `"KSI"` (K, kPa, kJ/kg) and `"EUR"` (deg C, bar,
-kJ/kg). Every value you pass to a diagram method is in its units, and the
-diagram stores everything in SI. Changing `diagram.units` later costs no
-property calculations. A custom system:
+`"SI"` (K, Pa, J/kg), `"KSI"` (K, kPa, kJ/kg), `"engineering"` (deg C,
+bar, kJ/kg; g/kg and % for humid air) and `"IP"` (deg F, psi, Btu/lb,
+grains per lb). Every value you pass to a chart method is in its units,
+or in the system you name with `units=` on that call, and the chart
+stores everything in SI. Changing `diagram.units` later costs no
+property calculations. `"EUR"` is the old name of `"engineering"` and
+still works with a warning. A custom system:
 
 ```python
-from coolplot import EUR, Unit
-units = EUR.with_unit("p", Unit("MPa", 1e-6), name="EUR-MPa")
+from coolplot import ENGINEERING, Unit
+units = ENGINEERING.with_unit("p", Unit("MPa", 1e-6), name="engineering-MPa")
 diagram.units = units
+```
+
+States are SI values; `state.describe("engineering")` writes one out in
+a unit system, `state.in_units("IP")` gives a dict, and
+`diagram.cycle_states("hp", units="engineering")` does that for a whole
+cycle. An error about a state that cannot be computed names the fluid
+and the inputs in the chart's units:
+
+```
+PropertyError: State 2 of cycle 'hp': no state of HEOS::R290 at p = 300000 bar, T = 20 deg C (...).
 ```
 
 ### The region covered
@@ -90,12 +103,12 @@ any new calculation; `set_view()` resets.
 ## 3. Isolines
 
 ```python
-diagram.set_isolines("T", values=[-20, 0, 20, 40])        # explicit values
-diagram.set_isolines("T", num=8)                          # 8 lines, evenly over the region
-diagram.set_isolines("T", num=8, rounding=True)           # round values: -50, 0, 50, 100 deg C
-diagram.set_isolines("s", num=6, range=(1.0, 2.5))        # 6 lines between 1.0 and 2.5 kJ/kg/K
-diagram.set_default_isolines()                            # every family that fits the diagram
-diagram.remove_isolines("p")
+diagram.set_lines("T", values=[-20, 0, 20, 40])        # explicit values
+diagram.set_lines("T", num=8)                          # 8 lines, evenly over the region
+diagram.set_lines("T", num=8, rounding=True)           # round values: -50, 0, 50, 100 deg C
+diagram.set_lines("s", num=6, range=(1.0, 2.5))        # 6 lines between 1.0 and 2.5 kJ/kg/K
+diagram.set_default_lines()                            # every family that fits the diagram
+diagram.remove_lines("p")
 ```
 
 With `rounding=True` the values are round numbers in display units with
@@ -108,7 +121,7 @@ Where an isoline enters or leaves the two-phase region, the saturation
 state is inserted, so the kink sits exactly on the dome; an isobar in a
 T-s chart runs horizontally through the dome.
 
-`diagram.set_isoline_style("T", color="#000000", width_pt=1.0)` overrides
+`diagram.set_line_style("T", color="#000000", width_pt=1.0)` overrides
 the theme for one family.
 
 ## 4. Labels
@@ -241,7 +254,7 @@ diagram.spec = DiagramSpec.from_dict(json.loads(text))
 
 ```python
 diagram.settings = diagram.settings.with_(page={"width_pt": 252, "height_pt": 190})   # one journal column
-diagram.savefig("R290_ph.pdf")                        # vector PDF, fonts embedded as TrueType
+diagram.save("R290_ph.pdf")                        # vector PDF, fonts embedded as TrueType
 
 from coolplot import save_pdf
 save_pdf("report.pdf", [diagram, other_diagram, chart], metadata={"Author": "Heat pump team"})
@@ -253,7 +266,7 @@ PDF is a first-class output of the matplotlib backend:
   so a figure placed at 100 % in a document has exactly the type sizes
   of the theme. Set the page to the column or text width of the document
   instead of scaling the figure there.
-* Fonts are embedded as TrueType (or `savefig(..., pdf_fonts="type3")`),
+* Fonts are embedded as TrueType (or `save(..., pdf_fonts="type3")`),
   as journals and print shops expect. Texts stay text: they can be
   selected, searched and edited, labels with a halo included.
 * Matplotlib cannot embed fonts installed as CFF OpenType (many .otf
@@ -372,7 +385,7 @@ cancelled. Threads keep pure-fluid charts responsive; for blends use
 processes, which compute in parallel and never block the application.
 `diagram.wait()` blocks until all work is done, `diagram.close()` stops
 the workers (the diagram then takes no more updates), and `draw()`,
-`show()` and `savefig()` wait for the complete picture. A line whose
+`show()` and `save()` wait for the complete picture. A line whose
 calculation fails is tried once more and then skipped with a warning
 naming the error. On Linux, worker processes are started by forking the
 application; start the diagram before your GUI starts other threads.
@@ -384,9 +397,10 @@ from coolplot import PsychrometricChart
 
 chart = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25))   # deg C and g/kg, sea level
 chart.set_default_lines()            # RH every 10 %, Twb every 5 deg C, h every 10 kJ/kg, v every 0.02 m3/kg
-chart.add_process("Air conditioning", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}, {"T": 20, "W": 8.9}])
-chart.process_states("Air conditioning")[1].h    # J/kg dry air
-chart.savefig("psychro.png")                     # or chart.draw(any renderer)
+chart.add_cycle("Air conditioning", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}, {"T": 20, "W": 8.9}],
+                closed=False)                # an open process: heating, cooling and reheating
+chart.cycle_states("Air conditioning")[2].h  # J/kg dry air; units="engineering" gives kJ/kg
+chart.save("psychro.png")                     # or chart.draw(any renderer)
 ```
 
 A psychrometric chart shows humid air at one total pressure (`p=` in
@@ -395,7 +409,7 @@ and lines of relative humidity (`"RH"`, in %), wet-bulb temperature
 (`"Twb"`), specific enthalpy (`"h"`) and specific volume (`"v"`), both
 per kg of dry air. `set_lines(key, values)` chooses the values. Air
 states are given by any two of `T`, `W`, `RH`, `Twb`, `Tdp`, `h`, `v`
-and joined by straight lines (`closed=True` closes the loop). Labels,
+and joined by straight lines (`closed=False` leaves the chain open). Labels,
 themes, settings and every backend work as for property diagrams; the
 properties come from CoolProp's `HAPropsSI`, which covers about -100 to
 350 deg C and 0.1 to 100 bar. Without values, `set_lines` picks round
@@ -403,13 +417,13 @@ values (about 9 to 13 lines per family; `num=` changes that).
 
 `chart.set_view(x_limits, y_limits)` zooms without new calculations, and
 `Interaction(chart, renderer)` gives zoom, hover (`chart.state_at`) and
-dragging of process states (`chart.move_process_state`), as for property
+dragging of process states (`chart.move_cycle_state`), as for property
 diagrams. `chart.spec.to_dict()` saves a chart and
 `PsychrometricChart.from_spec(DiagramSpec.from_dict(data))` restores it.
 A psychrometric chart is a `Chart` like a property diagram: an air
 process is a cycle (`add_cycle`, `cycle_states`, `move_cycle_state`
 work on it), its items are `iso/RH/0.5` and `cycle/<name>/states`, and
-the lines come from `set_isolines` with rounding switched on.
+its lines come from `set_lines` with rounding and labels on by default.
 
 ## 9. Refrigerant blends and other mixtures
 

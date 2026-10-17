@@ -1,6 +1,36 @@
 Changelog
 =========
 
+0.5.0 (unreleased)
+------------------
+
+Vocabulary, units and errors (docs/v1_plan.md, package 0.5):
+
+* One verb per operation on every chart: `set_lines`, `set_default_lines`,
+  `remove_lines`, `line_sets`, `set_line_style`, `add_cycle` (with
+  `closed=False` for an open process), `remove_cycle`, `move_cycle_state`,
+  `cycle_states`, `set_view`, `state_at`, `update_scene`, `draw`, `save`.
+  The old names (`set_isolines`, `set_default_isolines`, `remove_isolines`,
+  `isoline_sets`, `set_isoline_style`, `savefig`, `set_process`,
+  `remove_process`, `add_process`, `move_process_state`, `process_states`)
+  still work and raise a `DeprecationWarning`; they go in 1.0.
+  `tests/test_api_vocabulary.py` freezes the public names.
+* `set_lines` takes `rounding` and `labels` defaults from the chart kind
+  (off for property diagrams, on for psychrometric charts) and, like
+  `set_view`, `state_at`, `move_cycle_state` and `cycle_states`, a
+  `units=` for the values of that call.
+* Unit systems: `"engineering"` (deg C, bar, kJ, g/kg, %) replaces the
+  name `"EUR"`, which warns; `"IP"` (deg F, psi, Btu/lb, grains per lb,
+  ft3/lb) is new; `UnitSystem` values are hashable with their units.
+  `StatePoint.describe(units)` and `StatePoint.in_units(units)` print and
+  convert a state.
+* `PropertyError` (a `ValueError`) names the fluid, the inputs in the
+  chart's units and where the state was asked for, e.g. "State 2 of
+  the cycle 'hp': no state of HEOS::R290 at p = 300000 bar, s = 2.48
+  kJ/kg/K (...)". A misspelt fluid fails in the `PropertyDiagram`
+  constructor.
+* `rankine(eta_is_turbine=, eta_is_pump=)`; the old keyword names warn.
+
 0.4.0 (unreleased)
 ------------------
 

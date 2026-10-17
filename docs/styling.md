@@ -8,9 +8,9 @@ only the restyled items are redrawn.
 
 ```python
 from coolplot import PropertyDiagram
-diagram = PropertyDiagram("HEOS::R290", "ph", units="EUR", theme="default")
+diagram = PropertyDiagram("HEOS::R290", "ph", units="engineering", theme="default")
 diagram.theme = "dark"                                 # switch at any time
-diagram.set_isoline_style("T", width_pt=1.0)           # one family, this diagram only
+diagram.set_line_style("T", width_pt=1.0)           # one family, this diagram only
 ```
 
 
@@ -110,7 +110,7 @@ the slots in turn. The consequences:
 
 The light aqua and yellow have less than 3:1 contrast against the light
 surface. Where those families matter, switch on value labels
-(`set_isolines(..., labels=True)`), which then carry the information.
+(`set_lines(..., labels=True)`), which then carry the information.
 
 To pin a colour to a quantity regardless of the diagram, use
 `theme.with_isoline_color("T", "#c00000")`. The `classic` theme does this
@@ -123,8 +123,8 @@ Three levels, from narrow to broad:
 
 ```python
 # One family in one diagram, any LineStyle field
-diagram.set_isoline_style("s", dash="dashed")
-diagram.set_isoline_style("s")                          # back to the theme
+diagram.set_line_style("s", dash="dashed")
+diagram.set_line_style("s")                          # back to the theme
 
 # A derived theme
 from coolplot.style.theme import DEFAULT, Theme

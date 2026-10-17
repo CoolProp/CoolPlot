@@ -24,6 +24,7 @@ from __future__ import annotations
 import math
 
 from ...core.cycle import Cycle
+from ...core.errors import check_old_keyword
 from ..fluid import Fluid
 from ..process import state_point
 
@@ -188,18 +189,26 @@ def two_stage(fluid, T_evap_C: float, T_cond_C: float, intermediate: str = "flas
     return Cycle(name or default_name, states, loops, paths, results, fluid.name)
 
 
-def rankine(fluid, p_high_Pa: float, p_low_Pa: float, T_live_C: float = None, eta_turbine: float = 0.85,
-            eta_pump: float = 0.75, name: str = "Rankine") -> Cycle:
+def rankine(fluid, p_high_Pa: float, p_low_Pa: float, T_live_C: float = None, eta_is_turbine: float = 0.85,
+            eta_is_pump: float = 0.75, name: str = "Rankine", **old_names) -> Cycle:
     """Simple Rankine cycle (steam or organic)
 
     States: 1 condenser outlet = pump inlet (saturated liquid), 2 pump
     outlet, 3 boiler outlet (live steam at ``T_live_C``, saturated vapour
-    if None), 4 turbine outlet.
+    if None), 4 turbine outlet. ``eta_is_turbine`` and ``eta_is_pump``
+    are isentropic efficiencies (``eta_turbine`` and ``eta_pump`` before
+    0.5).
 
     Results: ``q_in_J_kg``, ``q_out_J_kg``, ``w_turbine_J_kg``,
     ``w_pump_J_kg``, ``eta_th`` (net work over heat input).
     """
-    for label, eta in (("eta_turbine", eta_turbine), ("eta_pump", eta_pump)):
+    old = check_old_keyword(old_names, "eta_turbine", "eta_is_turbine", "rankine")
+    eta_turbine = eta_is_turbine if old is None else old
+    old = check_old_keyword(old_names, "eta_pump", "eta_is_pump", "rankine")
+    eta_pump = eta_is_pump if old is None else old
+    if old_names:
+        raise TypeError("rankine() got unexpected keyword arguments {0}.".format(sorted(old_names)))
+    for label, eta in (("eta_is_turbine", eta_turbine), ("eta_is_pump", eta_pump)):
         if not 0.0 < eta <= 1.0:
             raise ValueError("{0} has to be between 0 and 1, not {1}.".format(label, eta))
     if not p_low_Pa < p_high_Pa:

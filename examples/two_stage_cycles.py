@@ -21,10 +21,10 @@ FLUID = "HEOS::R290"
 
 
 def diagram_with(cycle, title, loops=None):
-    diagram = PropertyDiagram(FLUID, "ph", units="EUR", tp_limits="ACHP")
+    diagram = PropertyDiagram(FLUID, "ph", units="engineering", tp_limits="ACHP")
     diagram.title = title
-    diagram.set_isolines("Q", num=11)
-    diagram.set_isolines("T", num=10, rounding=True, labels=True)
+    diagram.set_lines("Q", num=11)
+    diagram.set_lines("T", num=10, rounding=True, labels=True)
     diagram.add_cycle(cycle, loops=loops)
     # Three panels side by side: put each legend inside its plot area
     axes_style = diagram.theme.axes

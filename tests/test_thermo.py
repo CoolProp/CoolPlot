@@ -165,13 +165,13 @@ def test_incompressibles_plot_with_absolute_limits():
     with pytest.raises(ValueError, match="absolute temperature and pressure limits"):
         PropertyDiagram("INCOMP::MEG[0.3]", "Ts").update_scene()
     diagram = PropertyDiagram("INCOMP::MEG[0.3]", "Ts", tp_limits=[260.0, 370.0, 1e5, 1e6])
-    diagram.set_isolines("p", num=4)
-    diagram.set_isolines("h", num=4)
+    diagram.set_lines("p", num=4)
+    diagram.set_lines("h", num=4)
     scene = diagram.update_scene((400.0, 300.0))
     lines = [item for item in scene if item.group.startswith("iso/")]
     assert len(lines) == 8 and all(np.isfinite(line.x).sum() >= 100 for line in lines)
     with pytest.raises(ValueError, match="no two-phase region"):
-        diagram.set_isolines("Q", num=3)
+        diagram.set_lines("Q", num=3)
         diagram.update_scene()
 
 
@@ -181,8 +181,8 @@ def test_blend_lines_that_need_coolprop_8_are_skipped_with_a_reason(monkeypatch)
     from coolplot.thermo import isolines
     monkeypatch.setattr(isolines, "TRACER_AVAILABLE", False)   # as on CoolProp 6 and 7
     diagram = PropertyDiagram("HEOS::R32[0.697615]&R125[0.302385]", "ph", tp_limits="ACHP")
-    diagram.set_isolines("T", values=[0.0])
-    diagram.set_isolines("s", values=[1.5])
+    diagram.set_lines("T", values=[0.0])
+    diagram.set_lines("s", values=[1.5])
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         scene = diagram.update_scene((400.0, 300.0))

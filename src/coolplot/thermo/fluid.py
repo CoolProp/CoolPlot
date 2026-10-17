@@ -21,7 +21,8 @@ import CoolProp
 from CoolProp import AbstractState
 from CoolProp import CoolProp as CP
 
-from ..core.quantities import get_quantity
+from ..core.errors import PropertyError
+from ..core.quantities import get_quantity, quantity_key
 from ..core.state import STATE_KEYS, StatePoint
 
 
@@ -209,7 +210,13 @@ class Fluid:
         """
         pair, v1, v2 = CP.generate_update_pair(parameter_index(key1), value1_SI,
                                                parameter_index(key2), value2_SI)
-        return self.update_pair(pair, v1, v2)
+        try:
+            return self.update_pair(pair, v1, v2)
+        except PropertyError:
+            raise
+        except ValueError as e:
+            raise PropertyError(self.name, ((quantity_key(key1), value1_SI), (quantity_key(key2), value2_SI)),
+                                str(e)) from None
 
     def update_pair(self, pair, value1: float, value2: float) -> AbstractState:
         """Set the working state from a CoolProp input pair and its two values.

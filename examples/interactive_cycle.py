@@ -23,11 +23,11 @@ FLUID = "HEOS::R290"
 
 
 def main():
-    diagram = PropertyDiagram(FLUID, "ph", units="EUR", tp_limits="ACHP")
+    diagram = PropertyDiagram(FLUID, "ph", units="engineering", tp_limits="ACHP")
     diagram.title = "R290 - drag the sliders"
-    diagram.set_isolines("Q", num=11, labels=True)
-    diagram.set_isolines("T", num=15, rounding=True, labels=True)
-    diagram.set_isolines("s", num=12, rounding=True, labels=True)
+    diagram.set_lines("Q", num=11, labels=True)
+    diagram.set_lines("T", num=15, rounding=True, labels=True)
+    diagram.set_lines("s", num=12, rounding=True, labels=True)
 
     fig, ax = plt.subplots(figsize=(9, 7))
     # The figure belongs to this script, so leave room for the legend that

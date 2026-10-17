@@ -27,6 +27,7 @@ import CoolProp
 from CoolProp.HumidAirProp import HAPropsSI
 
 from ..core.diagram_type import FAMILIES
+from ..core.errors import PropertyError
 from ..core.limits import HUMID_AIR_P_LIMITS_PA as P_LIMITS_PA
 from ..core.limits import HUMID_AIR_T_LIMITS_K as T_LIMITS_K
 from ..core.limits import Region, within
@@ -66,7 +67,11 @@ def air_state(key1: str, value1: float, key2: str, value2: float, p_Pa: float = 
     key1, key2 = quantity_key(key1), quantity_key(key2)
     if key1 == key2:
         raise ValueError("Give two different properties, not '{0}' twice.".format(key1))
-    values = {k: humid_air(k, key1, value1, key2, value2, p_Pa) for k in HUMID_AIR}
+    try:
+        values = {k: humid_air(k, key1, value1, key2, value2, p_Pa) for k in HUMID_AIR}
+    except ValueError as e:
+        raise PropertyError("humid air ({0:.6g} Pa)".format(p_Pa), ((key1, value1), (key2, value2)),
+                            str(e)) from None
     return StatePoint(p=p_Pa, **values)
 
 

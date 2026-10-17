@@ -35,7 +35,7 @@ One record describes a property diagram and a psychrometric chart alike;
   "fluid": {"backend": "HEOS", "components": ["R32", "R125"], "fractions": [0.7, 0.3],
             "basis": "mole", "interactions": []},
   "diagram": "ph",
-  "units": "EUR",
+  "units": "engineering",
   "limits": {"T_min": {"relative": 1.01}, "T_max": {"relative": 2.25}, "p_min": 25000.0, "p_max": null},
   "settings": {"calc": {...}, "look": {...}, "labels": {...}, "page": {...}},
   "isolines": [{"key": "T", "values_SI": null, "num": 15, "range_SI": null, "rounding": true,
@@ -58,7 +58,7 @@ One record describes a property diagram and a psychrometric chart alike;
 * `diagram`: the name of a diagram type, vertical axis first: `ph`, `Ts`,
   `hs`, `ps`, `prho`, `Trho`, `pT` for fluids, `WT` (or `psychrometric`)
   for humid air. The kind of the diagram has to match the fluid.
-* `units`: a name (`SI`, `KSI`, `EUR`) or
+* `units`: a name (`SI`, `KSI`, `engineering`, `IP`) or
   `{"name": ..., "units": {"p": ["bar", 1e-5, 0.0], ...}}` with
   `[label, scale, offset]` per quantity (display = SI * scale + offset).
 * `limits`: for fluids a T-p box, each bound a number, `null` (the limit

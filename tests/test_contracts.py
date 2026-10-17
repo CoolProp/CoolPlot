@@ -52,12 +52,12 @@ def _charts():
     pytest.importorskip("CoolProp")
     from coolplot import PropertyDiagram, PsychrometricChart
     diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP")
-    diagram.set_default_isolines(labels=True)
+    diagram.set_default_lines(labels=True)
     diagram.add_cycle("heat pump", [{"p": 3.0, "T": 0.0}, {"p": 15.0, "via": "compression", "eta_is": 0.7},
                                    {"p": 15.0, "Q": 0.0}, {"p": 3.0, "via": "isenthalpic"}])
     chart = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25))
     chart.set_default_lines()
-    chart.add_process("Air conditioning", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}, {"T": 20, "W": 8.9}])
+    chart.add_cycle("Air conditioning", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}, {"T": 20, "W": 8.9}], closed=False)
     return diagram, chart
 
 
@@ -90,7 +90,7 @@ def test_complete_states_round_trip_whatever_the_key_order():
     assert list(StatePoint(h=3.0, T=1.0)) == ["T", "h"] and len(StatePoint(h=3.0)) == 1
     diagram, chart = _charts()
     diagram.add_cycle(simple_compression("R290", T_evap_C=0.0, T_cond_C=40.0))
-    chart.add_process("Copied", chart.process_states("Air conditioning"))
+    chart.add_cycle("Copied", list(chart.cycle_states("Air conditioning").values()), closed=False)
     for c in (diagram, chart):
         text = _twice(c.spec.to_dict())
         assert DiagramSpec.from_dict(json.loads(text)) == c.spec
@@ -98,14 +98,14 @@ def test_complete_states_round_trip_whatever_the_key_order():
 
 def test_states_of_the_other_chart_kind_are_refused():
     diagram, chart = _charts()
-    air = chart.process_states("Air conditioning")[0]
+    air = list(chart.cycle_states("Air conditioning").values())[0]
     fluid = diagram.fluid.state_point("p", chart.p_Pa, "T", 300.0)   # at the chart's pressure, still refused
     with pytest.raises(ValueError, match="lacks"):
         diagram.add_cycle("air", [air, air])
     with pytest.raises(ValueError, match="lacks"):
-        chart.add_process("fluid", [fluid, fluid])
+        chart.add_cycle("fluid", [fluid, fluid], closed=False)
     with pytest.raises(ValueError, match="unknown properties \\['rho'\\], expected"):
-        chart.add_process("fluid", [{"rho": 1.2, "T": 20}])
+        chart.add_cycle("fluid", [{"rho": 1.2, "T": 20}], closed=False)
     from coolplot import PropertyDiagram, PsychrometricChart
     with pytest.raises(ValueError, match="humid_air charts"):
         PsychrometricChart.from_spec(diagram.spec)
@@ -114,7 +114,7 @@ def test_states_of_the_other_chart_kind_are_refused():
     with pytest.raises(ValueError, match="not offered"):
         from coolplot.core.diagram_type import DiagramType
         DiagramType("T", "W", "humid_air")
-    chart.set_isolines("RH", range=(0.0, 100.0), num=11)   # the excluded 0 % is simply left out
+    chart.set_lines("RH", range=(0.0, 100.0), num=11)   # the excluded 0 % is simply left out
     assert [r.value_SI for r in __import__("coolplot.engine", fromlist=["plan"]).plan(
         chart.spec, chart.engine.domain(chart.spec)) if r.key == "RH"][0] == pytest.approx(0.1)
     with pytest.raises(ValueError, match="above 0"):

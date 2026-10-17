@@ -29,10 +29,10 @@ def test_nice_log_mantissas():
 
 
 def test_rounding_happens_in_display_units():
-    spec = DiagramSpec("R290", units="EUR", isolines=(IsolineSet("T", num=11, rounding=True),))
+    spec = DiagramSpec("R290", units="engineering", isolines=(IsolineSet("T", num=11, rounding=True),))
     values_C = spec.units["T"].from_SI(isoline_values_SI(spec, spec.isolines[0], DOMAIN))
     assert np.allclose(values_C % 20.0, 0.0) or np.allclose(values_C % 10.0, 0.0)
-    spec = DiagramSpec("R290", diagram="Ts", units="EUR", isolines=(IsolineSet("p", num=6, rounding=True),))
+    spec = DiagramSpec("R290", diagram="Ts", units="engineering", isolines=(IsolineSet("p", num=6, rounding=True),))
     values_bar = spec.units["p"].from_SI(isoline_values_SI(spec, spec.isolines[0], DOMAIN))
     assert values_bar.tolist() == pytest.approx([1.0, 2.0, 5.0, 10.0, 20.0])
 
@@ -64,8 +64,8 @@ def diagram():
     pytest.importorskip("CoolProp")
     from coolplot import PropertyDiagram
     d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP")
-    d.set_isolines("Q", num=3)
-    d.set_isolines("T", values=[0.0, 20.0], points=40, labels=True)
+    d.set_lines("Q", num=3)
+    d.set_lines("T", values=[0.0, 20.0], points=40, labels=True)
     return d
 
 
@@ -135,7 +135,7 @@ def test_failing_curves_warn_once(diagram):
 
 
 def test_changing_the_diagram_type_keeps_what_fits(diagram):
-    diagram.set_isolines("s", num=3)
+    diagram.set_lines("s", num=3)
     diagram.diagram_type = "Ts"
     assert [s.key for s in diagram.spec.isolines] == ["Q"]   # T and s are axes now
     diagram.update_scene()
@@ -147,8 +147,8 @@ def test_two_diagrams_share_an_engine():
     ph = PropertyDiagram("R290", "ph", tp_limits="ACHP")
     ts = PropertyDiagram("R290", "Ts", tp_limits="ACHP", engine=ph.engine)
     assert ts.fluid is ph.fluid
-    ph.set_isolines("Q", num=2)
-    ts.set_isolines("Q", num=2)
+    ph.set_lines("Q", num=2)
+    ts.set_lines("Q", num=2)
     ph.update_scene()
     ts.update_scene()
     assert ph.cache.misses == 4   # same values, different axes
@@ -166,12 +166,12 @@ def test_a_changed_reference_state_never_serves_old_curves():
         return line.x[0]
 
     first = PropertyDiagram("R134a", "ph")
-    first.set_isolines("T", values=[20.0])
+    first.set_lines("T", values=[20.0])
     h_default = first_h(first)
     try:
         set_reference_state("R134a", "NBP")
         second = PropertyDiagram("R134a", "ph", cache=first.cache)   # shares the cache
-        second.set_isolines("T", values=[20.0])
+        second.set_lines("T", values=[20.0])
         assert first_h(second) != pytest.approx(h_default)            # not the stale curve
         assert first_h(first) == pytest.approx(h_default)             # the old engine still has old states
         first.refresh()

@@ -15,9 +15,9 @@ from coolplot.thermo import process_path, state_point  # noqa: E402
 
 @pytest.fixture
 def diagram():
-    d = PropertyDiagram("HEOS::R290", "ph", units="EUR", tp_limits="ACHP")
-    d.set_isolines("Q", num=3)
-    d.set_isolines("T", values=[-20.0, 0.0, 20.0, 40.0], points=60)
+    d = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP")
+    d.set_lines("Q", num=3)
+    d.set_lines("T", values=[-20.0, 0.0, 20.0, 40.0], points=60)
     return d
 
 
@@ -49,7 +49,7 @@ def test_style_change_redraws_only_that_family(diagram):
     renderer = SvgRenderer()
     renderer.sync(diagram.update_scene())
     misses = diagram.cache.misses
-    diagram.set_isoline_style("T", color="blue")
+    diagram.set_line_style("T", color="blue")
     report = renderer.sync(diagram.update_scene())
     assert diagram.cache.misses == misses
     assert sorted(report.updated) == sorted(i.id for i in diagram.scene.group("iso/T"))
@@ -60,7 +60,7 @@ def test_adding_a_line_computes_only_that_line(diagram):
     renderer = SvgRenderer()
     renderer.sync(diagram.update_scene())
     misses = diagram.cache.misses
-    diagram.set_isolines("T", values=[-20.0, 0.0, 20.0, 40.0, 60.0], points=60)
+    diagram.set_lines("T", values=[-20.0, 0.0, 20.0, 40.0, 60.0], points=60)
     report = renderer.sync(diagram.update_scene())
     assert diagram.cache.misses == misses + 1
     assert report.added == ["iso/T/333.15"] and report.updated == []
@@ -104,7 +104,7 @@ def test_moving_a_cycle_touches_only_the_cycle(diagram):
 
 
 def test_labels_follow_lines(diagram):
-    diagram.set_isolines("T", values=[0.0], labels=True)
+    diagram.set_lines("T", values=[0.0], labels=True)
     label = diagram.update_scene()["iso/T/273.15/label"]
     assert isinstance(label, Text)
     assert label.text == "T=0 deg C"
@@ -119,7 +119,7 @@ def test_state_at_cursor(diagram):
 
 def test_invalid_requests(diagram):
     with pytest.raises(ValueError):
-        diagram.set_isolines("p")  # an isobar is a horizontal line in a ph chart
+        diagram.set_lines("p")  # an isobar is a horizontal line in a ph chart
     with pytest.raises(ValueError):
         PropertyDiagram("R290", "ab")
 

@@ -95,8 +95,8 @@ def test_switching_theme_recomputes_nothing():
     from coolplot import PropertyDiagram
     from coolplot.render.svg import SvgRenderer
     d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP")
-    d.set_isolines("Q", num=3)
-    d.set_isolines("T", values=[0.0, 20.0], points=40)
+    d.set_lines("Q", num=3)
+    d.set_lines("T", values=[0.0, 20.0], points=40)
     r = SvgRenderer()
     r.sync(d.update_scene())
     misses = d.cache.misses
@@ -109,9 +109,9 @@ def test_switching_theme_recomputes_nothing():
     assert scene["iso/T/273.15"].role == "isoline"
     assert scene["iso/Q/0"].role == "saturation" and scene["iso/Q/0.5"].role == "quality"
     assert [text for text, _ in scene.legend_entries()] == ["Saturation", "Vapour quality", "Temperature"]
-    d.set_isoline_style("T", width_pt=2.0)
+    d.set_line_style("T", width_pt=2.0)
     assert d.update_scene()["iso/T/273.15"].style.width_pt == 2.0
-    d.set_isoline_style("T")
+    d.set_line_style("T")
     assert d.update_scene()["iso/T/273.15"].style.width_pt == DARK.isoline.width_pt
 
 

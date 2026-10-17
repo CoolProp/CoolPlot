@@ -15,6 +15,7 @@ from typing import Dict, List, Sequence, Tuple
 import numpy as np
 
 from ...core.cycle import StateInput
+from ...core.errors import PropertyError
 from ...core.state import StatePoint
 from ..process import state_point
 
@@ -83,7 +84,9 @@ def resolve_states(fluid, inputs: Dict[int, StateInput], loops) -> Dict[int, Sta
                 previous = states[before[number]]
             try:
                 states[number] = resolve_state(fluid, given, previous)
-            except Exception as e:
+            except PropertyError as e:
+                raise e.with_where("State {0} of the cycle".format(number)) from None
+            except ValueError as e:
                 raise ValueError("State {0} of the cycle could not be computed: {1}".format(number, e)) from e
             del pending[number]
             progress = True
