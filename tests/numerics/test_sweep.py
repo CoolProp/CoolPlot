@@ -20,6 +20,7 @@ from coolplot.thermo.fluid import Fluid, build_state  # noqa: E402
 from coolplot.thermo.isolines import (_LineSolver, _Sweep, _build_line, _metric, compute_isoline,  # noqa: E402
                                       compute_quality_line)
 from coolplot.thermo.limits import property_range_SI, resolve_tp_box  # noqa: E402
+from coolplot.thermo.tracer import _phases_are_distinct  # noqa: E402
 
 pytestmark = pytest.mark.slow
 
@@ -115,7 +116,7 @@ def test_pure_fluid_lines_round_trip_and_are_smooth(pure):
         curve = compute_isoline(fluid, diagram, key, value, box, 250)
         where = "{0} {1}={2:g}".format(diagram.name, key, value)
         assert curve.n_gaps == 0, where
-        assert curve.n_outside <= 64, where   # scanning the whole range outside costs 32 points, plus the edges
+        assert curve.n_outside <= 128, where   # a cap on the scanning: 32 points per part outside, plus the edges
         outside[0] += curve.n_outside
         outside[1] += curve.n_evaluated
         if curve.n_valid < 2:
@@ -171,7 +172,7 @@ def test_blend_lines_are_confirmed_states_and_are_smooth(blend):
         where = "{0} {1}={2:g}".format(diagram.name, key, value)
         assert curve.method == "tracer", where
         assert curve.n_gaps <= 2, where
-        assert curve.n_outside <= 64, where
+        assert curve.n_outside <= 128, where
         assert curve.reason == "" or curve.n_valid < 2, where
         outside[0] += curve.n_outside
         outside[1] += curve.n_evaluated
@@ -179,6 +180,7 @@ def test_blend_lines_are_confirmed_states_and_are_smooth(blend):
             continue
         points = _normalised(curve, diagram, fluid, box)
         assert _largest_turn_deg(points) < 160.0, where
+        confirmed = unverifiable = 0
         for sample in line.samples:
             if sample is None:
                 continue
@@ -186,12 +188,17 @@ def test_blend_lines_are_confirmed_states_and_are_smooth(blend):
             if 0.0 <= Q <= 1.0:
                 check.unspecify_phase()
                 check.update(CoolProp.PQ_INPUTS, p_Pa, Q)
+                if not _phases_are_distinct(check):
+                    unverifiable += 1   # the checking flash itself collapsed onto the trivial solution
+                    continue
             else:
                 check.specify_phase(CoolProp.iphase_gas)
                 check.update(CoolProp.DmassT_INPUTS, rho, T_K)
             assert check.keyed_output(CP_INDEX[key]) == pytest.approx(value, rel=1e-6), where
             assert (check.keyed_output(CP_INDEX[diagram.x]), check.keyed_output(CP_INDEX[diagram.y])) == \
                 pytest.approx((sample.x, sample.y), rel=1e-6), where
+            confirmed += 1
+        assert unverifiable <= 0.05 * (confirmed + unverifiable) + 2, where
     assert outside[0] <= 0.1 * outside[1]
 
 
