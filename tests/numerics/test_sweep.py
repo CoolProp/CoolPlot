@@ -79,9 +79,12 @@ def _lines(fluid, box):
 
 @pytest.fixture(scope="module", params=["HEOS::R290", "HEOS::CO2"])
 def pure(request):
+    # ACHP limits for both: with the default limits the p-h chart of CO2
+    # has no liquid region on its h axis (the corner at T_min, p_max lies
+    # below the melting line and does not contribute to the range), so
+    # most of its lines lie outside the axes
     fluid = Fluid(request.param)
-    limits = "ACHP" if "R290" in request.param else "DEF"
-    return fluid, resolve_tp_box(fluid, get_tp_limits(limits))
+    return fluid, resolve_tp_box(fluid, get_tp_limits("ACHP"))
 
 
 @pytest.fixture(scope="module", params=["HEOS::R410A.mix", "HEOS::R32[0.7]&R125[0.3]"])
@@ -135,7 +138,7 @@ def test_pure_fluid_lines_round_trip_and_are_smooth(pure):
             sample = solver.sample(sweep.value(u))
             if sample is None or not sample.inside:
                 continue
-            w, T_K, p_Pa, Q, rho = sample.extra
+            w, T_K, p_Pa, Q, rho, source = sample.extra
             if _on_the_saturation_curve(fluid, T_K, p_Pa):
                 continue
             if 0.0 <= Q <= 1.0:
@@ -184,7 +187,7 @@ def test_blend_lines_are_confirmed_states_and_are_smooth(blend):
         for sample in line.samples:
             if sample is None:
                 continue
-            w, T_K, p_Pa, Q, rho = sample.extra
+            w, T_K, p_Pa, Q, rho, source = sample.extra
             if 0.0 <= Q <= 1.0:
                 check.unspecify_phase()
                 check.update(CoolProp.PQ_INPUTS, p_Pa, Q)
@@ -194,7 +197,10 @@ def test_blend_lines_are_confirmed_states_and_are_smooth(blend):
             else:
                 check.specify_phase(CoolProp.iphase_gas)
                 check.update(CoolProp.DmassT_INPUTS, rho, T_K)
-            assert check.keyed_output(CP_INDEX[key]) == pytest.approx(value, rel=1e-6), where
+            # A point the tracer handed to a cold flash carries CoolProp's own
+            # mixture flash tolerance (up to 5e-4 seen in s); the tracer's points are tight
+            tolerance = 1e-6 if source == "tracer" else 1e-3
+            assert check.keyed_output(CP_INDEX[key]) == pytest.approx(value, rel=tolerance), where
             assert (check.keyed_output(CP_INDEX[diagram.x]), check.keyed_output(CP_INDEX[diagram.y])) == \
                 pytest.approx((sample.x, sample.y), rel=1e-6), where
             confirmed += 1

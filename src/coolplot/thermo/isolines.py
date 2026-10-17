@@ -201,7 +201,8 @@ class _LineSolver:
 
     ``sample(w)`` computes the state where the stepped quantity equals
     ``w`` and returns it as a :class:`Sample` whose ``extra`` is
-    (w, T, p, Q), or None if it cannot be computed.
+    (w, T, p, Q, rho, source) with source "tracer" or "flash", or None if
+    it cannot be computed.
     """
 
     def __init__(self, fluid: Fluid, iso_key: str, value_SI: float, sweep_key: str, diagram: DiagramType,
@@ -232,7 +233,7 @@ class _LineSolver:
         if self.tracer is not None:
             try:
                 self.tracer.update(v1, v2)
-                sample = self._sample_of(self.tracer.state, w)
+                sample = self._sample_of(self.tracer.state, w, "tracer")
             except Exception:
                 sample = None
             if sample is not None:
@@ -248,22 +249,22 @@ class _LineSolver:
             return None
         if self.tracer is not None:
             self.tracer.set_guess(state)
-        return self._sample_of(state, w)
+        return self._sample_of(state, w, "flash")
 
-    def _sample_of(self, state, w: float) -> Optional[Sample]:
+    def _sample_of(self, state, w: float, source: str) -> Optional[Sample]:
         values = [state.keyed_output(k) for k in self.out]
         if not all(np.isfinite(values)):
             return None
         x, y, T_K, p_Pa = values
         return Sample(x, y, _inside(self.metric, x, y), _two_phase(_quality_or_nan(state)),
-                      (w, T_K, p_Pa, _quality_or_nan(state), state.rhomass()))
+                      (w, T_K, p_Pa, _quality_or_nan(state), state.rhomass(), source))
 
 
 def _saturation_sample(fluid: Fluid, key: str, value_SI: float, quality: float, diagram: DiagramType,
                        metric: Optional[Metric], sweep_key: str) -> Optional[Sample]:
     """The saturation state at T or p = value_SI and the given quality, or None.
 
-    The sample's ``extra`` is (w, T, p, Q, rho) with w its value of ``sweep_key``.
+    The sample's ``extra`` is (w, T, p, Q, rho, "flash") with w its value of ``sweep_key``.
     """
     try:
         state = fluid.update(key, value_SI, "Q", quality)
@@ -275,7 +276,7 @@ def _saturation_sample(fluid: Fluid, key: str, value_SI: float, quality: float, 
     if not all(np.isfinite(v) for v in (x, y, T_K, p_Pa)):
         return None
     w = T_K if sweep_key == "T" else p_Pa
-    return Sample(x, y, _inside(metric, x, y), True, (w, T_K, p_Pa, quality, state.rhomass()))
+    return Sample(x, y, _inside(metric, x, y), True, (w, T_K, p_Pa, quality, state.rhomass(), "flash"))
 
 
 def compute_isoline(fluid: Fluid, diagram: DiagramType, iso_key: str, value_SI: float,
@@ -543,7 +544,7 @@ def _solve_crossing(fluid, diagram, iso_key, value_SI, sweep_key, a, b, quality,
 
     def result(w, found):
         return (w, quality, Sample(found[1], found[2], _inside(metric, found[1], found[2]), None,
-                                   (w, found[3], found[4], quality, found[5])))
+                                   (w, found[3], found[4], quality, found[5], "flash")))
     fa, fb = ends[0][0] - value_SI, ends[1][0] - value_SI
     if fa == 0.0:
         return result(a, ends[0])
@@ -598,7 +599,8 @@ def _envelope_crossings(envelope, diagram, iso_key, value_SI, sweep_key, metric,
         if sweep_range is not None and not sweep_range[0] <= w <= sweep_range[1]:
             continue
         quality = envelope.Q[i] if t < 0.5 else envelope.Q[i + 1]
-        found.append((w, quality, Sample(x, y, _inside(metric, x, y), None, (w, T_K, p_Pa, quality, rho))))
+        found.append((w, quality, Sample(x, y, _inside(metric, x, y), None,
+                                         (w, T_K, p_Pa, quality, rho, "envelope"))))
     return found
 
 
@@ -715,7 +717,7 @@ def _mixture_quality_line(fluid: Fluid, diagram: DiagramType, quality: float, po
             ranges[key] = (ranges[key][0] - 1.0, ranges[key][0] + 1.0)
     metric = Metric(ranges[diagram.x], ranges[diagram.y], diagram.x_log, diagram.y_log)
     top = Sample(envelope.top(diagram.x), envelope.top(diagram.y), True, True,
-                 (T_hi_K, T_hi_K, envelope.top("p"), quality))
+                 (T_hi_K, T_hi_K, envelope.top("p"), quality, envelope.top("rho"), "envelope"))
 
     def evaluate(u, careful):
         return _saturation_sample(fluid, "T", T_lo_K + (T_hi_K - T_lo_K) * u, quality, diagram, None, "T")
