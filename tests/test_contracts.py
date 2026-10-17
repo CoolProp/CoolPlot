@@ -76,17 +76,51 @@ def test_curve_records_round_trip():
     for chart in _charts():
         domain = chart.engine.domain(chart.spec)
         for request, curve in chart.engine.curves(chart.spec, domain, plan(chart.spec, domain))[:3]:
-            data = {"x": [None if not np.isfinite(v) else v for v in curve.x],
-                    "y": [None if not np.isfinite(v) else v for v in curve.y],
-                    "n_failed": curve.n_failed, "n_fallback": curve.n_fallback, "n_inserted": curve.n_inserted,
-                    "method": curve.method, "reason": curve.reason}
-            text = _twice(data)
-            back = json.loads(text)
-            nan = float("nan")
-            again = Curve(np.array([nan if v is None else v for v in back["x"]]),
-                          np.array([nan if v is None else v for v in back["y"]]), back["n_failed"],
-                          back["n_fallback"], back["n_inserted"], back["method"], back["reason"])
+            text = _twice(curve.to_dict())
+            again = Curve.from_dict(json.loads(text))
+            assert _twice(again.to_dict()) == text
             assert np.array_equal(again.x, curve.x, equal_nan=True) and again.method == curve.method
+
+
+def test_complete_states_round_trip_whatever_the_key_order():
+    from coolplot import DiagramSpec, StatePoint
+    from coolplot.thermo.cycles import simple_compression
+    assert StatePoint(T=1.0, p=2.0) == StatePoint(p=2.0, T=1.0)
+    assert hash(StatePoint(T=1.0, p=2.0)) == hash(StatePoint(p=2.0, T=1.0))
+    assert list(StatePoint(h=3.0, T=1.0)) == ["T", "h"] and len(StatePoint(h=3.0)) == 1
+    diagram, chart = _charts()
+    diagram.add_cycle(simple_compression("R290", T_evap_C=0.0, T_cond_C=40.0))
+    chart.add_process("Copied", chart.process_states("Air conditioning"))
+    for c in (diagram, chart):
+        text = _twice(c.spec.to_dict())
+        assert DiagramSpec.from_dict(json.loads(text)) == c.spec
+
+
+def test_states_of_the_other_chart_kind_are_refused():
+    diagram, chart = _charts()
+    air = chart.process_states("Air conditioning")[0]
+    fluid = diagram.fluid.state_point("p", chart.p_Pa, "T", 300.0)   # at the chart's pressure, still refused
+    with pytest.raises(ValueError, match="lacks"):
+        diagram.add_cycle("air", [air, air])
+    with pytest.raises(ValueError, match="lacks"):
+        chart.add_process("fluid", [fluid, fluid])
+    with pytest.raises(ValueError, match="unknown properties \\['rho'\\], expected"):
+        chart.add_process("fluid", [{"rho": 1.2, "T": 20}])
+    from coolplot import PropertyDiagram, PsychrometricChart
+    with pytest.raises(ValueError, match="humid_air charts"):
+        PsychrometricChart.from_spec(diagram.spec)
+    with pytest.raises(ValueError, match="fluid charts"):
+        PropertyDiagram.from_spec(chart.spec)
+    with pytest.raises(ValueError, match="not offered"):
+        from coolplot.core.diagram_type import DiagramType
+        DiagramType("T", "W", "humid_air")
+    chart.set_isolines("RH", range=(0.0, 100.0), num=11)   # the excluded 0 % is simply left out
+    assert [r.value_SI for r in __import__("coolplot.engine", fromlist=["plan"]).plan(
+        chart.spec, chart.engine.domain(chart.spec)) if r.key == "RH"][0] == pytest.approx(0.1)
+    with pytest.raises(ValueError, match="above 0"):
+        chart.set_lines("RH", [0.0, 50.0])
+    with pytest.raises(ValueError, match="fog"):
+        PsychrometricChart(T_range=(0.0, 5.0), W_range=(20.0, 30.0)).update_scene()
 
 
 def test_both_chart_kinds_share_the_pipeline():

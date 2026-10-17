@@ -27,7 +27,7 @@ from .core.state import StatePoint
 from .core.units import get_unit_system
 from .engine import CurveCache, Engine
 from .spec import DiagramSpec, HumidAirSpec, get_settings
-from .spec.fluid import within
+from .core.limits import within
 from .style.values import LineStyle, MarkerStyle
 
 
@@ -52,6 +52,8 @@ class PsychrometricChart(Chart):
     engine, cache, background, on_ready, workers
         See :class:`coolplot.Chart`.
     """
+
+    kind = "humid_air"
 
     def __init__(self, p: float = None, T_range=(-10.0, 50.0), W_range=(0.0, 30.0), units="EUR",
                  theme=None, settings=None, points: int = None, engine: Engine = None, cache: CurveCache = None,
@@ -121,10 +123,11 @@ class PsychrometricChart(Chart):
         :meth:`Chart.cycle_states`."""
         states = list(states)
         for number, state in enumerate(states, start=1):
-            if isinstance(state, StatePoint) and abs(state.p - self.p_Pa) > 1e-6 * self.p_Pa:
+            if isinstance(state, StatePoint) and "p" in state and abs(state.p - self.p_Pa) > 1e-6 * self.p_Pa:
                 raise ValueError("Process '{0}', state {1}: the state is at {2} Pa, the chart at {3} Pa.".format(
                     name, number, state.p, self.p_Pa))
         numbers_in_order = list(range(1, len(states) + 1))
+        # One state: CycleSpec's default loop (1, 1) draws nothing visible
         loops = [numbers_in_order + ([1] if closed else [])] if len(states) > 1 else []
         return self.add_cycle(name, states, loops=loops, numbers=numbers, line_style=line_style,
                               marker_style=marker_style, steps=1)

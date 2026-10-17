@@ -45,32 +45,47 @@ from .style.theme import Theme, get_theme
 from .style.values import LineStyle, MarkerStyle
 
 
-def state_input(entry, units, quantities=None) -> StateInput:
+def _known_key(name, inputs):
+    """The quantity key for a name a state may be given by, else None."""
+    try:
+        key = quantity_key(name)
+    except (KeyError, AttributeError, TypeError):   # unknown, or not even a string
+        return None
+    return key if key in inputs else None
+
+
+def state_input(entry, units, provider) -> StateInput:
     """A StateInput from a StatePoint, a StateInput or a dict in ``units``.
 
-    ``quantities`` optionally lists the keys a state may be given by.
+    ``provider`` says which quantities a state may be given by
+    (``provider.inputs``) and which a complete state has to hold
+    (``provider.quantities``), so that a state of another kind of chart
+    is refused here and not while drawing.
     """
     if isinstance(entry, StateInput):
         return entry
     if isinstance(entry, StatePoint):
+        check_state(entry, provider)
         return StateInput(state=entry)
     if not isinstance(entry, dict):
         raise TypeError("A state is a StatePoint or a dict of properties, not {0}.".format(type(entry).__name__))
     entry = dict(entry)
     via = entry.pop("via", None)
     eta_is = float(entry.pop("eta_is", 1.0))
-    keys = {}
-    for name in entry:
-        try:
-            key = quantity_key(name)
-        except KeyError:
-            key = None
-        if key is None or (quantities is not None and key not in quantities):
-            raise ValueError("A state has unknown properties {0}, expected two of {1}.".format(
-                [n for n in entry if n not in keys], list(quantities or ())))
-        keys[name] = key
+    keys = {name: _known_key(name, provider.inputs) for name in entry}
+    unknown = [name for name, key in keys.items() if key is None]
+    if unknown:
+        raise ValueError("A state has unknown properties {0}, expected two of {1}.".format(
+            unknown, list(provider.inputs)))
     props = tuple((keys[name], float(units[keys[name]].to_SI(v))) for name, v in entry.items())
     return StateInput(props, via, eta_is)
+
+
+def check_state(state: StatePoint, provider):
+    """Raise ValueError if a complete state lacks quantities of ``provider``."""
+    missing = [k for k in provider.quantities if k not in state]
+    if missing:
+        raise ValueError("The state {0} is not a state of {1}: it lacks {2}.".format(state, provider.name, missing))
 
 
 class Chart:
@@ -118,9 +133,14 @@ class Chart:
             self.engine.claimed = True
             weakref.finalize(self, setattr, self.engine, "claimed", False)
 
+    #: The chart kind a subclass is made for; None accepts every kind.
+    kind = None
+
     @classmethod
     def from_spec(cls, spec: DiagramSpec, **engine_options) -> "Chart":
         """A chart for a saved spec, e.g. DiagramSpec.from_dict(json.load(f))."""
+        if cls.kind is not None and spec.diagram.kind != cls.kind:
+            raise ValueError("{0} shows {1} charts, not a {2} spec.".format(cls.__name__, cls.kind, spec.diagram.name))
         chart = cls.__new__(cls)
         Chart.__init__(chart, spec, **engine_options)
         return chart
@@ -269,9 +289,15 @@ class Chart:
             raise ValueError("Lines of constant '{0}' cannot be drawn in a {1} diagram.".format(
                 key, self.spec.diagram.name))
         unit = self.spec.units[key]
+        label = self.spec.diagram.quantity_label(key)
         values_SI = None if values is None else tuple(float(v) for v in unit.to_SI(values).ravel())
         range_SI = None if range is None else tuple(float(v) for v in unit.to_SI(range))
-        family.check_values((values_SI or ()) + (range_SI or ()), self.spec.diagram.quantity_label(key))
+        family.check_values(values_SI or (), label)
+        if range_SI is not None and family.bounds is not None:
+            # A range may touch an excluded bound (0 to 100 % RH): the line without a value is left out
+            if any(not family.bounds[0] <= v <= family.bounds[1] for v in range_SI):
+                raise ValueError("The range of {0} has to lie between {1:g} and {2:g} (as SI values), not {3}.".format(
+                    label, family.bounds[0], family.bounds[1], range_SI))
         if num is None:
             num = family.default_num
         self.spec = self.spec.with_isolines(IsolineSet(key, values_SI, num, range_SI, rounding, points, labels))
@@ -330,6 +356,8 @@ class Chart:
             if cycle.fluid and self._other_fluid(cycle.fluid):
                 raise ValueError("Cycle '{0}' was computed for {1}, but this chart shows {2}.".format(
                     cycle.name, cycle.fluid, self.spec.fluid))
+            for _, state in cycle.states:
+                check_state(state, self.fluid)
             spec = CycleSpec.from_cycle(cycle, name=None if isinstance(name, Cycle) else name, loops=loops,
                                         paths=paths, numbers=numbers, line_style=line_style,
                                         marker_style=marker_style, steps=steps)
@@ -348,8 +376,8 @@ class Chart:
             if states is None:
                 raise ValueError("Give the states of cycle '{0}'.".format(name))
             items = states.items() if isinstance(states, dict) else enumerate(states, start=1)
-            quantities = self.fluid.quantities
-            inputs = tuple((int(n), state_input(entry, unit_system, quantities)) for n, entry in items)
+            provider = self.fluid
+            inputs = tuple((int(n), state_input(entry, unit_system, provider)) for n, entry in items)
             spec = CycleSpec(str(name), inputs, loops or (), paths or (), numbers, line_style, marker_style, steps)
         self.engine.cycle(self.spec, spec)   # compute now, so that errors show up here
         self.spec = self.spec.with_cycle(spec)
@@ -391,11 +419,12 @@ class Chart:
         self.spec = self.spec.without_cycle(name)
 
     def cycle_states(self, name: str):
-        """The states of a cycle in SI units, by state number."""
+        """The states of a cycle in SI units, by state number in ascending order."""
         cycle = next((c for c in self.spec.cycles if c.name == name), None)
         if cycle is None:
             raise KeyError("No cycle named {0!r}.".format(name))
-        return dict(self.engine.cycle(self.spec, cycle)[0])
+        states = self.engine.cycle(self.spec, cycle)[0]
+        return {n: states[n] for n in sorted(states)}
 
     # ------------------------------------------------------------------
     # Interaction helpers

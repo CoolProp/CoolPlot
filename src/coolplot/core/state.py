@@ -17,6 +17,11 @@ STATE_KEYS = ("T", "p", "h", "s", "rho", "u", "Q")
 #: Quantities stored in every state of humid air (per kg of dry air).
 AIR_STATE_KEYS = ("T", "W", "RH", "Twb", "Tdp", "h", "v", "p")
 
+# The order in which a StatePoint keeps its quantities, whatever order they
+# were given in, so that equal states compare and hash equal and a state
+# read back from JSON is the same value. Keys not listed follow alphabetically.
+_ORDER = {key: i for i, key in enumerate(STATE_KEYS + tuple(k for k in AIR_STATE_KEYS if k not in STATE_KEYS))}
+
 
 class StatePoint:
     """A fully defined state in SI units
@@ -29,22 +34,26 @@ class StatePoint:
 
     Written as a plain class rather than a dataclass so that fluids and
     humid air share one type: the set of keys is decided by whoever
-    computes the state. Instances compare and hash by their values.
+    computes the state. Instances compare and hash by their values, in
+    whatever order the quantities were given.
     """
     __slots__ = ("_values",)
 
     def __init__(self, **values):
-        items = tuple((quantity_key(k), float(v)) for k, v in values.items())
+        items = [(quantity_key(k), float(v)) for k, v in values.items()]
         if not items:
             raise ValueError("A StatePoint needs at least one quantity.")
         if len({k for k, _ in items}) != len(items):
             raise ValueError("A quantity is given twice in {0}.".format(list(values)))
-        object.__setattr__(self, "_values", items)
+        items.sort(key=lambda kv: (_ORDER.get(kv[0], len(_ORDER)), kv[0]))
+        object.__setattr__(self, "_values", tuple(items))
 
     # Read access ---------------------------------------------------------
     def __getattr__(self, name: str) -> float:
         # Only called when normal attribute lookup fails, so _values and
         # the methods are found the usual way.
+        if name == "_values":   # a half-built instance (pickling, __new__)
+            raise AttributeError(name)
         for key, value in self._values:
             if key == name:
                 return value
@@ -65,6 +74,12 @@ class StatePoint:
 
     def keys(self) -> Tuple[str, ...]:
         return tuple(k for k, _ in self._values)
+
+    def __iter__(self):
+        return iter(self.keys())
+
+    def __len__(self) -> int:
+        return len(self._values)
 
     def to_dict(self) -> Dict[str, float]:
         return dict(self._values)

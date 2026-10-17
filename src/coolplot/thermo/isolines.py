@@ -60,6 +60,20 @@ class Curve:
     def n_valid(self) -> int:
         return int(np.sum(np.isfinite(self.x) & np.isfinite(self.y)))
 
+    def to_dict(self) -> dict:
+        """The curve record of docs/contracts.md; non-finite values become None."""
+        return {"x": [float(v) if np.isfinite(v) else None for v in self.x],
+                "y": [float(v) if np.isfinite(v) else None for v in self.y],
+                "n_failed": self.n_failed, "n_fallback": self.n_fallback, "n_inserted": self.n_inserted,
+                "method": self.method, "reason": self.reason}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Curve":
+        nan = float("nan")
+        return cls([nan if v is None else v for v in data["x"]], [nan if v is None else v for v in data["y"]],
+                   data.get("n_failed", 0), data.get("n_fallback", 0), data.get("n_inserted", 0),
+                   data.get("method", "flash"), data.get("reason", ""))
+
     @property
     def n_gaps(self) -> int:
         """Invalid points between the first and the last valid one.

@@ -199,6 +199,9 @@ class DiagramSpec:
         if diagram.kind != fluid.kind:
             raise ValueError("A {0} diagram cannot show {1}.".format(diagram.name, fluid.name))
         if diagram.kind == "fluid":
+            if isinstance(self.limits, Region):
+                raise ValueError("A {0} diagram takes TpLimits (bounds on T and p), not a Region.".format(
+                    diagram.name))
             limits = get_tp_limits(self.limits)
         else:
             limits = self.limits

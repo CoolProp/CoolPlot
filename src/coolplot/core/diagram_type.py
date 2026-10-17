@@ -111,6 +111,11 @@ AXES = {
     "humid_air": ("T", "W"),
 }
 
+#: Chart kinds whose lines are computed for one orientation only: (y, x).
+FIXED_AXES = {
+    "humid_air": ("W", "T"),
+}
+
 #: Axis titles that differ from the quantity's name in one chart kind.
 _AXIS_NAMES = {
     "humid_air": {"T": "Dry-bulb temperature"},
@@ -151,6 +156,9 @@ class DiagramType:
                     key, self.kind, AXES[self.kind]))
         if x == y:
             raise ValueError("The axes of a diagram have to show different quantities, not '{0}' twice.".format(x))
+        if self.kind in FIXED_AXES and (y, x) != FIXED_AXES[self.kind]:
+            raise ValueError("A {0} chart shows {1} over {2}; '{3}{4}' is not offered.".format(
+                self.kind, FIXED_AXES[self.kind][0], FIXED_AXES[self.kind][1], y, x))
         object.__setattr__(self, "y", y)
         object.__setattr__(self, "x", x)
 

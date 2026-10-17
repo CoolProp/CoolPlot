@@ -69,6 +69,17 @@ def get_tp_limits(limits) -> TpLimits:
     raise ValueError("Expected a TpLimits, a preset name or four values.")
 
 
+#: What CoolProp's HAPropsSI covers: temperatures in K, total pressures in Pa.
+HUMID_AIR_T_LIMITS_K = (173.15, 623.15)
+HUMID_AIR_P_LIMITS_PA = (1e4, 1e7)
+
+
+def within(value: float, limits) -> bool:
+    """limits[0] <= value <= limits[1], allowing for rounding (-100 deg C is 173.14999... K)."""
+    slack = 1e-9 * max(abs(limits[0]), abs(limits[1]))
+    return limits[0] - slack <= value <= limits[1] + slack
+
+
 @dataclass(frozen=True)
 class Region:
     """Absolute bounds on quantities, in SI units, for charts that are not

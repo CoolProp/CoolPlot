@@ -8,7 +8,8 @@ HAPropsSI). The engine never looks inside them; it uses this interface:
 
 * ``kind``: "fluid" or "humid_air", matching the chart's diagram type;
 * ``name``: for messages, ``model_key``: what identifies the model;
-* ``quantities``: the keys a state of this provider holds;
+* ``quantities``: the keys a state of this provider holds, ``inputs`` the
+  keys a state may be given by;
 * ``fingerprint``: what decides the numbers (the CoolProp version and
   its settings), part of every cache key;
 * ``configuration_changed()``: whether the provider has to be rebuilt;

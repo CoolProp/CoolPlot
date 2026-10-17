@@ -16,6 +16,8 @@ import re
 from dataclasses import dataclass
 from typing import Tuple
 
+from ..core.limits import HUMID_AIR_P_LIMITS_PA, HUMID_AIR_T_LIMITS_K, within
+
 BASES = ("mole", "mass", "volu")
 
 # A component in a fluid string: a name, optionally followed by a fraction
@@ -143,9 +145,8 @@ class HumidAirSpec:
     p_Pa: float = 101325.0
 
     kind = "humid_air"
-    #: What HAPropsSI covers: temperatures in K, total pressures in Pa.
-    T_LIMITS_K = (173.15, 623.15)
-    P_LIMITS_PA = (1e4, 1e7)
+    T_LIMITS_K = HUMID_AIR_T_LIMITS_K
+    P_LIMITS_PA = HUMID_AIR_P_LIMITS_PA
 
     def __post_init__(self):
         p_Pa = float(self.p_Pa)
@@ -169,12 +170,6 @@ class HumidAirSpec:
     @classmethod
     def from_dict(cls, data: dict) -> "HumidAirSpec":
         return cls(float(data.get("p_Pa", 101325.0)))
-
-
-def within(value: float, limits) -> bool:
-    """limits[0] <= value <= limits[1], allowing for rounding (-100 deg C is 173.14999... K)."""
-    slack = 1e-9 * max(abs(limits[0]), abs(limits[1]))
-    return limits[0] - slack <= value <= limits[1] + slack
 
 
 def fluid_spec_from_dict(data) -> "FluidSpec | HumidAirSpec":

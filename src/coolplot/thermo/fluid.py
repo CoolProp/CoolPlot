@@ -119,8 +119,9 @@ class Fluid:
     """
 
     kind = "fluid"
-    #: The quantities a state of a fluid holds.
+    #: The quantities a state of a fluid holds, and those it may be given by.
     quantities = STATE_KEYS
+    inputs = STATE_KEYS
 
     def __init__(self, fluid, fractions: str = None):
         if isinstance(fluid, AbstractState):

@@ -29,6 +29,13 @@ One chart model (docs/v1_plan.md, package 0.4):
   spec, curve and scene records.
 * Psychrometric charts use `settings.calc.points` (250 by default,
   100 before); `points=` on the constructor still overrides it.
+* Behaviour changes: a `PsychroSpec` JSON file of 0.3 is not read by
+  `DiagramSpec.from_dict` (no upgrade path; such files were saved for
+  one minor release); `set_lines("RH", [0])` raises instead of drawing
+  a line on the axis; a chart region that lies entirely in the fog
+  raises at `update_scene` instead of drawing nothing; a complete
+  state of the other chart kind is refused by `add_cycle` and
+  `add_process`; `cycle_states` lists the states by ascending number.
 
 0.3.0
 -----

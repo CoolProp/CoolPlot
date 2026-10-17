@@ -6,7 +6,7 @@ boundaries, and each one can be written as JSON and read back:
 | Record | Written by | Read by | Python |
 |---|---|---|---|
 | the chart spec | the facade (`Chart`) | engine, compose | `DiagramSpec.to_dict` / `from_dict` |
-| the curve record | thermo (a property provider) | engine cache, compose | `Curve` |
+| the curve record | thermo (a property provider) | engine cache, compose | `Curve.to_dict` / `from_dict` |
 | the scene | compose | every renderer | `Scene.to_dict` / `from_dict` |
 
 These are the contracts that a port of any part of the pipeline to
@@ -19,7 +19,9 @@ record round-trips through JSON without change.
 All numbers are SI (K, Pa, J/kg, J/kg/K, kg/m3, kg water per kg dry air,
 m3/kg dry air, fractions) except in the scene, whose coordinates are in
 the display units the spec asked for. Non-finite values are written as
-`null`. Strings are ASCII. Keys of quantities are those of
+`null` and read back as NaN (an infinity does not survive the trip).
+CoolPlot's own strings are ASCII; user texts (titles, cycle names) pass
+through as given. Keys of quantities are those of
 `coolplot.core.quantities`: `T`, `p`, `h`, `s`, `rho`, `u`, `Q` for
 fluids, plus `W`, `RH`, `Twb`, `Tdp`, `v` for humid air.
 
@@ -69,7 +71,8 @@ One record describes a property diagram and a psychrometric chart alike;
   explicit values, otherwise `num` values are spread over `range_SI` (or
   the calculation domain), round values if `rounding`.
 * `cycles`: numbered states, each given by a full state (`{"state":
-  {"T": ..., "p": ..., ...}}`), two properties, or one property and
+  {"T": ..., "p": ..., ...}}`, holding every quantity of the chart's
+  fluid or of humid air, in any order), two properties, or one property and
   `via` (`coolplot.core.cycle.VIA_KINDS`); `loops` are chains of state
   numbers, `paths` lists `[[from, to], kind]` for connections not drawn
   with "auto" (`PATH_KINDS`). Air processes on a psychrometric chart are

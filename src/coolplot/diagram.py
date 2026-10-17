@@ -78,6 +78,8 @@ class PropertyDiagram(Chart):
     >>> renderer.sync(diagram.update_scene())   # no new property calls
     """
 
+    kind = "fluid"
+
     def __init__(self, fluid, diagram_type="ph", units="EUR", tp_limits="DEF", theme=None,
                  settings=None, engine: Engine = None, cache: CurveCache = None, background: str = None,
                  on_ready=None, workers: int = None):

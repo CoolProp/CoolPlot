@@ -27,7 +27,9 @@ import CoolProp
 from CoolProp.HumidAirProp import HAPropsSI
 
 from ..core.diagram_type import FAMILIES
-from ..core.limits import Region
+from ..core.limits import HUMID_AIR_P_LIMITS_PA as P_LIMITS_PA
+from ..core.limits import HUMID_AIR_T_LIMITS_K as T_LIMITS_K
+from ..core.limits import Region, within
 from ..core.quantities import QUANTITIES, quantity_key
 from ..core.state import AIR_STATE_KEYS, StatePoint
 from .isolines import Curve
@@ -38,9 +40,6 @@ HUMID_AIR = tuple(k for k in AIR_STATE_KEYS if k != "p")
 #: Families of lines a psychrometric chart can show.
 LINE_KEYS = tuple(f.key for f in FAMILIES["humid_air"])
 
-#: What HAPropsSI covers: temperatures in K, total pressures in Pa.
-T_LIMITS_K = (173.15, 623.15)
-P_LIMITS_PA = (1e4, 1e7)
 
 
 def _name(key: str) -> str:
@@ -319,12 +318,14 @@ class HumidAir:
     kind = "humid_air"
     #: The quantities a state of humid air holds.
     quantities = AIR_STATE_KEYS
+    #: The quantities a state may be given by (the pressure is fixed).
+    inputs = HUMID_AIR
     #: Humid air has no critical point to keep clear of.
     has_critical_point = False
 
     def __init__(self, p_Pa: float = 101325.0):
         p_Pa = float(p_Pa)
-        if not (P_LIMITS_PA[0] * (1.0 - 1e-9) <= p_Pa <= P_LIMITS_PA[1] * (1.0 + 1e-9)):
+        if not within(p_Pa, P_LIMITS_PA):
             raise ValueError("The total pressure has to lie between {0} and {1} Pa for HAPropsSI, not {2} Pa.".format(
                 P_LIMITS_PA[0], P_LIMITS_PA[1], p_Pa))
         self.p_Pa = p_Pa
@@ -366,14 +367,18 @@ class HumidAir:
         T_range_K = limits.range_SI("T")
         W_range = limits.range_SI("W")
         for T_K in T_range_K:
-            if not (T_LIMITS_K[0] * (1.0 - 1e-9) <= T_K <= T_LIMITS_K[1] * (1.0 + 1e-9)):
+            if not within(T_K, T_LIMITS_K):
                 raise ValueError("Temperatures have to lie between {0} and {1} K for HAPropsSI, got {2} K.".format(
                     T_LIMITS_K[0], T_LIMITS_K[1], T_range_K))
         if W_range[0] < 0.0:
             raise ValueError("Humidity ratios have to be at least 0, got {0}.".format(W_range))
         tp_box = (T_range_K[0], T_range_K[1], self.p_Pa, self.p_Pa)
         ranges = [("T", T_range_K), ("W", W_range), ("p", (self.p_Pa, self.p_Pa))]
-        ranges.extend(sorted(chart_ranges(self.p_Pa, T_range_K, W_range).items()))
+        spans = chart_ranges(self.p_Pa, T_range_K, W_range)
+        if any(key not in spans for key in LINE_KEYS):
+            raise ValueError("The region T = {0} K, W = {1} lies entirely above saturation (fog) at {2} Pa; "
+                             "there are no humid-air states to draw.".format(T_range_K, W_range, self.p_Pa))
+        ranges.extend(sorted(spans.items()))
         return tp_box, tuple(ranges)
 
     def line(self, key: str, value_SI: float, tp_box, points: int) -> Curve:
