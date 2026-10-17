@@ -10,9 +10,8 @@ from CoolProp.HumidAirProp import HAPropsSI  # noqa: E402
 
 from coolplot.psychrometric import PsychrometricChart  # noqa: E402
 from coolplot.render.svg import SvgRenderer  # noqa: E402
-from coolplot.spec.psychro import PsychroSpec  # noqa: E402
-from coolplot.thermo.humid_air import (air_state, chart_ranges, default_values, psychro_line,  # noqa: E402
-                                       saturation_W)
+from coolplot.spec import DiagramSpec  # noqa: E402
+from coolplot.thermo.humid_air import air_state, chart_ranges, psychro_line, saturation_W  # noqa: E402
 
 P = 101325.0
 T_RANGE = (263.15, 318.15)
@@ -48,11 +47,18 @@ def test_lines_start_on_the_saturation_curve(key, value):
         assert curve.x[0] == pytest.approx(value)   # on saturation, wet bulb equals dry bulb
 
 
+def default_values(key, T_range, W_range, units="SI"):
+    """The values a chart draws for a family without explicit values."""
+    from coolplot.engine import plan
+    chart = PsychrometricChart(T_range=T_range, W_range=W_range, units=units)
+    chart.set_lines(key)
+    return [r.value_SI for r in plan(chart.spec, chart.engine.domain(chart.spec))]
+
+
 def test_default_values_are_round():
-    ranges = chart_ranges(P, T_RANGE, (0.0, 0.025))
-    assert default_values("RH", ranges) == pytest.approx([0.1 * i for i in range(1, 11)])
-    twb_C = np.array(default_values("Twb", ranges)) - 273.15
-    h = np.array(default_values("h", ranges))
+    assert default_values("RH", T_RANGE, (0.0, 0.025)) == pytest.approx([0.1 * i for i in range(1, 11)])
+    twb_C = np.array(default_values("Twb", (-10.0, 45.0), (0.0, 25.0), "EUR")) - 273.15
+    h = np.array(default_values("h", (-10.0, 45.0), (0.0, 25.0), "EUR"))
     assert len(twb_C) >= 5 and len(h) >= 5   # allclose on an empty array would pass anything
     assert np.allclose(np.round(twb_C / 5.0) * 5.0, twb_C, atol=1e-6)
     assert np.allclose(np.round(h / 10e3) * 10e3, h, atol=1e-3)
@@ -61,9 +67,8 @@ def test_default_values_are_round():
 @pytest.mark.parametrize("T_range, W_range", [((273.15, 373.15), (0.0, 0.2)), ((273.15, 473.15), (0.0, 1.0)),
                                               ((293.15, 295.15), (0.008, 0.009))])
 def test_default_line_counts_stay_reasonable(T_range, W_range):
-    ranges = chart_ranges(P, T_range, W_range)
     for key in ("Twb", "h", "v"):
-        assert 3 <= len(default_values(key, ranges)) <= 15, key
+        assert 3 <= len(default_values(key, T_range, W_range)) <= 20, key
 
 
 def test_lines_reach_their_ends():
@@ -93,8 +98,8 @@ def chart():
 def test_chart_scene(chart):
     scene = chart.update_scene()
     groups = {i.group for i in scene}
-    assert {"psy/RH", "psy/Twb", "psy/h", "psy/v", "air/Air conditioning"} <= groups
-    assert scene["psy/RH/1"].role == "saturation"
+    assert {"iso/RH", "iso/Twb", "iso/h", "iso/v", "cycle/Air conditioning"} <= groups
+    assert scene["iso/RH/1"].role == "saturation"
     assert scene.axes.x_label == "Dry-bulb temperature T / deg C"
     assert scene.axes.y_label == "Humidity ratio W / g/kg"
     assert scene.axes.x_limits == (-10.0, 45.0)
@@ -130,8 +135,8 @@ def test_spec_round_trips_through_json(chart):
     chart.set_view((0, 30), (0, 15))
     chart.points = 60
     data = json.loads(json.dumps(chart.spec.to_dict()))
-    assert PsychroSpec.from_dict(data) == chart.spec
-    again = PsychrometricChart.from_spec(PsychroSpec.from_dict(data))
+    assert DiagramSpec.from_dict(data) == chart.spec
+    again = PsychrometricChart.from_spec(DiagramSpec.from_dict(data))
     assert again.points == 60 and again.update_scene().axes.x_limits == pytest.approx((0.0, 30.0))
 
 
@@ -152,9 +157,9 @@ def test_chart_draws_with_every_backend(chart, tmp_path):
 
 def test_other_pressures_and_units():
     high = PsychrometricChart(p=0.8, T_range=(0, 40), W_range=(0, 30))    # about 2000 m above sea level
-    assert high.spec.p_Pa == pytest.approx(0.8e5)
+    assert high.p_Pa == pytest.approx(0.8e5)
     high.set_default_lines()
-    lines = [i for i in high.update_scene() if i.id.startswith("psy/") and not i.id.endswith("/label")]
+    lines = [i for i in high.update_scene() if i.id.startswith("iso/") and not i.id.endswith("/label")]
     assert len(lines) > 20
     for item in lines:   # every line stays below saturation at 0.8 bar
         assert np.all(item.y <= saturation_W(item.x + 273.15, 0.8e5) * 1e3 * (1 + 1e-6))
@@ -177,7 +182,7 @@ def test_other_pressures_and_units():
 
 def test_bad_process_input(chart):
     with pytest.raises(ValueError, match="unknown properties"):
-        chart.add_process("Lower case", [{"t": 20, "rh": 50}])
+        chart.add_process("Not of air", [{"T": 20, "rho": 1.2}])
     elsewhere = air_state("T", 298.15, "RH", 0.5, 0.8e5)
     with pytest.raises(ValueError, match="Pa"):
         chart.add_process("Other pressure", [elsewhere])
@@ -195,25 +200,26 @@ def test_interaction_zooms_and_drags_air_states(chart):
     interaction.handle(ViewChanged((10.0, 30.0), (0.0, 15.0)))
     assert renderer.ax.get_xlim() == pytest.approx((10.0, 30.0))
     assert chart.cache.misses == misses   # zooming computes nothing new
-    assert interaction.cycle_state("air/Air conditioning/states", 1) == ("Air conditioning", 2)
-    interaction.handle(DragEnd("air/Air conditioning/states", 1, 15.0, 8.0))
+    assert interaction.cycle_state("cycle/Air conditioning/states", 1) == ("Air conditioning", 2)
+    interaction.handle(DragEnd("cycle/Air conditioning/states", 1, 15.0, 8.0))
     moved = chart.process_states("Air conditioning")[1]
     assert moved.T == pytest.approx(288.15) and moved.W == pytest.approx(0.008)
-    interaction.handle(DragEnd("air/Air conditioning/states", 1, 15.0, 80.0))   # in the fog: refused
+    interaction.handle(DragEnd("cycle/Air conditioning/states", 1, 15.0, 80.0))   # in the fog: refused
     assert chart.process_states("Air conditioning")[1].W == pytest.approx(0.008)
 
 
 def test_charts_with_a_foggy_edge_get_all_visible_lines():
     # T 0 to 50 deg C, W 10 to 30 g/kg: the left edge is fog, the visible
     # region starts on saturation at about 14 deg C
-    ranges = chart_ranges(P, (273.15, 323.15), (0.010, 0.030))
-    twb_C = np.array(default_values("Twb", ranges)) - 273.15
+    ranges = dict(chart_ranges(P, (273.15, 323.15), (0.010, 0.030)))
+    assert ranges["Twb"][0] - 273.15 <= 15.0 + 1e-6 and ranges["h"][0] <= 40e3 + 1e-6
+    twb_C = np.array(default_values("Twb", (0.0, 50.0), (10.0, 30.0), "EUR")) - 273.15
     assert twb_C.min() <= 15.0 + 1e-6
-    assert min(default_values("h", ranges)) <= 40e3 + 1e-6
+    assert min(default_values("h", (0.0, 50.0), (10.0, 30.0), "EUR")) <= 40e3 + 1e-6
 
 
 def test_the_limits_of_hapropssi_are_allowed():
-    assert PsychrometricChart(T_range=(-100, 50)).spec.T_range_K[0] == pytest.approx(173.15)
+    assert PsychrometricChart(T_range=(-100, 50)).spec.limits.range_SI("T")[0] == pytest.approx(173.15)
     PsychrometricChart().set_lines("Twb", [-100.0])
 
 

@@ -1,6 +1,35 @@
 Changelog
 =========
 
+0.4.0 (unreleased)
+------------------
+
+One chart model (docs/v1_plan.md, package 0.4):
+
+* `Chart` is the facade; `PropertyDiagram` and `PsychrometricChart` are
+  its two constructors and share every method. A psychrometric chart is
+  a `DiagramSpec` with `HumidAirSpec` as fluid, diagram type `"WT"` and
+  a `Region` of T and W bounds; it is computed by the one `Engine`
+  through a `HumidAir` property provider and composed by the one
+  `compose`. `spec/psychro.py` and `compose/psychro.py` are gone.
+* One quantity table (`W`, `RH`, `Twb`, `Tdp`, `v` added) and one unit
+  table per unit system; `"EUR"` shows g/kg, % and deg C for humid air.
+* Line families per chart kind (`coolplot.core.diagram_type.FAMILIES`)
+  carry the sweep quantity, the preferred label edges, the default
+  number of lines and the phase boundary values; `Settings.labels.edges`
+  is now empty by default and only overrides them.
+* `StatePoint` holds whichever quantities its provider computes;
+  humid-air states (`AirState` before) are `StatePoint` values too.
+* Air processes are cycles with straight paths: item ids are
+  `cycle/<name>/...`, `Interaction` needs no special case, and
+  `add_cycle`, `cycle_states` and `move_cycle_state` work on them.
+  `add_process`, `process_states` and `move_process_state` remain as
+  the air vocabulary.
+* `Scene.to_dict` / `Scene.from_dict`, and docs/contracts.md with the
+  spec, curve and scene records.
+* Psychrometric charts use `settings.calc.points` (250 by default,
+  100 before); `points=` on the constructor still overrides it.
+
 0.3.0
 -----
 

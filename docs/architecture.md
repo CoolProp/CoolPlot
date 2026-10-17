@@ -509,13 +509,17 @@ units, styles, one added line, cycles, zoom and themes.
 
 #### Psychrometric charts (step 5)
 
-Humid air follows the same layers with modules of its own:
-`thermo/humid_air.py` (states and lines with HAPropsSI; lines are cut at
-saturation, where fog would begin, and start exactly on it),
-`spec/psychro.py` (`PsychroSpec`, display units for W, RH and Twb),
-`compose/psychro.py` (styles, texts and the shared label layout) and the
-facade `psychrometric.py` (`PsychrometricChart`). Lines are cached by
-pressure, region, family, value and point count.
+Humid air goes through the same pipeline as a fluid (since 0.4): the
+spec is a `DiagramSpec` with a `HumidAirSpec` as fluid, the diagram type
+`WT` and a `Region` of T and W bounds; the engine builds a `HumidAir`
+property provider (`thermo/humid_air.py`: states and lines with
+HAPropsSI; lines are cut at saturation, where fog would begin, and start
+exactly on it) instead of a `Fluid`; `compose` styles the lines by their
+family (`core/diagram_type.py`); air processes are cycles with straight
+paths. `psychrometric.py` only holds the constructor and the air
+vocabulary (`set_lines`, `add_process`) over `Chart`. Lines are cached
+like every other curve, by provider fingerprint, region, family, value
+and point count. docs/contracts.md describes the records.
 
 Lines are sampled in dry-bulb temperature. Wet-bulb lines are found
 with a regula falsi search on HAPropsSI(Twb; T, W), which is fast and

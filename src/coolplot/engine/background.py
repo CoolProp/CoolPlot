@@ -43,9 +43,8 @@ from dataclasses import replace
 from typing import Callable, Dict, Optional, Tuple
 
 from ..spec.diagram import DiagramSpec
-from ..spec.fluid import FluidSpec
-from ..thermo.fluid import Fluid
-from ..thermo.isolines import Curve, compute_isoline, compute_quality_line
+from ..thermo.isolines import Curve
+from ..thermo.provider import compute_curve as _compute_curve, make_provider
 from .cache import CurveCache
 from .engine import Engine
 from .plan import CurveRequest, Domain
@@ -56,24 +55,23 @@ MODES = ("threads", "processes")
 _local = threading.local()
 
 
-def _worker_fluid(fluid_spec: FluidSpec) -> Fluid:
+def _worker_fluid(fluid_spec):
+    """The property provider of this worker for a FluidSpec or HumidAirSpec."""
     fluids = getattr(_local, "fluids", None)
     if fluids is None:
         fluids = _local.fluids = {}
     if fluid_spec not in fluids:
         if len(fluids) > 8:
             fluids.clear()
-        fluids[fluid_spec] = Fluid(fluid_spec)
+        fluids[fluid_spec] = make_provider(fluid_spec)
     return fluids[fluid_spec]
 
 
-def compute_curve(fluid_spec: FluidSpec, diagram, key: str, value_SI: float, points: int,
+def compute_curve(fluid_spec, diagram, key: str, value_SI: float, points: int,
                   tp_box: Tuple[float, float, float, float], solver: str, margin: float, spacing: str) -> Curve:
     """One curve from plain data; runs in a worker thread or process."""
-    fluid = _worker_fluid(fluid_spec)
-    if key == "Q":
-        return compute_quality_line(fluid, diagram, value_SI, points, margin, spacing)
-    return compute_isoline(fluid, diagram, key, value_SI, tp_box, points, solver, margin)
+    return _compute_curve(_worker_fluid(fluid_spec), diagram, key, value_SI, tp_box, points, solver, margin,
+                          spacing)
 
 
 class BackgroundEngine(Engine):

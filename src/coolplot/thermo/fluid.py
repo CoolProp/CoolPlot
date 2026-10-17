@@ -22,12 +22,16 @@ from CoolProp import AbstractState
 from CoolProp import CoolProp as CP
 
 from ..core.quantities import get_quantity
+from ..core.state import STATE_KEYS, StatePoint
 
 
 @lru_cache(maxsize=None)
 def parameter_index(key: str) -> int:
     """CoolProp parameter index for a CoolPlot quantity key, e.g. "p" -> iP."""
-    return CP.get_parameter_index(get_quantity(key).coolprop_name)
+    name = get_quantity(key).coolprop_name
+    if name is None:
+        raise ValueError("'{0}' is not a quantity of a fluid state.".format(key))
+    return CP.get_parameter_index(name)
 
 
 #: Binary interaction parameters copied when a state is snapshotted.
@@ -113,6 +117,10 @@ class Fluid:
         Basis of the fractions in a fluid string: "mole", "mass" or "volu".
         Default: "mass" for the INCOMP backend, "mole" otherwise.
     """
+
+    kind = "fluid"
+    #: The quantities a state of a fluid holds.
+    quantities = STATE_KEYS
 
     def __init__(self, fluid, fractions: str = None):
         if isinstance(fluid, AbstractState):
@@ -288,6 +296,16 @@ class Fluid:
     def get(self, key: str) -> float:
         """Read one quantity of the state set by the last :meth:`update`, in SI units."""
         return self._current.keyed_output(parameter_index(key))
+
+    def state_point(self, key1: str, value1_SI: float, key2: str, value2_SI: float) -> StatePoint:
+        """The full state from two quantities, e.g. state_point("p", 1e5, "T", 300)."""
+        self.update(key1, value1_SI, key2, value2_SI)
+        return StatePoint(**{k: self.get(k) for k in STATE_KEYS})
+
+    def path_kind(self, a: StatePoint, b: StatePoint, kind: str) -> str:
+        """How the path between two states of a cycle is drawn; "auto" is
+        resolved from the states by :func:`coolplot.thermo.cycles.auto_kind`."""
+        return kind
 
     def properties(self, keys=("T", "p", "h", "s", "rho", "Q")) -> dict:
         """Read several quantities of the working state in SI units."""

@@ -6,6 +6,9 @@ units a user wants to see happens in exactly two places: when a user hands
 values to the API, and when the scene for the plot is built. That is why a
 change of unit system never triggers a new property calculation.
 
+One unit system covers every quantity of :mod:`coolplot.core.quantities`,
+for fluids and for humid air alike.
+
 This module is plain data and imports neither CoolProp nor a plotting
 library.
 """
@@ -70,6 +73,11 @@ _SI = {
     "rho": Unit("kg/m3"),
     "u": Unit("J/kg"),
     "Q": Unit("-"),
+    "W": Unit("kg/kg"),
+    "RH": Unit("-"),
+    "Twb": Unit("K"),
+    "Tdp": Unit("K"),
+    "v": Unit("m3/kg"),
 }
 
 _KSI = dict(_SI, **{
@@ -82,6 +90,10 @@ _KSI = dict(_SI, **{
 _EUR = dict(_KSI, **{
     "T": Unit("deg C", 1.0, -273.15),
     "p": Unit("bar", 1e-5),
+    "W": Unit("g/kg", 1e3),
+    "RH": Unit("%", 100.0),
+    "Twb": Unit("deg C", 1.0, -273.15),
+    "Tdp": Unit("deg C", 1.0, -273.15),
 })
 
 SI = UnitSystem("SI", _SI)

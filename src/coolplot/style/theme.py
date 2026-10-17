@@ -235,7 +235,7 @@ CLASSIC = Theme(
     name="classic",
     categorical=("black",),
     isoline_colors={"T": "darkred", "p": "darkcyan", "h": "darkgreen", "rho": "darkblue",
-                    "s": "darkorange", "u": "purple"},
+                    "s": "darkorange", "u": "purple", "Twb": "darkred", "v": "darkblue"},
     isoline=LineStyle(width_pt=0.5),
     saturation=LineStyle(color="black", width_pt=1.0),
     quality=LineStyle(color="black", width_pt=0.5),
