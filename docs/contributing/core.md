@@ -51,10 +51,11 @@ checkout to build offline. The JSON reader (nlohmann/json 3.12, MIT) is
 vendored in `cpp/third_party`. zlib is used for the PDF streams when CMake
 finds it.
 
-With `COOLPLOT_NATIVE=1` (and `coolplot_core` importable),
-{func}`coolplot.compose.compose` composes there and
-{class}`~coolplot.render.svg.SvgRenderer` writes there. Unset, CoolPlot
-keeps its Python composer and writer: from Python they are faster, because
+In the native mode "on" ({func}`coolplot.set_native_mode`, or
+`COOLPLOT_NATIVE=1`; see {mod}`coolplot.core.implementation`) and with
+`coolplot_core` importable, {func}`coolplot.compose.compose` composes there
+and {class}`~coolplot.render.svg.SvgRenderer` writes there. In the default
+mode "auto", CoolPlot keeps its Python composer and writer: from Python they are faster, because
 the records cross into C++ as JSON. For a p-h chart with labels:
 
 | Step | Time |
@@ -64,8 +65,10 @@ the records cross into C++ as JSON. For a p-h chart with labels:
 | building and parsing the JSON on the Python side | 38 ms |
 
 The library is for programs in other languages, which hand it their
-records directly. `COOLPLOT_NATIVE=0` also switches the numerics port off.
-CI runs the suite on the Python path and with `COOLPLOT_NATIVE=1`.
+records directly. The mode "off" also switches the numerics port off.
+CI runs the suite on the Python path and with `COOLPLOT_NATIVE=1`, and
+`tests/test_examples.py` runs every example in both modes and compares the
+scenes and the files they write.
 {class}`~coolplot.render.pdf.PdfRenderer` writes PDF through coolplot-core
 and needs the module; its page has the plot size of the SVG writer, with
 the same margins for labels outside the frame and the same cut of long

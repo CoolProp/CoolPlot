@@ -71,13 +71,31 @@ def _same(a, b, path=""):
 
 
 def test_the_switch(monkeypatch):
+    from coolplot import native_mode, set_native_mode
+    from coolplot.thermo import native as numerics
     monkeypatch.setenv("COOLPLOT_NATIVE", "0")
-    assert not native.enabled()
+    assert not native.enabled() and not numerics.enabled() and native_mode() == "off"
     monkeypatch.setenv("COOLPLOT_NATIVE", "1")
-    assert native.enabled() == native.available()
-    # Unset, the Python composer and writer do the work (faster from Python)
-    monkeypatch.delenv("COOLPLOT_NATIVE")
-    assert not native.enabled()
+    assert native.enabled() == native.available() and native_mode() == "on"
+    assert numerics.enabled() == numerics.available()
+    # Unset (or "auto"), the Python composer and writer do the work (faster
+    # from Python) and the numerics port computes the lines
+    for value in (None, "auto", " AUTO "):
+        if value is None:
+            monkeypatch.delenv("COOLPLOT_NATIVE")
+        else:
+            monkeypatch.setenv("COOLPLOT_NATIVE", value)
+        assert native_mode() == "auto" and not native.enabled()
+        assert numerics.enabled() == numerics.available()
+    # The setting overrides the environment variable until it is reset with None
+    monkeypatch.setenv("COOLPLOT_NATIVE", "0")
+    assert set_native_mode("on") == "off"
+    assert native_mode() == "on" and native.enabled() == native.available()
+    assert set_native_mode("Auto") == "on" and native_mode() == "auto"
+    assert set_native_mode(None) == "auto" and native_mode() == "off"
+    with pytest.raises(ValueError, match="expected one of"):
+        set_native_mode("fast")
+    assert native_mode() == "off"
 
 
 def test_compose_falls_back_without_the_module(monkeypatch):

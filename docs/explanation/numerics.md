@@ -67,8 +67,9 @@ while the line is computed, so background calculation keeps a window
 responsive. The time of a chart is mostly CoolProp's own solvers, so the
 port saves the Python overhead only: half the time of a pure-fluid chart,
 a tenth of a blend's. The Python modules stay the reference the tests
-check, and do the work when the port is absent, when the environment
-variable `COOLPLOT_NATIVE` is `0`, or for a model the port cannot take
+check, and do the work when the port is absent, when the native mode is
+"off" (`coolplot.set_native_mode("off")` or the environment variable
+`COOLPLOT_NATIVE=0`), or for a model the port cannot take
 (binary interaction parameters set on the state, mass fractions on a
 Helmholtz backend). Humid-air lines and the states of cycles are not
 part of the port.

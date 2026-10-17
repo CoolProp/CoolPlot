@@ -68,6 +68,8 @@ _LAZY = {
     "IP": ".core.units",
     "EUR": ".core.units",
     "PropertyError": ".core.errors",
+    "native_mode": ".core.implementation",
+    "set_native_mode": ".core.implementation",
 }
 
 __all__ = ["__version__"] + sorted(_LAZY)

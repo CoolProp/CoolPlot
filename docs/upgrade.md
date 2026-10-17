@@ -1,5 +1,22 @@
 # Upgrade guide
 
+## From 0.8 to 0.9
+
+0.9 is the deprecation release: nothing is removed, and every name that
+goes in 1.0 warns with a `DeprecationWarning` that names its replacement
+(the table under "From 0.4 to 0.5"). Run your code with
+`python -W error::DeprecationWarning` to find the calls to change; with
+none left, 1.0 changes nothing for you.
+
+* One setting chooses between the Python code and the C++ ports:
+  `coolplot.set_native_mode("auto" | "on" | "off")`, with the environment
+  variable `COOLPLOT_NATIVE` as the starting value. "auto" (the default)
+  computes lines with CoolProp's port when it is installed and composes
+  in Python; "on" also composes and writes SVG with coolplot-core; "off"
+  is Python everywhere. All three give the same charts.
+* `COOLPLOT_NATIVE=auto` now means the default mode. Before, any value but
+  "0" switched coolplot-core on.
+
 ## From 0.6 to 0.7
 
 * CoolProp 8.0 or later is required.

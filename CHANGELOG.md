@@ -28,8 +28,22 @@ guide in the documentation says what to change in your code.
   coolplot-core; it passes the conformance kit's PDF check.
 - `coolplot.render.web.scene_page`: a self-contained page that draws a
   scene in the browser with a JavaScript port of the SVG writer, no server.
+- `coolplot.set_native_mode("auto" | "on" | "off")` and
+  `coolplot.native_mode()`: one setting chooses between the Python code
+  and the C++ ports, with `COOLPLOT_NATIVE` as the starting value
+  (`coolplot.core.implementation`). Every example draws the same scene
+  and writes the same files in "off" and "on" (tests/test_examples.py).
 - `Scene.to_dict(in_draw_order=False)` writes the items in scene order,
   for writers that take the legend from that order.
+
+#### Deprecated
+- 0.9 is the deprecation release: nothing is removed, and the old names
+  of 0.5 (listed in the upgrade guide) warn with a `DeprecationWarning`
+  and go in 1.0.
+
+#### Changed
+- `COOLPLOT_NATIVE=auto` means the default mode; before, any value but
+  "0" switched coolplot-core on.
 
 #### Fixed
 - A diagram of any pair of fluid axis quantities, such as
