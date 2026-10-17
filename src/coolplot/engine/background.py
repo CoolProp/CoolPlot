@@ -85,7 +85,10 @@ class BackgroundEngine(Engine):
         holds the Python interpreter lock during each call, so threads
         cannot compute in parallel, and long calls (blends) make the
         application stutter; for pure fluids the calls are short and the
-        application stays responsive.
+        application stays responsive. With CoolProp's port of the numerics
+        (:mod:`coolplot.thermo.native`) the lock is released while a line
+        is computed and the application keeps responding; the worker stays
+        one, since CoolProp's shared state is not made for several threads.
         "processes": workers run in parallel on several cores and never
         block the application; starting them takes a moment. Use this for
         blends.
