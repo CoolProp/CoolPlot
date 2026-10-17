@@ -103,7 +103,14 @@ def test_process_path(r290):
 # ---------------------------------------------------------------------------
 # 0.3.1: states CoolProp gets wrong, limits of mixtures, incompressibles
 # ---------------------------------------------------------------------------
+def _needs_coolprop_8():
+    from coolplot.thermo.tracer import TRACER_AVAILABLE
+    if not TRACER_AVAILABLE:
+        pytest.skip("CoolProp 6 and 7 cannot flash rho,T for mixtures at all")
+
+
 def test_inconsistent_mixture_states_are_refused():
+    _needs_coolprop_8()
     # CoolProp 8 answers (rho = 100 kg/m3, T = 264.16 K) of R407C, a two-phase
     # state, with a "gas" whose pressure belongs to another density
     from coolplot.thermo.fluid import Fluid
@@ -119,6 +126,7 @@ def test_inconsistent_mixture_states_are_refused():
 
 
 def test_flash_isochore_of_a_blend_round_trips():
+    _needs_coolprop_8()
     import CoolProp
     from CoolProp.CoolProp import AbstractState
     from coolplot.core.diagram_type import DiagramType
@@ -141,10 +149,15 @@ def test_flash_isochore_of_a_blend_round_trips():
 
 def test_mixtures_start_at_the_highest_component_triple_point():
     from coolplot.thermo.fluid import Fluid
-    # CoolProp reports the mole-weighted average (129 K); R32 is solid below 136.3 K
-    assert Fluid("HEOS::R32[0.5]&R1234yf[0.5]").T_min_K == pytest.approx(136.34, abs=0.01)
-    assert Fluid("HEOS::R32[0.697615]&R125[0.302385]").T_triple_K == pytest.approx(172.52, abs=0.01)
+    # CoolProp reports the mole-weighted average for a mixture (129 K for
+    # R32/R1234yf); R32 is solid below 136.3 K. Older CoolProp versions limit
+    # R1234yf to 220 K, so the expected value is taken from the components.
+    for blend, components in (("HEOS::R32[0.5]&R1234yf[0.5]", ("R32", "R1234yf")),
+                              ("HEOS::R32[0.697615]&R125[0.302385]", ("R32", "R125"))):
+        expected = max(Fluid(name).T_min_K for name in components)
+        assert Fluid(blend).T_min_K == pytest.approx(expected, abs=0.01)
     assert Fluid("R32").T_triple_K == pytest.approx(136.34, abs=0.01)
+    assert Fluid("HEOS::R32[0.697615]&R125[0.302385]").T_triple_K == pytest.approx(172.52, abs=0.01)
 
 
 def test_incompressibles_plot_with_absolute_limits():
