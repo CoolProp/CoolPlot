@@ -284,7 +284,7 @@ bool candidate(const Piece& piece, double s, double half_w, double half_h, doubl
     turn = std::fmod(turn, 2.0 * PI);  // Python's modulo keeps the sign of the divisor
     if (turn < 0.0) turn += 2.0 * PI;
     turn -= PI;
-    double bend = std::fabs(turn / (PI / 180.0));  // math.degrees
+    double bend = std::fabs(turn * (180.0 / PI));  // math.degrees multiplies by 180/pi, bit for bit
     if (bend > LABEL_MAX_BEND_DEG) return false;
     double angle = std::atan2(dy, dx);
     if (angle > PI / 2.0)

@@ -43,10 +43,14 @@ jobs:
           node-version: "22"
       - name: Install
         run: |
-          sudo apt-get install -y fonts-dejavu-core zlib1g-dev
+          sudo apt-get install -y fonts-dejavu-core zlib1g-dev locales
+          # A locale with a decimal comma, for the test that the writers ignore it
+          sudo locale-gen de_DE.UTF-8
           python -m pip install --upgrade pip
           python -m pip install "coolprop==8.0.0" "nanobind==2.12.0" -e ".[test]"
       - name: Build and test the C++ library
+        env:
+          COOLPLOT_REQUIRE_LOCALE: "1"
         run: |
           cmake -B cpp/build -S cpp -DCMAKE_BUILD_TYPE=Release
           cmake --build cpp/build -j4
@@ -63,7 +67,9 @@ jobs:
           COOLPLOT_NATIVE: "1"
         run: |
           python -c "import coolplot_core"
-          python -m pytest -v
+          # A chart the port refuses would be drawn by Python with a warning;
+          # here that is an error, so the suite really runs through the port
+          python -m pytest -v -W error::coolplot.corelib.CoreFallbackWarning
 
   build:
     runs-on: ubuntu-latest

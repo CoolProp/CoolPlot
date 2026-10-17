@@ -73,7 +73,13 @@ legend texts.
 
 When the C++ composer refuses a spec that Python accepts (something added
 in Python and not ported yet), {func}`coolplot.compose.compose` warns with
-a RuntimeWarning and the Python composer draws the chart.
+a `coolplot.corelib.CoreFallbackWarning` and the Python composer draws the
+chart. Only the port's own refusal falls back; any other error raises. The
+CI job "core" turns the warning into an error, so a port that refuses
+charts cannot pass the suite by falling back. It also installs a de_DE
+locale and sets `COOLPLOT_REQUIRE_LOCALE`, so the locale test fails there
+instead of skipping. The library is compiled with `-ffp-contract=off`:
+fused multiply-adds would move positions by a bit against Python.
 
 Rules both sides keep, so that the outputs stay identical:
 

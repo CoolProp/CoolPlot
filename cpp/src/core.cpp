@@ -114,9 +114,13 @@ double parse_number(const std::string& text) {
     if (first != last && *first == '+') ++first;  // from_chars takes no leading plus (an exponent "+06")
     double value = 0.0;
     std::from_chars_result result = std::from_chars(first, last, value);
-    if (result.ec == std::errc::result_out_of_range) {
-        // overflow or underflow: let strtod-like rules decide (inf or 0)
-        return std::strtod(text.c_str(), nullptr);
+    if (result.ec == std::errc::result_out_of_range && result.ptr == last) {
+        // Overflow or underflow: infinity or zero with the sign of the text.
+        // Not strtod, which would read the decimal separator of the locale.
+        bool negative = *first == '-';
+        size_t e = text.find_first_of("eE");
+        bool large = e != std::string::npos && e + 1 < text.size() && text[e + 1] != '-';
+        return std::copysign(large ? HUGE_VAL : 0.0, negative ? -1.0 : 1.0);
     }
     if (result.ec != std::errc() || result.ptr != last) throw Error("'" + text + "' is not a number.");
     return value;

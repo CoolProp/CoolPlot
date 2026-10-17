@@ -50,7 +50,9 @@ set_target_properties(coolplot_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(MSVC)
     target_compile_options(coolplot_core PRIVATE /W4)
 else()
-    target_compile_options(coolplot_core PRIVATE -Wall -Wextra -Wshadow)
+    # No fused multiply-add: a*b+c has to round twice, as in Python, or
+    # positions differ in the last bit (clang fuses by default on arm64)
+    target_compile_options(coolplot_core PRIVATE -Wall -Wextra -Wshadow -ffp-contract=off)
 endif()
 
 if(COOLPLOT_CORE_TESTS)

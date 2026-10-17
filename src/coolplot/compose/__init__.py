@@ -24,11 +24,11 @@ def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycle
     if corelib.enabled():
         try:
             result = corelib.compose(spec, domain, curves, plot_size_pt, previous_labels, cycles)
-        except ValueError as error:
+        except corelib.CoreRefusal as error:
             # Something the port does not know (yet). The Python composer is
             # the reference: it draws the chart, or raises the real error.
             warnings.warn("coolplot-core could not compose this chart ({0}); the Python composer "
-                          "draws it instead.".format(error), RuntimeWarning, stacklevel=2)
+                          "draws it instead.".format(error), corelib.CoreFallbackWarning, stacklevel=2)
             result = None
         if result is not None:
             return result

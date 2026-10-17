@@ -29,6 +29,18 @@ except Exception:   # not installed
     _core = None
 
 
+class CoreRefusal(ValueError):
+    """coolplot-core refused a record (its ``coolplot_core.Error``), e.g. a spec it does not know yet."""
+
+
+class CoreFallbackWarning(RuntimeWarning):
+    """The chart was composed in Python because coolplot-core refused its spec.
+
+    The native CI job turns this warning into an error, so that a port that
+    refuses charts cannot pass the suite by falling back.
+    """
+
+
 def available() -> bool:
     """Whether the ``coolplot_core`` module is installed."""
     return _core is not None and hasattr(_core, "compose") and hasattr(_core, "scene_to_svg")
@@ -94,12 +106,17 @@ def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycle
     """(items, axes) of a chart from coolplot-core, or None when the module is absent.
 
     The arguments are those of :func:`coolplot.compose.builder.compose`.
-    An error of the port is raised as the ValueError it reports.
+    A record the port refuses raises :class:`CoreRefusal`; any other error
+    (a bug in the bridge or the port) raises as it is.
     """
     if not available():
         return None
     record = compose_record(spec, domain, curves, plot_size_pt, previous_labels, cycles)
-    scene = json.loads(_core.compose(_dumps(record)))
+    try:
+        text = _core.compose(_dumps(record))
+    except _core.Error as error:   # the port's own refusal; anything else is a bug and raises
+        raise CoreRefusal(str(error)) from error
+    scene = json.loads(text)
     axes = axes_from_dict(scene["axes"])
     return [item_from_dict(d) for d in scene["items"]], axes
 

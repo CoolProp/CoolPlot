@@ -2,6 +2,7 @@
 #include <catch2/catch_all.hpp>
 
 #include <clocale>
+#include <cstdlib>
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -170,7 +171,11 @@ TEST_CASE("The writers ignore the C locale", "[svg][pdf][locale]") {
             found = name;
             break;
         }
-    if (!found) SKIP("No locale with a decimal comma is installed");
+    if (!found) {
+        // CI installs de_DE (tests.yml); there a missing locale is a failure, not a skip
+        if (std::getenv("COOLPLOT_REQUIRE_LOCALE")) FAIL("COOLPLOT_REQUIRE_LOCALE is set but no decimal-comma locale is installed");
+        SKIP("No locale with a decimal comma is installed");
+    }
     INFO("locale " << found);
     json data = load("compose_r290_ph.json");
     std::string svg, pdf, composed;
@@ -188,6 +193,10 @@ TEST_CASE("The writers ignore the C locale", "[svg][pdf][locale]") {
         svg = scene_to_svg(scene, SvgOptions());
         pdf = pdf_of(scene);
         CHECK(format_number(0.5) == "0.5");
+        CHECK(format_number(1.7976931348623157e308, 2) == "1.8e308");  // overflow while rounding
+        CHECK(format_number(-1.7976931348623157e308, 3) == "-1.8e308");
+        CHECK(parse_number("1.5e400") == HUGE_VAL);
+        CHECK(parse_number("-1.5e-400") == 0.0);
         CHECK(snap(253.14999999999998) == 253.15);
         CHECK(DiagramSpec::from_json(data.at("input").at("spec")).diagram.name() == "ph");
     } catch (...) {

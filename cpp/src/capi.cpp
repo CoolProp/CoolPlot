@@ -87,6 +87,8 @@ int coolplot_scene_to_svg(const char* scene_json, int width, int height, const d
 int coolplot_svg_plot_size_pt(const char* scene_json, int width, int height, const double* margins, double* width_pt, double* height_pt,
                               char** error) {
     if (error) *error = nullptr;
+    if (width_pt) *width_pt = 0.0;  // the outputs are zero unless it succeeds
+    if (height_pt) *height_pt = 0.0;
     if (!width_pt || !height_pt) return fail(error, "No output given.");
     try {
         std::pair<double, double> size = coolplot::svg_plot_size_pt(parse_scene(scene_json), options_of(width, height, margins, nullptr));
@@ -103,9 +105,9 @@ int coolplot_svg_plot_size_pt(const char* scene_json, int width, int height, con
 int coolplot_scene_to_pdf(const char* scene_json, double width_pt, double height_pt, const double* margins_pt, const char* font_dirs,
                           char** pdf, size_t* length, char** error) {
     if (error) *error = nullptr;
+    if (pdf) *pdf = nullptr;  // the outputs are null unless it succeeds
+    if (length) *length = 0;
     if (!pdf || !length) return fail(error, "No output given.");
-    *pdf = nullptr;
-    *length = 0;
     try {
         coolplot::PdfOptions options;
         if (width_pt > 0.0) options.width_pt = width_pt;

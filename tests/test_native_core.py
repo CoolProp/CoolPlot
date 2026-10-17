@@ -106,12 +106,32 @@ def test_compose_falls_back_with_a_warning_when_the_port_refuses(monkeypatch):
     curves = chart.engine.curves(spec, domain, plan(spec, domain))
 
     def refuse(*args):
-        raise ValueError("something new")
+        raise native.CoreRefusal("something new")
     monkeypatch.setenv("COOLPLOT_NATIVE", "1")
     monkeypatch.setattr(native, "compose", refuse)
-    with pytest.warns(RuntimeWarning, match="something new"):
+    with pytest.warns(native.CoreFallbackWarning, match="something new"):
         items, _ = compose(spec, domain, curves)
     assert [i.id for i in items] == [i.id for i in compose_python(spec, domain, curves)[0]]
+
+    # Any other error is a bug and is not hidden by the fallback
+    def broken(*args):
+        raise ValueError("a bug")
+    monkeypatch.setattr(native, "compose", broken)
+    with pytest.raises(ValueError, match="a bug"):
+        compose(spec, domain, curves)
+
+
+@needs_core
+def test_only_the_ports_own_refusal_is_a_refusal():
+    import coolplot_core
+    from coolplot.engine import plan
+    chart = _charts()[0]
+    spec = chart.spec
+    domain = chart.engine.domain(spec)
+    record = native.compose_record(spec, domain, chart.engine.curves(spec, domain, plan(spec, domain)))
+    record["spec"]["diagram"] = "xy"
+    with pytest.raises(coolplot_core.Error):
+        coolplot_core.compose(json.dumps(record))
 
 
 @needs_core
@@ -264,6 +284,10 @@ def test_the_pdf_page_has_the_svg_geometry_and_all_text_on_it(tmp_path):
         scene.set_axes(replace(scene.axes, style=replace(style, legend=replace(style.legend, location=location))))
         renderer.sync(scene)
         assert renderer.plot_size_pt() == pytest.approx(SvgRenderer.plot_size_pt(renderer), abs=1e-6)
+        # The margin labels make the margins larger than the ones given, so
+        # the check above is not vacuous
+        base_w, base_h = 576.0 - 30.0 - 5.0, 432.0 - 10.0 - 30.0
+        assert renderer.plot_size_pt()[0] < base_w - 1.0 or renderer.plot_size_pt()[1] < base_h - 1.0
         data = native.scene_to_pdf(renderer._axes, renderer._scene_items(), renderer.width_pt, renderer.height_pt,
                                    renderer.margins_pt, compress=False)
         size = None
