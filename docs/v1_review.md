@@ -7,6 +7,9 @@ and API, documentation from a new user's view, numerics and thermodynamics)
 plus measurements made for this document. Everything measured is
 reproducible with the scripts named in the text.
 
+The work plan that follows from this review, with the decisions it rests
+on and what "done" means for each release, is in [v1_plan.md](v1_plan.md).
+
 ## 1. Verdict in short
 
 * The spine of the package is right and should stay: an immutable
