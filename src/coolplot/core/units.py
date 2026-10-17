@@ -9,8 +9,8 @@ change of unit system never triggers a new property calculation.
 One unit system covers every quantity of :mod:`coolplot.core.quantities`,
 for fluids and for humid air alike. The presets are "SI", "KSI" (kJ and
 kPa), "engineering" (deg C, bar, kJ, g/kg, %) and "IP" (deg F, psi,
-Btu/lb, grains per lb). "EUR", the name of "engineering" before 0.5, was
-removed in 1.0.
+Btu/lb, grains per lb). "EUR", the name of "engineering" before 0.5, is
+refused in calls since 1.0; the constant EUR warns until 2.0.
 
 This module is plain data and imports neither CoolProp nor a plotting
 library.

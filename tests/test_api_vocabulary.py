@@ -107,8 +107,10 @@ def test_the_constant_eur_warns_until_2_0():
     import coolplot.core
     import coolplot.core.units
     for module in (coolplot, coolplot.core, coolplot.core.units):
-        with pytest.warns(DeprecationWarning, match="go in CoolPlot 2.0"):
+        with pytest.warns(DeprecationWarning, match="go in CoolPlot 2.0") as record:
             assert module.EUR is coolplot.ENGINEERING
+        # Reported at the user's line, so that Python's default filter shows it
+        assert record[0].filename == __file__
     assert "EUR" not in coolplot.__all__
 
 
@@ -251,7 +253,10 @@ def test_every_removed_name_is_in_the_upgrade_guide():
 
 
 def test_nothing_is_deprecated_right_after_1_0():
-    """A deprecation added in 1.x lists its name here and in the upgrade guide."""
+    """No chart method is deprecated in 1.0; one deprecated in 1.x is listed here and in the upgrade guide.
+
+    The one deprecation of 1.0, the constant coolplot.EUR, has its own test.
+    """
     import importlib
     import inspect
     found = set()
