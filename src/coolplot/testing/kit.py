@@ -10,7 +10,7 @@ by step (restyle, hide, restack, reorder, change an item's type, remove,
 change axes, grids and legend, autoscale, clear) and checks both the
 result and that only the affected items were touched.
 
-docs/backends.md explains each requirement; every failure message ends
+docs/contributing/writing_a_backend.md explains each requirement; every failure message ends
 with the tag of the section it refers to. Requirements the kit cannot
 check are marked "(manual)" there.
 
@@ -50,7 +50,7 @@ POSITION_TOL = 1e-3
 
 #: Requirements a backend may declare it cannot follow, in
 #: ``Renderer.limitations``, because its library offers no way to. The kit
-#: then skips exactly those checks; docs/backends.md lists them and every
+#: then skips exactly those checks; docs/contributing/writing_a_backend.md lists them and every
 #: backend documents its own.
 ALLOWED_LIMITATIONS = {
     "line_caps": "line caps and joins are the library's own (cap and join are not checked)",

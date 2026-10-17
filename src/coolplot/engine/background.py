@@ -47,7 +47,7 @@ from ..thermo.isolines import Curve
 from ..thermo.provider import compute_curve as _compute_curve, make_provider
 from .cache import CurveCache
 from .engine import Engine
-from .plan import CurveRequest, Domain
+from .planning import CurveRequest, Domain
 
 MODES = ("threads", "processes")
 
@@ -311,6 +311,7 @@ class BackgroundEngine(Engine):
 
     @property
     def busy(self) -> bool:
+        """Whether curves are still being computed."""
         with self._lock:
             return bool(self._jobs)
 

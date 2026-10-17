@@ -30,7 +30,7 @@ fluids, plus `W`, `RH`, `Twb`, `Tdp`, `v` for humid air.
 One record describes a property diagram and a psychrometric chart alike;
 `diagram` carries the chart kind.
 
-```json
+```js
 {
   "fluid": {"backend": "HEOS", "components": ["R32", "R125"], "fractions": [0.7, 0.3],
             "basis": "mole", "interactions": []},
@@ -108,7 +108,7 @@ straight line has about `points / 2` points and a bent one more.
 A curve is identified by the cache key `(fluid, fingerprint, diagram,
 key, value_SI, points, ...)`: the fingerprint names the CoolProp version
 and its configuration, so curves of one installation are never served
-to another; the rest are the request (`coolplot.engine.plan.CurveRequest`)
+to another; the rest are the request (`coolplot.engine.planning.CurveRequest`)
 and the calculation settings that affect the numbers.
 
 ## 3. The scene
@@ -117,7 +117,7 @@ What a renderer draws: one set of axes and a flat list of items in
 drawing order, coordinates in display units. `coolplot.scene` is the
 definition; `docs/backends.md` says how each field is rendered.
 
-```json
+```js
 {
   "axes": {"x_label": "Specific enthalpy h / kJ/kg", "y_label": "Pressure p / bar",
            "x_log": false, "y_log": true, "x_limits": [100.0, 700.0], "y_limits": [0.5, 60.0],

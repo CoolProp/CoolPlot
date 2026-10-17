@@ -352,6 +352,7 @@ class SvgRenderer(Renderer):
         return _ascii("\n".join(head)), items, _ascii("\n".join(tail))
 
     def plot_size_pt(self):
+        """(width, height) of the plot area in points."""
         bx, by, bw, bh = self._box
         return bw / PX_PER_PT, bh / PX_PER_PT
 
@@ -552,6 +553,7 @@ class SvgRenderer(Renderer):
         return self._parsed
 
     def describe_item(self, item_id: str) -> dict:
+        """Read back the item as drawn, from its SVG elements."""
         item = self._items[item_id]   # KeyError for unknown ids, as required
         root = self._document()
         groups = [g for g in root.iter() if g.get("data-item") is not None]
@@ -583,6 +585,7 @@ class SvgRenderer(Renderer):
         return out
 
     def describe_axes(self) -> dict:
+        """Read back the axes as drawn, from the SVG elements."""
         root = self._document()
         by_class = {}
         order = {}

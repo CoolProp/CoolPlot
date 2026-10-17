@@ -44,6 +44,7 @@ class Domain:
     ranges_SI: Tuple[Tuple[str, Tuple[float, float]], ...]
 
     def range_SI(self, key: str) -> Tuple[float, float]:
+        """(min, max) of quantity ``key`` over the region, in SI units."""
         ranges = dict(self.ranges_SI)
         if key not in ranges:
             raise ValueError("The range of '{0}' could not be determined for this fluid; "

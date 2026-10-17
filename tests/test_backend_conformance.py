@@ -4,7 +4,7 @@ the kit has to reject backends that break a requirement.
 
 The second half plants one defect at a time in a working backend and
 checks that the kit notices. Each defect is a requirement from
-docs/backends.md that an earlier version of the kit let through.
+docs/contributing/writing_a_backend.md that an earlier version of the kit let through.
 """
 import math
 import re

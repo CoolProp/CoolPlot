@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""A zeotropic refrigerant blend: R32/R125 (70/30 by mole).
+"""
+A zeotropic refrigerant blend: R32/R125 (70/30 by mole)
+=======================================================
+
 
 For mixtures the isolines are traced point by point (with CoolProp 8),
 the saturation dome comes from CoolProp's phase envelope, and isotherms

@@ -63,6 +63,7 @@ class PropertyError(ValueError):
         return self._copy(units=units)
 
     def with_where(self, where: str) -> "PropertyError":
+        """The same error, attributed to ``where`` (e.g. "State 2 of the cycle 'hp'")."""
         return self._copy(where=where)
 
     def with_reason(self, reason: str, limits=()) -> "PropertyError":

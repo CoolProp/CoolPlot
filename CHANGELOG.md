@@ -1,223 +1,144 @@
-Changelog
-=========
+# Changelog
 
-0.7.0 (unreleased)
-------------------
+All notable changes to CoolPlot are listed here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the upgrade
+guide in the documentation says what to change in your code.
 
-Numerics (docs/v1_plan.md, package 0.7):
+## [Unreleased]
 
-* Isolines are stepped with steps chosen from their shape on the page
-  (`coolplot.thermo.stepping`): straight parts get few points, bends
-  more, and nothing is computed outside the area the axes show except
-  the points that locate where a line enters or leaves it. The number of
-  points of a line is no longer fixed; `Settings.calc.points` is the
-  resolution (about the points of a line across the whole chart).
-* An isotherm or isobar is followed through the dome in vapour quality,
-  so a blend's temperature glide is drawn (the 5 bar isobar of R407C in
-  a T-s chart has 44 points inside the dome, before 5) and a pure
-  fluid's tie line is exact.
-* The tracer of blends is much cheaper: the quality of a two-phase
-  point is found by a secant iteration from the previous point (two or
-  three saturation calls instead of six), densities are solved on the
-  specific volume, and roots near the critical point are judged by the
-  densities of the phase envelope instead of being handed to a cold
-  flash. The default p-h chart of R410A draws in 5 s (before 23 s), of
-  R407C in 11 s (before 27 s).
-* Lines of intermediate quality of a blend run up to the top of the
-  phase envelope, the critical point, and are stepped like other lines.
-* CoolProp 8 is required (plan decision D2); the paths for CoolProp 6
-  and 7, which could not flash mixtures from h, s, u or rho, are gone.
-* Fluid states carry the specific volume `v` (1/rho) and can be given by
-  it; `Unit` has a label for differences (`ENGINEERING.difference("T")`
-  is K) and `BAR_GAUGE`, `PSI_GAUGE` are gauge pressures, drawn on a
-  linear axis. A spec's custom unit record may carry the difference
-  label as a fourth element.
-* `PropertyError` says what is wrong where the fluid can tell (a
-  temperature or pressure outside the equation of state, a quality
-  above the critical point, an input pair CoolProp does not solve for
-  mixtures), with the limit in the chart's units, before CoolProp's own
-  message (`reason`, `limits`, `with_reason`).
-* `Curve` records `n_evaluated` and `n_outside`; a line that lies
-  outside the axes (a value at the edge of the range) is left out
-  without a warning, with `Curve.reason` saying so.
-* The label layout clips lines to the frame with numpy
-  (`visible_pieces`, `Piece.project`), a few times faster.
-* The numerics sweeps of the review live in `tests/numerics` and run
-  with `pytest --run-slow` (`make test-slow`).
+### 0.8.0: documentation
 
-Behaviour changes: a chart has different (fewer, on straight lines)
-points per isoline, and lines are cut at the edges of the axes instead
-of continuing outside; `Curve` has two more fields; `STATE_KEYS` has
-`v`; `Unit` has a fourth field.
+#### Added
+- Documentation built with Sphinx (MyST Markdown, numpydoc, pydata
+  theme): getting started, four tutorials, how-to pages, explanations,
+  the generated API reference, tables generated from the package, the
+  gallery of the examples (run at build time), an upgrade guide and the
+  checklist of the documentation review. `make docs` builds it with
+  warnings as errors; CI and Read the Docs build it too.
+- A picture in the README.
+- Docstrings for every public name (108 added); the build checks that
+  none is missing.
 
-0.6.0 (unreleased)
-------------------
+#### Changed
+- `coolplot.engine.plan` is the function; the module is
+  `coolplot.engine.planning`.
+- The changelog is in Keep-a-Changelog form.
 
-Scope and shape (docs/v1_plan.md, package 0.6):
+### 0.7.0: numerics
 
-* `coolplot.testing` holds the conformance kit (`coolplot.testing.kit`,
-  before `coolplot.render.testing`) and the PDF reader
-  (`coolplot.testing.pdf_reader`, before `coolplot.render.pdf_reader`).
-  No backend imports it when a chart is drawn; the plotly backend loads
-  the PDF reader only while it writes a PDF.
-* The development web server moved to `examples/web_app/server.py`
-  (`examples/web_app/app.py` runs it); `WebRenderer` stays in
-  `coolplot.render.web`. An application connects the renderer to its own
-  web framework.
-* The large functions of the library are split into small named steps
-  (every function outside the test tooling and the numerics due for 0.7
-  has a cyclomatic complexity below 11): `Chart.add_cycle`,
-  `BackgroundEngine`, the spec validation, the label layout and the
-  read-back of the three backends among them. Nothing drawn changes;
-  where two inputs are wrong at once the error named first can differ.
-* The matplotlib backend keeps the data angle of a text itself instead
-  of reading a private attribute; the private attributes the read-back
-  of the conformance kit uses are fenced by a test.
-* Tests that need a browser (Playwright) or Kaleido run only with
-  `pytest --run-browser --run-kaleido`; the default suite runs in about
-  three minutes. The regression tests of the 0.2 review live in the
-  modules they belong to. The blend example draws fewer lines.
+#### Added
+- Adaptive stepping of every isoline (`coolplot.thermo.stepping`): the
+  step is chosen from the shape of the line on the page, nothing is
+  computed outside the area the axes show, and `Curve` records
+  `n_evaluated` and `n_outside`.
+- Isotherms and isobars followed through the dome in vapour quality,
+  which draws the temperature glide of a blend (the 5 bar isobar of
+  R407C in a T-s chart has 44 points inside the dome, before 5).
+- Fluid states carry the specific volume `v` and can be given by it.
+- `Unit.difference_label`, `UnitSystem.difference`, `describe_difference`;
+  `BAR_GAUGE` and `PSI_GAUGE`, drawn on a linear axis.
+- `PropertyError.reason` and `limits`: a temperature or pressure outside
+  the equation of state, a quality above the critical point or an
+  unsupported mixture pair is named, with the limit in the chart's units.
+- The numerics sweeps in `tests/numerics` (`pytest --run-slow`).
 
-0.5.0 (unreleased)
-------------------
+#### Changed
+- The tracer of blends finds the quality of a two-phase point by a
+  secant iteration from the previous point, solves densities on the
+  specific volume and judges roots near the critical point by the phase
+  envelope. The default p-h chart of R410A draws in 5 s (before 23 s),
+  of R407C in 11 s (before 27 s).
+- Lines of intermediate quality of a blend run up to the top of the
+  phase envelope.
+- The number of points of a line is no longer fixed; `Settings.calc.points`
+  is the resolution. Lines are cut at the edges of the axes.
+- A line that lies outside the axes is left out without a warning;
+  `Curve.reason` says so. A line cut short by the evaluation budget
+  warns.
+- The label layout clips lines with numpy, a few times faster.
 
-Vocabulary, units and errors (docs/v1_plan.md, package 0.5):
+#### Removed
+- Support for CoolProp 6 and 7 (plan decision D2); CoolProp 8 is
+  required.
 
-* One verb per operation on every chart: `set_lines`, `set_default_lines`,
+### 0.6.0: scope and shape
+
+#### Changed
+- `coolplot.testing` holds the conformance kit and the PDF reader
+  (before `coolplot.render.testing` and `coolplot.render.pdf_reader`); no
+  backend imports it when a chart is drawn.
+- The development web server moved to `examples/web_app/server.py`;
+  `WebRenderer` stays in `coolplot.render.web`.
+- Large functions split into small named steps (every function outside
+  the test tooling and the numerics below a cyclomatic complexity of 11).
+  Where two inputs are wrong at once the error named first can differ.
+- The matplotlib backend keeps the data angle of a text itself instead of
+  reading a private attribute.
+- Tests that need a browser or Kaleido run only with
+  `pytest --run-browser --run-kaleido`.
+
+### 0.5.0: vocabulary, units and errors
+
+#### Added
+- Unit systems `"engineering"` (the old `"EUR"`, which warns) and `"IP"`
+  (deg F, psi, Btu/lb, grains per lb); `units=` on every call.
+- `PropertyError`, raised for a state that cannot be computed, naming the
+  fluid, the inputs in the chart's units and where the request came from.
+- `tests/test_api_vocabulary.py`, which freezes the public names.
+
+#### Changed
+- One verb per operation on every chart: `set_lines`, `set_default_lines`,
   `remove_lines`, `line_sets`, `set_line_style`, `add_cycle` (with
   `closed=False` for an open process), `remove_cycle`, `move_cycle_state`,
   `cycle_states`, `set_view`, `state_at`, `update_scene`, `draw`, `save`.
-  The old names (`set_isolines`, `set_default_isolines`, `remove_isolines`,
-  `isoline_sets`, `set_isoline_style`, `savefig`, `set_process`,
-  `remove_process`, `add_process`, `move_process_state`, `process_states`)
-  still work and raise a `DeprecationWarning`; they go in 1.0.
-  `tests/test_api_vocabulary.py` freezes the public names.
-* `set_lines` takes `rounding` and `labels` defaults from the chart kind
-  (off for property diagrams, on for psychrometric charts) and, like
-  `set_view`, `state_at`, `move_cycle_state` and `cycle_states`, a
-  `units=` for the values of that call.
-* Unit systems: `"engineering"` (deg C, bar, kJ, g/kg, %) replaces the
-  name `"EUR"`, which warns; `"IP"` (deg F, psi, Btu/lb, grains per lb,
-  ft3/lb) is new; `UnitSystem` values are hashable with their units.
-  `StatePoint.describe(units)` and `StatePoint.in_units(units)` print and
-  convert a state.
-* `PropertyError` (a `ValueError`) names the fluid, the inputs in the
-  chart's units and where the state was asked for, e.g. "State 2 of
-  the cycle 'hp': no state of HEOS::R290 at p = 300000 bar, s = 2.48
-  kJ/kg/K (...)". A misspelt fluid fails in the `PropertyDiagram`
-  constructor, in `from_spec` and in the `fluid` setter, which then
-  leaves the diagram unchanged.
-* `rankine(eta_is_turbine=, eta_is_pump=)`; the old keyword names warn.
-* Behaviour changes: `PsychrometricChart.set_lines` and
-  `set_default_lines` have the positional order of `Chart.set_lines`
-  now (`key, values, num, range, rounding, labels, points, units`); pass
-  `labels=` by name. The psychrometric constructor's `units` default
-  reads "engineering".
+  The old names warn and go in 1.0.
+- The fluid of a chart is checked when it is set, not when it is drawn.
+- `rankine` takes `eta_is_turbine` and `eta_is_pump`.
 
-0.4.0 (unreleased)
-------------------
+### 0.4.0: one chart model
 
-One chart model (docs/v1_plan.md, package 0.4):
+#### Added
+- One `Chart` with `PropertyDiagram` and `PsychrometricChart` as its two
+  constructors; property providers for fluids and humid air; a registry
+  of line families per kind of chart; one quantity table and one unit
+  table for fluids and humid air.
+- `docs/contracts.md`: the chart record, the line record and the scene
+  record, round-tripped in tests.
+- `Scene.to_dict` and `from_dict`, `Curve.to_dict` and `from_dict`.
 
-* `Chart` is the facade; `PropertyDiagram` and `PsychrometricChart` are
-  its two constructors and share every method. A psychrometric chart is
-  a `DiagramSpec` with `HumidAirSpec` as fluid, diagram type `"WT"` and
-  a `Region` of T and W bounds; it is computed by the one `Engine`
-  through a `HumidAir` property provider and composed by the one
-  `compose`. `spec/psychro.py` and `compose/psychro.py` are gone.
-* One quantity table (`W`, `RH`, `Twb`, `Tdp`, `v` added) and one unit
-  table per unit system; `"EUR"` shows g/kg, % and deg C for humid air.
-* Line families per chart kind (`coolplot.core.diagram_type.FAMILIES`)
-  carry the sweep quantity, the preferred label edges, the default
-  number of lines and the phase boundary values; `Settings.labels.edges`
-  is now empty by default and only overrides them.
-* `StatePoint` holds whichever quantities its provider computes;
-  humid-air states (`AirState` before) are `StatePoint` values too.
-* Air processes are cycles with straight paths: item ids are
-  `cycle/<name>/...`, `Interaction` needs no special case, and
-  `add_cycle`, `cycle_states` and `move_cycle_state` work on them.
-  `add_process`, `process_states` and `move_process_state` remain as
-  the air vocabulary.
-* `Scene.to_dict` / `Scene.from_dict`, and docs/contracts.md with the
-  spec, curve and scene records.
-* Psychrometric charts use `settings.calc.points` (250 by default,
-  100 before); `points=` on the constructor still overrides it.
-* Behaviour changes: a `PsychroSpec` JSON file of 0.3 is not read by
-  `DiagramSpec.from_dict` (no upgrade path; such files were saved for
-  one minor release); `set_lines("RH", [0])` raises instead of drawing
-  a line on the axis; a chart region that lies entirely in the fog
-  raises at `update_scene` instead of drawing nothing; a complete
-  state of the other chart kind is refused by `add_cycle` and
-  `add_process`; `cycle_states` lists the states by ascending number.
+#### Changed
+- Humid-air processes are cycles with straight paths.
+- Psychrometric charts take `Settings.calc.points` (250) instead of their
+  own 100.
+- `Settings.labels.edges` defaults to empty (the family's own preference).
 
-0.3.0
------
+### 0.3.1
 
-* Background calculation: `PropertyDiagram(..., background="threads"` or
-  `"processes")` never waits for a line; coarse previews first, then the
-  final lines, with `on_ready`, `progress`, `wait()` and `close()`.
-  Failed lines are tried again and then reported.
-* Events from the backends (hover, click, drag, view changes, resizes)
-  in the axes' units, and `Interaction` for zoom, hover and dragging the
-  states of cycles, in matplotlib and in the browser.
-* New backends: plotly, and a browser backend that streams small patches
-  to a JavaScript client, with a dependency-free development server
-  (localhost only, input checked).
-* Psychrometric charts (`PsychrometricChart`): lines of relative
-  humidity, wet-bulb temperature, enthalpy and specific volume cut at
-  saturation, air processes on top, any total pressure.
-* PDF as a first-class output: fonts embedded as TrueType, texts kept as
-  text (labels with halos included), theme colours, the chart title as
-  PDF title, reproducible files, `save_pdf` for several charts in one
-  file, `Font(files=...)`, `strict_fonts` and `fonts_used()`. A PDF check
-  in the conformance kit reads files back without external tools. plotly
-  writes PDF through kaleido (extra "images").
-* The wet-bulb search of psychrometric charts reports no convergence
-  instead of returning the last estimate.
-* The physics fixes of 0.2.0 (mixture states, mixture limits, blends on
-  CoolProp 6 and 7, incompressibles, cache fingerprint) are part of this
-  release as well.
-* Texts are always plain text: "$5 or $6" is never typeset as math.
+#### Fixed
+- Mixture states CoolProp gets wrong (a single phase reported inside the
+  dome) are refused instead of drawn.
+- Blends start at the highest triple-point temperature of their components.
+- Incompressible fluids plot with absolute limits.
+- Lines are cached with a fingerprint of CoolProp's version, configuration
+  and reference state.
 
-0.2.0
------
+### 0.3.0
 
-A new package layout and API; the legacy API (`from CoolPlot.Plot import
-PropertyPlot`) is gone. Stay on `pip install "coolplot<0.2"` if you need it.
+#### Added
+- Background calculation (threads or processes) with coarse previews.
+- Events and `Interaction`: zoom, hover, dragging of cycle states.
+- The plotly backend and the browser backend (`WebRenderer`).
+- Psychrometric charts.
+- PDF output with fonts embedded as TrueType, `save_pdf` for several
+  charts in one file, a conformance check of the PDF.
 
-* Layers with one job each: specs (what to plot), thermo (CoolProp
-  calculations), engine (caching), compose (styles, texts and label
-  layout) and render (plotting backends). `tests/test_architecture.py`
-  enforces the import rules.
-* matplotlib is one backend among several: a dependency-free SVG backend
-  is included, and backends follow a written contract
-  (docs/backends.md) checked by a conformance kit.
-* Interactive applications redraw only what changed: a backend-neutral
-  scene with item ids, synchronised selectively; changing units or the
-  theme recalculates nothing.
-* `PropertyDiagram`: log(p)-h, T-s, h-s, p-s, p-rho, T-rho and p-T
-  diagrams for pure fluids and blends, with one `Settings` value for
-  point counts, margins, labels and page size, and JSON round trips of
-  the whole diagram.
-* Styling is first class: themes ("default", "dark", "print",
-  "classic"), validated style values and a styling guide.
-* Isoline labels sit at the edges of the chart and keep clear of cycles
-  (keep-out zones); one central number format for all labels.
-* Cycles on diagrams, given state by state in the diagram's units or from
-  cycle models, including split and two-stage cycles.
-* Works with CoolProp 6.8, 7.2 and 8. With CoolProp 6 and 7, lines of
-  constant s, h, u or rho of a blend are skipped with a warning that says
-  so (their flashes do not support mixtures there); isotherms, isobars
-  and quality lines work.
-* Every state CoolProp returns for a mixture is checked against the
-  saturated densities at its temperature: CoolProp 8's T,rho flash
-  answers some inputs inside the two-phase region with a "gas" at a
-  wrong pressure, and such points are left out instead of drawn.
-* Blends start at the highest triple-point temperature of their
-  components, not at CoolProp's mole-weighted average, below which one
-  component is solid.
-* Incompressibles (`INCOMP::...`) plot with absolute limits; relative
-  limits and quality lines give a clear error at once.
-* Cache keys carry a fingerprint of CoolProp's version, configuration and
-  reference state; a changed configuration rebuilds the states, and
-  `diagram.refresh()` does the same after `set_reference_state`.
+### 0.2.0
+
+#### Changed
+- The package was rebuilt around a pipeline of spec, engine, scene and
+  renderers; the legacy API (`CoolPlot.Plot.PropertyPlot`) was replaced.
+  See the upgrade guide.
+
+## [0.1.x]
+
+The legacy releases, a fork of `CoolProp.Plots` from CoolProp 6.3.0.

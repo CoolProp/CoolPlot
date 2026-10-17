@@ -70,6 +70,7 @@ class StateInput:
             _check_via(self.via, props, self.eta_is)
 
     def to_dict(self) -> dict:
+        """The record of docs/reference/contracts.md for this state input."""
         if self.state is not None:
             return {"state": self.state.to_dict()}
         out = {"props": [list(p) for p in self.props]}
@@ -81,6 +82,7 @@ class StateInput:
 
     @classmethod
     def from_dict(cls, data: dict) -> "StateInput":
+        """A state input from its record, see :meth:`to_dict`."""
         if "state" in data:
             return cls(state=StatePoint.from_dict(data["state"]))
         return cls(tuple(tuple(p) for p in data.get("props", ())), data.get("via"), data.get("eta_is", 1.0))
@@ -177,6 +179,7 @@ class Cycle:
         object.__setattr__(self, "results", tuple((str(k), float(v)) for k, v in results))
 
     def state(self, number: int) -> StatePoint:
+        """The state with the given number."""
         return dict(self.states)[number]
 
     @property

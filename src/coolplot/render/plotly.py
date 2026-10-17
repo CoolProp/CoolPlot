@@ -18,7 +18,7 @@ the figure follows the scene exactly:
 * Log axes take their range in powers of ten, and plotly places
   annotations on log axes in powers of ten as well.
 
-Limitations (``limitations``, see docs/backends.md):
+Limitations (``limitations``, see docs/contributing/writing_a_backend.md):
 
 * "line_caps": plotly has no setting for line caps and joins.
 * "text_order": annotations are always drawn above all traces, so a line
@@ -209,6 +209,7 @@ class PlotlyRenderer(Renderer):
         self.figure.update_layout(margin=dict(l=left, r=right, t=top, b=bottom, autoexpand=False))
 
     def plot_size_pt(self):
+        """(width, height) of the plot area in points, from the figure layout."""
         m = self.figure.layout.margin
         return ((self.width - m.l - m.r) / PX_PER_PT, (self.height - m.t - m.b) / PX_PER_PT)
 
@@ -490,16 +491,19 @@ class PlotlyRenderer(Renderer):
             replace_info(path, {"Title": title} if title else {})
 
     def show(self):
+        """Show the figure (``figure.show()``)."""
         self.figure.show()
 
     # Read back ----------------------------------------------------------
     def backend_object(self, item_id):
+        """The plotly trace or annotation drawn for an item id."""
         return self._traces.get(item_id) or self._annotation(item_id)
 
     def _annotation(self, item_id):
         return next((a for a in self.figure.layout.annotations if a.name == item_id), None)
 
     def describe_item(self, item_id: str) -> dict:
+        """Read back the item as drawn, from its trace or annotation."""
         item = self._drawn[item_id]   # KeyError for unknown ids, as required
         if isinstance(item, Text):
             return self._describe_text(item_id)
@@ -550,6 +554,7 @@ class PlotlyRenderer(Renderer):
         return (10.0 ** annotation.x if x_log else annotation.x, 10.0 ** annotation.y if y_log else annotation.y)
 
     def describe_axes(self) -> dict:
+        """Read back the axes as drawn, from the layout."""
         layout = self.figure.layout
         xa, ya = layout.xaxis, layout.yaxis
         (x0, x1), (y0, y1) = self._figure_ranges()

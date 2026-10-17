@@ -58,6 +58,7 @@ class Interaction:
         self._token = renderer.connect(self.handle)
 
     def close(self):
+        """Stop handling events of the renderer."""
         self.renderer.disconnect(self._token)
 
     def redraw(self):
@@ -66,6 +67,7 @@ class Interaction:
 
     # Event handling ----------------------------------------------------------
     def handle(self, event):
+        """Handle one event from the renderer, see :mod:`coolplot.core.events`."""
         if isinstance(event, ViewChanged) and self.follow_view:
             self.diagram.set_view(event.x_limits, event.y_limits)
             self.redraw()

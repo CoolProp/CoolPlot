@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 import pytest
 
-from coolplot.engine.plan import Domain, isoline_id, isoline_values_SI, nice_linear, nice_log, plan, snap
+from coolplot.engine.planning import Domain, isoline_id, isoline_values_SI, nice_linear, nice_log, plan, snap
 from coolplot.spec import DiagramSpec, IsolineSet
 
 DOMAIN = Domain((200.0, 400.0, 1e5, 4e6),
@@ -121,7 +121,7 @@ def test_incompressible_fraction_is_applied():
 
 
 def test_failing_curves_warn_once(diagram):
-    from coolplot.engine.plan import CurveRequest
+    from coolplot.engine.planning import CurveRequest
     from coolplot.thermo import Curve
     engine, spec = diagram.engine, diagram.spec
     domain = engine.domain(spec)

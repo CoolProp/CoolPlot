@@ -100,12 +100,14 @@ class FluidSpec:
         return str(self).split("::", 1)[1]
 
     def to_dict(self) -> dict:
+        """The fluid record of docs/reference/contracts.md."""
         return {"backend": self.backend, "components": list(self.components),
                 "fractions": list(self.fractions), "basis": self.basis,
                 "interactions": [list(x) for x in self.interactions]}
 
     @classmethod
     def from_dict(cls, data: dict) -> "FluidSpec":
+        """A fluid spec from its record, see :meth:`to_dict`."""
         return cls(data.get("backend", "HEOS"), tuple(data["components"]), tuple(data.get("fractions", ())),
                    data.get("basis", "mole"), tuple(tuple(x) for x in data.get("interactions", ())))
 
@@ -182,10 +184,12 @@ class HumidAirSpec:
         return self.name
 
     def to_dict(self) -> dict:
+        """The humid-air record of docs/reference/contracts.md."""
         return {"model": "humid_air", "p_Pa": self.p_Pa}
 
     @classmethod
     def from_dict(cls, data: dict) -> "HumidAirSpec":
+        """A humid-air spec from its record, see :meth:`to_dict`."""
         return cls(float(data.get("p_Pa", 101325.0)))
 
 

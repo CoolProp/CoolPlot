@@ -183,14 +183,17 @@ class DiagramType:
 
     @property
     def name(self) -> str:
+        """The name of the diagram type, vertical axis first, e.g. "ph"."""
         return self.y + self.x
 
     @property
     def x_log(self) -> bool:
+        """Whether the horizontal axis is logarithmic."""
         return get_quantity(self.x).log_scale
 
     @property
     def y_log(self) -> bool:
+        """Whether the vertical axis is logarithmic."""
         return get_quantity(self.y).log_scale
 
     @property
@@ -213,6 +216,7 @@ class DiagramType:
         return None if family is None else family.sweep
 
     def supports(self, iso_key: str) -> bool:
+        """Whether lines of constant ``iso_key`` can be drawn in this diagram."""
         return self.family(iso_key) is not None
 
     def supported_isolines(self):

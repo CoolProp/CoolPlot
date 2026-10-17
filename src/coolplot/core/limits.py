@@ -105,6 +105,7 @@ class Region:
         object.__setattr__(self, "bounds", tuple(bounds))
 
     def range_SI(self, key: str) -> Tuple[float, float]:
+        """The (min, max) bounds of quantity ``key`` in SI units."""
         key = quantity_key(key)
         for k, lo_hi in self.bounds:
             if k == key:
@@ -118,8 +119,10 @@ class Region:
         return Region(kept + ((key, (float(low), float(high))),))
 
     def to_dict(self) -> dict:
+        """The record of docs/reference/contracts.md for this region."""
         return {"bounds": {k: list(v) for k, v in self.bounds}}
 
     @classmethod
     def from_dict(cls, data: dict) -> "Region":
+        """A region from its record, see :meth:`to_dict`."""
         return cls(tuple((k, tuple(v)) for k, v in data["bounds"].items()))

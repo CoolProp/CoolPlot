@@ -213,6 +213,7 @@ class Chart:
     # ------------------------------------------------------------------
     @property
     def cache(self) -> CurveCache:
+        """The curve cache of the engine, shared by charts that share the engine."""
         return self.engine.cache
 
     # Background work -------------------------------------------------------
@@ -253,10 +254,12 @@ class Chart:
 
     @property
     def diagram_type(self):
+        """The :class:`~coolplot.core.diagram_type.DiagramType` of the chart (its two axes)."""
         return self.spec.diagram
 
     @property
     def units(self):
+        """The unit system of the chart: a name ("SI", "KSI", "engineering", "IP") or a UnitSystem."""
         return self.spec.units
 
     @units.setter
@@ -265,6 +268,7 @@ class Chart:
 
     @property
     def settings(self):
+        """The :class:`~coolplot.spec.settings.Settings` of the chart, or a preset name to assign."""
         return self.spec.settings
 
     @settings.setter
@@ -273,6 +277,7 @@ class Chart:
 
     @property
     def theme(self) -> Theme:
+        """The :class:`~coolplot.style.theme.Theme` of the chart, or a theme name to assign."""
         return self.spec.settings.look
 
     @theme.setter
@@ -281,6 +286,7 @@ class Chart:
 
     @property
     def title(self) -> str:
+        """The title shown above the chart."""
         return self.spec.title
 
     @title.setter
@@ -399,6 +405,7 @@ class Chart:
                 self.set_lines(key, num=num, **kwargs)
 
     def remove_lines(self, key: str):
+        """Remove the family of lines of constant ``key``; nothing happens if there is none."""
         self.spec = self.spec.without_isolines(key)
 
     def line_sets(self):
@@ -545,6 +552,7 @@ class Chart:
         self.spec = self.spec.with_cycle(new)
 
     def remove_cycle(self, name: str):
+        """Remove the cycle called ``name``; nothing happens if there is none."""
         self.spec = self.spec.without_cycle(name)
 
     def cycle_states(self, name: str, units=None):
@@ -577,6 +585,7 @@ class Chart:
             raise self._in_units(e) from None
 
     def to_display(self, key: str, value_SI):
+        """Convert an SI value of quantity ``key`` to the chart's units."""
         return self.spec.units[key].from_SI(value_SI)
 
     # ------------------------------------------------------------------
@@ -647,6 +656,7 @@ class Chart:
                       "smaller than the number of lines?).", UserWarning, stacklevel=3)
 
     def show(self):
+        """Draw the chart with matplotlib and show the window."""
         self.draw().show()
 
     def save(self, path, **kwargs):

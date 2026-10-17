@@ -18,7 +18,7 @@ put it into the scene. If the new item equals the old one, the scene keeps
 the old object and nothing is redrawn.
 
 A scene can be written as plain data (:meth:`Scene.to_dict`) and read
-back (:meth:`Scene.from_dict`); docs/contracts.md describes that form,
+back (:meth:`Scene.from_dict`); docs/reference/contracts.md describes that form,
 which is the contract for renderers written in other languages.
 
 This module imports neither CoolProp nor any plotting library.
@@ -65,7 +65,7 @@ class Item:
         What the item means, independent of how it looks: "isoline",
         "saturation", "quality", "isoline_label", "process", "state_points"
         or "annotation". Backends that support external styling (CSS
-        classes in SVG or HTML) expose it; see docs/backends.md.
+        classes in SVG or HTML) expose it; see docs/contributing/writing_a_backend.md.
     legend : str, optional
         Text of a legend entry for this item. Usually only one item per
         group carries it.
@@ -266,6 +266,7 @@ class Scene:
     # Read access -----------------------------------------------------------
     @property
     def axes(self) -> AxesSpec:
+        """The :class:`AxesSpec` of the scene."""
         return self._axes
 
     def __len__(self) -> int:
@@ -281,6 +282,7 @@ class Scene:
         return self._items[item_id]
 
     def ids(self):
+        """The ids of all items, in the order they were added."""
         return list(self._items)
 
     def draw_order(self):
@@ -327,6 +329,7 @@ class Scene:
         return True
 
     def remove(self, item_id: str) -> bool:
+        """Remove the item with ``item_id``; returns whether there was one."""
         if item_id not in self._items:
             return False
         del self._items[item_id]
@@ -366,7 +369,7 @@ class Scene:
     # Storage ---------------------------------------------------------------
     def to_dict(self) -> dict:
         """Plain data (dicts, lists, numbers, strings, None) describing the
-        scene, in drawing order; see docs/contracts.md. NaN becomes None."""
+        scene, in drawing order; see docs/reference/contracts.md. NaN becomes None."""
         return {"axes": axes_to_dict(self._axes), "items": [item_to_dict(self._items[i]) for i in self.draw_order()]}
 
     @classmethod
@@ -426,6 +429,7 @@ def item_from_dict(data: dict) -> Item:
 
 
 def axes_to_dict(axes: AxesSpec) -> dict:
+    """The record of docs/reference/contracts.md for an :class:`AxesSpec`."""
     return {"x_label": axes.x_label, "y_label": axes.y_label, "x_log": axes.x_log, "y_log": axes.y_log,
             "x_limits": None if axes.x_limits is None else list(axes.x_limits),
             "y_limits": None if axes.y_limits is None else list(axes.y_limits),
@@ -433,6 +437,7 @@ def axes_to_dict(axes: AxesSpec) -> dict:
 
 
 def axes_from_dict(data: dict) -> AxesSpec:
+    """An :class:`AxesSpec` from its record, see :func:`axes_to_dict`."""
     return AxesSpec(x_label=data.get("x_label", ""), y_label=data.get("y_label", ""),
                     x_log=data.get("x_log", False), y_log=data.get("y_log", False),
                     x_limits=None if data.get("x_limits") is None else tuple(data["x_limits"]),

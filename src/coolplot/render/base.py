@@ -9,7 +9,7 @@ was added, changed, removed or reordered.
 
 To support a new plotting library, subclass :class:`Renderer`, implement
 the methods marked "backend hook" and "read back", and pass the
-conformance kit in :mod:`coolplot.testing`. docs/backends.md lists
+conformance kit in :mod:`coolplot.testing`. docs/contributing/writing_a_backend.md lists
 every requirement. Nothing else in CoolPlot needs to change.
 """
 from __future__ import annotations
@@ -43,6 +43,7 @@ class SyncReport:
 
     @property
     def changed(self) -> bool:
+        """Whether the sync changed anything at all."""
         return bool(self.added or self.updated or self.removed or self.axes_changed
                     or self.reordered or self.legend_changed)
 
@@ -195,6 +196,7 @@ class Renderer:
         return self._next_token
 
     def disconnect(self, token: int):
+        """Stop calling the callback registered under ``token``."""
         self._callbacks.pop(token, None)
 
     def _start_events(self):
@@ -218,7 +220,9 @@ class Renderer:
     # in the normalised form of coolplot.testing. They are what the
     # conformance kit checks.
     def describe_item(self, item_id: str) -> dict:
+        """Read back: the item as drawn, in the normalised form of :mod:`coolplot.testing`."""
         raise NotImplementedError
 
     def describe_axes(self) -> dict:
+        """Read back: the axes as drawn, in the normalised form of :mod:`coolplot.testing`."""
         raise NotImplementedError

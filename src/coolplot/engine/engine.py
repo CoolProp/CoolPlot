@@ -22,7 +22,7 @@ from ..thermo.cycles import cycle_paths, resolve_states
 from ..thermo.isolines import Curve
 from ..thermo.provider import chart_domain, compute_curve, make_provider
 from .cache import CurveCache
-from .plan import CurveRequest, Domain
+from .planning import CurveRequest, Domain
 
 
 class Engine:

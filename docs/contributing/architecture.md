@@ -153,7 +153,7 @@ caches its results (curves) or compares them with the previous ones
 | Stage | Module | Status |
 |-------|--------|--------|
 | Settings | `spec/` (`DiagramSpec`, `Settings`), held by `PropertyDiagram` in `diagram.py` | done |
-| Plan | `engine/plan.py` (`plan(spec, domain)`), pure | done |
+| Plan | `engine/planning.py` (`plan(spec, domain)`), pure | done |
 | Engine | `engine/engine.py` (`Engine`), `engine/background.py` (`BackgroundEngine`, 0.3), `engine/cache.py` (`CurveCache`), `thermo/` for the calculations | done |
 | Compose | `compose/builder.py`: display units, theme styles, texts | done |
 | Layout | `compose/layout.py`: labels for the reported plot size, keep-out zones | done |

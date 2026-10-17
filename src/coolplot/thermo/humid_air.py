@@ -353,10 +353,12 @@ class HumidAir:
 
     @property
     def name(self) -> str:
+        """"humid air (p Pa)", for messages."""
         return "humid air at {0:.6g} Pa".format(self.p_Pa)
 
     @property
     def model_key(self) -> Tuple:
+        """What identifies the model: ("humid_air", p_Pa)."""
         return ("humid_air", self.p_Pa)
 
     @property
@@ -365,6 +367,7 @@ class HumidAir:
         return (CoolProp.__version__, self.p_Pa)
 
     def configuration_changed(self) -> bool:
+        """Whether CoolProp's global configuration changed since this provider was made."""
         return False   # HAPropsSI has no global settings that change its results
 
     def state_point(self, key1: str, value1_SI: float, key2: str, value2_SI: float) -> StatePoint:

@@ -85,6 +85,7 @@ class Trace:
     stopped: str = ""
 
     def add(self, u: float, sample: Optional[Sample]):
+        """Append an accepted point, or a gap marker (None) unless one is there already."""
         if sample is None and (not self.samples or self.samples[-1] is None):
             return   # one gap marker is enough, and never one at the start
         self.u.append(u)

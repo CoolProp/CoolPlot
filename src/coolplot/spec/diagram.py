@@ -63,12 +63,14 @@ class IsolineSet:
             object.__setattr__(self, "points", int(self.points))
 
     def to_dict(self) -> dict:
+        """The record of docs/reference/contracts.md for this family of lines."""
         return {"key": self.key, "values_SI": None if self.values_SI is None else list(self.values_SI),
                 "num": self.num, "range_SI": None if self.range_SI is None else list(self.range_SI),
                 "rounding": self.rounding, "points": self.points, "labels": self.labels}
 
     @classmethod
     def from_dict(cls, data: dict) -> "IsolineSet":
+        """A family of lines from its record, see :meth:`to_dict`."""
         return cls(**data)
 
 
@@ -90,6 +92,7 @@ class ProcessSpec:
                     self.name, type(state).__name__))
 
     def to_dict(self) -> dict:
+        """The record of docs/reference/contracts.md for this process."""
         return {"name": self.name,
                 "line_states": [s.to_dict() for s in self.line_states],
                 "marker_states": [s.to_dict() for s in self.marker_states],
@@ -98,6 +101,7 @@ class ProcessSpec:
 
     @classmethod
     def from_dict(cls, data: dict) -> "ProcessSpec":
+        """A process from its record, see :meth:`to_dict`."""
         return cls(data["name"],
                    tuple(StatePoint.from_dict(s) for s in data.get("line_states", ())),
                    tuple(StatePoint.from_dict(s) for s in data.get("marker_states", ())),
@@ -158,6 +162,7 @@ class CycleSpec:
         return cls(**values)
 
     def to_dict(self) -> dict:
+        """The record of docs/reference/contracts.md for this cycle."""
         return {"name": self.name, "states": [[n, s.to_dict()] for n, s in self.states],
                 "loops": [list(c) for c in self.loops], "paths": [[list(p), k] for p, k in self.paths],
                 "numbers": self.numbers, "steps": self.steps,
@@ -166,6 +171,7 @@ class CycleSpec:
 
     @classmethod
     def from_dict(cls, data: dict) -> "CycleSpec":
+        """A cycle from its record, see :meth:`to_dict`."""
         return cls(data["name"], tuple((n, StateInput.from_dict(s)) for n, s in data["states"]),
                    tuple(tuple(c) for c in data.get("loops", ())),
                    tuple((tuple(p), k) for p, k in data.get("paths", ())), data.get("numbers", True),
@@ -226,6 +232,7 @@ class DiagramSpec:
 
     # Reading ------------------------------------------------------------------
     def isoline_set(self, key: str) -> Optional[IsolineSet]:
+        """The family of lines of constant ``key``, or None."""
         key = quantity_key(key)
         return next((s for s in self.isolines if s.key == key), None)
 
@@ -245,6 +252,7 @@ class DiagramSpec:
         return replace(self, isolines=tuple(iso_set if s.key == iso_set.key else s for s in self.isolines))
 
     def without_isolines(self, key: str) -> "DiagramSpec":
+        """A copy without the family of lines of constant ``key``."""
         key = quantity_key(key)
         return replace(self, isolines=tuple(s for s in self.isolines if s.key != key))
 
@@ -255,6 +263,7 @@ class DiagramSpec:
         return replace(self, processes=tuple(process if p.name == process.name else p for p in self.processes))
 
     def without_process(self, name: str) -> "DiagramSpec":
+        """A copy without the process called ``name``."""
         return replace(self, processes=tuple(p for p in self.processes if p.name != name))
 
     def with_cycle(self, cycle: CycleSpec) -> "DiagramSpec":
@@ -264,6 +273,7 @@ class DiagramSpec:
         return replace(self, cycles=tuple(cycle if c.name == cycle.name else c for c in self.cycles))
 
     def without_cycle(self, name: str) -> "DiagramSpec":
+        """A copy without the cycle called ``name``."""
         return replace(self, cycles=tuple(c for c in self.cycles if c.name != name))
 
     def with_style_override(self, key: str, **changes) -> "DiagramSpec":
@@ -292,6 +302,7 @@ class DiagramSpec:
 
     @classmethod
     def from_dict(cls, data: dict) -> "DiagramSpec":
+        """A spec from its record, see :meth:`to_dict`."""
         overrides = tuple((k, tuple((name, _hashable(v)) for name, v in changes.items()))
                           for k, changes in data.get("style_overrides", {}).items())
         return cls(fluid=fluid_spec_from_dict(data["fluid"]),

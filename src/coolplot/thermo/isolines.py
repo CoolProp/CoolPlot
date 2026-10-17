@@ -7,7 +7,7 @@ with x and y arrays in SI units. Nothing in this module knows about units,
 styles or plotting libraries, which is what allows results to be cached and
 reused across unit systems and renderers.
 
-How a line is computed (see docs/architecture.md, "Numerics"):
+How a line is computed (see docs/contributing/architecture.md, "Numerics"):
 
 * Temperature or pressure is stepped through its range in the T-p box of
   the chart, with steps chosen from the shape of the line in plot
@@ -88,10 +88,11 @@ class Curve:
 
     @property
     def n_valid(self) -> int:
+        """The number of points with finite x and y."""
         return int(np.sum(np.isfinite(self.x) & np.isfinite(self.y)))
 
     def to_dict(self) -> dict:
-        """The curve record of docs/contracts.md; non-finite values become None."""
+        """The curve record of docs/reference/contracts.md; non-finite values become None."""
         return {"x": [float(v) if np.isfinite(v) else None for v in self.x],
                 "y": [float(v) if np.isfinite(v) else None for v in self.y],
                 "n_failed": self.n_failed, "n_fallback": self.n_fallback, "n_inserted": self.n_inserted,
@@ -100,6 +101,7 @@ class Curve:
 
     @classmethod
     def from_dict(cls, data: dict) -> "Curve":
+        """A curve from its record, see :meth:`to_dict`."""
         nan = float("nan")
         return cls([nan if v is None else v for v in data["x"]], [nan if v is None else v for v in data["y"]],
                    data.get("n_failed", 0), data.get("n_fallback", 0), data.get("n_inserted", 0),

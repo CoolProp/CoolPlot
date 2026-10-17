@@ -2,7 +2,7 @@
 """All tunable values of a diagram in one immutable value.
 
 :class:`Settings` is split by what a change costs, because that decides
-what has to be redone (docs/architecture.md, section 5):
+what has to be redone (docs/contributing/architecture.md, section 5):
 
 * ``calc``: how curves are calculated. A change recalculates the affected
   curves, and these values are part of the cache key.
@@ -251,11 +251,13 @@ class Settings:
                        page=replace(self.page, **page) if page else self.page)
 
     def to_dict(self) -> dict:
+        """The settings record of docs/reference/contracts.md."""
         return {"calc": asdict(self.calc), "look": self.look.to_dict(),
                 "labels": asdict(self.labels), "page": asdict(self.page)}
 
     @classmethod
     def from_dict(cls, data: dict) -> "Settings":
+        """Settings from their record, see :meth:`to_dict`."""
         def part(part_cls, values):
             known = {f.name for f in fields(part_cls)}
             unknown = set(values or {}) - known

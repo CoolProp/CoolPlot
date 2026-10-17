@@ -59,7 +59,7 @@ class PropertyDiagram(Chart):
         The temperature and pressure region to cover, see
         :mod:`coolplot.core.limits`.
     theme : str or Theme, optional
-        "default", "dark", "print", "classic" or a Theme; see docs/styling.md.
+        "default", "dark", "print", "classic" or a Theme; see docs/how_to/themes.md.
         Replaces the theme of ``settings``.
     settings : str or Settings, optional
         "screen" (default), "print", "publication", "interactive" or a
@@ -113,6 +113,7 @@ class PropertyDiagram(Chart):
 
     @property
     def diagram_type(self) -> DiagramType:
+        """The :class:`~coolplot.core.diagram_type.DiagramType` of the diagram, or a name such as "ph" to assign."""
         return self.spec.diagram
 
     @diagram_type.setter
@@ -124,6 +125,10 @@ class PropertyDiagram(Chart):
 
     @property
     def tp_limits(self):
+        """The temperature and pressure region the isolines cover.
+
+        A preset name, a list of four SI values or a TpLimits.
+        """
         return self.spec.limits
 
     @tp_limits.setter
