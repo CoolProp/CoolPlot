@@ -34,7 +34,8 @@ class Curve:
     in x and y. ``n_fallback`` counts the points the tracer handed back to
     a plain flash, ``n_inserted`` the saturation states inserted where the
     line enters or leaves the two-phase region. ``method`` says how the
-    line was computed: "flash", "tracer" or "envelope".
+    line was computed: "flash", "tracer" or "envelope". ``reason`` says why
+    a line could not be computed at all (then x and y are empty).
     """
     x: np.ndarray
     y: np.ndarray
@@ -42,6 +43,7 @@ class Curve:
     n_fallback: int = 0
     n_inserted: int = 0
     method: str = "flash"
+    reason: str = ""
 
     def __post_init__(self):
         for name in ("x", "y"):
@@ -52,7 +54,7 @@ class Curve:
     def __reduce__(self):
         # Rebuild through the constructor, so that a curve coming back from
         # a worker process has read-only arrays again.
-        return (Curve, (self.x, self.y, self.n_failed, self.n_fallback, self.n_inserted, self.method))
+        return (Curve, (self.x, self.y, self.n_failed, self.n_fallback, self.n_inserted, self.method, self.reason))
 
     @property
     def n_valid(self) -> int:
@@ -73,6 +75,17 @@ class Curve:
 
 
 SOLVERS = ("auto", "tracer", "flash")
+
+#: Input pairs that CoolProp 6 and 7 can flash for mixtures.
+_MIXTURE_PAIRS_BEFORE_8 = (CoolProp.PT_INPUTS, CoolProp.PQ_INPUTS, CoolProp.QT_INPUTS)
+
+
+def _quality_or_nan(state) -> float:
+    """The vapour quality of a state, NaN where the backend has none (incompressibles)."""
+    try:
+        return float(state.keyed_output(CoolProp.iQ))
+    except Exception:
+        return np.nan
 
 
 def value_grid(key: str, lo: float, hi: float, num: int) -> np.ndarray:
@@ -137,8 +150,14 @@ def compute_isoline(fluid: Fluid, diagram: DiagramType, iso_key: str, value_SI: 
     pair, first, _ = CP.generate_update_pair(iso_index, 0.0, sweep_index, 1.0)
     constant_first = (first == 0.0)
     inputs = (iso_index, sweep_index) if constant_first else (sweep_index, iso_index)
-    out_indices = (parameter_index(diagram.x), parameter_index(diagram.y), CoolProp.iQ)
-    state = fluid.state
+    out_indices = (parameter_index(diagram.x), parameter_index(diagram.y))
+
+    if not fluid.is_pure and not TRACER_AVAILABLE and pair not in _MIXTURE_PAIRS_BEFORE_8:
+        # The h,p / s,p / rho,T flashes of CoolProp 6 and 7 do not support mixtures
+        return Curve([], [], 0, method="flash", reason=(
+            "lines of constant {0} of a blend need CoolProp 8 (the flashes of CoolProp {1} that they need do not "
+            "support mixtures); isotherms, isobars and quality lines work".format(
+                iso_key, getattr(CoolProp, "__version__", "?"))))
 
     tracer = None
     if _use_tracer(fluid, solver) and IsoLineTracer.supports(*inputs):
@@ -156,15 +175,19 @@ def compute_isoline(fluid: Fluid, diagram: DiagramType, iso_key: str, value_SI: 
         if tracer is not None:
             try:
                 tracer.update(v1, v2)
-                x[i], y[i], quality[i] = (tracer.keyed_output(k) for k in out_indices)
+                x[i], y[i] = (tracer.keyed_output(k) for k in out_indices)
+                quality[i] = _quality_or_nan(tracer)
                 if np.isfinite(x[i]) and np.isfinite(y[i]):
                     continue
             except Exception:
                 pass
             n_fallback += 1
         try:
-            state.update(pair, v1, v2)
-            x[i], y[i], quality[i] = (state.keyed_output(k) for k in out_indices)
+            # update_pair retries a mixture on the envelope-built scratch state
+            # and refuses a state CoolProp got wrong, see Fluid.inconsistency
+            state = fluid.update_pair(pair, v1, v2)
+            x[i], y[i] = (state.keyed_output(k) for k in out_indices)
+            quality[i] = _quality_or_nan(state)
             if tracer is not None:
                 tracer.set_guess(state)
         except Exception:
@@ -247,6 +270,8 @@ def _saturation_crossings(fluid, diagram, iso_key, value_SI, sweep_key, sweep, q
       because the saturation flash of a mixture fails near the critical
       point, exactly where an isoline is most likely to meet the dome.
     """
+    if not fluid.has_critical_point:
+        return []   # no saturation curve, nothing to cross (incompressibles)
     envelope = fluid.phase_envelope()
     if envelope is not None:
         return _envelope_crossings(envelope, diagram, iso_key, value_SI, sweep_key, sweep)
@@ -370,6 +395,9 @@ def compute_quality_line(fluid: Fluid, diagram: DiagramType, quality: float, poi
     if not 0.0 <= quality <= 1.0:
         raise ValueError("The vapour quality has to be between 0 and 1, not {0}.".format(quality))
     fluid = _base_backend_fluid(fluid)
+    if not fluid.has_critical_point:
+        raise ValueError("{0} has no two-phase region (CoolProp provides no critical point for it), so lines of "
+                         "constant quality cannot be drawn.".format(fluid.name))
     if not fluid.is_pure and quality in (0.0, 1.0):
         curve = _envelope_line(fluid, diagram, quality)
         if curve is not None:

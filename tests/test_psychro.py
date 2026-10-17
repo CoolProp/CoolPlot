@@ -215,3 +215,9 @@ def test_charts_with_a_foggy_edge_get_all_visible_lines():
 def test_the_limits_of_hapropssi_are_allowed():
     assert PsychrometricChart(T_range=(-100, 50)).spec.T_range_K[0] == pytest.approx(173.15)
     PsychrometricChart().set_lines("Twb", [-100.0])
+
+
+def test_the_wet_bulb_search_reports_no_convergence(monkeypatch):
+    from coolplot.thermo import humid_air
+    monkeypatch.setattr(humid_air, "_SEARCH_ITERATIONS", 1)
+    assert humid_air._W_by_search("h", 50e3, 300.0, 101325.0, 0.03)[1] == "failed"

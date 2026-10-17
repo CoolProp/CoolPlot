@@ -259,6 +259,9 @@ class BackgroundEngine(Engine):
                 else:
                     # Not cached: the next request tries again, up to MAX_TRIES
                     attempts = self._failed.get(key, (0, ""))[0] + 1
+                    if len(self._failed) > 10000:   # a long session with many failing lines, not a leak
+                        self._failed.clear()
+                        self._suspects.clear()
                     self._failed[key] = (attempts, "{0}: {1}".format(type(error).__name__, error))
                 if key in self._needed_final and self._done(key):
                     ready, total = self._progress

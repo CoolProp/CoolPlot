@@ -46,8 +46,10 @@ and always draws texts above lines; everything else looks the same.
 ### Fluids
 
 Any CoolProp fluid string works: `"R290"`, `"HEOS::R290"`,
-`"HEOS::R32[0.7]&R125[0.3]"` (mole fractions), `"INCOMP::MEG[0.3]"` (mass
-fractions, as CoolProp reads them for incompressibles), `"REFPROP::R32"`.
+`"HEOS::R32[0.7]&R125[0.3]"` (mole fractions), `"REFPROP::R32"`, and
+incompressibles such as `"INCOMP::MEG[0.3]"` (mass fractions, as CoolProp
+reads them), which have no saturation curve and therefore need absolute
+limits: `tp_limits=[260, 370, 1e5, 1e6]` (K and Pa), see section 9.
 A `CoolProp.AbstractState` is accepted as well; CoolPlot copies its fluid,
 fractions and binary interaction parameters, so later changes to your
 state do not affect the diagram.
@@ -89,8 +91,8 @@ any new calculation; `set_view()` resets.
 
 ```python
 diagram.set_isolines("T", values=[-20, 0, 20, 40])        # explicit values
-diagram.set_isolines("p", num=8)                          # 8 lines, evenly over the region
-diagram.set_isolines("p", num=8, rounding=True)           # round values: 1, 2, 5, 10, 20 bar
+diagram.set_isolines("T", num=8)                          # 8 lines, evenly over the region
+diagram.set_isolines("T", num=8, rounding=True)           # round values: -50, 0, 50, 100 deg C
 diagram.set_isolines("s", num=6, range=(1.0, 2.5))        # 6 lines between 1.0 and 2.5 kJ/kg/K
 diagram.set_default_isolines()                            # every family that fits the diagram
 diagram.remove_isolines("p")
@@ -409,11 +411,35 @@ diagrams. `chart.spec.to_dict()` saves a chart and
 
 For mixtures CoolPlot traces isolines point by point, starting each point
 from the previous one (`Settings.calc.solver = "auto"`). That needs
-CoolProp 8; with older versions every point is a plain flash calculation,
-which is slow for blends (minutes for a full chart). With CoolProp 8 a
+CoolProp 8: the flashes that CoolProp 6 and 7 offer for mixtures cover
+only p,T and saturation inputs, so with those versions a blend chart gets
+its isotherms, isobars, quality lines and the dome, and lines of constant
+s, h, u or rho are skipped with a warning that says so. With CoolProp 8 a
 default chart of R32/R125 takes seconds. The bubble and dew lines come
 from CoolProp's phase envelope, so the dome closes properly through the
-critical region, and isotherms show the temperature glide.
+critical region, and isotherms show the temperature glide. A blend chart
+starts at the highest triple-point temperature of its components (R32 is
+solid below -137 deg C whatever it is mixed with).
+
+Every state CoolProp returns for a mixture is checked against the
+saturated densities at its temperature: CoolProp 8 answers some inputs
+inside the two-phase region with a "gas" at a wrong pressure, and such
+points are left out instead of drawn (with the flash solver they show as
+gaps; the tracer gets them right).
+
+Incompressible fluids (`"INCOMP::..."`) have no saturation curve: give
+absolute limits, `tp_limits=[T_min_K, T_max_K, p_min_Pa, p_max_Pa]`, and
+leave out quality lines. Isotherms, isobars and lines of h, s and u work.
+
+### CoolProp's global settings
+
+Changing CoolProp's configuration (`set_config_bool` and friends) is
+noticed: the next update computes with fresh states. A changed reference
+state (`CoolProp.CoolProp.set_reference_state`) is not visible from
+outside; call `diagram.refresh()` after it, otherwise the diagram keeps
+the enthalpy and entropy offsets it started with. Curves are cached with
+a fingerprint of CoolProp's version, configuration and reference state,
+so a curve made under other settings is never served.
 
 ## 10. When something goes wrong
 

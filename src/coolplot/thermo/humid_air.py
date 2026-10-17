@@ -100,6 +100,8 @@ def _W_on_line(key: str, value: float, T_K: float, p_Pa: float) -> float:
 
 #: Humidity ratio used for "dry air" in calls that need W > 0.
 _W_DRY = 1e-12
+#: Steps a search for W may take before it gives up.
+_SEARCH_ITERATIONS = 60
 
 
 def _W_by_search(key: str, value: float, T_K: float, p_Pa: float, W_sat: float):
@@ -126,7 +128,7 @@ def _W_by_search(key: str, value: float, T_K: float, p_Pa: float, W_sat: float):
             return math.nan, "fog"
         tolerance = 1e-7 * max(abs(value), 1.0)
         side = 0
-        for _ in range(60):
+        for _ in range(_SEARCH_ITERATIONS):
             c = (a * f_b - b * f_a) / (f_b - f_a) if f_b != f_a else 0.5 * (a + b)
             f_c = excess(c)
             if abs(f_c) <= tolerance or b - a < 1e-9:
@@ -141,7 +143,7 @@ def _W_by_search(key: str, value: float, T_K: float, p_Pa: float, W_sat: float):
                 if side == -1:
                     f_b *= 0.5
                 side = -1
-        return 0.5 * (a + b), "ok"
+        return math.nan, "failed"   # no convergence: not a point to draw
     except Exception:
         return math.nan, "failed"
 

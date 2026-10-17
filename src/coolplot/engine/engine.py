@@ -47,15 +47,32 @@ class Engine:
         self._warned = set()
 
     def fluid(self, spec: FluidSpec) -> Fluid:
-        """The Fluid for a fluid model, created once and reused."""
-        if spec in self._fluids:
+        """The Fluid for a fluid model, created once and reused.
+
+        A fluid made under another CoolProp configuration (``set_config_*``)
+        is made again. A changed reference state (``set_reference_state``)
+        cannot be seen from outside: call :meth:`refresh` after it."""
+        if spec in self._fluids and not self._fluids[spec].configuration_changed():
             self._fluids.move_to_end(spec)
             return self._fluids[spec]
+        self._fluids.pop(spec, None)
+        self._domains = OrderedDict((k, v) for k, v in self._domains.items() if k[0] != spec)
         fluid = Fluid(spec)
         self._fluids[spec] = fluid
         if len(self._fluids) > self.max_fluids:
             self._fluids.popitem(last=False)
         return fluid
+
+    def refresh(self):
+        """Forget every CoolProp state, domain and cycle, so the next request builds them anew.
+
+        Needed after ``CoolProp.CoolProp.set_reference_state`` or any other
+        change to CoolProp that its configuration string does not show;
+        the curves made before stay in the cache under their old fingerprint
+        and are not served again."""
+        self._fluids.clear()
+        self._domains.clear()
+        self._cycles.clear()
 
     def domain(self, spec: DiagramSpec) -> Domain:
         """The calculation region of a diagram: the T-p box and the range of every quantity."""
@@ -83,7 +100,8 @@ class Engine:
         saturation settings; all other isolines are swept through the box.
         """
         calc = spec.settings.calc
-        base = (spec.fluid, spec.diagram, request.key, request.value_SI, request.points)
+        base = (spec.fluid, self.fluid(spec.fluid).fingerprint, spec.diagram, request.key, request.value_SI,
+                request.points)
         if request.key == "Q":
             return base + (calc.critical_margin, calc.saturation_spacing)
         # The margin decides where saturation states are inserted
@@ -130,9 +148,9 @@ class Engine:
                     result.append((request, curve))
                 continue
             if curve.n_valid < 2:
-                self._warn(spec, domain, request, "Skipping the line {0}={1:.6g} in {2}: CoolProp failed for "
-                           "{3} of {4} points.".format(request.key, request.value_SI, spec.fluid.name,
-                                                       curve.n_failed, total))
+                why = curve.reason or "CoolProp failed for {0} of {1} points".format(curve.n_failed, total)
+                self._warn(spec, domain, request, "Skipping the line {0}={1:.6g} in {2}: {3}.".format(
+                    request.key, request.value_SI, spec.fluid.name, why))
                 continue
             if total and curve.n_gaps > tolerance * total:
                 self._warn(spec, domain, request, "The line {0}={1:.6g} in {2} has gaps: CoolProp failed for "

@@ -28,20 +28,21 @@ def resolve_tp_box(fluid: Fluid, limits: TpLimits, margin: float = 1e-7) -> Tupl
     Relative bounds refer to the saturation range of the fluid, see
     :meth:`Fluid.saturation_range` for ``margin``.
     """
-    T_sat_lo_K, T_sat_hi_K = fluid.saturation_range("T", margin)
-    p_sat_lo_Pa, p_sat_hi_Pa = fluid.saturation_range("p", margin)
+    saturation = {}   # the saturation range of T or p, looked up only when a bound needs it
 
-    def absolute(bound, sat_value, fallback):
+    def absolute(bound, key, end, fallback):
         if bound is None:
             return fallback
         if isinstance(bound, Relative):
-            return bound.factor * sat_value
+            if key not in saturation:
+                saturation[key] = fluid.saturation_range(key, margin)   # ValueError for incompressibles
+            return bound.factor * saturation[key][end]
         return float(bound)
 
-    T_lo_K = absolute(limits.T_min, T_sat_lo_K, 0.0)
-    T_hi_K = absolute(limits.T_max, T_sat_hi_K, np.inf)
-    p_lo_Pa = absolute(limits.p_min, p_sat_lo_Pa, 0.0)
-    p_hi_Pa = absolute(limits.p_max, p_sat_hi_Pa, np.inf)
+    T_lo_K = absolute(limits.T_min, "T", 0, 0.0)
+    T_hi_K = absolute(limits.T_max, "T", 1, np.inf)
+    p_lo_Pa = absolute(limits.p_min, "p", 0, 0.0)
+    p_hi_Pa = absolute(limits.p_max, "p", 1, np.inf)
 
     # Never leave the validity range of the equation of state
     if fluid.T_min_K is not None:

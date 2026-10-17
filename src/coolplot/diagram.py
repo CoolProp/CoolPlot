@@ -178,6 +178,14 @@ class PropertyDiagram:
             return self.engine.wait(timeout)
         return True
 
+    def refresh(self):
+        """Make the engine forget its CoolProp states, after a change CoolProp does not report.
+
+        Call it after ``CoolProp.CoolProp.set_reference_state``; changes made
+        with ``set_config_*`` are noticed by themselves. The next update
+        computes every line again."""
+        self.engine.refresh()
+
     def close(self):
         """Stop background workers, if any."""
         if isinstance(self.engine, BackgroundEngine):
