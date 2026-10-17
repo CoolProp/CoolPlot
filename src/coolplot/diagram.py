@@ -14,7 +14,7 @@ from typing import Sequence
 
 from CoolProp import AbstractState
 
-from .chart import Chart
+from .chart import Chart, check_fluid
 from .core.diagram_type import DiagramType
 from .core.errors import deprecated
 from .core.limits import get_tp_limits
@@ -89,16 +89,9 @@ class PropertyDiagram(Chart):
         if theme is not None:
             settings = settings.with_(look=theme)
         spec = DiagramSpec(fluid=fluid_spec(fluid), diagram=DiagramType.parse(diagram_type),
-                           units=get_unit_system(units), limits=get_tp_limits(tp_limits), settings=settings)
+                           units=get_unit_system(units, stacklevel=3), limits=get_tp_limits(tp_limits),
+                           settings=settings)
         Chart.__init__(self, spec, engine, cache, background, on_ready, workers)
-        self._check_fluid()
-
-    def _check_fluid(self):
-        """Build the CoolProp state now, so that a misspelt fluid fails here and not at the first draw."""
-        try:
-            self.engine.fluid(self.spec.fluid)
-        except ValueError as e:
-            raise ValueError("CoolProp cannot make the fluid '{0}': {1}".format(self.spec.fluid, e)) from None
 
     # ------------------------------------------------------------------
     # What only a fluid diagram has
@@ -111,12 +104,12 @@ class PropertyDiagram(Chart):
     @fluid.setter
     def fluid(self, value):
         new = fluid_spec(value)
+        check_fluid(self.engine, new)   # before anything changes: a bad name leaves the diagram as it was
         fixed = [c.name for c in self.spec.cycles if any(given.state is not None for _, given in c.states)]
         if fixed and new != self.spec.fluid:
             warnings.warn("Cycles {0} hold complete states of the previous fluid; they are drawn unchanged. "
                           "Add them again for the new fluid.".format(fixed), UserWarning, stacklevel=2)
         self.spec = self.spec.with_(fluid=new)
-        self._check_fluid()
 
     @property
     def diagram_type(self) -> DiagramType:

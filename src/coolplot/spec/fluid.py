@@ -152,7 +152,7 @@ class HumidAirSpec:
         p_Pa = float(self.p_Pa)
         if not within(p_Pa, self.P_LIMITS_PA):
             raise ValueError("The total pressure has to lie between {0} and {1} Pa for HAPropsSI, not {2} Pa "
-                             "(bar with units='EUR', Pa with 'SI').".format(self.P_LIMITS_PA[0], self.P_LIMITS_PA[1],
+                             "(bar with units='engineering', Pa with 'SI').".format(self.P_LIMITS_PA[0], self.P_LIMITS_PA[1],
                                                                              p_Pa))
         object.__setattr__(self, "p_Pa", p_Pa)
 

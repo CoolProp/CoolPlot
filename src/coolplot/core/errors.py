@@ -49,10 +49,20 @@ class PropertyError(ValueError):
     def with_where(self, where: str) -> "PropertyError":
         return PropertyError(self.fluid, self.inputs, self.cause, where, self.units)
 
+    def __reduce__(self):
+        # Rebuilt through the constructor, so the error travels between processes
+        return (PropertyError, (self.fluid, self.inputs, self.cause, self.where, self.units))
+
     def __str__(self) -> str:
-        from .units import get_unit_system
+        from .units import SI, get_unit_system
         units = get_unit_system(self.units or "SI")
-        given = ", ".join("{0} = {1}".format(k, units.describe(k, v, 6)) for k, v in self.inputs)
+
+        def describe(key, value):
+            try:
+                return units.describe(key, value, 6)
+            except KeyError:   # a custom system without this quantity: say it in SI
+                return SI.describe(key, value, 6)
+        given = ", ".join("{0} = {1}".format(k, describe(k, v)) for k, v in self.inputs)
         text = "No state of {0} at {1}".format(self.fluid, given)
         if self.where:
             text = "{0}: {1}".format(self.where, text[0].lower() + text[1:])
@@ -72,7 +82,7 @@ def deprecated(replacement: str, since: str = "0.5"):
             warnings.warn("{0}() is an old name since CoolPlot {1} and will go in 1.0; {2}.".format(
                 func.__name__, since, replacement), DeprecationWarning, stacklevel=2)
             return func(*args, **kwargs)
-        wrapper.__doc__ = "Old name, see {0}.\n\n{1}".format(replacement, func.__doc__ or "")
+        wrapper.__doc__ = "Old name: {0}.\n\n{1}".format(replacement, func.__doc__ or "")
         wrapper.deprecated = True
         return wrapper
     return decorate

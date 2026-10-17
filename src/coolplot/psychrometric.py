@@ -7,7 +7,7 @@ dry-bulb temperature and humidity ratio. The lines (relative humidity,
 wet-bulb temperature, enthalpy, specific volume) are computed with
 :mod:`coolplot.thermo.humid_air`, and air processes are cycles whose
 paths are drawn straight. Values passed in are in the chart's units
-(deg C, g/kg, % and kJ/kg with ``units="EUR"``).
+(deg C, g/kg, % and kJ/kg with ``units="engineering"``).
 
 Example
 -------
@@ -34,7 +34,7 @@ class PsychrometricChart(Chart):
     Parameters
     ----------
     p : float
-        Total pressure in the chart's pressure unit (bar for "EUR", Pa
+        Total pressure in the chart's pressure unit (bar for "engineering", Pa
         for "SI"); default sea level.
     T_range, W_range : (min, max)
         Visible dry-bulb temperatures and humidity ratios, in the chart's
@@ -56,7 +56,7 @@ class PsychrometricChart(Chart):
     def __init__(self, p: float = None, T_range=(-10.0, 50.0), W_range=(0.0, 30.0), units="engineering",
                  theme=None, settings=None, points: int = None, engine: Engine = None, cache: CurveCache = None,
                  background: str = None, on_ready=None, workers: int = None):
-        units = get_unit_system(units)
+        units = get_unit_system(units, stacklevel=3)
         settings = get_settings(settings)
         if theme is not None:
             settings = settings.with_(look=theme)

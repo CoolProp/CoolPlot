@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass, field, replace
-from types import MappingProxyType
 from typing import Mapping
 
 import numpy as np
@@ -62,7 +61,9 @@ class UnitSystem:
         for key, unit in units.items():
             if not isinstance(unit, Unit):
                 raise TypeError("The unit of '{0}' has to be a Unit, not {1!r}.".format(key, unit))
-        object.__setattr__(self, "units", MappingProxyType(units))
+        # A plain dict (not a read-only proxy), so that the value pickles
+        # and deep-copies; the dataclass is frozen and nothing writes to it.
+        object.__setattr__(self, "units", units)
 
     def __hash__(self):
         # Written out because a mapping is not hashable by itself; the
@@ -154,14 +155,19 @@ UNIT_SYSTEMS = {u.name.upper(): u for u in (SI, KSI, ENGINEERING, IP)}
 _OLD_NAMES = {"EUR": "engineering"}
 
 
-def get_unit_system(units) -> UnitSystem:
-    """Accept a UnitSystem or the name of a preset: "SI", "KSI", "engineering" or "IP"."""
+def get_unit_system(units, stacklevel: int = 2) -> UnitSystem:
+    """Accept a UnitSystem or the name of a preset: "SI", "KSI", "engineering" or "IP".
+
+    ``stacklevel`` is where the warning about an old name is attributed
+    to; a public method that passes its argument on gives one more than
+    its own depth, so that the warning names the user's line.
+    """
     if isinstance(units, UnitSystem):
         return units
     name = str(units).upper()
     if name in _OLD_NAMES:
         warnings.warn("The unit system 'EUR' is called 'engineering' now (deg C, bar, kJ); the old name "
-                      "will go in 1.0.", DeprecationWarning, stacklevel=2)
+                      "will go in 1.0.", DeprecationWarning, stacklevel=stacklevel)
         name = _OLD_NAMES[name].upper()
     try:
         return UNIT_SYSTEMS[name]

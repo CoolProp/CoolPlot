@@ -82,7 +82,7 @@ cycle. An error about a state that cannot be computed names the fluid
 and the inputs in the chart's units:
 
 ```
-PropertyError: State 2 of cycle 'hp': no state of HEOS::R290 at p = 300000 bar, T = 20 deg C (...).
+PropertyError: State 2 of the cycle 'hp': no state of HEOS::R290 at p = 300000 bar, s = 2.48 kJ/kg/K (...).
 ```
 
 ### The region covered
@@ -216,9 +216,10 @@ redraws only it. `cycle_states(name)` returns the computed states,
 that every state is inside the frame. `numbers=False` hides the state
 numbers; `line_style` and `marker_style` override the theme.
 
-`set_process(name, line_states, marker_states)` draws any sequence of
-states you computed yourself, for example with
-`coolplot.thermo.process_path`.
+States you computed yourself (for example with
+`coolplot.thermo.process_path`) go into `add_cycle` as StatePoints. The
+older `set_process(name, line_states, marker_states)` still works and
+warns; it goes in 1.0.
 
 ## 6. Settings, themes and saving
 

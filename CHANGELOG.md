@@ -28,8 +28,14 @@ Vocabulary, units and errors (docs/v1_plan.md, package 0.5):
   chart's units and where the state was asked for, e.g. "State 2 of
   the cycle 'hp': no state of HEOS::R290 at p = 300000 bar, s = 2.48
   kJ/kg/K (...)". A misspelt fluid fails in the `PropertyDiagram`
-  constructor.
+  constructor, in `from_spec` and in the `fluid` setter, which then
+  leaves the diagram unchanged.
 * `rankine(eta_is_turbine=, eta_is_pump=)`; the old keyword names warn.
+* Behaviour changes: `PsychrometricChart.set_lines` and
+  `set_default_lines` have the positional order of `Chart.set_lines`
+  now (`key, values, num, range, rounding, labels, points, units`); pass
+  `labels=` by name. The psychrometric constructor's `units` default
+  reads "engineering".
 
 0.4.0 (unreleased)
 ------------------

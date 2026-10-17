@@ -90,6 +90,15 @@ def state_input(entry, units, provider) -> StateInput:
     return StateInput(props, via, eta_is)
 
 
+def check_fluid(engine: Engine, fluid_spec):
+    """Build the property provider of ``fluid_spec`` on ``engine`` now, so
+    that a fluid CoolProp does not know fails with a clear message."""
+    try:
+        return engine.fluid(fluid_spec)
+    except ValueError as e:
+        raise ValueError("CoolProp cannot make the fluid '{0}': {1}".format(fluid_spec, e)) from None
+
+
 def check_state(state: StatePoint, provider):
     """Raise ValueError if a complete state does not belong to ``provider``."""
     missing = [k for k in provider.quantities if k not in state]
@@ -126,6 +135,7 @@ class Chart:
     def __init__(self, spec: DiagramSpec, engine: Engine = None, cache: CurveCache = None, background: str = None,
                  on_ready=None, workers: int = None):
         self.spec = spec
+        owned = engine is None
         if engine is not None:
             if isinstance(engine, BackgroundEngine) and engine.claimed:
                 raise ValueError("A BackgroundEngine works for one chart, it keeps only the latest plan. "
@@ -140,6 +150,12 @@ class Chart:
         self.scene = Scene()
         self._default_renderer = None
         self._plot_size_pt = None
+        try:
+            check_fluid(self.engine, spec.fluid)   # a misspelt fluid fails here, not at the first draw
+        except ValueError:
+            if owned:
+                self.close()
+            raise
         if isinstance(self.engine, BackgroundEngine):
             # Claimed last, so a failing constructor leaves the engine free,
             # and released when this chart is garbage collected
@@ -211,7 +227,7 @@ class Chart:
 
     @units.setter
     def units(self, value):
-        self.spec = self.spec.with_(units=get_unit_system(value))
+        self.spec = self.spec.with_(units=get_unit_system(value, stacklevel=3))
 
     @property
     def settings(self):
@@ -270,7 +286,7 @@ class Chart:
 
     def _units(self, units):
         """The unit system of a call: the chart's, or the one named by ``units``."""
-        return self.spec.units if units is None else get_unit_system(units)
+        return self.spec.units if units is None else get_unit_system(units, stacklevel=4)
 
     def _in_units(self, error: PropertyError):
         """A PropertyError of the thermo layer, written in the chart's units."""
@@ -450,7 +466,7 @@ class Chart:
             provider = self.fluid
             inputs = tuple((int(n), state_input(entry, unit_system, provider)) for n, entry in items)
             if not loops and not closed and len(inputs) > 1:
-                loops = [[n for n, _ in sorted(inputs)]]   # an open chain through the states in order
+                loops = [sorted(n for n, _ in inputs)]   # an open chain through the states in order
             spec = CycleSpec(str(name), inputs, loops or (), paths or (), numbers, line_style, marker_style, steps)
         self._compute_cycle(spec)   # compute now, so that errors show up here
         self.spec = self.spec.with_cycle(spec)
@@ -460,8 +476,8 @@ class Chart:
         try:
             return self.engine.cycle(self.spec, cycle)
         except PropertyError as e:
-            raise self._in_units(e).with_where("{0} '{1}'".format(e.where or "A state", cycle.name)
-                                               if e.where else "Cycle '{0}'".format(cycle.name)) from None
+            where = "{0} '{1}'".format(e.where, cycle.name) if e.where else "Cycle '{0}'".format(cycle.name)
+            raise self._in_units(e).with_where(where) from None
 
     def _other_fluid(self, fluid_name: str) -> bool:
         """Whether a cycle computed for ``fluid_name`` belongs to another fluid."""
