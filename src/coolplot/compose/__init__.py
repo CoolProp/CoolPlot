@@ -6,6 +6,8 @@ No property calculations happen here and no plotting library is used.
 (:mod:`coolplot.corelib`) when that module is installed and asked for, and
 the Python composer in :mod:`coolplot.compose.builder` otherwise.
 """
+import warnings
+
 from .. import corelib
 from .builder import compose as compose_python, label_text, scaled_theme
 
@@ -20,7 +22,14 @@ def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycle
     otherwise; both give the same scene.
     """
     if corelib.enabled():
-        result = corelib.compose(spec, domain, curves, plot_size_pt, previous_labels, cycles)
+        try:
+            result = corelib.compose(spec, domain, curves, plot_size_pt, previous_labels, cycles)
+        except ValueError as error:
+            # Something the port does not know (yet). The Python composer is
+            # the reference: it draws the chart, or raises the real error.
+            warnings.warn("coolplot-core could not compose this chart ({0}); the Python composer "
+                          "draws it instead.".format(error), RuntimeWarning, stacklevel=2)
+            result = None
         if result is not None:
             return result
     return compose_python(spec, domain, curves, plot_size_pt, previous_labels, cycles)

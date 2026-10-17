@@ -131,9 +131,7 @@ std::string escape(const std::string& text) {
 
 std::string num(double value) {
     if (!std::isfinite(value)) throw Error("Non-finite value in SVG output.");
-    char buffer[64];
-    std::snprintf(buffer, sizeof(buffer), "%.3f", value);
-    std::string text = buffer;
+    std::string text = fixed_text(value, 3);  // always has a decimal point
     while (!text.empty() && text.back() == '0') text.pop_back();
     if (!text.empty() && text.back() == '.') text.pop_back();
     return (text == "-0" || text.empty()) ? "0" : text;
@@ -312,20 +310,20 @@ class Writer
 
     std::string legend_text(const std::string& text) const {
         size_t limit = static_cast<size_t>(legend_chars());
-        return text.size() <= limit ? text : text.substr(0, limit - 3) + "...";
+        return text_length(text) <= limit ? text : text_prefix(text, limit - 3) + "...";
     }
 
     std::pair<double, double> legend_size() const {
         if (!legend_shown()) return {0.0, 0.0};
         double size_px = scene_.axes.style.legend.text.font.size_pt * PX_PER_PT;
         size_t longest = 0;
-        for (const auto& entry : legend_entries_) longest = std::max(longest, legend_text(entry.first).size());
+        for (const auto& entry : legend_entries_) longest = std::max(longest, text_length(legend_text(entry.first)));
         return {44.0 + 0.6 * size_px * longest, 8.0 + 1.6 * size_px * legend_entries_.size()};
     }
 
     /// The span of the visible lines and markers on one axis (autoscale), or a default.
     Range data_limits(bool x_axis, bool log) const {
-        double lo = 1e300, hi = -1e300;
+        double lo = HUGE_VAL, hi = -HUGE_VAL;
         bool any = false;
         for (const Item& item : scene_.items) {
             if (!item.visible || item.type == ItemType::Text) continue;
@@ -355,7 +353,7 @@ class Writer
     /// (left, right, down, up) reach of a text from its anchor in px, from its length and alignment.
     static void text_extent_px(const Item& item, double& left, double& right, double& down, double& up) {
         double size_px = item.text_style.font.size_pt * PX_PER_PT;
-        double length = 0.6 * size_px * item.text.size(), height = 1.25 * size_px;
+        double length = 0.6 * size_px * text_length(item.text), height = 1.25 * size_px;
         bool vertical = item.has_direction && std::fabs(item.direction_y) > std::fabs(item.direction_x);
         double along0, along1, across0, across1;
         const std::string& h = item.text_style.h_align;

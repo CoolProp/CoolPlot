@@ -74,7 +74,7 @@ TEST_CASE("The conformance scene round-trips through JSON unchanged", "[scene]")
     json data = load("conformance_scene.json");
     Scene scene = Scene::from_json(data);
     CHECK(scene.items.size() == data.at("items").size());
-    json again = scene.to_json();
+    json again = scene.to_json(false);  // the file holds the items in scene order
     CHECK(again == data);
     // The drawing order follows z order, then the scene order
     std::vector<size_t> order = scene.draw_order();

@@ -19,19 +19,61 @@
 
   // Numbers ---------------------------------------------------------------
 
-  // "%.3f" with trailing zeros dropped, as the C and Python writers do. An
-  // exact tie (a value m/16) is rounded to even, as printf does.
+  // Rounding as Python and C do it. JavaScript's toFixed and toPrecision
+  // round an exact tie (a value exactly halfway, such as 0.0625 to three
+  // decimals) away from zero; Python and printf round it to the even digit.
+  // Ties are rare (only values with a short binary fraction can be one), so
+  // the JavaScript result is kept unless the value is an exact tie whose
+  // last kept digit would be even, and then the value one step closer to
+  // zero is rounded instead, which gives the even digit.
+
+  // The exact decimal digits of |value| as "int.frac".
+  function exactText(abs) {
+    if (abs >= 1e21) { return BigInt(abs).toString() + ".0"; }   // such doubles are integers
+    return abs.toFixed(100);   // enough digits for every value that can be a tie here
+  }
+
+  // Whether rounding |value| to `decimals` digits after the point (negative:
+  // before it) is an exact tie that half-to-even rounds towards zero.
+  function tieRoundsDown(abs, decimals) {
+    var text = exactText(abs), point = text.indexOf(".");
+    var digits = text.replace(".", "");
+    var first = point + decimals;   // index of the first dropped digit
+    if (first <= 0 || first >= digits.length || digits[first] !== "5") { return false; }
+    if (!/^0*$/.test(digits.slice(first + 1))) { return false; }
+    return Number(digits[first - 1]) % 2 === 0;
+  }
+
+  // The neighbouring double closer to zero (value is not zero).
+  function towardZero(value) {
+    var buffer = new Float64Array([value]);
+    var bits = new BigInt64Array(buffer.buffer);
+    bits[0] -= BigInt(1);
+    return buffer[0];
+  }
+
+  // value.toFixed(decimals), rounded half to even and without exponent.
+  function toFixedEven(value, decimals) {
+    var abs = Math.abs(value);
+    if (abs >= 1e21) {
+      return (value < 0 ? "-" : "") + BigInt(abs).toString() + (decimals > 0 ? "." + "0".repeat(decimals) : "");
+    }
+    if (value !== 0 && tieRoundsDown(abs, decimals)) { value = towardZero(value); }
+    return value.toFixed(decimals);
+  }
+
+  // value.toPrecision(digits), rounded half to even.
+  function toPrecisionEven(value, digits) {
+    var abs = Math.abs(value);
+    var exponent = parseInt(abs.toExponential().split("e")[1], 10);
+    if (tieRoundsDown(abs, digits - 1 - exponent)) { value = towardZero(value); }
+    return value.toPrecision(digits);
+  }
+
+  // "%.3f" with trailing zeros dropped, as the C and Python writers do.
   function num(value) {
     if (!isFinite(value)) { throw new Error("Non-finite value in SVG output."); }
-    var text;
-    var t = value * 2000;
-    if (Number.isInteger(t) && Math.abs(t) % 2 === 1) {
-      var down = Math.floor(value * 1000), up = down + 1;
-      var k = (down % 2 === 0) ? down : up;
-      text = (k / 1000).toFixed(3);
-    } else {
-      text = value.toFixed(3);
-    }
+    var text = toFixedEven(value, 3);
     if (text.indexOf(".") >= 0) { text = text.replace(/0+$/, "").replace(/\.$/, ""); }
     return (text === "-0" || text === "") ? "0" : text;
   }
@@ -77,7 +119,8 @@
     if (isNaN(value)) { return "nan"; }
     if (!isFinite(value)) { return value > 0 ? "inf" : "-inf"; }
     if (value === 0) { return "0"; }
-    var rounded = parseFloat(value.toPrecision(digits));
+    var rounded = parseFloat(toPrecisionEven(value, digits));
+    if (!isFinite(rounded)) { rounded = value; }   // rounding up the largest numbers overflows
     var magnitude = Math.abs(rounded);
     if (magnitude >= 1e-3 && magnitude < 1e6) {
       var exponent = Math.floor(Math.log10(magnitude));
@@ -97,7 +140,7 @@
     var found = [];
     for (var e = first; e <= last; e++) {
       for (var i = 0; i < mantissas.length; i++) {
-        var t = mantissas[i] * Math.pow(10, e);
+        var t = mantissas[i] * Number("1e" + e);   // exact, as 10.0 ** e in Python
         if (lo <= t && t <= hi) { found.push(t); }
       }
     }
@@ -108,7 +151,7 @@
     var span = hi - lo;
     if (!(span > 0)) { return [lo]; }
     var raw = span / 6.0;
-    var magnitude = Math.pow(10, Math.floor(Math.log10(raw)));
+    var magnitude = Number("1e" + Math.floor(Math.log10(raw)));
     var step = 10 * magnitude;
     [1, 2, 5, 10].forEach(function (m) { if (m * magnitude >= raw) { step = Math.min(step, m * magnitude); } });
     if (minor) { step /= 5.0; }
@@ -269,12 +312,14 @@
     }
     function legendText(text) {
       var limit = legendChars();
-      return text.length <= limit ? text : text.slice(0, limit - 3) + "...";
+      // Lengths in characters (code points), not UTF-16 units, as in Python
+      var chars = Array.from(text);
+      return chars.length <= limit ? text : chars.slice(0, limit - 3).join("") + "...";
     }
     function legendSize() {
       if (!legendShown) { return [0, 0]; }
       var sizePx = legend.text.font.size_pt * PX_PER_PT;
-      var longest = Math.max.apply(null, entries.map(function (e) { return legendText(e.text).length; }));
+      var longest = Math.max.apply(null, entries.map(function (e) { return Array.from(legendText(e.text)).length; }));
       return [44.0 + 0.6 * sizePx * longest, 8.0 + 1.6 * sizePx * entries.length];
     }
 
@@ -298,7 +343,7 @@
     // Room for unclipped text outside the frame
     function textExtent(item) {
       var sizePx = item.style.font.size_pt * PX_PER_PT;
-      var length = 0.6 * sizePx * item.text.length, h = 1.25 * sizePx;
+      var length = 0.6 * sizePx * Array.from(item.text).length, h = 1.25 * sizePx;
       var vertical = item.direction && Math.abs(item.direction[1]) > Math.abs(item.direction[0]);
       var along = { left: [0, length], center: [length / 2, length / 2], right: [length, 0] }[item.style.h_align];
       var across = { bottom: [0, h], center: [h / 2, h / 2], top: [h, 0] }[item.style.v_align];

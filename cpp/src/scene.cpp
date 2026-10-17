@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <set>
+#include <utility>
 
 namespace coolplot {
 
@@ -262,12 +264,14 @@ json Scene::to_json(bool in_draw_order) const {
 Scene Scene::from_json(const json& data) {
     Scene scene;
     if (data.contains("axes")) scene.axes = AxesSpec::from_json(data.at("axes"));
-    if (data.contains("items"))
+    if (data.contains("items")) {
+        std::set<std::string> seen;  // a set, so that a large scene is not searched once per item
         for (const json& item : data.at("items")) {
             Item parsed = Item::from_json(item);
-            if (scene.find(parsed.id)) throw Error("Duplicate item id '" + parsed.id + "' in scene.");
-            scene.items.push_back(parsed);
+            if (!seen.insert(parsed.id).second) throw Error("Duplicate item id '" + parsed.id + "' in scene.");
+            scene.items.push_back(std::move(parsed));
         }
+    }
     return scene;
 }
 

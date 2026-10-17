@@ -145,12 +145,12 @@
 <line x1="639.6" y1="94.667" x2="661.6" y2="94.667" fill="none" stroke="#1baf7a" stroke-width="1" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>
 <text class="cp-legend-text" x="667.6" y="94.667" dominant-baseline="central" font-family="Inter, 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif" font-size="10.667" font-weight="normal" font-style="normal" fill="#52514e" fill-opacity="1">Density</text></g>
 <g class="cp-legend-entry">
-<line x1="639.6" y1="111.733" x2="661.6" y2="111.733" fill="none" stroke="#898781" stroke-width="0.667" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>
-<text class="cp-legend-text" x="667.6" y="111.733" dominant-baseline="central" font-family="Inter, 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif" font-size="10.667" font-weight="normal" font-style="normal" fill="#52514e" fill-opacity="1">Vapour quality</text></g>
+<line class="cp-casing" x1="639.6" y1="111.733" x2="661.6" y2="111.733" fill="none" stroke="#fcfcfb" stroke-width="4.667" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>
+<line x1="639.6" y1="111.733" x2="661.6" y2="111.733" fill="none" stroke="#0b0b0b" stroke-width="2" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>
+<text class="cp-legend-text" x="667.6" y="111.733" dominant-baseline="central" font-family="Inter, 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif" font-size="10.667" font-weight="normal" font-style="normal" fill="#52514e" fill-opacity="1">Saturation</text></g>
 <g class="cp-legend-entry">
-<line class="cp-casing" x1="639.6" y1="128.8" x2="661.6" y2="128.8" fill="none" stroke="#fcfcfb" stroke-width="4.667" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>
-<line x1="639.6" y1="128.8" x2="661.6" y2="128.8" fill="none" stroke="#0b0b0b" stroke-width="2" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>
-<text class="cp-legend-text" x="667.6" y="128.8" dominant-baseline="central" font-family="Inter, 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif" font-size="10.667" font-weight="normal" font-style="normal" fill="#52514e" fill-opacity="1">Saturation</text></g>
+<line x1="639.6" y1="128.8" x2="661.6" y2="128.8" fill="none" stroke="#898781" stroke-width="0.667" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>
+<text class="cp-legend-text" x="667.6" y="128.8" dominant-baseline="central" font-family="Inter, 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif" font-size="10.667" font-weight="normal" font-style="normal" fill="#52514e" fill-opacity="1">Vapour quality</text></g>
 <g class="cp-legend-entry">
 <line class="cp-casing" x1="639.6" y1="145.867" x2="661.6" y2="145.867" fill="none" stroke="#fcfcfb" stroke-width="6.667" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>
 <line x1="639.6" y1="145.867" x2="661.6" y2="145.867" fill="none" stroke="#0b0b0b" stroke-width="2.667" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>

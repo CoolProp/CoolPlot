@@ -367,10 +367,17 @@ class Scene:
         return changed
 
     # Storage ---------------------------------------------------------------
-    def to_dict(self) -> dict:
+    def to_dict(self, in_draw_order: bool = True) -> dict:
         """Plain data (dicts, lists, numbers, strings, None) describing the
-        scene, in drawing order; see docs/reference/contracts.md. NaN becomes None."""
-        return {"axes": axes_to_dict(self._axes), "items": [item_to_dict(self._items[i]) for i in self.draw_order()]}
+        scene; see docs/reference/contracts.md. NaN becomes None.
+
+        The items are in drawing order, as the contract says. With
+        ``in_draw_order=False`` they are in scene order instead, which a
+        writer needs to give the legend in the order of :meth:`legend_entries`;
+        it sorts by z order itself (coolplot-core and the JavaScript writer do).
+        """
+        order = self.draw_order() if in_draw_order else self.ids()
+        return {"axes": axes_to_dict(self._axes), "items": [item_to_dict(self._items[i]) for i in order]}
 
     @classmethod
     def from_dict(cls, data: dict) -> "Scene":

@@ -13,6 +13,13 @@ TEST_CASE("The central number format", "[core]") {
     CHECK(format_number(2.5e-4) == "2.5e-4");
     CHECK(format_number(-20.0) == "-20");
     CHECK(format_number(100000.0) == "100000");
+    CHECK(format_number(1.7976931348623157e308, 1) == "2e308");  // rounding overflows, the value decides
+    CHECK(format_number(2.5, 1) == "2");                         // an exact tie goes to the even digit
+    CHECK(format_number(0.125, 2) == "0.12");
+    CHECK(fixed_text(1e21, 3) == "1000000000000000000000.000");
+    CHECK(fixed_text(0.0625, 3) == "0.062");
+    CHECK(text_length("caf\xc3\xa9 \xf0\x9f\x98\x80") == 6);
+    CHECK(text_prefix("caf\xc3\xa9!", 4) == "caf\xc3\xa9");
     CHECK(format_number(0.0) == "0");
     CHECK(format_number(1e5, 6) == "100000");
     CHECK(format_number(273.15, 4) == "273.1");   // 273.15 is 273.1499... in binary, as in Python

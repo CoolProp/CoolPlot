@@ -50,6 +50,20 @@ std::string repr_number(double value);
 /// Round to 12 significant digits (coolplot.engine.planning.snap).
 double snap(double value);
 
+/// printf-style "%.{precision}f", "%.{precision}g" and "%.{precision}e",
+/// always with a decimal point: std::to_chars ignores the locale, while
+/// printf writes "0,5" in an application that set a German LC_NUMERIC.
+std::string fixed_text(double value, int precision);
+std::string general_text(double value, int precision);
+std::string scientific_text(double value, int precision);
+/// A number from text, independent of the locale; throws Error on bad text.
+double parse_number(const std::string& text);
+
+/// The number of characters (code points) of UTF-8 text, as Python's len().
+size_t text_length(const std::string& utf8);
+/// The first `count` characters of UTF-8 text, never cutting a character.
+std::string text_prefix(const std::string& utf8, size_t count);
+
 // ---------------------------------------------------------------------------
 // Quantities (coolplot.core.quantities)
 // ---------------------------------------------------------------------------

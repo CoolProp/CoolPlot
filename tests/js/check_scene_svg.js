@@ -40,7 +40,7 @@ check("autoscale.svg", lib.toSvg({ axes: autoAxes(true, null, null), items: [
   item("line", "hidden", [-100, 1000], [1e-6, 1e9], false)] }));
 check("narrow_log.svg", lib.toSvg({ axes: autoAxes(true, [1.5, 1.9], [1.5, 1.9]), items: [item("line", "a", [1.5, 1.9], [1.5, 1.9], true)] }));
 ["compose_r290_ph", "compose_r290_ph_sized", "compose_blend_ts_margin", "compose_r290_hs_inline", "compose_psychrometric"].forEach(function (name) {
-  check(name + ".svg", lib.toSvg(json(name + ".json").scene));
+  check(name + ".svg", lib.toSvg(json(name + ".json").scene_order));
 });
 
 function autoAxes(yLog, xLimits, yLimits) {

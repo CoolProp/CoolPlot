@@ -41,8 +41,9 @@ double interp(double s, const std::vector<double>& xs, const std::vector<double>
     if (s <= xs.front()) return ys.front();
     if (s >= xs.back()) return ys.back();
     size_t i = static_cast<size_t>(std::upper_bound(xs.begin(), xs.end(), s) - xs.begin());
-    double t = (s - xs[i - 1]) / (xs[i] - xs[i - 1]);
-    return ys[i - 1] + t * (ys[i] - ys[i - 1]);
+    // numpy's formula, so that both give the same bits
+    double slope = (ys[i] - ys[i - 1]) / (xs[i] - xs[i - 1]);
+    return slope * (s - xs[i - 1]) + ys[i - 1];
 }
 
 }  // namespace
@@ -69,7 +70,7 @@ bool Frame::usable() const {
 
 std::pair<double, double> text_size_pt(const std::string& text, const TextStyle& style) {
     double size = style.font.size_pt;
-    return {LABEL_CHAR_WIDTH * size * std::max<size_t>(text.size(), 1), LABEL_LINE_HEIGHT * size};
+    return {LABEL_CHAR_WIDTH * size * std::max<size_t>(text_length(text), 1), LABEL_LINE_HEIGHT * size};
 }
 
 // ---------------------------------------------------------------------------
@@ -280,15 +281,21 @@ bool candidate(const Piece& piece, double s, double half_w, double half_h, doubl
     if (dx == 0.0 && dy == 0.0) return false;
     double first = std::atan2(m.second - a.second, m.first - a.first), second = std::atan2(b.second - m.second, b.first - m.first);
     double turn = second - first + PI;
-    turn = turn - 2.0 * PI * std::floor(turn / (2.0 * PI)) - PI;  // Python's modulo keeps the sign of the divisor
-    double bend = std::fabs(turn * 180.0 / PI);
+    turn = std::fmod(turn, 2.0 * PI);  // Python's modulo keeps the sign of the divisor
+    if (turn < 0.0) turn += 2.0 * PI;
+    turn -= PI;
+    double bend = std::fabs(turn / (PI / 180.0));  // math.degrees
     if (bend > LABEL_MAX_BEND_DEG) return false;
     double angle = std::atan2(dy, dx);
     if (angle > PI / 2.0)
         angle -= PI;
     else if (angle <= -PI / 2.0)
         angle += PI;
-    out = {score + bend / 20.0, Box{m.first, m.second, angle, half_w, half_h}, dx, dy};
+    // The bend counts in whole millionths of a degree, so that two spots whose
+    // bends differ only by rounding noise tie, and the order they were found
+    // in decides, the same way in Python and C++
+    double bend_micro = std::floor(bend * 1e6 + 0.5);
+    out = {score + bend_micro * 5e-8, Box{m.first, m.second, angle, half_w, half_h}, dx, dy};
     return true;
 }
 
@@ -354,7 +361,8 @@ void keep_out_points(const Frame& frame, const std::vector<KeepOut>& lines, std:
             xs.push_back(px[i]);
             ys.push_back(py[i]);
             if (entry.joined && i + 1 < px.size() && std::isfinite(px[i + 1]) && std::isfinite(py[i + 1])) {
-                int n = static_cast<int>(std::floor(std::hypot(px[i + 1] - px[i], py[i + 1] - py[i]) / spacing_pt));
+                double steps = std::floor(std::hypot(px[i + 1] - px[i], py[i + 1] - py[i]) / spacing_pt);
+                int n = steps > 1e7 ? 10000000 : static_cast<int>(steps);  // a segment 20 km long on paper is enough
                 for (int k = 1; k <= n; ++k) {
                     double t = k / (n + 1.0);
                     xs.push_back(px[i] + t * (px[i + 1] - px[i]));

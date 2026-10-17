@@ -1,6 +1,7 @@
 #include "coolplot/core.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -16,10 +17,18 @@ namespace {
 const double SCI_BELOW = 1e-3;
 const double SCI_ABOVE = 1e6;
 
+std::string chars(double value, std::chars_format format, int precision) {
+    char buffer[400];  // the longest fixed text of a double is about 330 characters
+    std::to_chars_result result = std::to_chars(buffer, buffer + sizeof(buffer), value, format, precision);
+    if (result.ec != std::errc()) throw Error("A number could not be written.");
+    return std::string(buffer, result.ptr);
+}
+
 std::string printf_string(const char* format, int precision, double value) {
-    char buffer[64];
-    std::snprintf(buffer, sizeof(buffer), format, precision, value);
-    return buffer;
+    // format is "%.*f", "%.*g" or "%.*e"; the letter decides
+    char kind = format[std::char_traits<char>::length(format) - 1];
+    std::chars_format f = kind == 'f' ? std::chars_format::fixed : kind == 'e' ? std::chars_format::scientific : std::chars_format::general;
+    return chars(value, f, precision);
 }
 
 /// Strip trailing zeros after a decimal point, and the point itself.
@@ -37,7 +46,8 @@ std::string format_number(double value, int digits) {
     if (std::isinf(value)) return value > 0 ? "inf" : "-inf";
     if (value == 0.0) return "0";
     // Round to the significant digits first, as Python's "{:.{digits}g}" does
-    double rounded = std::strtod(printf_string("%.*g", digits, value).c_str(), nullptr);
+    double rounded = parse_number(printf_string("%.*g", digits, value));
+    if (!std::isfinite(rounded)) rounded = value;  // rounding up the largest numbers overflows
     double magnitude = std::fabs(rounded);
     if (SCI_BELOW <= magnitude && magnitude < SCI_ABOVE) {
         int exponent = static_cast<int>(std::floor(std::log10(magnitude)));
@@ -48,7 +58,7 @@ std::string format_number(double value, int digits) {
     std::string text = printf_string("%.*e", digits - 1, rounded);
     size_t e = text.find('e');
     std::string mantissa = strip_zeros(text.substr(0, e));
-    int exponent = std::atoi(text.c_str() + e + 1);
+    int exponent = static_cast<int>(parse_number(text.substr(e + 1)));
     return mantissa + "e" + std::to_string(exponent);
 }
 
@@ -59,13 +69,13 @@ std::string repr_number(double value) {
     std::string text;
     for (int precision = 1; precision <= 17; ++precision) {
         text = printf_string("%.*g", precision, value);
-        if (std::strtod(text.c_str(), nullptr) == value) break;
+        if (parse_number(text) == value) break;
     }
     // Python writes exponents with at least two digits and keeps ".0" on integers
     size_t e = text.find('e');
     if (e != std::string::npos) {
         std::string mantissa = text.substr(0, e);
-        int exponent = std::atoi(text.c_str() + e + 1);
+        int exponent = static_cast<int>(parse_number(text.substr(e + 1)));
         char buffer[16];
         std::snprintf(buffer, sizeof(buffer), "e%c%02d", exponent < 0 ? '-' : '+', std::abs(exponent));
         // Python switches to exponent form only below 1e-4 or from 1e16; inside
@@ -83,7 +93,51 @@ std::string repr_number(double value) {
 }
 
 double snap(double value) {
-    return std::strtod(printf_string("%.*g", 12, value).c_str(), nullptr);
+    return parse_number(printf_string("%.*g", 12, value));
+}
+
+std::string fixed_text(double value, int precision) {
+    return chars(value, std::chars_format::fixed, precision);
+}
+
+std::string general_text(double value, int precision) {
+    return chars(value, std::chars_format::general, precision);
+}
+
+std::string scientific_text(double value, int precision) {
+    return chars(value, std::chars_format::scientific, precision);
+}
+
+double parse_number(const std::string& text) {
+    const char* first = text.c_str();
+    const char* last = first + text.size();
+    if (first != last && *first == '+') ++first;  // from_chars takes no leading plus (an exponent "+06")
+    double value = 0.0;
+    std::from_chars_result result = std::from_chars(first, last, value);
+    if (result.ec == std::errc::result_out_of_range) {
+        // overflow or underflow: let strtod-like rules decide (inf or 0)
+        return std::strtod(text.c_str(), nullptr);
+    }
+    if (result.ec != std::errc() || result.ptr != last) throw Error("'" + text + "' is not a number.");
+    return value;
+}
+
+size_t text_length(const std::string& utf8) {
+    size_t n = 0;
+    for (unsigned char c : utf8)
+        if ((c & 0xC0) != 0x80) ++n;  // count every byte that starts a character
+    return n;
+}
+
+std::string text_prefix(const std::string& utf8, size_t count) {
+    size_t n = 0;
+    for (size_t i = 0; i < utf8.size(); ++i) {
+        if ((static_cast<unsigned char>(utf8[i]) & 0xC0) != 0x80) {
+            if (n == count) return utf8.substr(0, i);
+            ++n;
+        }
+    }
+    return utf8;
 }
 
 // ---------------------------------------------------------------------------
@@ -348,6 +402,15 @@ DiagramType DiagramType::parse(const std::string& name) {
     std::string key = upper(name);
     for (const NamedType& t : named_types())
         if (key == t.name) return DiagramType{t.y, t.x, t.kind};
+    // Any other pair of fluid axis quantities, vertical axis first, as a
+    // DiagramType("T", "h") is written by its name "Th"
+    for (size_t i = 1; i < name.size(); ++i) {
+        try {
+            DiagramType candidate{quantity_key(name.substr(0, i)), quantity_key(name.substr(i)), "fluid"};
+            if (candidate.valid() && candidate.name() == name) return candidate;
+        } catch (const Error&) {
+        }
+    }
     throw Error("Unknown diagram type '" + name + "'.");
 }
 

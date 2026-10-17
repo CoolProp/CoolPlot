@@ -35,7 +35,7 @@ class PdfRenderer(SvgRenderer):
 
     def __init__(self, width_pt: float = 576.0, height_pt: float = 432.0, margins_pt=(60.0, 15.0, 30.0, 45.0),
                  font_dirs=(), id_prefix: str = "coolplot"):
-        if not corelib.available():
+        if not (corelib.available() and corelib.has_pdf()):
             raise ValueError("PdfRenderer needs the coolplot_core module (cpp/); the matplotlib backend writes PDF "
                              "without it.")
         # The SVG geometry in pixels, the same page at 4/3 px per pt
@@ -46,9 +46,23 @@ class PdfRenderer(SvgRenderer):
         self.margins_pt = tuple(float(m) for m in margins_pt)
         self.font_dirs = tuple(font_dirs)
 
+    def _scene_items(self):
+        """The items in scene order (the legend follows it), see SvgRenderer.to_svg."""
+        return [self._items[i] for i in self._scene_ids if i in self._items]
+
+    def plot_size_pt(self):
+        """(width, height) of the plot area of the PDF page in points.
+
+        Taken from the page coolplot-core writes, so that a chart composed
+        for this size fills the page exactly. The SVG geometry of the base
+        class agrees with it except for rounding the page to whole pixels.
+        """
+        return corelib.pdf_plot_size_pt(self._axes, self._scene_items(), self.width_pt, self.height_pt,
+                                        self.margins_pt)
+
     def to_pdf(self) -> bytes:
         """The PDF file of the last synchronised scene."""
-        items = [self._items[i] for i in self._scene_ids if i in self._items]   # scene order, see SvgRenderer.to_svg
+        items = self._scene_items()
         font_files = []
         for item in items:
             style = getattr(item, "style", None)
@@ -61,5 +75,6 @@ class PdfRenderer(SvgRenderer):
     def save(self, path):
         """Write the PDF file; the file name has to end in ".pdf"."""
         check_suffix(path, (".pdf",), type(self).__name__, "PDF")
+        data = self.to_pdf()   # before opening, so a font error leaves no empty file behind
         with open(path, "wb") as f:
-            f.write(self.to_pdf())
+            f.write(data)

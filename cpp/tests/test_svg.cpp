@@ -1,12 +1,14 @@
 // The SVG writer against the documents the Python writer makes of the same scenes.
 #include <catch2/catch_all.hpp>
 
+#include <clocale>
 #include <cmath>
 #include <fstream>
 #include <sstream>
 
 #include "coolplot/capi.h"
 #include "coolplot/compose.h"
+#include "coolplot/pdf.h"
 #include "coolplot/svg.h"
 
 using namespace coolplot;
@@ -122,8 +124,11 @@ TEST_CASE("Autoscaled axes and a narrow log range", "[svg]") {
 TEST_CASE("The composed charts render as in Python", "[svg]") {
     for (const char* name : {"compose_r290_ph", "compose_r290_ph_sized", "compose_blend_ts_margin", "compose_r290_hs_inline", "compose_psychrometric"}) {
         json data = load(std::string(name) + ".json");
-        Scene scene = Scene::from_json(data.at("scene"));
+        Scene scene = Scene::from_json(data.at("scene_order"));  // the legend follows the scene order
         check_svg(scene, std::string(name) + ".svg");
+        // The whole way: compose from the input record, then write
+        Scene composed = Scene::from_json(json::parse(compose_json(data.at("input").dump())));
+        check_svg(composed, std::string(name) + ".svg");
     }
 }
 
@@ -152,4 +157,47 @@ TEST_CASE("The C ABI composes, writes SVG and reports errors", "[svg][capi]") {
     coolplot_free(error);
     CHECK(coolplot_compose(nullptr, &scene_json, nullptr) == 1);
     CHECK(std::string(coolplot_version()) == "0.1.0");
+}
+
+TEST_CASE("The writers ignore the C locale", "[svg][pdf][locale]") {
+    // A host application may set a locale whose decimal separator is a comma;
+    // numbers in SVG, PDF and JSON have to keep the point
+    const char* names[] = {"de_DE.UTF-8", "de_DE.utf8", "de_DE", "fr_FR.UTF-8", "fr_FR.utf8"};
+    std::string old = std::setlocale(LC_NUMERIC, nullptr);
+    const char* found = nullptr;
+    for (const char* name : names)
+        if (std::setlocale(LC_NUMERIC, name)) {
+            found = name;
+            break;
+        }
+    if (!found) SKIP("No locale with a decimal comma is installed");
+    INFO("locale " << found);
+    json data = load("compose_r290_ph.json");
+    std::string svg, pdf, composed;
+    // The PDF needs a TrueType font; without one only the SVG is compared
+    auto pdf_of = [](const Scene& scene) {
+        try {
+            return scene_to_pdf(scene, PdfOptions());
+        } catch (const Error&) {
+            return std::string();
+        }
+    };
+    try {
+        composed = compose_json(data.at("input").dump());
+        Scene scene = Scene::from_json(json::parse(composed));
+        svg = scene_to_svg(scene, SvgOptions());
+        pdf = pdf_of(scene);
+        CHECK(format_number(0.5) == "0.5");
+        CHECK(snap(253.14999999999998) == 253.15);
+        CHECK(DiagramSpec::from_json(data.at("input").at("spec")).diagram.name() == "ph");
+    } catch (...) {
+        std::setlocale(LC_NUMERIC, old.c_str());
+        throw;
+    }
+    std::setlocale(LC_NUMERIC, old.c_str());
+    CHECK(svg == read("compose_r290_ph.svg"));
+    std::string again = compose_json(data.at("input").dump());
+    CHECK(composed == again);
+    if (pdf.empty()) WARN("No TrueType font found: the PDF was not compared.");
+    CHECK(pdf == pdf_of(Scene::from_json(json::parse(again))));
 }

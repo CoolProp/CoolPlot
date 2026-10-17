@@ -83,27 +83,38 @@ TrueTypeFont::TrueTypeFont(const std::string& data) : data_(data) {
         if (t.offset + t.length > data_.size()) throw Error("The font file is truncated.");
         tables_[data_.substr(at, 4)] = t;
     }
+    // Each table has to be long enough for the fields read from it, or a damaged
+    // font would be read from the bytes of the next table
+    auto need = [](const Table& t, size_t length, const char* tag) {
+        if (t.length < length) throw Error(std::string("The font's ") + tag + " table is too short.");
+    };
     const Table& head = table("head");
+    need(head, 54, "head");
     units_per_em_ = static_cast<int>(u16(data_, head.offset + 18));
     for (int k = 0; k < 4; ++k) bbox_[k] = static_cast<int>(s16(data_, head.offset + 36 + 2 * k));
     long_loca_ = s16(data_, head.offset + 50) != 0;
     const Table& hhea = table("hhea");
+    need(hhea, 36, "hhea");
     ascent_ = static_cast<int>(s16(data_, hhea.offset + 4));
     descent_ = static_cast<int>(s16(data_, hhea.offset + 6));
     unsigned long metrics = u16(data_, hhea.offset + 34);
+    need(table("maxp"), 6, "maxp");
     unsigned long glyphs = u16(data_, table("maxp").offset + 4);
     const Table& hmtx = table("hmtx");
+    if (metrics == 0) throw Error("The font has no horizontal metrics.");
+    need(hmtx, 4 * std::min(metrics, glyphs), "hmtx");
     int last = 0;
     for (unsigned long g = 0; g < glyphs; ++g) {
         if (g < metrics) last = static_cast<int>(u16(data_, hmtx.offset + 4 * g));
         advances_.push_back(last);
     }
     const Table& loca = table("loca");
+    need(loca, (glyphs + 1) * (long_loca_ ? 4 : 2), "loca");
     for (unsigned long g = 0; g <= glyphs; ++g)
         loca_.push_back(long_loca_ ? u32(data_, loca.offset + 4 * g) : 2 * u16(data_, loca.offset + 2 * g));
     cap_height_ = static_cast<int>(0.7 * ascent_);
     auto os2 = tables_.find("OS/2");
-    if (os2 != tables_.end()) {
+    if (os2 != tables_.end() && os2->second.length >= 64) {
         size_t at = os2->second.offset;
         unsigned long version = u16(data_, at);
         weight_class_ = static_cast<unsigned short>(u16(data_, at + 4));

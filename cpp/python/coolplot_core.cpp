@@ -31,7 +31,13 @@ coolplot::SvgOptions options_of(int width, int height, std::pair<double, double>
 }
 
 coolplot::Scene scene_of(const std::string& scene_json) {
-    return coolplot::Scene::from_json(coolplot::json::parse(scene_json));
+    coolplot::json data;
+    try {
+        data = coolplot::json::parse(scene_json);
+    } catch (const coolplot::json::exception& e) {
+        throw coolplot::Error(std::string("The scene is not valid JSON: ") + e.what());
+    }
+    return coolplot::Scene::from_json(data);
 }
 
 }  // namespace
@@ -39,6 +45,15 @@ coolplot::Scene scene_of(const std::string& scene_json) {
 NB_MODULE(coolplot_core, m) {
     m.doc() = "The presentation core of CoolPlot in C++: spec and curves in, scene and SVG out.";
     nb::exception<coolplot::Error>(m, "Error", PyExc_ValueError);
+    // A record of the wrong shape (a string where a number belongs) surfaces
+    // as an exception of the JSON library; it is bad input, so ValueError too
+    nb::register_exception_translator([](const std::exception_ptr& p, void*) {
+        try {
+            std::rethrow_exception(p);
+        } catch (const coolplot::json::exception& e) {
+            PyErr_SetString(PyExc_ValueError, e.what());
+        }
+    });
     m.def("version", [] { return std::string(coolplot_version()); }, "The library version.");
     m.def(
       "compose", [](const std::string& input_json) { return coolplot::compose_json(input_json); }, nb::arg("input_json"),

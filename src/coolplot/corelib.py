@@ -34,6 +34,11 @@ def available() -> bool:
     return _core is not None and hasattr(_core, "compose") and hasattr(_core, "scene_to_svg")
 
 
+def has_pdf() -> bool:
+    """Whether the installed ``coolplot_core`` module also writes PDF."""
+    return _core is not None and hasattr(_core, "scene_to_pdf") and hasattr(_core, "pdf_plot_size_pt")
+
+
 def enabled() -> bool:
     """Whether charts are composed and SVG is written by coolplot-core.
 
@@ -61,7 +66,7 @@ def _clean(data):
         return _LONE_SURROGATES.sub("", data)
     if isinstance(data, dict):
         return {_clean(k): _clean(v) for k, v in data.items()}
-    if isinstance(data, list):
+    if isinstance(data, (list, tuple)):
         return [_clean(v) for v in data]
     return data
 
@@ -123,7 +128,7 @@ def scene_to_pdf(axes: Optional[AxesSpec], items, width_pt: float, height_pt: fl
     first, then from ``font_dirs`` (the platform's font directories when
     empty); a family without a TrueType file raises ValueError.
     """
-    if not available() or not hasattr(_core, "scene_to_pdf"):
+    if not has_pdf():
         return None
     scene = {"axes": axes_to_dict(axes or AxesSpec()), "items": [item_to_dict(item) for item in items]}
     left, right, top, bottom = (float(m) for m in margins_pt)
@@ -133,7 +138,7 @@ def scene_to_pdf(axes: Optional[AxesSpec], items, width_pt: float, height_pt: fl
 
 def pdf_plot_size_pt(axes: Optional[AxesSpec], items, width_pt: float, height_pt: float, margins_pt):
     """(width, height) of the plot area of the PDF page in points, or None when the module is absent."""
-    if not available() or not hasattr(_core, "pdf_plot_size_pt"):
+    if not has_pdf():
         return None
     scene = {"axes": axes_to_dict(axes or AxesSpec()), "items": [item_to_dict(item) for item in items]}
     left, right, top, bottom = (float(m) for m in margins_pt)

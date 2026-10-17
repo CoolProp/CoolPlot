@@ -65,8 +65,30 @@ the records cross into C++ as JSON. For a p-h chart with labels:
 
 The library is for programs in other languages, which hand it their
 records directly. `COOLPLOT_NATIVE=0` also switches the numerics port off.
-CI runs the suite on the Python path and with `COOLPLOT_NATIVE=1`. {class}`~coolplot.render.pdf.PdfRenderer` writes PDF through
-coolplot-core and needs the module.
+CI runs the suite on the Python path and with `COOLPLOT_NATIVE=1`.
+{class}`~coolplot.render.pdf.PdfRenderer` writes PDF through coolplot-core
+and needs the module; its page has the plot size of the SVG writer, with
+the same margins for labels outside the frame and the same cut of long
+legend texts.
+
+When the C++ composer refuses a spec that Python accepts (something added
+in Python and not ported yet), {func}`coolplot.compose.compose` warns with
+a RuntimeWarning and the Python composer draws the chart.
+
+Rules both sides keep, so that the outputs stay identical:
+
+* Numbers are written without the C locale: `std::to_chars` and
+  `std::from_chars` in C++, so a host program that sets a locale with a
+  decimal comma gets the same documents (cpp/tests checks this under
+  de_DE when that locale is installed). The JavaScript writer rounds an
+  exact tie to the even digit, as Python and printf do.
+* Text lengths count characters (Unicode code points), not bytes or
+  UTF-16 units.
+* Label spots whose bends differ by rounding noise tie: the bend counts in
+  whole millionths of a degree, and the first spot found wins.
+* Writers take the items in scene order (the legend follows it) and sort
+  by z order themselves; `Scene.to_dict(in_draw_order=False)` gives that
+  record.
 
 ## The golden files
 

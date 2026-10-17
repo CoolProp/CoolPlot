@@ -15,8 +15,15 @@ char* copy(const std::string& text) {
     return out;
 }
 
-int fail(char** error, const std::string& message) {
-    if (error) *error = copy(message);
+// Never throws: an error while copying the message leaves *error null.
+int fail(char** error, const char* message) noexcept {
+    if (error) {
+        try {
+            *error = copy(message);
+        } catch (...) {
+            *error = nullptr;
+        }
+    }
     return 1;
 }
 
@@ -51,23 +58,29 @@ const char* coolplot_version(void) {
 
 int coolplot_compose(const char* input_json, char** scene_json, char** error) {
     if (error) *error = nullptr;
+    if (scene_json) *scene_json = nullptr;  // the output is null unless it succeeds
     if (!input_json || !scene_json) return fail(error, "No input given.");
     try {
         *scene_json = copy(coolplot::compose_json(input_json));
         return 0;
     } catch (const std::exception& e) {
         return fail(error, e.what());
+    } catch (...) {
+        return fail(error, "Unknown error.");
     }
 }
 
 int coolplot_scene_to_svg(const char* scene_json, int width, int height, const double* margins, const char* id_prefix, char** svg, char** error) {
     if (error) *error = nullptr;
     if (!svg) return fail(error, "No output given.");
+    *svg = nullptr;
     try {
         *svg = copy(coolplot::scene_to_svg(parse_scene(scene_json), options_of(width, height, margins, id_prefix)));
         return 0;
     } catch (const std::exception& e) {
         return fail(error, e.what());
+    } catch (...) {
+        return fail(error, "Unknown error.");
     }
 }
 
@@ -82,6 +95,8 @@ int coolplot_svg_plot_size_pt(const char* scene_json, int width, int height, con
         return 0;
     } catch (const std::exception& e) {
         return fail(error, e.what());
+    } catch (...) {
+        return fail(error, "Unknown error.");
     }
 }
 
@@ -89,6 +104,8 @@ int coolplot_scene_to_pdf(const char* scene_json, double width_pt, double height
                           char** pdf, size_t* length, char** error) {
     if (error) *error = nullptr;
     if (!pdf || !length) return fail(error, "No output given.");
+    *pdf = nullptr;
+    *length = 0;
     try {
         coolplot::PdfOptions options;
         if (width_pt > 0.0) options.width_pt = width_pt;
@@ -114,6 +131,8 @@ int coolplot_scene_to_pdf(const char* scene_json, double width_pt, double height
         return 0;
     } catch (const std::exception& e) {
         return fail(error, e.what());
+    } catch (...) {
+        return fail(error, "Unknown error.");
     }
 }
 

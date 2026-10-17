@@ -1,6 +1,7 @@
 #include "coolplot/pdf.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
@@ -25,9 +26,7 @@ const double KAPPA = 0.5522847498;  // circle from four Bezier arcs
 
 std::string num(double value) {
     if (!std::isfinite(value)) throw Error("Non-finite value in PDF output.");
-    char buffer[64];
-    std::snprintf(buffer, sizeof(buffer), "%.4f", value);
-    std::string text = buffer;
+    std::string text = fixed_text(value, 4);  // locale-free, always has a decimal point
     while (!text.empty() && text.back() == '0') text.pop_back();
     if (!text.empty() && text.back() == '.') text.pop_back();
     return (text == "-0" || text.empty()) ? "0" : text;
@@ -130,7 +129,11 @@ class Writer
         x1_ = x.hi;
         y0_ = y.lo;
         y1_ = y.hi;
-        double left = options.margins_pt[0], right = options.margins_pt[1], top = options.margins_pt[2], bottom = options.margins_pt[3];
+        // Text that may leave the frame and sits on its edge widens that margin,
+        // the same way as in the SVG writer, so that both give the same plot size
+        extra_margins_ = unclipped_margins();
+        double left = options.margins_pt[0] + extra_margins_[0], right = options.margins_pt[1] + extra_margins_[1];
+        double top = options.margins_pt[2] + extra_margins_[2], bottom = options.margins_pt[3] + extra_margins_[3];
         if (scene.axes.style.legend.location == "outside right") {
             double width = legend_size().first;
             if (width) right += width + 9.0;
@@ -193,6 +196,7 @@ class Writer
     const PdfOptions& options_;
     const FontIndex& index_;
     std::vector<std::pair<std::string, std::vector<size_t>>> legend_entries_;
+    std::array<double, 4> extra_margins_ = {0.0, 0.0, 0.0, 0.0};  // left, right, top, bottom in pt
     double x0_ = 0.0, x1_ = 1.0, y0_ = 0.0, y1_ = 1.0;
     double bx_ = 0.0, by_ = 0.0, bw_ = 1.0, bh_ = 1.0;
     std::vector<UsedFont> fonts_;
@@ -220,7 +224,7 @@ class Writer
 
     // Geometry -------------------------------------------------------------
     Range data_limits(bool x_axis, bool log) const {
-        double lo = 1e300, hi = -1e300;
+        double lo = HUGE_VAL, hi = -HUGE_VAL;
         bool any = false;
         for (const Item& item : scene_.items) {
             if (!item.visible || item.type == ItemType::Text) continue;
@@ -420,9 +424,13 @@ class Writer
         double width = 0.0;
         for (unsigned long cp : code_points(text)) {
             int g = font.glyph_of(cp);
-            if (g == 0 && cp != 0x20) g = font.glyph_of('?');
+            unsigned long shown = cp;  // what a reader gets back when copying the text
+            if (g == 0 && cp != 0x20) {
+                g = font.glyph_of('?');  // a character the font lacks is drawn and read as "?"
+                shown = '?';
+            }
             f.glyphs.insert(g);
-            if (!f.unicode.count(g)) f.unicode[g] = cp;
+            if (!f.unicode.count(g)) f.unicode[g] = shown;
             char hex[8];
             std::snprintf(hex, sizeof(hex), "%04X", g);
             glyphs += hex;
@@ -464,12 +472,65 @@ class Writer
         return text_at(item.text, item.text_style, x + item.offset_x_pt, y + item.offset_y_pt, angle_of(item, x, y), item.clip);
     }
 
+    /// (left, right, down, up) reach of a text from its anchor in pt, from its length and alignment.
+    static void text_extent_pt(const Item& item, double& left, double& right, double& down, double& up) {
+        double size = item.text_style.font.size_pt;
+        double length = 0.6 * size * text_length(item.text), height = 1.25 * size;
+        bool vertical = item.has_direction && std::fabs(item.direction_y) > std::fabs(item.direction_x);
+        const std::string& h = item.text_style.h_align;
+        const std::string& v = item.text_style.v_align;
+        double along0 = h == "left" ? 0.0 : h == "center" ? length / 2 : length;
+        double along1 = h == "left" ? length : h == "center" ? length / 2 : 0.0;
+        double across0 = v == "bottom" ? 0.0 : v == "center" ? height / 2 : height;
+        double across1 = v == "bottom" ? height : v == "center" ? height / 2 : 0.0;
+        if (vertical) {  // reads upwards: its start is at the bottom
+            left = across1;
+            right = across0;
+            down = along0;
+            up = along1;
+        } else {
+            left = along0;
+            right = along1;
+            down = across0;
+            up = across1;
+        }
+    }
+
+    /// Extra (left, right, top, bottom) margins in pt for text outside the frame.
+    std::array<double, 4> unclipped_margins() const {
+        std::array<double, 4> need = {0.0, 0.0, 0.0, 0.0};
+        for (const Item& item : scene_.items) {
+            if (!(item.type == ItemType::Text && item.visible && !item.clip)) continue;
+            double fx = fraction(item.text_x, x0_, x1_, scene_.axes.x_log), fy = fraction(item.text_y, y0_, y1_, scene_.axes.y_log);
+            if (!(std::isfinite(fx) && std::isfinite(fy))) continue;
+            double left, right, down, up;
+            text_extent_pt(item, left, right, down, up);
+            double dx = item.offset_x_pt, dy = item.offset_y_pt;
+            double reach[4] = {left - dx + 3.0, right + dx + 3.0, up + dy + 3.0, down - dy + 3.0};
+            bool touches[4] = {fx <= 1e-9, fx >= 1.0 - 1e-9, fy >= 1.0 - 1e-9, fy <= 1e-9};
+            for (int k = 0; k < 4; ++k) need[k] = std::max(need[k], touches[k] ? reach[k] : 0.0);
+        }
+        for (int k = 0; k < 4; ++k) need[k] = std::max(0.0, need[k] - options_.margins_pt[k]);
+        return need;
+    }
+
+    /// Longest legend text in characters before it is cut with "...", as in the SVG writer.
+    int legend_chars() const {
+        double size = scene_.axes.style.legend.text.font.size_pt;
+        return std::max(4, static_cast<int>((0.4 * options_.width_pt - 33.0) / (0.6 * size)));
+    }
+
+    std::string legend_text(const std::string& text) const {
+        size_t limit = static_cast<size_t>(legend_chars());
+        return text_length(text) <= limit ? text : text_prefix(text, limit - 3) + "...";
+    }
+
     std::pair<double, double> legend_size() const {
         const LegendStyle& st = scene_.axes.style.legend;
         if (!st.visible || legend_entries_.empty()) return {0.0, 0.0};
         double size = st.text.font.size_pt;
         size_t longest = 0;
-        for (const auto& entry : legend_entries_) longest = std::max(longest, entry.first.size());
+        for (const auto& entry : legend_entries_) longest = std::max(longest, text_length(legend_text(entry.first)));
         return {33.0 + 0.6 * size * longest, 6.0 + 1.6 * size * legend_entries_.size()};
     }
 
@@ -517,7 +578,7 @@ class Writer
             TextStyle style = st.text;
             style.h_align = "left";
             style.v_align = "center";
-            out += text_at(legend_entries_[i].first, style, x + 25.5, cy, 0.0, false);
+            out += text_at(legend_text(legend_entries_[i].first), style, x + 25.5, cy, 0.0, false);
         }
         return out + "Q\n";
     }
@@ -588,7 +649,7 @@ class Writer
             TextStyle title_style = st.title;
             title_style.h_align = "center";
             title_style.v_align = "bottom";
-            out += text_at(axes.title, title_style, bx_ + bw_ / 2.0, by_ + bh_ + 6.0, 0.0, false);
+            out += text_at(axes.title, title_style, bx_ + bw_ / 2.0, by_ + bh_ + 6.0 + extra_margins_[2], 0.0, false);
         }
         out += legend();
         return out;

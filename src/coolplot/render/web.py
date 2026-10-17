@@ -194,9 +194,12 @@ def scene_page(scene, width: int = 800, height: int = 600, margins=(80, 20, 40, 
     JavaScript renderer; nothing is computed on a server, and the page
     shows the same SVG the SVG backend would write. ASCII only.
     """
-    record = json.dumps(scene.to_dict(), allow_nan=False, separators=(",", ":"))
-    # Inside a script element only "</" could end it early
-    record = record.replace("</", "<\\/")
+    # In scene order: the JavaScript writer takes the legend from that order
+    # and sorts by z order for drawing, like the SVG backend
+    record = json.dumps(scene.to_dict(in_draw_order=False), allow_nan=False, separators=(",", ":"))
+    # Inside a script element "</" could end it early and "<!--" could start
+    # a comment; escaping every "<" as a JSON escape avoids both
+    record = record.replace("<", "\\u003c")
     options = json.dumps({"width": int(width), "height": int(height), "margins": [float(m) for m in margins]})
     text = SCENE_PAGE.format(title=html.escape(title), scene=record, library=scene_script(), options=options)
     return text.encode("ascii", "xmlcharrefreplace").decode("ascii")

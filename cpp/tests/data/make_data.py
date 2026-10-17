@@ -8,8 +8,6 @@ import json
 import os
 import sys
 
-import numpy as np
-
 from coolplot import PropertyDiagram, PsychrometricChart
 from coolplot.compose.builder import compose
 from coolplot.engine import plan
@@ -56,15 +54,18 @@ def compose_case(name, chart, plot_size_pt=None, previous=None):
         "plot_size_pt": None if plot_size_pt is None else list(plot_size_pt),
         "previous_labels": None if previous is None else [item_to_dict(t) for t in previous.values()],
     }
-    dump(name + ".json", {"input": data, "scene": scene.to_dict()})
-    # The SVG of the scene as it travels through the contract (items in
-    # drawing order), which is what the C++ writer gets
-    dump_svg(name + ".svg", Scene.from_dict(scene.to_dict()))
+    # "scene" is the record of the contract (items in drawing order), which
+    # the composer has to match; "scene_order" holds the same items in scene
+    # order, which the SVG writers get (the legend follows that order)
+    dump(name + ".json", {"input": data, "scene": scene.to_dict(),
+                          "scene_order": scene.to_dict(in_draw_order=False)})
+    dump_svg(name + ".svg", scene)
     return scene
 
 
 def main():
-    dump("conformance_scene.json", conformance_scene().to_dict())
+    # In scene order, so that the writers give the legend in the same order
+    dump("conformance_scene.json", conformance_scene().to_dict(in_draw_order=False))
     dump_svg("conformance_scene.svg", conformance_scene())
     dump_svg("conformance_scene_small.svg", conformance_scene(), width=640, height=480, margins=(50, 10, 30, 40),
              id_prefix="2 charts/one page")
@@ -73,7 +74,8 @@ def main():
     from coolplot.scene import AxesSpec, Line, Markers
     scene = conformance_scene()
     for location in ("upper left", "lower right"):
-        scene.set_axes(replace(scene.axes, style=replace(scene.axes.style, legend=replace(scene.axes.style.legend, location=location))))
+        legend = replace(scene.axes.style.legend, location=location)
+        scene.set_axes(replace(scene.axes, style=replace(scene.axes.style, legend=legend)))
         dump_svg("conformance_legend_%s.svg" % location.replace(" ", "_"), scene)
     dump_svg("autoscale.svg", Scene(AxesSpec(y_log=True), [
         Line(id="a", x=[1.0, 2.0, 3.0], y=[0.5, 5.0, 50.0]),
@@ -87,7 +89,7 @@ def main():
     diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
     diagram.set_default_lines(labels=True)
     diagram.add_cycle("heat pump", [{"p": 3.0, "T": 0.0}, {"p": 15.0, "via": "compression", "eta_is": 0.7},
-                                   {"p": 15.0, "Q": 0.0}, {"p": 3.0, "via": "isenthalpic"}])
+                                    {"p": 15.0, "Q": 0.0}, {"p": 3.0, "via": "isenthalpic"}])
     scene = compose_case("compose_r290_ph", diagram)
     # The same chart laid out for a renderer's plot size, with the labels of
     # the first layout given as the previous ones

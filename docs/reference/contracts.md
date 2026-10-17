@@ -114,7 +114,11 @@ and the calculation settings that affect the numbers.
 ## 3. The scene
 
 What a renderer draws: one set of axes and a flat list of items in
-drawing order, coordinates in display units. `coolplot.scene` is the
+drawing order, coordinates in display units. A writer that draws a legend
+can be given the items in scene order instead
+(`Scene.to_dict(in_draw_order=False)`); it then sorts by z order, keeping
+the scene order among equal z orders, and takes the legend from the scene
+order. `coolplot.scene` is the
 definition; contributing/writing_a_backend.md says how each field is rendered.
 
 ```js

@@ -32,6 +32,8 @@ def format_number(value: float, digits: int = 6) -> str:
     if value == 0.0:
         return "0"
     rounded = float("{0:.{1}g}".format(value, digits))
+    if not math.isfinite(rounded):   # rounding up the largest numbers overflows
+        rounded = value
     if SCI_BELOW <= abs(rounded) < SCI_ABOVE:
         exponent = math.floor(math.log10(abs(rounded)))
         decimals = max(0, digits - 1 - exponent)

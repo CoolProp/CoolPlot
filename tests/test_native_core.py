@@ -81,13 +81,51 @@ def test_the_switch(monkeypatch):
 
 
 def test_compose_falls_back_without_the_module(monkeypatch):
-    from coolplot import compose as package
-    monkeypatch.setattr(native, "available", lambda: False)
-    assert native.compose(None, None, []) is None
-    # The package entry point then uses the Python composer
     from coolplot.compose import compose
-    assert compose.__module__ == "coolplot.compose"
-    assert package.compose_python is compose_python
+    from coolplot.engine import plan
+    monkeypatch.setattr(native, "available", lambda: False)
+    monkeypatch.setenv("COOLPLOT_NATIVE", "1")
+    assert native.compose(None, None, []) is None and not native.enabled()
+    # The package entry point then composes in Python
+    chart = _charts()[0]
+    spec = chart.spec
+    domain = chart.engine.domain(spec)
+    curves = chart.engine.curves(spec, domain, plan(spec, domain))
+    items, axes = compose(spec, domain, curves)
+    reference, reference_axes = compose_python(spec, domain, curves)
+    assert [i.id for i in items] == [i.id for i in reference] and axes == reference_axes
+
+
+@needs_core
+def test_compose_falls_back_with_a_warning_when_the_port_refuses(monkeypatch):
+    from coolplot.compose import compose
+    from coolplot.engine import plan
+    chart = _charts()[0]
+    spec = chart.spec
+    domain = chart.engine.domain(spec)
+    curves = chart.engine.curves(spec, domain, plan(spec, domain))
+
+    def refuse(*args):
+        raise ValueError("something new")
+    monkeypatch.setenv("COOLPLOT_NATIVE", "1")
+    monkeypatch.setattr(native, "compose", refuse)
+    with pytest.warns(RuntimeWarning, match="something new"):
+        items, _ = compose(spec, domain, curves)
+    assert [i.id for i in items] == [i.id for i in compose_python(spec, domain, curves)[0]]
+
+
+@needs_core
+def test_a_diagram_of_any_axis_pair_composes_the_same_through_the_port(monkeypatch):
+    pytest.importorskip("CoolProp")
+    from coolplot import DiagramSpec, PropertyDiagram
+    from coolplot.core.diagram_type import DiagramType
+    chart = PropertyDiagram("R290", DiagramType("T", "h"), tp_limits="ACHP", settings="interactive")
+    chart.set_default_lines(labels=True)
+    assert chart.spec.to_dict()["diagram"] == "Th"
+    assert DiagramSpec.from_dict(chart.spec.to_dict()) == chart.spec
+    python, ported = _both_scenes(chart)
+    difference = _same(python.to_dict(), ported.to_dict())
+    assert difference == "", difference
 
 
 @needs_core
@@ -205,3 +243,44 @@ def test_the_pdf_of_a_chart_reads_back(tmp_path):
     assert any(t.startswith("T=") for t in texts)
     with pytest.raises(ValueError, match="PDF"):
         renderer.save(str(tmp_path / "chart.svg"))
+
+
+@needs_core
+def test_the_pdf_page_has_the_svg_geometry_and_all_text_on_it(tmp_path):
+    """Margin labels widen the margins and a long legend text is cut, as in SVG."""
+    import re
+    from dataclasses import replace
+    from coolplot.render.pdf import PdfRenderer
+    from coolplot.render.svg import SvgRenderer
+    from coolplot.testing.pdf_reader import read_pdf
+    chart = _charts()[1]   # labels in the margin, outside the frame
+    chart.title = "A blend in the margin mode"
+    chart.add_cycle("A cycle whose name is far too long to fit into any legend of a page", [
+        {"T": 0.0, "Q": 1.0}, {"T": 40.0, "Q": 0.0}])
+    renderer = PdfRenderer(margins_pt=(30.0, 5.0, 10.0, 30.0))
+    scene = chart.update_scene(renderer.plot_size_pt())
+    for location in ("outside right", "upper left"):
+        style = scene.axes.style
+        scene.set_axes(replace(scene.axes, style=replace(style, legend=replace(style.legend, location=location))))
+        renderer.sync(scene)
+        assert renderer.plot_size_pt() == pytest.approx(SvgRenderer.plot_size_pt(renderer), abs=1e-6)
+        data = native.scene_to_pdf(renderer._axes, renderer._scene_items(), renderer.width_pt, renderer.height_pt,
+                                   renderer.margins_pt, compress=False)
+        size = None
+        found = 0
+        for token in re.finditer(rb"/F\d+ (\S+) Tf|(\S+) (\S+) \S+ \S+ (\S+) (\S+) Tm <([0-9A-F]*)> Tj", data):
+            if token.group(1):
+                size = float(token.group(1))
+                continue
+            c, s, x, y = (float(token.group(k)) for k in (2, 3, 4, 5))
+            glyphs = len(token.group(6)) // 4
+            assert 0.0 <= x <= renderer.width_pt and 0.0 <= y <= renderer.height_pt, token.group(0)[:80]
+            # The far end, with glyphs at least 0.4 em wide, stays on the page too
+            end_x, end_y = x + c * 0.4 * size * glyphs, y + s * 0.4 * size * glyphs
+            assert -1.0 <= end_x <= renderer.width_pt + 1.0 and -1.0 <= end_y <= renderer.height_pt + 1.0
+            found += 1
+        assert found > 20
+        path = tmp_path / "page.pdf"
+        path.write_bytes(data)
+        texts = read_pdf(str(path)).texts
+        assert any(t.startswith("A cycle whose") and t.endswith("...") for t in texts), texts

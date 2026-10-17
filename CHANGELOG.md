@@ -28,6 +28,15 @@ guide in the documentation says what to change in your code.
   coolplot-core; it passes the conformance kit's PDF check.
 - `coolplot.render.web.scene_page`: a self-contained page that draws a
   scene in the browser with a JavaScript port of the SVG writer, no server.
+- `Scene.to_dict(in_draw_order=False)` writes the items in scene order,
+  for writers that take the legend from that order.
+
+#### Fixed
+- A diagram of any pair of fluid axis quantities, such as
+  `DiagramType("T", "h")`, is written as "Th" and now reads back from its
+  spec; it failed to load before.
+- `format_number` of the largest numbers (rounding up overflowed to
+  infinity) raised; it now gives e.g. "2e308".
 - Labels next to the bottom of a log axis that starts close to zero (the
   isotherm labels of R290 with the default limits) got a NaN angle from
   matplotlib and made saving the chart fail; they get their angle computed

@@ -314,7 +314,11 @@ def _candidate(piece: Piece, s: float, half_w: float, half_h: float, score: floa
         angle -= math.pi
     elif angle <= -math.pi / 2.0:
         angle += math.pi
-    return Candidate(score + bend / 20.0, Box(mx, my, angle, half_w, half_h), (dx, dy))
+    # The bend counts in whole millionths of a degree, so that two spots whose
+    # bends differ only by rounding noise tie and the order they were found in
+    # decides, the same way here and in coolplot-core (cpp/src/layout.cpp)
+    bend_micro = math.floor(bend * 1e6 + 0.5)
+    return Candidate(score + bend_micro * 5e-8, Box(mx, my, angle, half_w, half_h), (dx, dy))
 
 
 def _candidates(pieces: Sequence[Piece], half_w: float, half_h: float, preferred: Sequence[str],
