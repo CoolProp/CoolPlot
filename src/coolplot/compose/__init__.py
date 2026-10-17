@@ -3,8 +3,8 @@
 
 No property calculations happen here and no plotting library is used.
 :func:`compose` is the entry point; it uses coolplot-core
-(:mod:`coolplot.corelib`) when that module is installed and the
-Python composer in :mod:`coolplot.compose.builder` otherwise.
+(:mod:`coolplot.corelib`) when that module is installed and asked for, and
+the Python composer in :mod:`coolplot.compose.builder` otherwise.
 """
 from .. import corelib
 from .builder import compose as compose_python, label_text, scaled_theme
@@ -16,7 +16,8 @@ def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycle
     """All scene items and the axes for a diagram, see :func:`coolplot.compose.builder.compose`.
 
     Composed by coolplot-core when it is installed and ``COOLPLOT_NATIVE``
-    is not "0", by the Python composer otherwise; both give the same scene.
+    is set (see :func:`coolplot.corelib.enabled`), by the Python composer
+    otherwise; both give the same scene.
     """
     if corelib.enabled():
         result = corelib.compose(spec, domain, curves, plot_size_pt, previous_labels, cycles)

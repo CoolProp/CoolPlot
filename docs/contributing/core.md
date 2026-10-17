@@ -51,10 +51,21 @@ checkout to build offline. The JSON reader (nlohmann/json 3.12, MIT) is
 vendored in `cpp/third_party`. zlib is used for the PDF streams when CMake
 finds it.
 
-When `coolplot_core` can be imported, {func}`coolplot.compose.compose`
-composes there and {class}`~coolplot.render.svg.SvgRenderer` writes there;
-`COOLPLOT_NATIVE=0` switches both back to Python. CI runs the suite on
-both paths. {class}`~coolplot.render.pdf.PdfRenderer` writes PDF through
+With `COOLPLOT_NATIVE=1` (and `coolplot_core` importable),
+{func}`coolplot.compose.compose` composes there and
+{class}`~coolplot.render.svg.SvgRenderer` writes there. Unset, CoolPlot
+keeps its Python composer and writer: from Python they are faster, because
+the records cross into C++ as JSON. For a p-h chart with labels:
+
+| Step | Time |
+|---|---|
+| Python composer | 25 ms |
+| C++ composer, including its own JSON reading and writing | 12 ms |
+| building and parsing the JSON on the Python side | 38 ms |
+
+The library is for programs in other languages, which hand it their
+records directly. `COOLPLOT_NATIVE=0` also switches the numerics port off.
+CI runs the suite on the Python path and with `COOLPLOT_NATIVE=1`. {class}`~coolplot.render.pdf.PdfRenderer` writes PDF through
 coolplot-core and needs the module.
 
 ## The golden files

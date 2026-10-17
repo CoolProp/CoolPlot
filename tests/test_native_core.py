@@ -75,6 +75,9 @@ def test_the_switch(monkeypatch):
     assert not native.enabled()
     monkeypatch.setenv("COOLPLOT_NATIVE", "1")
     assert native.enabled() == native.available()
+    # Unset, the Python composer and writer do the work (faster from Python)
+    monkeypatch.delenv("COOLPLOT_NATIVE")
+    assert not native.enabled()
 
 
 def test_compose_falls_back_without_the_module(monkeypatch):

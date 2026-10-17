@@ -19,11 +19,11 @@ guide in the documentation says what to change in your code.
   (`coolplot.thermo.native`).
 - coolplot-core (`cpp/`): the composer, the label layout, the styles and
   themes, the scene and the SVG writer in C++17, plus a PDF writer with
-  TrueType subsets, a C ABI and the nanobind module `coolplot_core`. When
-  the module is installed, charts are composed and SVG is written there;
-  scenes and documents are the same as from Python, point for point and
-  byte for byte. `COOLPLOT_NATIVE=0` keeps the Python code
-  (docs/contributing/core.md).
+  TrueType subsets, a C ABI and the nanobind module `coolplot_core`, for
+  programs in other languages. With `COOLPLOT_NATIVE=1` CoolPlot composes
+  and writes SVG there too; scenes and documents are the same as from
+  Python, point for point and byte for byte. Unset, the Python code does
+  it, which from Python is faster (docs/contributing/core.md).
 - `coolplot.render.pdf.PdfRenderer`: PDF without matplotlib, through
   coolplot-core; it passes the conformance kit's PDF check.
 - `coolplot.render.web.scene_page`: a self-contained page that draws a

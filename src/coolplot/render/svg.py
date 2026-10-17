@@ -149,9 +149,9 @@ class SvgRenderer(Renderer):
         Prefix for the few document-level ids (the clip path). Give every
         SVG embedded in the same HTML page its own prefix.
     native : bool, optional
-        Write the document with coolplot-core (:mod:`coolplot.corelib`)
-        when it is installed. None (the default) follows ``COOLPLOT_NATIVE``;
-        the document is the same either way.
+        Write the document with coolplot-core (:mod:`coolplot.corelib`).
+        None (the default) follows ``COOLPLOT_NATIVE``, see
+        :func:`coolplot.corelib.enabled`; the document is the same either way.
     """
 
     capabilities = frozenset({"file_output", "css_classes"})
