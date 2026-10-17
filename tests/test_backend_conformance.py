@@ -13,7 +13,7 @@ from dataclasses import replace
 import pytest
 
 from coolplot.render.svg import SvgRenderer
-from coolplot.render.testing import run_conformance
+from coolplot.testing import run_conformance
 from coolplot.scene import Text
 
 
@@ -22,6 +22,29 @@ def _mpl_factory(cls=None):
     from coolplot.render.mpl import MatplotlibRenderer
     cls = cls or MatplotlibRenderer
     return lambda: cls(use_pyplot=False)
+
+
+def test_private_matplotlib_attributes_are_still_there():
+    """The read-back of the kit uses a few private matplotlib attributes
+    (dash patterns, path-effect graphics contexts, tick direction, the
+    legend's packed boxes). None of them is on the drawing path; this
+    test says so loudly when a matplotlib release renames one."""
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    from coolplot.render.mpl import MatplotlibRenderer
+    diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP")
+    diagram.set_lines("T", values=[0.0], labels=True)
+    diagram.add_cycle("hp", [{"p": 3.0, "T": 0.0}, {"p": 15.0, "via": "compression"}, {"p": 15.0, "Q": 0.0},
+                             {"p": 3.0, "via": "isenthalpic"}])
+    renderer = diagram.draw(MatplotlibRenderer(use_pyplot=False))
+    line = renderer.backend_object("iso/T/273.15")
+    assert hasattr(line, "_dash_pattern")
+    tick = renderer.ax.xaxis.get_major_ticks()[0]
+    assert hasattr(tick, "_tickdir")
+    legend = renderer.ax.get_legend()
+    assert legend is not None and hasattr(legend, "_legend_handle_box")
+    from matplotlib import patheffects
+    assert hasattr(patheffects.Stroke(linewidth=1.0), "_gc")
 
 
 @pytest.mark.parametrize("name", ["svg", "matplotlib"])

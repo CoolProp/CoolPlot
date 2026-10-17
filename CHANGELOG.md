@@ -1,6 +1,33 @@
 Changelog
 =========
 
+0.6.0 (unreleased)
+------------------
+
+Scope and shape (docs/v1_plan.md, package 0.6):
+
+* `coolplot.testing` holds the conformance kit (`coolplot.testing.kit`,
+  before `coolplot.render.testing`) and the PDF reader
+  (`coolplot.testing.pdf_reader`, before `coolplot.render.pdf_reader`).
+  No backend imports it when a chart is drawn; the plotly backend loads
+  the PDF reader only while it writes a PDF.
+* The development web server moved to `examples/web_app/server.py`
+  (`examples/web_app/app.py` runs it); `WebRenderer` stays in
+  `coolplot.render.web`. An application connects the renderer to its own
+  web framework.
+* The large functions of the library are split into small named steps
+  (every function outside the test tooling and the numerics due for 0.7
+  has a cyclomatic complexity below 11): `Chart.add_cycle`,
+  `BackgroundEngine`, the spec validation, the label layout and the
+  read-back of the three backends among them. No behaviour changed.
+* The matplotlib backend keeps the data angle of a text itself instead
+  of reading a private attribute; the private attributes the read-back
+  of the conformance kit uses are fenced by a test.
+* Tests that need a browser (Playwright) or Kaleido run only with
+  `pytest --run-browser --run-kaleido`; the default suite runs in about
+  three minutes. The regression tests of the 0.2 review live in the
+  modules they belong to. The blend example draws fewer lines.
+
 0.5.0 (unreleased)
 ------------------
 

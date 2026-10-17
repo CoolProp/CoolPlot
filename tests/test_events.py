@@ -10,7 +10,7 @@ from coolplot.core.events import ViewChanged  # noqa: E402
 from coolplot.interaction import Interaction  # noqa: E402
 from coolplot.render.mpl import MatplotlibRenderer  # noqa: E402
 from coolplot.render.svg import SvgRenderer  # noqa: E402
-from coolplot.render.testing import check_events  # noqa: E402
+from coolplot.testing import check_events  # noqa: E402
 
 
 def _mpl():

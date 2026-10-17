@@ -217,3 +217,23 @@ def test_cycle_object_defaults():
         Cycle("x", {1: None}, loops=[[1, 2]])
     spec = CycleSpec("c", {2: s, 1: s, 3: s})
     assert spec.loops == ((1, 2, 3, 1),)
+
+
+# Regression tests from the adversarial review of 0.2 ------------------------
+
+def test_cycles_belong_to_the_diagram_fluid():
+    diagram = PropertyDiagram("HEOS::R134a", "ph", tp_limits="ACHP")
+    with pytest.raises(ValueError, match="computed for"):
+        diagram.add_cycle(simple_compression("HEOS::R290", -10.0, 40.0))
+    diagram.add_cycle(simple_compression("R134a", -10.0, 40.0))   # same fluid, other spelling
+    with pytest.warns(UserWarning, match="previous fluid"):
+        diagram.fluid = "HEOS::R290"
+
+
+def test_models_reject_impossible_inputs():
+    with pytest.raises(ValueError):
+        simple_compression("R134a", 40.0, -10.0)
+    with pytest.raises(ValueError):
+        two_stage("R134a", 0.0, 0.0)
+    with pytest.raises(ValueError, match="saturation"):
+        rankine("Water", 50e5, 0.1e5, T_live_C=100.0)

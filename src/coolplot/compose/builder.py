@@ -258,14 +258,17 @@ def cycle_items(spec: DiagramSpec, theme: Theme, cycle: CycleSpec, states, chain
     items.append(Markers(id=group + "/states", group=group, role="state_points", legend=cycle.name,
                          x=x, y=y, style=marker_style, z_order=Z_STATES))
     if cycle.numbers:
-        # Up and to the right of the marker, a fixed distance on screen
-        offset = 0.5 * marker_style.size_pt + 1.5
-        number_style = theme.state_number.with_(h_align="left", v_align="bottom")
-        for n, xi, yi in zip(numbers, x, y):
-            items.append(Text(id="{0}/number/{1}".format(group, n), group=group + "/numbers", role="state_number",
-                              x=float(xi), y=float(yi), text=str(n), offset_pt=(offset, offset),
-                              style=number_style, z_order=Z_STATES + 1.0))
+        items.extend(state_numbers(group, theme, marker_style, numbers, x, y))
     return items
+
+
+def state_numbers(group: str, theme: Theme, marker_style, numbers, x, y) -> List[Text]:
+    """The number of each state, up and to the right of its marker, a fixed distance on screen."""
+    offset = 0.5 * marker_style.size_pt + 1.5
+    number_style = theme.state_number.with_(h_align="left", v_align="bottom")
+    return [Text(id="{0}/number/{1}".format(group, n), group=group + "/numbers", role="state_number",
+                 x=float(xi), y=float(yi), text=str(n), offset_pt=(offset, offset),
+                 style=number_style, z_order=Z_STATES + 1.0) for n, xi, yi in zip(numbers, x, y)]
 
 
 def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Tuple[float, float] = None,
@@ -282,22 +285,12 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Tuple[flo
     :meth:`coolplot.engine.Engine.cycle`.
     """
     theme = scaled_theme(spec.settings.look, spec.settings.page.font_scale)
-    process_parts = []
-    for index, process in enumerate(spec.processes):
-        process_parts.extend(process_items(spec, theme, process, index))
-    for index, (cycle, (states, chains)) in enumerate(zip(spec.cycles, cycles or ())):
-        process_parts.extend(cycle_items(spec, theme, cycle, states, chains, len(spec.processes) + index))
+    process_parts = overlay_items(spec, theme, cycles or ())
     drawn = [(p.x, p.y, isinstance(p, Line)) for p in process_parts if not isinstance(p, Text)]
     axes = axes_spec(spec, domain, theme, drawn)
     size = plot_size_pt or default_plot_size_pt(spec)
     frame = Frame(axes.x_limits, axes.y_limits, axes.x_log, axes.y_log, *size)
-    numbers = [p for p in process_parts if isinstance(p, Text)]
-    if numbers:
-        markers = [p for p in process_parts if isinstance(p, Markers)]
-        mx = np.concatenate([m.x for m in markers]) if markers else np.array([])
-        my = np.concatenate([m.y for m in markers]) if markers else np.array([])
-        moved = {t.id: t for t in place_state_numbers(numbers, frame, mx, my)}
-        process_parts = [moved.get(p.id, p) if isinstance(p, Text) else p for p in process_parts]
+    process_parts = placed_state_numbers(process_parts, frame)
     lines = isoline_items(spec, theme, curves)
     items: List[Item] = list(lines)
     requests = label_requests(spec, theme, curves, lines)
@@ -305,3 +298,25 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Tuple[flo
         items.extend(labels_for(spec, requests, axes, drawn, size, previous_labels))
     items.extend(process_parts)
     return items, axes
+
+
+def overlay_items(spec: DiagramSpec, theme: Theme, cycles) -> List[Item]:
+    """The items of every process and cycle, each with its own palette slot."""
+    parts: List[Item] = []
+    for index, process in enumerate(spec.processes):
+        parts.extend(process_items(spec, theme, process, index))
+    for index, (cycle, (states, chains)) in enumerate(zip(spec.cycles, cycles)):
+        parts.extend(cycle_items(spec, theme, cycle, states, chains, len(spec.processes) + index))
+    return parts
+
+
+def placed_state_numbers(parts: List[Item], frame: Frame) -> List[Item]:
+    """The same items, with the state numbers moved clear of the markers."""
+    numbers = [p for p in parts if isinstance(p, Text)]
+    if not numbers:
+        return parts
+    markers = [m for m in parts if isinstance(m, Markers)]
+    mx = np.concatenate([m.x for m in markers] + [np.array([])])
+    my = np.concatenate([m.y for m in markers] + [np.array([])])
+    moved = {t.id: t for t in place_state_numbers(numbers, frame, mx, my)}
+    return [moved.get(p.id, p) for p in parts]

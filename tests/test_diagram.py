@@ -133,3 +133,13 @@ def test_matplotlib_round_trip(tmp_path, diagram):
         diagram.draw(renderer)
     renderer.save(str(tmp_path / "r290.png"))
     assert (tmp_path / "r290.png").stat().st_size > 1000
+
+
+# Regression tests from the adversarial review of 0.2 ------------------------
+
+def test_no_warnings_from_a_plain_chart():
+    diagram = PropertyDiagram("R290", "Ts", tp_limits="ACHP")
+    diagram.set_default_lines(num=6, rounding=True, labels=True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        diagram.draw(SvgRenderer())

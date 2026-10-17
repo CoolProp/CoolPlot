@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 """Scene diffing and renderers, without any property calculations."""
+import xml.etree.ElementTree as ET
+
 import numpy as np
 import pytest
 
 from coolplot.render.base import Renderer
 from coolplot.render.svg import SvgRenderer
+from coolplot.render.ticks import ticks as _ticks
 from coolplot.scene import AxesSpec, Line, LineStyle, Markers, Scene, Text, items_equal
 from coolplot.core.units import EUR, SI, Unit
 
@@ -206,3 +209,28 @@ def test_svg_and_web_refuse_other_formats(tmp_path):
         WebRenderer().save(str(tmp_path / "chart.svg"))
     SvgRenderer().save(str(tmp_path / "chart.SVG"))
     WebRenderer().save(str(tmp_path / "chart.htm"))
+
+
+# Regression tests from the adversarial review of 0.2 ------------------------
+
+def test_svg_margin_labels_stay_on_the_canvas():
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP")
+    diagram.title = "Margin labels"
+    diagram.settings = diagram.settings.with_(labels={"mode": "margin"})
+    diagram.set_lines("T", num=8, rounding=True, labels=True)
+    renderer = diagram.draw(SvgRenderer())
+    root = ET.fromstring(renderer.to_svg())
+    ns = "{http://www.w3.org/2000/svg}"
+    labels = [g for g in root.iter(ns + "g") if (g.get("class") or "").find("cp-role-isoline_label") >= 0]
+    assert labels
+    for group in labels:
+        text = next(group.iter(ns + "text"))
+        size_px = float(text.get("font-size"))
+        # Vertical text reading upwards from its anchor: its far end
+        assert float(text.get("y")) - 0.6 * size_px * len(text.text) >= 0.0
+
+
+def test_svg_ticks_on_a_narrow_log_range():
+    assert len(_ticks(1.5, 1.9, True)) >= 2

@@ -37,6 +37,21 @@ from .values import (AxesStyle, Dash, Font, LegendStyle, LineStyle, MarkerStyle,
                     opaque_color, style_from_dict, style_to_dict)
 
 
+def _check_slot_dashes(isoline, dashes):
+    """Building the styles once validates every slot dash."""
+    for dash in dashes:
+        isoline.with_(dash=dash)
+
+
+def _pinned_colors(colors, owner: str):
+    """The pinned isoline colours as a read-only mapping (None stays None),
+    so that a preset cannot be changed by accident."""
+    if colors is None:
+        return None
+    pinned = {quantity_key(k): opaque_color(v, owner, "isoline_colors") for k, v in dict(colors).items()}
+    return MappingProxyType(pinned)
+
+
 @dataclass(frozen=True)
 class Theme:
     """All styles of a property diagram
@@ -95,18 +110,12 @@ class Theme:
         # compare equal and stay hashable after a round trip.
         dashes = tuple(d if isinstance(d, str) else tuple(float(v) for v in d) for d in self.slot_dashes)
         object.__setattr__(self, "slot_dashes", dashes or ("solid",))
-        if self.isoline_colors is not None:
-            pinned = {quantity_key(k): opaque_color(v, owner, "isoline_colors")
-                      for k, v in dict(self.isoline_colors).items()}
-            # Read-only view, so a preset cannot be changed by accident.
-            object.__setattr__(self, "isoline_colors", MappingProxyType(pinned))
+        object.__setattr__(self, "isoline_colors", _pinned_colors(self.isoline_colors, owner))
         if not self.processes or not self.state_points:
             raise ValueError("Theme {0!r}: give at least one process and one marker style.".format(self.name))
         object.__setattr__(self, "processes", tuple(self.processes))
         object.__setattr__(self, "state_points", tuple(self.state_points))
-        # Building the styles once validates every slot dash.
-        for dash in self.slot_dashes:
-            self.isoline.with_(dash=dash)
+        _check_slot_dashes(self.isoline, self.slot_dashes)
 
     # Resolution -------------------------------------------------------------
     def isoline_style(self, key: str, families: Sequence[str]) -> LineStyle:

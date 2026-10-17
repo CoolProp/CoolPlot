@@ -59,11 +59,11 @@ on and what "done" means for each release, is in [v1_plan.md](v1_plan.md).
 |---|---|---|---|
 | render/mpl.py | 1102 | C (0) | `describe_item` complexity D (26) |
 | render/svg.py | 827 | C (0) | |
-| render/testing.py | 825 | C (2) | the conformance kit, `run_conformance` 128 lines |
+| testing/kit.py | 825 | C (2) | the conformance kit, `run_conformance` 128 lines |
 | thermo/tracer.py | 799 | A (25) | |
 | render/web.py | 673 | A (25) | server, SSE, inline JavaScript |
 | render/plotly.py | 647 | C (5) | |
-| render/pdf_reader.py | 620 | B (12) | `_read_content` complexity F (49) |
+| testing/pdf_reader.py | 620 | B (12) | `_read_content` complexity F (49) |
 | compose/layout.py | 552 | A (23) | `_candidates` C (20) |
 | diagram.py | 539 | A (36) | `add_cycle` C (20) |
 | compose/psychro.py | 127 | A (57) | `compose_psychro` E (34) |
@@ -204,9 +204,9 @@ curve for p=3e+10").
 
 | Component | Lines | Where it belongs |
 |---|---|---|
-| `render/pdf_reader.py` (PDF parser and writer) | 620 | a test-only module under a `coolplot.testing` extra; `replace_info` through pikepdf or pypdf behind an optional import. Today `render/plotly.py` imports the parser at module level, so every plotly user ships it. |
+| `testing/pdf_reader.py` (PDF parser and writer) | 620 | a test-only module under a `coolplot.testing` extra; `replace_info` through pikepdf or pypdf behind an optional import. Today `render/plotly.py` imports the parser at module level, so every plotly user ships it. |
 | `render/web.py`: `WebServer`, `CLIENT_JS`, `PAGE` | about 350 of 673 | an example or a `coolplot-web` package. `WebRenderer` and its patch protocol stay: the idea is sound and the browser read-back tests depend on it. |
-| `render/testing.py` (conformance kit) | 825 | public, but as `coolplot.testing`, documented as the backend author's tool, not loaded by users. |
+| `testing/kit.py` (conformance kit) | 825 | public, but as `coolplot.testing`, documented as the backend author's tool, not loaded by users. |
 | `engine/background.py` | 304 | keep, but as a small state machine (4.5). |
 | `interaction.py` | 117 | keep, generic over charts (4.1). |
 
@@ -340,7 +340,7 @@ Three parts, split by what they depend on:
    a theme), the edge label layout (it estimates text width from the
    character count and the font size, so it needs no font engine), an
    SVG writer, and a PDF writer with TrueType subsetting (the knowledge
-   is in `render/pdf_reader.py` today). Input: a spec and the polylines
+   is in `testing/pdf_reader.py` today). Input: a spec and the polylines
    from part 1. Output: scene JSON, SVG, PDF. Because it links nothing
    but the C++ standard library, it compiles in CoolProp's wrapper
    builds, to WebAssembly, and into any application, and it can be
@@ -566,7 +566,7 @@ interactive use up to about 100 labels; vectorise `Piece.project` and
 |---|---|---|
 | 0.4 | one `Chart` over a quantity table and property providers; psychrometry as configuration; one compose module; `Interaction` generic; the curve record and the scene JSON schema written down | `compose/psychro.py`, `spec/psychro.py`, the second unit table |
 | 0.5 | frozen vocabulary and units model (4.2, 4.3); `PropertyError`; constructor validation; unit-aware state printing; IP units | old method names (with warnings) |
-| 0.6 | scope split: `coolplot.testing` (kit, PDF check), web server to an example or its own package, PDF parser test-only; background engine and `compute_isoline` as state machines | `render/pdf_reader.py` from the runtime |
+| 0.6 | scope split: `coolplot.testing` (kit, PDF check), web server to an example or its own package, PDF parser test-only; background engine and `compute_isoline` as state machines | `testing/pdf_reader.py` from the runtime |
 | 0.7 | numerics (section 7) in the Python tracer, and the same algorithm proposed upstream for `CoolProp::Plot` with the Python tests as acceptance tests | |
 | 0.8 | documentation set (section 5), gallery, API reference, changelog with upgrade guide | |
 | 0.9 | CoolPlot runs on `CoolProp.Plot` where available, `coolplot-core` feeds the renderers; deprecation period: warnings on, nothing removed | |

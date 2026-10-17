@@ -56,27 +56,12 @@ class FluidSpec:
         components = tuple(str(c).strip() for c in self.components)
         if not components or not all(components):
             raise ValueError("A FluidSpec needs at least one component name.")
-        fractions = tuple(float(f) for f in self.fractions)
-        if fractions and len(fractions) != len(components):
-            raise ValueError("Got {0} fractions for {1} components.".format(len(fractions), len(components)))
-        if any(not 0.0 <= f <= 1.0 for f in fractions):
-            raise ValueError("Fractions have to be between 0 and 1, not {0}.".format(fractions))
-        if len(components) > 1:
-            if not fractions:
-                raise ValueError("A mixture of {0} needs fractions.".format(" & ".join(components)))
-            if abs(sum(fractions) - 1.0) > 1e-6:
-                raise ValueError("The fractions of a mixture have to add up to 1, not {0}.".format(sum(fractions)))
         if self.basis not in BASES:
             raise ValueError("Unknown fraction basis '{0}', expected one of {1}.".format(self.basis, BASES))
-        interactions = tuple((int(i), int(j), str(key), float(value)) for i, j, key, value in self.interactions)
-        for i, j, _, _ in interactions:
-            if not (0 <= i < len(components) and 0 <= j < len(components) and i != j):
-                raise ValueError("Interaction parameter for components ({0}, {1}) of {2}.".format(
-                    i, j, len(components)))
         object.__setattr__(self, "backend", str(self.backend).strip() or "HEOS")
         object.__setattr__(self, "components", components)
-        object.__setattr__(self, "fractions", fractions)
-        object.__setattr__(self, "interactions", interactions)
+        object.__setattr__(self, "fractions", _checked_fractions(components, self.fractions))
+        object.__setattr__(self, "interactions", _checked_interactions(components, self.interactions))
 
     @classmethod
     def parse(cls, text: str, basis: str = None) -> "FluidSpec":
@@ -93,17 +78,7 @@ class FluidSpec:
         backend, sep, names = text.partition("::")
         if not sep:
             backend, names = "HEOS", text
-        components, fractions = [], []
-        for part in names.split("&"):
-            match = _COMPONENT.match(part)
-            if match is None:
-                raise ValueError("Cannot read the fluid string '{0}'.".format(text))
-            components.append(match.group(1))
-            if match.group(2) is not None:
-                try:
-                    fractions.append(float(match.group(2)))
-                except ValueError:
-                    raise ValueError("Cannot read the fraction '{0}' in '{1}'.".format(match.group(2), text))
+        components, fractions = _split_components(names, text)
         if fractions and len(fractions) != len(components):
             raise ValueError("Give a fraction for every component or for none in '{0}'.".format(text))
         if basis is None:
@@ -134,6 +109,47 @@ class FluidSpec:
                    data.get("basis", "mole"), tuple(tuple(x) for x in data.get("interactions", ())))
 
 
+def _split_components(names: str, text: str):
+    """Component names and their fractions (if given) from "R32[0.7]&R125[0.3]"."""
+    components, fractions = [], []
+    for part in names.split("&"):
+        match = _COMPONENT.match(part)
+        if match is None:
+            raise ValueError("Cannot read the fluid string '{0}'.".format(text))
+        components.append(match.group(1))
+        if match.group(2) is not None:
+            try:
+                fractions.append(float(match.group(2)))
+            except ValueError:
+                raise ValueError("Cannot read the fraction '{0}' in '{1}'.".format(match.group(2), text))
+    return components, fractions
+
+
+def _checked_fractions(components, fractions) -> Tuple[float, ...]:
+    """Fractions as floats: one per component or none, between 0 and 1, adding up to 1 for a mixture."""
+    fractions = tuple(float(f) for f in fractions)
+    if fractions and len(fractions) != len(components):
+        raise ValueError("Got {0} fractions for {1} components.".format(len(fractions), len(components)))
+    if any(not 0.0 <= f <= 1.0 for f in fractions):
+        raise ValueError("Fractions have to be between 0 and 1, not {0}.".format(fractions))
+    if len(components) > 1:
+        if not fractions:
+            raise ValueError("A mixture of {0} needs fractions.".format(" & ".join(components)))
+        if abs(sum(fractions) - 1.0) > 1e-6:
+            raise ValueError("The fractions of a mixture have to add up to 1, not {0}.".format(sum(fractions)))
+    return fractions
+
+
+def _checked_interactions(components, interactions) -> Tuple[Tuple[int, int, str, float], ...]:
+    """Binary interaction parameters as (i, j, key, value), between two different components."""
+    checked = tuple((int(i), int(j), str(key), float(value)) for i, j, key, value in interactions)
+    for i, j, _, _ in checked:
+        if not (0 <= i < len(components) and 0 <= j < len(components) and i != j):
+            raise ValueError("Interaction parameter for components ({0}, {1}) of {2}.".format(
+                i, j, len(components)))
+    return checked
+
+
 @dataclass(frozen=True)
 class HumidAirSpec:
     """Humid air at one total pressure, computed with CoolProp's HAPropsSI
@@ -152,8 +168,8 @@ class HumidAirSpec:
         p_Pa = float(self.p_Pa)
         if not within(p_Pa, self.P_LIMITS_PA):
             raise ValueError("The total pressure has to lie between {0} and {1} Pa for HAPropsSI, not {2} Pa "
-                             "(bar with units='engineering', Pa with 'SI').".format(self.P_LIMITS_PA[0], self.P_LIMITS_PA[1],
-                                                                             p_Pa))
+                             "(bar with units='engineering', Pa with 'SI').".format(
+                                 self.P_LIMITS_PA[0], self.P_LIMITS_PA[1], p_Pa))
         object.__setattr__(self, "p_Pa", p_Pa)
 
     @property

@@ -59,7 +59,7 @@ from matplotlib.markers import MarkerStyle as _MplMarker
 from ..core.events import Click, Drag, DragEnd, DragStart, Hover, Resized, ViewChanged
 from ..core.numbers import format_number
 from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
-from ..style.values import dash_pattern_pt
+from ..style.values import AxesStyle, dash_pattern_pt
 from .base import Renderer, SyncReport
 
 _CAPS = {"butt": "butt", "round": "round", "square": "projecting"}
@@ -176,6 +176,87 @@ def _apply_text_style(text, style, strict: bool = False, halo: bool = True):
 
 def _has_halo(style) -> bool:
     return style.halo_color is not None and style.halo_width_pt > 0.0
+
+
+def _alpha(artist) -> float:
+    return 1.0 if artist.get_alpha() is None else artist.get_alpha()
+
+
+def _legend_frame_kwargs(style) -> dict:
+    return dict(labelcolor=style.text.color or "none",
+                frameon=style.background is not None or style.frame_color is not None,
+                facecolor=style.background or "none", edgecolor=style.frame_color or "none", framealpha=1.0)
+
+
+def _legend_location_kwargs(location: str) -> dict:
+    if location == "outside right":
+        return dict(loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.0)
+    return dict(loc=location)
+
+
+def _apply_line(artist, item: Line):
+    s = item.style
+    artist.set_data(item.x, item.y)
+    artist.set_color(s.color or "none")
+    artist.set_alpha(s.alpha)
+    artist.set_linewidth(s.width_pt)
+    artist.set_linestyle(_mpl_dashes(s.dash, s.width_pt))
+    artist.set_solid_capstyle(_CAPS[s.cap])
+    artist.set_dash_capstyle(_CAPS[s.cap])
+    artist.set_solid_joinstyle(s.join)
+    artist.set_dash_joinstyle(s.join)
+    if s.casing_color is not None and s.casing_width_pt > 0.0:
+        artist.set_path_effects([
+            patheffects.Stroke(linewidth=s.width_pt + 2.0 * s.casing_width_pt, foreground=s.casing_color),
+            patheffects.Normal()])
+    else:
+        artist.set_path_effects([])
+    artist.set_visible(item.visible)
+
+
+def _apply_markers(artist, item: Markers):
+    s = item.style
+    artist.set_data(item.x, item.y)
+    artist.set_marker(s.shape)
+    artist.set_markersize(s.size_pt / _marker_scale(s.shape))
+    artist.set_markerfacecolor(s.face_color or "none")
+    artist.set_markeredgecolor(s.edge_color or "none")
+    artist.set_markeredgewidth(s.edge_width_pt)
+    artist.set_alpha(s.alpha)
+    artist.set_visible(item.visible)
+
+
+def _reproducible_metadata(fmt: str, metadata: dict, title: str) -> dict:
+    """File metadata without dates or version strings, so the same scene gives the same file."""
+    if fmt == "png":
+        metadata.setdefault("Software", None)
+    elif fmt == "pdf":
+        for key in ("Creator", "Producer", "CreationDate"):
+            metadata.setdefault(key, None)
+        if title:
+            metadata.setdefault("Title", title)
+    elif fmt == "svg":
+        metadata.setdefault("Date", None)
+    elif fmt in ("ps", "eps"):
+        metadata.setdefault("Creator", "CoolPlot")   # no version string
+    return metadata
+
+
+def _save_rc(fmt: str, pdf_fonts: str) -> dict:
+    """matplotlib settings for one save: fixed SVG ids instead of random ones, and the font type."""
+    rc = {"svg.hashsalt": "coolplot"} if fmt == "svg" else {}
+    if fmt in _FONTTYPE_RC:
+        rc[_FONTTYPE_RC[fmt]] = _fonttype(pdf_fonts)
+    return rc
+
+
+def _strip_postscript_date(path):
+    """PostScript takes its date from the clock (or SOURCE_DATE_EPOCH, for the whole
+    process); the comment line is optional, so it is left out of the file."""
+    with open(path, "rb") as f:
+        data = f.read()
+    with open(path, "wb") as f:
+        f.write(re.sub(rb"%%CreationDate:[^\r\n]*\r?\n", b"", data, count=1))
 
 
 def _marker_scale(shape: str) -> float:
@@ -311,6 +392,7 @@ class MatplotlibRenderer(Renderer):
         self.figure = ax.figure
         self._artists = {}
         self._halos = {}   # item id -> the text artist drawing its halo
+        self._text_angles = {}   # item id -> the data angle its text was given
         self._rank = {}
         # The frame goes above all items. Matplotlib draws grid lines as part
         # of the axis artists, so the axes (with their ticks) stay below the
@@ -342,10 +424,13 @@ class MatplotlibRenderer(Renderer):
                 ax.autoscale(axis=axis)
             else:
                 setter(_safe_limits(limits, log))
-
         for axis, log in ((ax.xaxis, axes.x_log), (ax.yaxis, axes.y_log)):
             _central_tick_format(axis, log, axes.tick_digits)
+        self._set_frame_and_ticks(st)
+        self._set_grid(st)
 
+    def _set_frame_and_ticks(self, st: AxesStyle):
+        ax = self.ax
         ax.set_facecolor(st.background or "none")
         if self.owns_canvas:
             self.figure.set_facecolor(st.figure_background or "none")
@@ -358,6 +443,9 @@ class MatplotlibRenderer(Renderer):
                        labelfontfamily=self._tick_families)
         ax.tick_params(axis="both", which="major", length=st.tick_length_pt)
         ax.tick_params(axis="both", which="minor", length=0.6 * st.tick_length_pt)
+
+    def _set_grid(self, st: AxesStyle):
+        ax = self.ax
         for which, grid in (("major", st.grid_major), ("minor", st.grid_minor)):
             if grid is None or grid.color is None:
                 ax.grid(False, which=which)   # a grid without paint is no grid
@@ -418,21 +506,17 @@ class MatplotlibRenderer(Renderer):
             old.remove()
         if style is None or not style.visible or not entries:
             return
-        # A tuple of artists is drawn as one overlaid sample (HandlerTuple)
-        handles = [tuple(self._artists[i.id] for i in items) if len(items) > 1 else self._artists[items[0].id]
-                   for _, items in entries]
         labels = [text for text, _ in entries]
-        kwargs = dict(loc=style.location)
-        if style.location == "outside right":
-            kwargs = dict(loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.0)
-        legend = self.ax.legend(handles, labels, prop=_font(style.text.font, self.strict_fonts),
-                                labelcolor=style.text.color or "none",
-                                frameon=style.background is not None or style.frame_color is not None,
-                                facecolor=style.background or "none",
-                                edgecolor=style.frame_color or "none", framealpha=1.0, **kwargs)
+        legend = self.ax.legend(self._legend_handles(entries), labels, prop=_font(style.text.font, self.strict_fonts),
+                                **_legend_frame_kwargs(style), **_legend_location_kwargs(style.location))
         legend.set_zorder(_LEGEND_Z)
         for text in legend.get_texts():
             _plain_text(text)
+
+    def _legend_handles(self, entries):
+        """One artist per entry; a tuple of artists is drawn as one overlaid sample (HandlerTuple)."""
+        return [tuple(self._artists[i.id] for i in items) if len(items) > 1 else self._artists[items[0].id]
+                for _, items in entries]
 
     def _finish(self, report: SyncReport):
         if not report.changed:
@@ -449,64 +533,45 @@ class MatplotlibRenderer(Renderer):
     def _apply(self, artist, item: Item):
         """Copy every property of an item onto its artist."""
         artist.set_zorder(_ITEM_BASE + self._rank.get(item.id, len(self._rank)) * _RANK_STEP)
-        s = item.style
         if isinstance(item, Line):
-            artist.set_data(item.x, item.y)
-            artist.set_color(s.color or "none")
-            artist.set_alpha(s.alpha)
-            artist.set_linewidth(s.width_pt)
-            artist.set_linestyle(_mpl_dashes(s.dash, s.width_pt))
-            artist.set_solid_capstyle(_CAPS[s.cap])
-            artist.set_dash_capstyle(_CAPS[s.cap])
-            artist.set_solid_joinstyle(s.join)
-            artist.set_dash_joinstyle(s.join)
-            if s.casing_color is not None and s.casing_width_pt > 0.0:
-                artist.set_path_effects([
-                    patheffects.Stroke(linewidth=s.width_pt + 2.0 * s.casing_width_pt,
-                                       foreground=s.casing_color),
-                    patheffects.Normal()])
-            else:
-                artist.set_path_effects([])
-            artist.set_visible(item.visible)
+            _apply_line(artist, item)
         elif isinstance(item, Markers):
-            artist.set_data(item.x, item.y)
-            artist.set_marker(s.shape)
-            artist.set_markersize(s.size_pt / _marker_scale(s.shape))
-            artist.set_markerfacecolor(s.face_color or "none")
-            artist.set_markeredgecolor(s.edge_color or "none")
-            artist.set_markeredgewidth(s.edge_width_pt)
-            artist.set_alpha(s.alpha)
-            artist.set_visible(item.visible)
+            _apply_markers(artist, item)
         elif isinstance(item, Text):
-            artist.set_position((item.x, item.y))
-            artist.set_text(item.text)
-            # The offset is a shift in points after the data transform; it
-            # does not change the angle computed by transform_rotates_text.
-            from matplotlib.transforms import ScaledTranslation
-            dx, dy = item.offset_pt
-            transform = self.ax.transData
-            if dx or dy:
-                transform = transform + ScaledTranslation(dx / 72.0, dy / 72.0, self.figure.dpi_scale_trans)
-            artist.set_transform(transform)
-            artist.set_clip_on(item.clip)
-            if item.clip:
-                artist.set_clip_path(self.ax.patch)
-            _apply_text_style(artist, s, self.strict_fonts, halo=False)
-            artist.set_horizontalalignment(s.h_align)
-            artist.set_verticalalignment(s.v_align)
-            # With transform_rotates_text, matplotlib interprets the rotation
-            # as an angle in data coordinates and converts it to a screen
-            # angle at every draw, so labels stay aligned after zooming,
-            # resizing and on log axes. Keeping the data angle within
-            # +-90 degrees keeps the screen angle upright as well, because
-            # the axes are never inverted.
-            if item.direction is None:
-                artist.set_rotation(0.0)
-            else:
-                dx, dy = item.direction
-                artist.set_rotation(_upright(math.degrees(math.atan2(dy, dx))))
-            artist.set_visible(item.visible and math.isfinite(item.x) and math.isfinite(item.y))
-            self._apply_halo(item, artist)
+            self._apply_text(artist, item)
+
+    def _apply_text(self, artist, item: Text):
+        s = item.style
+        artist.set_position((item.x, item.y))
+        artist.set_text(item.text)
+        # The offset is a shift in points after the data transform; it
+        # does not change the angle computed by transform_rotates_text.
+        from matplotlib.transforms import ScaledTranslation
+        dx, dy = item.offset_pt
+        transform = self.ax.transData
+        if dx or dy:
+            transform = transform + ScaledTranslation(dx / 72.0, dy / 72.0, self.figure.dpi_scale_trans)
+        artist.set_transform(transform)
+        artist.set_clip_on(item.clip)
+        if item.clip:
+            artist.set_clip_path(self.ax.patch)
+        _apply_text_style(artist, s, self.strict_fonts, halo=False)
+        artist.set_horizontalalignment(s.h_align)
+        artist.set_verticalalignment(s.v_align)
+        # With transform_rotates_text, matplotlib interprets the rotation
+        # as an angle in data coordinates and converts it to a screen
+        # angle at every draw, so labels stay aligned after zooming,
+        # resizing and on log axes. Keeping the data angle within
+        # +-90 degrees keeps the screen angle upright as well, because
+        # the axes are never inverted.
+        angle = 0.0
+        if item.direction is not None:
+            dx, dy = item.direction
+            angle = _upright(math.degrees(math.atan2(dy, dx)))
+        artist.set_rotation(angle)
+        self._text_angles[item.id] = angle
+        artist.set_visible(item.visible and math.isfinite(item.x) and math.isfinite(item.y))
+        self._apply_halo(item, artist)
 
     def _apply_halo(self, item: Text, artist):
         """Create, update or remove the halo artist of a text item."""
@@ -529,7 +594,7 @@ class MatplotlibRenderer(Renderer):
         halo.set_fontproperties(artist.get_fontproperties())
         halo.set_horizontalalignment(artist.get_horizontalalignment())
         halo.set_verticalalignment(artist.get_verticalalignment())
-        halo.set_rotation(artist._rotation)   # private: the angle as set, before transform_rotates_text
+        halo.set_rotation(self._text_angles.get(item.id, 0.0))   # the angle as set, before transform_rotates_text
         halo.set_color(s.halo_color)
         halo.set_alpha(s.alpha)
         halo.set_path_effects([patheffects.Stroke(linewidth=2.0 * s.halo_width_pt, foreground=s.halo_color)])
@@ -604,6 +669,10 @@ class MatplotlibRenderer(Renderer):
                 item_id, index = self._hit(event)
                 self._emit(Hover(x, y, item_id, index))
             return
+        self._drag_motion(event, press)
+
+    def _drag_motion(self, event, press: dict):
+        """A pointer moving with a button held: a click's jitter, or a drag."""
         x, y = self._data(event)
         press["last"] = (x, y)
         ratio = getattr(self.figure.canvas, "device_pixel_ratio", 1.0) or 1.0   # event pixels are physical
@@ -692,72 +761,89 @@ class MatplotlibRenderer(Renderer):
         artist = self._artists[item_id]   # KeyError for unknown ids, as required
         item = self._drawn[item_id]
         out = {"visible": bool(artist.get_visible()), "clip": bool(artist.get_clip_on())}
-        alpha = 1.0 if artist.get_alpha() is None else artist.get_alpha()
         if isinstance(item, Line):
-            stroke = _stroke_effect(artist)
-            offset, seq = getattr(artist, "_dash_pattern", (0.0, None))   # private: final dashes in points
-            dash = tuple(seq) if seq else ()
-            width = artist.get_linewidth()
-            # A dashed line is drawn with the dash cap and join styles
-            cap = artist.get_dash_capstyle() if dash else artist.get_solid_capstyle()
-            join = artist.get_dash_joinstyle() if dash else artist.get_solid_joinstyle()
-            out.update(kind="line", color=_hex_or_none(artist.get_color()) if _draws_itself(artist) else None,
-                       alpha=alpha, width_pt=width, dash_pt=dash, cap=_CAPS_BACK[cap], join=join,
-                       n_points=self._n_drawable(artist), drawn_points=self._drawn_points(artist))
-            if stroke is not None:
-                gc = stroke._gc   # private: the overrides the Stroke effect applies
-                out.update(casing_color=_hex_or_none(gc["foreground"]),
-                           casing_width_pt=(gc["linewidth"] - width) / 2.0,
-                           casing_dash_pt=dash if "dashes" not in gc else tuple(gc["dashes"][1] or ()),
-                           casing_alpha=gc.get("alpha", alpha))
-            else:
-                out.update(casing_color=None, casing_width_pt=0.0)
+            out.update(self._describe_line(artist))
         elif isinstance(item, Markers):
-            shape = artist.get_marker()
-            out.update(kind="markers", shape=shape,
-                       size_pt=artist.get_markersize() * _marker_scale(shape),
-                       face_color=None if shape in ("x", "+") else _hex_or_none(artist.get_markerfacecolor()),
-                       edge_color=_hex_or_none(artist.get_markeredgecolor()),
-                       edge_width_pt=artist.get_markeredgewidth(), alpha=alpha,
-                       n_points=self._n_drawable(artist), drawn_points=self._drawn_points(artist),
-                       connected=artist.get_linestyle() not in ("None", "none", "", " "))
+            out.update(self._describe_markers(artist))
         elif isinstance(item, Text):
-            halo = self._halos.get(item_id)
-            # The halo counts only where it really sits under this label: same text, place, angle and font
-            matches = halo is not None and halo.get_visible() and (
-                halo.get_text() == artist.get_text() and halo.get_position() == artist.get_position()
-                and halo.get_rotation() == artist.get_rotation()
-                and halo.get_fontproperties() == artist.get_fontproperties()
-                and artist.get_zorder() - _RANK_STEP < halo.get_zorder() < artist.get_zorder())
-            stroke = _stroke_effect(halo) if matches else None
-            weight = artist.get_fontweight()
-            if not isinstance(weight, str):
-                weight = "bold" if weight >= 600 else "normal"
-            # get_rotation applies the data-to-screen transform because of
-            # transform_rotates_text, so this is the angle on screen.
-            angle = artist.get_rotation() if out["visible"] else 0.0
-            angle = (angle + 180.0) % 360.0 - 180.0
-            out.update(kind="text", text=artist.get_text(), font_family=tuple(artist.get_fontfamily()),
-                       font_used=_font_file_family(artist)[0],
-                       font_size_pt=artist.get_fontsize(), font_weight=weight,
-                       font_style=artist.get_fontstyle(), color=_hex_or_none(artist.get_color()),
-                       alpha=alpha, h_align=artist.get_horizontalalignment(),
-                       v_align=artist.get_verticalalignment(),
-                       halo_color=_hex_or_none(stroke._gc["foreground"]) if stroke else None,   # private
-                       halo_width_pt=stroke._gc["linewidth"] / 2.0 if stroke else 0.0,
-                       screen_angle_deg=angle)
-            # Offset: where the text transform puts the anchor, compared with
-            # the plain data transform, in points
-            position = artist.get_position()
-            drawn = artist.get_transform().transform(position)
-            plain = self.ax.transData.transform(position)
-            scale = 72.0 / self.figure.dpi
-            out["offset_pt"] = (float(drawn[0] - plain[0]) * scale, float(drawn[1] - plain[1]) * scale)
-            fx, fy = self.ax.transAxes.inverted().transform(drawn)
-            out["drawn_points"] = [(float(fx), float(fy))]
+            out.update(self._describe_text(item_id, artist, out["visible"]))
         if out["visible"]:
             out["draw_rank"] = self._draw_rank(item_id)
         return out
+
+    def _describe_line(self, artist) -> dict:
+        alpha = _alpha(artist)
+        stroke = _stroke_effect(artist)
+        offset, seq = getattr(artist, "_dash_pattern", (0.0, None))   # private: final dashes in points
+        dash = tuple(seq) if seq else ()
+        width = artist.get_linewidth()
+        # A dashed line is drawn with the dash cap and join styles
+        cap = artist.get_dash_capstyle() if dash else artist.get_solid_capstyle()
+        join = artist.get_dash_joinstyle() if dash else artist.get_solid_joinstyle()
+        out = dict(kind="line", color=_hex_or_none(artist.get_color()) if _draws_itself(artist) else None,
+                   alpha=alpha, width_pt=width, dash_pt=dash, cap=_CAPS_BACK[cap], join=join,
+                   n_points=self._n_drawable(artist), drawn_points=self._drawn_points(artist))
+        if stroke is not None:
+            gc = stroke._gc   # private: the overrides the Stroke effect applies
+            out.update(casing_color=_hex_or_none(gc["foreground"]),
+                       casing_width_pt=(gc["linewidth"] - width) / 2.0,
+                       casing_dash_pt=dash if "dashes" not in gc else tuple(gc["dashes"][1] or ()),
+                       casing_alpha=gc.get("alpha", alpha))
+        else:
+            out.update(casing_color=None, casing_width_pt=0.0)
+        return out
+
+    def _describe_markers(self, artist) -> dict:
+        shape = artist.get_marker()
+        return dict(kind="markers", shape=shape,
+                    size_pt=artist.get_markersize() * _marker_scale(shape),
+                    face_color=None if shape in ("x", "+") else _hex_or_none(artist.get_markerfacecolor()),
+                    edge_color=_hex_or_none(artist.get_markeredgecolor()),
+                    edge_width_pt=artist.get_markeredgewidth(), alpha=_alpha(artist),
+                    n_points=self._n_drawable(artist), drawn_points=self._drawn_points(artist),
+                    connected=artist.get_linestyle() not in ("None", "none", "", " "))
+
+    def _describe_text(self, item_id: str, artist, visible: bool) -> dict:
+        halo = self._matching_halo(item_id, artist)
+        stroke = _stroke_effect(halo) if halo is not None else None
+        weight = artist.get_fontweight()
+        if not isinstance(weight, str):
+            weight = "bold" if weight >= 600 else "normal"
+        # get_rotation applies the data-to-screen transform because of
+        # transform_rotates_text, so this is the angle on screen.
+        angle = artist.get_rotation() if visible else 0.0
+        angle = (angle + 180.0) % 360.0 - 180.0
+        out = dict(kind="text", text=artist.get_text(), font_family=tuple(artist.get_fontfamily()),
+                   font_used=_font_file_family(artist)[0],
+                   font_size_pt=artist.get_fontsize(), font_weight=weight,
+                   font_style=artist.get_fontstyle(), color=_hex_or_none(artist.get_color()),
+                   alpha=_alpha(artist), h_align=artist.get_horizontalalignment(),
+                   v_align=artist.get_verticalalignment(),
+                   halo_color=_hex_or_none(stroke._gc["foreground"]) if stroke else None,   # private
+                   halo_width_pt=stroke._gc["linewidth"] / 2.0 if stroke else 0.0,
+                   screen_angle_deg=angle)
+        # Offset: where the text transform puts the anchor, compared with
+        # the plain data transform, in points
+        position = artist.get_position()
+        drawn = artist.get_transform().transform(position)
+        plain = self.ax.transData.transform(position)
+        scale = 72.0 / self.figure.dpi
+        out["offset_pt"] = (float(drawn[0] - plain[0]) * scale, float(drawn[1] - plain[1]) * scale)
+        fx, fy = self.ax.transAxes.inverted().transform(drawn)
+        out["drawn_points"] = [(float(fx), float(fy))]
+        return out
+
+    def _matching_halo(self, item_id: str, artist):
+        """The halo artist of a text, only where it really sits under this
+        label: same text, place, angle and font, just below it."""
+        halo = self._halos.get(item_id)
+        if halo is None or not halo.get_visible():
+            return None
+        matches = (halo.get_text() == artist.get_text() and halo.get_position() == artist.get_position()
+                   and halo.get_rotation() == artist.get_rotation()
+                   and halo.get_fontproperties() == artist.get_fontproperties()
+                   and artist.get_zorder() - _RANK_STEP < halo.get_zorder() < artist.get_zorder())
+        return halo if matches else None
 
     def describe_axes(self) -> dict:
         ax = self.ax
@@ -781,13 +867,7 @@ class MatplotlibRenderer(Renderer):
             legend=self._legend_description(),
         )
         if grid_on:
-            seq = getattr(gridline, "_dash_pattern", (0.0, None))[1]   # private: final dashes
-            items_z = [a.get_zorder() for a in self._artists.values()]
-            out.update(grid_width_pt=gridline.get_linewidth(), grid_dash_pt=tuple(seq) if seq else (),
-                       # the axis artist draws the grid, so its z order counts
-                       grid_below_items=not items_z or ax.xaxis.get_zorder() < min(items_z),
-                       grid_lines=self._count_in_view(ax.xaxis.get_majorticklocs(), x_lim)
-                       + self._count_in_view(ax.yaxis.get_majorticklocs(), y_lim))
+            out.update(self._grid_description(gridline, x_lim, y_lim))
         out.update(self._extra_axes_description(tick, spine))
         location = self._legend_location()
         if location is not None:
@@ -798,8 +878,23 @@ class MatplotlibRenderer(Renderer):
         out.update(_font_description("y_label", ax.yaxis.label))
         out.update(_font_description("title", ax.title))
         out.update(_font_description("tick_label", tick.label1, full=False))
-        # Tick label texts as the axis formatters write them
-        for name, axis, limits in (("x", ax.xaxis, x_lim), ("y", ax.yaxis, y_lim)):
+        out.update(self._tick_label_texts(x_lim, y_lim))
+        return out
+
+    def _grid_description(self, gridline, x_lim, y_lim) -> dict:
+        ax = self.ax
+        seq = getattr(gridline, "_dash_pattern", (0.0, None))[1]   # private: final dashes
+        items_z = [a.get_zorder() for a in self._artists.values()]
+        return dict(grid_width_pt=gridline.get_linewidth(), grid_dash_pt=tuple(seq) if seq else (),
+                    # the axis artist draws the grid, so its z order counts
+                    grid_below_items=not items_z or ax.xaxis.get_zorder() < min(items_z),
+                    grid_lines=self._count_in_view(ax.xaxis.get_majorticklocs(), x_lim)
+                    + self._count_in_view(ax.yaxis.get_majorticklocs(), y_lim))
+
+    def _tick_label_texts(self, x_lim, y_lim) -> dict:
+        """Tick label texts as the axis formatters write them."""
+        out = {}
+        for name, axis, limits in (("x", self.ax.xaxis, x_lim), ("y", self.ax.yaxis, y_lim)):
             locations = [v for v in axis.get_majorticklocs() if limits[0] <= v <= limits[1]]
             texts = axis.get_major_formatter().format_ticks(locations)
             out[name + "_tick_labels"] = [(float(v), t) for v, t in zip(locations, texts) if t]
@@ -831,19 +926,24 @@ class MatplotlibRenderer(Renderer):
                                  and sp.get_linewidth() == width)
         items_z = [a.get_zorder() for a in self._artists.values()]
         out["items_below_frame"] = not items_z or max(items_z) < min(sp.get_zorder() for sp in ax.spines.values())
-        legend = ax.get_legend()
-        if legend is not None:
-            out["items_below_legend"] = not items_z or max(items_z) < legend.get_zorder()
-            out["legend_background"] = _hex_or_none(legend.get_frame().get_facecolor())
-            texts = legend.get_texts()
-            if texts:
-                out.update(_font_description("legend", texts[0], full=False))
+        out.update(self._legend_extra(items_z))
         # matplotlib creates tick objects lazily and copies the first one's
         # properties, so the first gridline of each axis speaks for all
         if x_tick.gridline.get_visible():
             out["x_grid_lines"] = self._count_in_view(ax.xaxis.get_majorticklocs(), ax.get_xlim())
         if y_tick.gridline.get_visible():
             out["y_grid_lines"] = self._count_in_view(ax.yaxis.get_majorticklocs(), ax.get_ylim())
+        return out
+
+    def _legend_extra(self, items_z) -> dict:
+        legend = self.ax.get_legend()
+        if legend is None:
+            return {}
+        out = dict(items_below_legend=not items_z or max(items_z) < legend.get_zorder(),
+                   legend_background=_hex_or_none(legend.get_frame().get_facecolor()))
+        texts = legend.get_texts()
+        if texts:
+            out.update(_font_description("legend", texts[0], full=False))
         return out
 
     @staticmethod
@@ -953,33 +1053,15 @@ class MatplotlibRenderer(Renderer):
         matplotlib's savefig.
         """
         fmt = (kwargs.get("format") or os.path.splitext(str(path))[1].lstrip(".") or "png").lower()
-        metadata = dict(kwargs.pop("metadata", None) or {})
-        rc = {}
-        if fmt == "png":
-            metadata.setdefault("Software", None)
-        elif fmt == "pdf":
-            for key in ("Creator", "Producer", "CreationDate"):
-                metadata.setdefault(key, None)
-            if self._axes is not None and self._axes.title:
-                metadata.setdefault("Title", self._axes.title)
-        elif fmt == "svg":
-            metadata.setdefault("Date", None)
-            rc["svg.hashsalt"] = "coolplot"   # fixed ids instead of random ones
-        elif fmt in ("ps", "eps"):
-            metadata.setdefault("Creator", "CoolPlot")   # no version string
+        title = self._axes.title if self._axes is not None else ""
+        metadata = _reproducible_metadata(fmt, dict(kwargs.pop("metadata", None) or {}), title)
         if metadata:
             kwargs["metadata"] = metadata
-        if fmt in _FONTTYPE_RC:
-            rc[_FONTTYPE_RC[fmt]] = _fonttype(pdf_fonts)
-        with matplotlib.rc_context(rc), self._truetype_fonts(fmt in _FONTTYPE_RC and pdf_fonts == "truetype"):
+        with matplotlib.rc_context(_save_rc(fmt, pdf_fonts)), \
+                self._truetype_fonts(fmt in _FONTTYPE_RC and pdf_fonts == "truetype"):
             self.figure.savefig(path, **kwargs)
         if fmt in ("ps", "eps") and isinstance(path, (str, os.PathLike)):
-            # PostScript takes its date from the clock (or SOURCE_DATE_EPOCH, for the whole
-            # process); the comment line is optional, so it is left out of the file
-            with open(path, "rb") as f:
-                data = f.read()
-            with open(path, "wb") as f:
-                f.write(re.sub(rb"%%CreationDate:[^\r\n]*\r?\n", b"", data, count=1))
+            _strip_postscript_date(path)
 
     @staticmethod
     def save_pages(path, renderers, pdf_fonts: str = "truetype", metadata: dict = None):
@@ -1018,16 +1100,12 @@ class MatplotlibRenderer(Renderer):
         tick_families = None
         try:
             self.figure.draw_without_rendering()   # creates the tick labels
-            ticks = {id(label) for axis in (self.ax.xaxis, self.ax.yaxis)
-                     for tick in axis.get_major_ticks() + axis.get_minor_ticks() for label in (tick.label1, tick.label2)}
+            ticks = self._tick_label_ids()
             for text in _visible_texts(self.figure):
-                families = list(text.get_fontfamily())
-                weight, style = text.get_fontweight(), text.get_fontstyle()
-                keep, dropped = _embeddable(families, weight, style)
-                if not dropped:
+                keep = self._embeddable_families(text)
+                if keep is None:
                     continue
-                self._report_cff(families, keep, dropped, weight, style)
-                changed.append((text, families))
+                changed.append((text, list(text.get_fontfamily())))
                 text.set_fontfamily(keep)
                 if id(text) in ticks:
                     tick_families = keep
@@ -1040,6 +1118,20 @@ class MatplotlibRenderer(Renderer):
                 text.set_fontfamily(families)
             if tick_families is not None:
                 self.ax.tick_params(axis="both", which="both", labelfontfamily=self._tick_families)
+
+    def _tick_label_ids(self):
+        return {id(label) for axis in (self.ax.xaxis, self.ax.yaxis)
+                for tick in axis.get_major_ticks() + axis.get_minor_ticks() for label in (tick.label1, tick.label2)}
+
+    def _embeddable_families(self, text):
+        """The family list of a text without CFF fonts, or None if nothing has to change."""
+        families = list(text.get_fontfamily())
+        weight, style = text.get_fontweight(), text.get_fontstyle()
+        keep, dropped = _embeddable(families, weight, style)
+        if not dropped:
+            return None
+        self._report_cff(families, keep, dropped, weight, style)
+        return keep
 
     def _report_cff(self, families, keep, dropped, weight, style):
         """Warn (or with strict_fonts, raise) about fonts left out of an embedded file."""

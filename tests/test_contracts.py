@@ -11,7 +11,7 @@ import json
 import numpy as np
 import pytest
 
-from coolplot.render.testing import conformance_scene
+from coolplot.testing import conformance_scene
 from coolplot.scene import Scene, items_equal
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")

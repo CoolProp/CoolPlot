@@ -143,17 +143,25 @@ class Text(Item):
 
     def __post_init__(self):
         super().__post_init__()
-        offset = tuple(float(v) for v in self.offset_pt)
-        if len(offset) != 2 or not all(math.isfinite(v) for v in offset):
-            raise ValueError("Text {0!r}: offset_pt has to be two finite numbers.".format(self.id))
-        object.__setattr__(self, "offset_pt", offset)
+        object.__setattr__(self, "offset_pt", _finite_pair(self.offset_pt, "Text {0!r}: offset_pt".format(self.id)))
         object.__setattr__(self, "clip", bool(self.clip))
         if self.direction is not None:
-            direction = tuple(float(v) for v in self.direction)
-            if len(direction) != 2 or not all(math.isfinite(v) for v in direction) or direction == (0.0, 0.0):
+            direction = _finite_pair(self.direction, "Text {0!r}: direction".format(self.id))
+            if direction == (0.0, 0.0):
                 raise ValueError("Text {0!r}: direction has to be two finite numbers, not both zero, or None; "
                                  "got {1}.".format(self.id, self.direction))
             object.__setattr__(self, "direction", direction)
+
+
+def _finite_pair(values, what: str) -> Tuple[float, float]:
+    """Two finite floats, or ValueError naming ``what``."""
+    try:
+        pair = tuple(float(v) for v in values)
+    except (TypeError, ValueError):
+        pair = ()
+    if len(pair) != 2 or not all(math.isfinite(v) for v in pair):
+        raise ValueError("{0} has to be two finite numbers, not {1!r}.".format(what, values))
+    return pair
 
 
 def items_equal(a: Item, b: Item) -> bool:
@@ -166,17 +174,16 @@ def items_equal(a: Item, b: Item) -> bool:
         return True
     if type(a) is not type(b):
         return False
-    for f in fields(a):
-        va = getattr(a, f.name)
-        vb = getattr(b, f.name)
-        if isinstance(va, np.ndarray) or isinstance(vb, np.ndarray):
-            if not np.array_equal(va, vb, equal_nan=True):
-                return False
-        elif isinstance(va, float) and isinstance(vb, float) and math.isnan(va) and math.isnan(vb):
-            continue   # a text at NaN stays where it is, like a NaN in an array
-        elif va != vb:
-            return False
-    return True
+    return all(_values_equal(getattr(a, f.name), getattr(b, f.name)) for f in fields(a))
+
+
+def _values_equal(va, vb) -> bool:
+    """Field values compared by value; NaN equals NaN, so a text at NaN stays where it is."""
+    if isinstance(va, np.ndarray) or isinstance(vb, np.ndarray):
+        return bool(np.array_equal(va, vb, equal_nan=True))
+    if isinstance(va, float) and isinstance(vb, float) and math.isnan(va) and math.isnan(vb):
+        return True
+    return va == vb
 
 
 # ---------------------------------------------------------------------------

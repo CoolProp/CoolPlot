@@ -16,7 +16,7 @@ check are marked "(manual)" there.
 
 Usage in a test suite::
 
-    from coolplot.render.testing import run_conformance
+    from coolplot.testing import run_conformance
     def test_my_backend():
         assert run_conformance(MyRenderer) == []
 """

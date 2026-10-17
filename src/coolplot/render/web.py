@@ -23,19 +23,16 @@ exactly the same path. Dragging empty space pans and the mouse wheel
 zooms; both arrive as ``ViewChanged``.
 
 Messages go to the functions registered with :meth:`WebRenderer.listen`.
-:class:`WebServer` is a small development server without dependencies:
-it serves the page, streams the messages with server-sent events and
-receives the input. For production, connect ``listen`` and ``receive`` to
-your own web framework or websocket.
+Connect ``listen`` and ``receive`` to your own web framework or
+websocket; ``examples/web_app/server.py`` is a small development server
+without dependencies that shows how (page, server-sent events, input).
 """
 from __future__ import annotations
 
 import html
 import json
 import math
-import queue
 import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable, Dict, List, Optional, Tuple
 from xml.etree import ElementTree
 from xml.sax.saxutils import quoteattr
@@ -152,6 +149,41 @@ body {{ margin: 0; }}
 """
 
 
+def _nearest(distances, reach: float):
+    """The index of the smallest distance if it is within reach, else None."""
+    distances = np.asarray(distances, dtype=float)
+    if not len(distances):
+        return None
+    distances[~np.isfinite(distances)] = np.inf
+    return int(np.argmin(distances)) if distances.min() <= reach else None
+
+
+def _segment_distances(xs, ys, px, py):
+    """Distance from (px, py) to every segment of a polyline, in px."""
+    if len(xs) < 2:
+        return np.array([])
+    ax, ay, ex, ey = xs[:-1], ys[:-1], xs[1:], ys[1:]
+    dx, dy = ex - ax, ey - ay
+    length2 = dx * dx + dy * dy
+    with np.errstate(invalid="ignore", divide="ignore"):
+        t = np.clip(((px - ax) * dx + (py - ay) * dy) / length2, 0.0, 1.0)
+    return np.hypot(ax + t * dx - px, ay + t * dy - py)
+
+
+def _checked_view_message(message: dict, number) -> dict:
+    limits = [message.get("x_limits"), message.get("y_limits")]
+    if not all(isinstance(v, (list, tuple)) and len(v) == 2 for v in limits):
+        raise ValueError("A view message needs x_limits and y_limits, two numbers each.")
+    return {"type": "view", "x_limits": tuple(number(v) for v in limits[0]),
+            "y_limits": tuple(number(v) for v in limits[1])}
+
+
+def _checked_button(button) -> int:
+    if button not in (1, 2, 3, 4, 5):
+        raise ValueError("Unknown mouse button {0!r}.".format(button))
+    return int(button)
+
+
 class WebRenderer(SvgRenderer):
     """Stream a scene to browsers, see the module docstring
 
@@ -229,19 +261,23 @@ class WebRenderer(SvgRenderer):
             self._send({"op": "reset", "svg": "\n".join([head, '<g class="cp-items">'] + [e for _, e in items]
                                                        + ["</g>", tail])})
         else:
-            current = dict(items)
-            for item_id, element in items:
-                if self._sent_items.get(item_id) != element:
-                    self._send({"op": "put", "id": item_id, "svg": element})
-            for item_id in self._sent_items:
-                if item_id not in current:
-                    self._send({"op": "remove", "id": item_id})
-            order = [i for i, _ in items]
-            if order != [i for i in self._sent_order if i in current]:
-                self._send({"op": "order", "ids": order})
+            self._send_patches(items)
         self._sent_head, self._sent_tail = head, tail
         self._sent_items = dict(items)
         self._sent_order = [i for i, _ in items]
+
+    def _send_patches(self, items):
+        """Only what changed since the last message: new or changed elements, removals, the order."""
+        current = dict(items)
+        for item_id, element in items:
+            if self._sent_items.get(item_id) != element:
+                self._send({"op": "put", "id": item_id, "svg": element})
+        for item_id in self._sent_items:
+            if item_id not in current:
+                self._send({"op": "remove", "id": item_id})
+        order = [i for i, _ in items]
+        if order != [i for i in self._sent_order if i in current]:
+            self._send({"op": "order", "ids": order})
 
     # The page -----------------------------------------------------------------
     def page(self, stream: Optional[str] = None, input: Optional[str] = None, title: str = "CoolPlot") -> str:
@@ -314,19 +350,12 @@ class WebRenderer(SvgRenderer):
 
         kind = message.get("type")
         if kind == "view":
-            limits = [message.get("x_limits"), message.get("y_limits")]
-            if not all(isinstance(v, (list, tuple)) and len(v) == 2 for v in limits):
-                raise ValueError("A view message needs x_limits and y_limits, two numbers each.")
-            return {"type": kind, "x_limits": tuple(number(v) for v in limits[0]),
-                    "y_limits": tuple(number(v) for v in limits[1])}
+            return _checked_view_message(message, number)
         if kind not in ("move", "press", "release", "wheel"):
             raise ValueError("Unknown input type {0!r}.".format(kind))
         out = {"type": kind, "px": number(message.get("px")), "py": number(message.get("py"))}
         if kind in ("press", "release"):
-            button = message.get("button", 1)
-            if button not in (1, 2, 3, 4, 5):
-                raise ValueError("Unknown mouse button {0!r}.".format(button))
-            out["button"] = int(button)
+            out["button"] = _checked_button(message.get("button", 1))
         if kind == "wheel":
             out["delta"] = number(message.get("delta", 0.0))
         return out
@@ -349,20 +378,26 @@ class WebRenderer(SvgRenderer):
             if kind == "move":
                 self._on_move(px, py, x, y)
             elif kind == "press":
-                item_id, index = self._hit(px, py)
-                draggable = isinstance(self._items.get(item_id), Markers) and index is not None
-                self._press = dict(item_id=item_id, index=index, draggable=draggable, px=px, py=py,
-                                   limits=tuple(self._limits()), moved=False, button=message["button"])
+                self._on_press(px, py, message["button"])
             elif kind == "release":
-                press, self._press = self._press, None
-                if press is None:
-                    return
-                if press["moved"] and press["draggable"]:
-                    self._emit(DragEnd(press["item_id"], press["index"], x, y))
-                elif not press["moved"]:
-                    self._emit(Click(x, y, press["item_id"], press["index"], press["button"]))
+                self._on_release(x, y)
             elif kind == "wheel":
                 self._zoom(px, py, message["delta"])
+
+    def _on_press(self, px, py, button):
+        item_id, index = self._hit(px, py)
+        draggable = isinstance(self._items.get(item_id), Markers) and index is not None
+        self._press = dict(item_id=item_id, index=index, draggable=draggable, px=px, py=py,
+                           limits=tuple(self._limits()), moved=False, button=button)
+
+    def _on_release(self, x, y):
+        press, self._press = self._press, None
+        if press is None:
+            return
+        if press["moved"] and press["draggable"]:
+            self._emit(DragEnd(press["item_id"], press["index"], x, y))
+        elif not press["moved"]:
+            self._emit(Click(x, y, press["item_id"], press["index"], press["button"]))
 
     def _on_move(self, px, py, x, y):
         press = self._press
@@ -425,25 +460,34 @@ class WebRenderer(SvgRenderer):
         axes = self._axes or AxesSpec()
         out = []
         for limits, log in zip(view, (axes.x_log, axes.y_log)):
-            if len(limits) == 3:
-                a, b, log = limits
-            else:
-                lo, hi = limits
-                if log and not (lo > 0.0 and hi > 0.0):
-                    return None
-                a, b = (math.log10(lo), math.log10(hi)) if log else (lo, hi)
-            if not (math.isfinite(a) and math.isfinite(b) and b > a):
+            checked = self._valid_axis_limits(limits, log)
+            if checked is None:
                 return None
-            if log:
-                if not (-300.0 < a and b < 300.0 and self.MIN_SPAN < b - a <= self.MAX_DECADES):
-                    return None
-                out.append((10.0 ** a, 10.0 ** b))
-            else:
-                size = max(abs(a), abs(b))
-                if not (b - a > self.MIN_SPAN * size and size < 1e300):
-                    return None
-                out.append((a, b))
+            out.append(checked)
         return tuple(out)
+
+    def _valid_axis_limits(self, limits, log: bool):
+        """(lo, hi) of one axis in data values, or None when the limits are not usable."""
+        if len(limits) == 3:
+            a, b, log = limits
+        else:
+            lo, hi = limits
+            if log and not (lo > 0.0 and hi > 0.0):
+                return None
+            a, b = (math.log10(lo), math.log10(hi)) if log else (lo, hi)
+        if not (math.isfinite(a) and math.isfinite(b) and b > a):
+            return None
+        return self._log_axis_limits(a, b) if log else self._linear_axis_limits(a, b)
+
+    def _log_axis_limits(self, a: float, b: float):
+        """Decades a to b as data values, unless the span is too small, too large or would overflow."""
+        usable = -300.0 < a and b < 300.0 and self.MIN_SPAN < b - a <= self.MAX_DECADES
+        return (10.0 ** a, 10.0 ** b) if usable else None
+
+    def _linear_axis_limits(self, a: float, b: float):
+        size = max(abs(a), abs(b))
+        usable = b - a > self.MIN_SPAN * size and size < 1e300
+        return (a, b) if usable else None
 
     def _from_px(self, px: float, py: float) -> Tuple[float, float]:
         axes = self._axes or AxesSpec()
@@ -471,20 +515,11 @@ class WebRenderer(SvgRenderer):
             xs, ys = (np.asarray(v, dtype=float) for v in to_px(item.x, item.y))
             if isinstance(item, Markers):
                 reach = max(radius, item.style.size_pt * PX_PER_PT / 2.0)
-                dist = np.hypot(xs - px, ys - py)
-                dist[~np.isfinite(dist)] = np.inf
-                if len(dist) and dist.min() <= reach:
-                    return item_id, int(np.argmin(dist))
-            elif len(xs) >= 2:
-                ax, ay, ex, ey = xs[:-1], ys[:-1], xs[1:], ys[1:]
-                dx, dy = ex - ax, ey - ay
-                length2 = dx * dx + dy * dy
-                with np.errstate(invalid="ignore", divide="ignore"):
-                    t = np.clip(((px - ax) * dx + (py - ay) * dy) / length2, 0.0, 1.0)
-                dist = np.hypot(ax + t * dx - px, ay + t * dy - py)
-                dist[~np.isfinite(dist)] = np.inf
-                if dist.min() <= radius:
-                    return item_id, int(np.argmin(dist))
+                index = _nearest(np.hypot(xs - px, ys - py), reach)
+            else:
+                index = _nearest(_segment_distances(xs, ys, px, py), radius)
+            if index is not None:
+                return item_id, index
         return None, None
 
     # For tests and the conformance kit: the same path as browser input
@@ -495,179 +530,3 @@ class WebRenderer(SvgRenderer):
 
     def simulate_view(self, x_limits, y_limits):
         self.receive({"type": "view", "x_limits": list(x_limits), "y_limits": list(y_limits)})
-
-
-# ---------------------------------------------------------------------------
-# A development server
-# ---------------------------------------------------------------------------
-class WebServer:
-    """Serve one renderer to browsers, without dependencies
-
-    ``/`` is the page, ``/stream`` the server-sent event stream of patches
-    (a new client first gets the whole chart), ``/input`` receives pointer
-    input. Run it with :meth:`start` (in a background thread) and stop it
-    with :meth:`stop`. Meant for development and small tools; it binds to
-    the local machine by default.
-
-    Some care is taken because a web page in any browser tab can reach a
-    local server: requests must name this server in their ``Host`` header
-    (against DNS rebinding) and input must come from the server's own page
-    (``Origin``) as JSON. A browser that stops reading the stream is
-    dropped instead of collecting messages without end; its page then
-    reconnects and starts again from the whole chart.
-    """
-
-    #: Largest input message, in bytes.
-    MAX_INPUT = 64 * 1024
-    #: Messages waiting for one browser before it is dropped.
-    MAX_QUEUED = 1000
-
-    def __init__(self, renderer: WebRenderer, host: str = "127.0.0.1", port: int = 0, title: str = "CoolPlot"):
-        self.renderer = renderer
-        self.title = title
-        self._clients: List[queue.Queue] = []
-        self._clients_lock = threading.Lock()
-        self._started = False
-        server = self
-
-        class Handler(BaseHTTPRequestHandler):
-            protocol_version = "HTTP/1.1"
-            timeout = 30   # seconds; a browser that stops reading is cut off
-
-            def log_message(self, *args):
-                pass   # keep the console quiet
-
-            def _refused(self) -> bool:
-                host = self.headers.get("Host", "")
-                origin = self.headers.get("Origin")
-                if server._hosts is not None and host not in server._hosts:
-                    self.send_error(403, "Unknown host")
-                    return True
-                if origin is not None and origin != "http://" + host:
-                    self.send_error(403, "Foreign origin")
-                    return True
-                return False
-
-            def _reply(self, code: int):
-                self.send_response(code)
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-
-            def do_GET(self):
-                if self._refused():
-                    return
-                if self.path == "/":
-                    body = server.renderer.page(stream="/stream", input="/input", title=server.title).encode("ascii")
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/html; charset=utf-8")
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
-                elif self.path == "/stream":
-                    self._stream()
-                else:
-                    self.send_error(404)
-
-            def do_POST(self):
-                if self.path != "/input":
-                    self.send_error(404)
-                    return
-                if self._refused():
-                    return
-                if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
-                    self.send_error(415, "Input has to be JSON")
-                    return
-                try:
-                    length = int(self.headers.get("Content-Length", ""))
-                except ValueError:
-                    self.send_error(411)
-                    return
-                if not 0 < length <= server.MAX_INPUT:
-                    self.send_error(413)
-                    return
-                try:
-                    message = server.renderer.check_input(self.rfile.read(length))
-                except ValueError:
-                    self._reply(400)
-                    return
-                self._reply(204)
-                server.renderer.receive(message)
-
-            def _stream(self):
-                self.close_connection = True   # a stream has no length: never reuse the socket
-                self.send_response(200)
-                self.send_header("Content-Type", "text/event-stream")
-                self.send_header("Cache-Control", "no-cache")
-                self.end_headers()
-                client = queue.Queue(maxsize=server.MAX_QUEUED)
-                client.dropped = False
-                # Under the renderer's lock no patch can be sent between
-                # the snapshot and the registration of this browser
-                with server.renderer._lock:
-                    client.put(server.renderer.snapshot())
-                    with server._clients_lock:
-                        server._clients.append(client)
-                try:
-                    while not server._stopping.is_set() and not client.dropped:
-                        try:
-                            message = client.get(timeout=1.0)
-                        except queue.Empty:
-                            self.wfile.write(b": keep-alive\n\n")
-                            self.wfile.flush()
-                            continue
-                        self.wfile.write(b"data: " + message.encode("ascii") + b"\n\n")
-                        self.wfile.flush()
-                except OSError:
-                    pass   # the browser went away, or stopped reading (timeout)
-                finally:
-                    with server._clients_lock:
-                        server._clients.remove(client)
-
-        self._stopping = threading.Event()
-        self._httpd = ThreadingHTTPServer((host, port), Handler)
-        self._httpd.daemon_threads = True
-        # Host headers that name this server; None when it is bound to a
-        # public address, where the name it is reached by is not known
-        bound = self._httpd.server_address[1]
-        if host in ("127.0.0.1", "localhost"):
-            self._hosts = {"127.0.0.1:{0}".format(bound), "localhost:{0}".format(bound)}
-        else:
-            self._hosts = None
-        self._thread = None
-        renderer.listen(self._broadcast)
-
-    def _broadcast(self, message: str):
-        with self._clients_lock:
-            for client in self._clients:
-                try:
-                    client.put_nowait(message)
-                except queue.Full:
-                    client.dropped = True   # its page reconnects and gets the whole chart
-
-    @property
-    def url(self) -> str:
-        host, port = self._httpd.server_address[:2]
-        return "http://{0}:{1}/".format(host, port)
-
-    def start(self) -> "WebServer":
-        self._started = True
-        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
-        self._thread.start()
-        return self
-
-    def serve_forever(self):
-        """Serve in the current thread until interrupted."""
-        self._started = True
-        try:
-            self._httpd.serve_forever()
-        except KeyboardInterrupt:
-            pass
-        finally:
-            self.stop()
-
-    def stop(self):
-        self._stopping.set()
-        if self._started:   # shutdown() waits for serve_forever, which never ran otherwise
-            self._httpd.shutdown()
-        self._httpd.server_close()
-        self.renderer.unlisten(self._broadcast)
