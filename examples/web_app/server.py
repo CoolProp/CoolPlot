@@ -6,7 +6,7 @@ is the page, ``/stream`` the server-sent event stream of patches (a new
 client first gets the whole chart), ``/input`` receives pointer input.
 It lives with the examples because it is a starting point for an
 application, not part of the library: a real application embeds the
-renderer in its own web framework (docs/backends.md, "web").
+renderer in its own web framework (docs/user_guide.md, "In the browser").
 
 Some care is taken because a web page in any browser tab can reach a
 local server: requests must name this server in their ``Host`` header
@@ -128,7 +128,7 @@ class WebServer:
                 client.dropped = False
                 # Under the renderer's lock no patch can be sent between
                 # the snapshot and the registration of this browser
-                with server.renderer._lock:
+                with server.renderer.lock:
                     client.put(server.renderer.snapshot())
                     with server._clients_lock:
                         server._clients.append(client)

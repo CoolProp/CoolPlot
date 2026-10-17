@@ -111,7 +111,8 @@ class Renderer:
             return
         # Always restack, because a new item may belong between existing
         # ones. Report it only if existing items changed their order.
-        kept = [i for i in self._order if i in set(scene.ids())]
+        current_ids = set(scene.ids())
+        kept = [i for i in self._order if i in current_ids]
         kept_ids = set(kept)
         report.reordered = [i for i in order if i in kept_ids] != kept
         self._reorder(order)

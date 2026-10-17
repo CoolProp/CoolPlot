@@ -204,10 +204,11 @@ class DiagramSpec:
         diagram = DiagramType.parse(self.diagram)
         if diagram.kind != fluid.kind:
             raise ValueError("A {0} diagram cannot show {1}.".format(diagram.name, fluid.name))
+        limits = _checked_limits(diagram, self.limits)
         object.__setattr__(self, "fluid", fluid)
         object.__setattr__(self, "diagram", diagram)
         object.__setattr__(self, "units", get_unit_system(self.units))
-        object.__setattr__(self, "limits", _checked_limits(diagram, self.limits))
+        object.__setattr__(self, "limits", limits)
         object.__setattr__(self, "settings", get_settings(self.settings))
         _unique([s.key for s in self.isolines], "Each isoline quantity may appear only once")
         for iso_set in self.isolines:

@@ -94,6 +94,7 @@ class CalcSettings:
 LABEL_MODES = ("edge", "margin", "inline")
 EDGES = ("top", "right", "bottom", "left")
 
+
 def _checked_edges(edges, margin_edges):
     """The per-family edges as (family, edges) pairs and the margin edges, all known edge names."""
     edges = tuple((str(family), tuple(e)) for family, e in (edges.items() if isinstance(edges, dict) else edges))

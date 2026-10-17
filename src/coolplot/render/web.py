@@ -206,7 +206,7 @@ class WebRenderer(SvgRenderer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._lock = threading.RLock()
+        self._lock = threading.RLock()   # see the lock property
         self._listeners: List[Callable[[str], None]] = []
         self._sent_head = self._sent_tail = None
         self._sent_items: Dict[str, str] = {}
@@ -216,6 +216,13 @@ class WebRenderer(SvgRenderer):
         self.messages_sent = 0
 
     # Sending ----------------------------------------------------------------
+    @property
+    def lock(self) -> threading.RLock:
+        """The lock every sync takes. A server holds it while it takes a
+        snapshot for a new browser and registers that browser, so that no
+        patch is sent before the snapshot or lost between the two."""
+        return self._lock
+
     def listen(self, callback: Callable[[str], None]) -> Callable[[str], None]:
         """Call ``callback(message)`` with every patch, as a JSON string.
 

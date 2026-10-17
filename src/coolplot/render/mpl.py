@@ -489,6 +489,7 @@ class MatplotlibRenderer(Renderer):
         halo = self._halos.pop(item.id, None)
         if halo is not None:
             halo.remove()
+        self._text_angles.pop(item.id, None)
 
     def _reorder(self, order):
         # matplotlib z orders come from the position in the drawing order,

@@ -86,7 +86,6 @@ class StateInput:
         return cls(tuple(tuple(p) for p in data.get("props", ())), data.get("via"), data.get("eta_is", 1.0))
 
 
-
 def _check_props(props):
     if any(not math.isfinite(v) for _, v in props):
         raise ValueError("State properties have to be finite numbers, not {0}.".format(dict(props)))

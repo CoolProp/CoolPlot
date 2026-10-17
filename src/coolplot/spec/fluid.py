@@ -56,11 +56,12 @@ class FluidSpec:
         components = tuple(str(c).strip() for c in self.components)
         if not components or not all(components):
             raise ValueError("A FluidSpec needs at least one component name.")
+        fractions = _checked_fractions(components, self.fractions)
         if self.basis not in BASES:
             raise ValueError("Unknown fraction basis '{0}', expected one of {1}.".format(self.basis, BASES))
         object.__setattr__(self, "backend", str(self.backend).strip() or "HEOS")
         object.__setattr__(self, "components", components)
-        object.__setattr__(self, "fractions", _checked_fractions(components, self.fractions))
+        object.__setattr__(self, "fractions", fractions)
         object.__setattr__(self, "interactions", _checked_interactions(components, self.interactions))
 
     @classmethod

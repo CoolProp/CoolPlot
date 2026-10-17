@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """The development server of examples/web_app: Host and Origin checks, streams, input."""
+import importlib.util
 import json
 import os
-import sys
 import threading
 import time
 import urllib.request
@@ -13,10 +13,11 @@ import pytest
 from coolplot.render.web import WebRenderer
 from coolplot.scene import AxesSpec, Markers, Scene
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "examples", "web_app"))
-from server import WebServer  # noqa: E402
-
-pytestmark = pytest.mark.filterwarnings("ignore::ResourceWarning")
+_PATH = os.path.join(os.path.dirname(__file__), "..", "examples", "web_app", "server.py")
+_spec = importlib.util.spec_from_file_location("coolplot_web_app_server", _PATH)
+_server = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_server)
+WebServer = _server.WebServer
 
 
 @pytest.mark.browser
@@ -60,7 +61,6 @@ def test_development_server_end_to_end(browser):
         page.close()
     finally:
         server.stop()
-
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +160,6 @@ def test_no_patch_is_lost_while_a_browser_connects():
         connection.close()
     finally:
         server.stop()
-
 
 
 def test_a_dropped_stream_closes_its_connection():

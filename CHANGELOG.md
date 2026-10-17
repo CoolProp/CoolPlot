@@ -19,7 +19,8 @@ Scope and shape (docs/v1_plan.md, package 0.6):
   (every function outside the test tooling and the numerics due for 0.7
   has a cyclomatic complexity below 11): `Chart.add_cycle`,
   `BackgroundEngine`, the spec validation, the label layout and the
-  read-back of the three backends among them. No behaviour changed.
+  read-back of the three backends among them. Nothing drawn changes;
+  where two inputs are wrong at once the error named first can differ.
 * The matplotlib backend keeps the data angle of a text itself instead
   of reading a private attribute; the private attributes the read-back
   of the conformance kit uses are fenced by a test.

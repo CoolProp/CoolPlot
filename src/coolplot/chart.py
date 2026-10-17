@@ -357,22 +357,29 @@ class Chart:
             Units of ``values`` and ``range``; default the chart's units.
         """
         key = quantity_key(key)
-        family = self.spec.diagram.family(key)
-        if family is None:
-            raise ValueError("Lines of constant '{0}' cannot be drawn in a {1} diagram.".format(
-                key, self.spec.diagram.name))
+        family = self._family(key)
         defaults = self.spec.diagram.line_defaults
         rounding = defaults["rounding"] if rounding is None else bool(rounding)
         labels = defaults["labels"] if labels is None else bool(labels)
         unit = self._units(units)[key]
         label = self.spec.diagram.quantity_label(key)
         values_SI = None if values is None else tuple(float(v) for v in unit.to_SI(values).ravel())
+        range_SI = None if range is None else tuple(float(v) for v in unit.to_SI(range))
         family.check_values(values_SI or (), label)
-        range_SI = None if range is None else _checked_range(family, label, tuple(float(v) for v in unit.to_SI(range)))
+        if range_SI is not None:
+            _checked_range(family, label, range_SI)
         if num is None:
             num = family.default_num
         self.spec = self.spec.with_isolines(IsolineSet(key, values_SI, num, range_SI, rounding, points, labels))
         return key
+
+    def _family(self, key: str):
+        """The line family of a quantity in this chart, or ValueError."""
+        family = self.spec.diagram.family(key)
+        if family is None:
+            raise ValueError("Lines of constant '{0}' cannot be drawn in a {1} diagram.".format(
+                key, self.spec.diagram.name))
+        return family
 
     def set_default_lines(self, num: int = None, **kwargs):
         """Lines of every family that makes sense in this chart.
@@ -466,7 +473,8 @@ class Chart:
             spec = self._spec_from_model(cycle, None if isinstance(name, Cycle) else name, loops, paths, numbers,
                                          line_style, marker_style, steps)
         else:
-            inputs = self._state_inputs(_states_from_arrays(states, arrays) if arrays else states, name, units)
+            unit_system = self._units(units)
+            inputs = self._state_inputs(_states_from_arrays(states, arrays) if arrays else states, name, unit_system)
             spec = CycleSpec(str(name), inputs, loops or _default_loops(inputs, closed), paths or (), numbers,
                              line_style, marker_style, steps)
         self._compute_cycle(spec)   # compute now, so that errors show up here
@@ -483,11 +491,10 @@ class Chart:
         return CycleSpec.from_cycle(cycle, name=name, loops=loops, paths=paths, numbers=numbers,
                                     line_style=line_style, marker_style=marker_style, steps=steps)
 
-    def _state_inputs(self, states, name, units):
+    def _state_inputs(self, states, name, unit_system):
         """(number, StateInput) pairs from a list (numbered from 1) or a dict of given states."""
         if states is None:
             raise ValueError("Give the states of cycle '{0}'.".format(name))
-        unit_system = self._units(units)
         items = states.items() if isinstance(states, dict) else enumerate(states, start=1)
         provider = self.fluid
         return tuple((int(n), state_input(entry, unit_system, provider)) for n, entry in items)

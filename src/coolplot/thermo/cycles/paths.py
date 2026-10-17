@@ -142,17 +142,18 @@ def path_states(fluid, a: StatePoint, b: StatePoint, kind: str = "auto", steps: 
 def _inner_inputs(fluid, a: StatePoint, b: StatePoint, kind: str, steps: int) -> List[Tuple[str, float, str, float]]:
     """The (key, value, key, value) inputs of the states between a and b along a path kind."""
     t = np.linspace(0.0, 1.0, steps + 1)[1:-1]
-    p_values = _log_or_linear(a.p, b.p, steps + 1)[1:-1]
     if kind == "isobaric":
         return [("p", a.p, "h", h) for h in _isobar_enthalpies(fluid, a, b, t)]
     if kind == "isothermal":
         return [("T", a.T, "s", s) for s in a.s + t * (b.s - a.s)]
+    if kind not in ("isenthalpic", "isentropic", "polytropic"):
+        raise ValueError("Unknown path kind '{0}'.".format(kind))
+    p_values = _log_or_linear(a.p, b.p, steps + 1)[1:-1]
     if kind == "isenthalpic":
         return [("p", p, "h", a.h) for p in p_values]
-    if kind in ("isentropic", "polytropic"):   # entropy kept, or changed evenly with pressure
-        s_values = [a.s] * len(t) if kind == "isentropic" else a.s + t * (b.s - a.s)
-        return [("p", p, "s", s) for p, s in zip(p_values, s_values)]
-    raise ValueError("Unknown path kind '{0}'.".format(kind))
+    # Entropy kept (isentropic), or changed evenly with pressure (polytropic)
+    s_values = [a.s] * len(t) if kind == "isentropic" else a.s + t * (b.s - a.s)
+    return [("p", p, "s", s) for p, s in zip(p_values, s_values)]
 
 
 def _isobar_enthalpies(fluid, a: StatePoint, b: StatePoint, t) -> List[float]:

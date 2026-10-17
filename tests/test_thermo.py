@@ -193,6 +193,7 @@ def test_blend_lines_that_need_coolprop_8_are_skipped_with_a_reason(monkeypatch)
 # Regression tests from the adversarial review of 0.2 ------------------------
 BLEND = "HEOS::R32[0.7]&R125[0.3]"
 
+
 def test_difficult_saturation_states_do_not_change_other_results():
     blend = Fluid(BLEND)
     box = resolve_tp_box(blend, get_tp_limits("ACHP"))

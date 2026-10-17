@@ -143,25 +143,21 @@ class Text(Item):
 
     def __post_init__(self):
         super().__post_init__()
-        object.__setattr__(self, "offset_pt", _finite_pair(self.offset_pt, "Text {0!r}: offset_pt".format(self.id)))
+        offset = tuple(float(v) for v in self.offset_pt)
+        if not _finite_pair(offset):
+            raise ValueError("Text {0!r}: offset_pt has to be two finite numbers.".format(self.id))
+        object.__setattr__(self, "offset_pt", offset)
         object.__setattr__(self, "clip", bool(self.clip))
         if self.direction is not None:
-            direction = _finite_pair(self.direction, "Text {0!r}: direction".format(self.id))
-            if direction == (0.0, 0.0):
+            direction = tuple(float(v) for v in self.direction)
+            if not _finite_pair(direction) or direction == (0.0, 0.0):
                 raise ValueError("Text {0!r}: direction has to be two finite numbers, not both zero, or None; "
                                  "got {1}.".format(self.id, self.direction))
             object.__setattr__(self, "direction", direction)
 
 
-def _finite_pair(values, what: str) -> Tuple[float, float]:
-    """Two finite floats, or ValueError naming ``what``."""
-    try:
-        pair = tuple(float(v) for v in values)
-    except (TypeError, ValueError):
-        pair = ()
-    if len(pair) != 2 or not all(math.isfinite(v) for v in pair):
-        raise ValueError("{0} has to be two finite numbers, not {1!r}.".format(what, values))
-    return pair
+def _finite_pair(values) -> bool:
+    return len(values) == 2 and all(math.isfinite(v) for v in values)
 
 
 def items_equal(a: Item, b: Item) -> bool:

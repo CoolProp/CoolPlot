@@ -609,8 +609,9 @@ Known trade-offs, from the adversarial review of the 0.3 work:
   threads can deadlock. Start the diagram first.
 * Every pan step in `Interaction` redraws the scene with a new label
   layout; there is no throttling.
-* `WebServer` bound to a public address has no authentication, and patch
-  listeners run while the renderer is locked.
+* The development server of `examples/web_app` bound to a public address
+  has no authentication, and patch listeners run while the renderer is
+  locked.
 * Input in the wrong unit (W in kg/kg on an "engineering" chart, a wet-bulb
   temperature in K) is only caught when it is far outside what HAPropsSI
   covers.
