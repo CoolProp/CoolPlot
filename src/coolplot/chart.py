@@ -35,6 +35,7 @@ warn (see the CHANGELOG for 0.5).
 """
 from __future__ import annotations
 
+import inspect
 import warnings
 import weakref
 from dataclasses import replace
@@ -144,7 +145,8 @@ def check_state(state: StatePoint, provider) -> StatePoint:
     return state
 
 
-#: Chart methods removed in 1.0 (deprecated since 0.5), with what to use instead.
+#: Methods of every chart removed in 1.0 (deprecated since 0.5), with what to use instead.
+#: PropertyDiagram and PsychrometricChart add their own (``_removed_names``).
 REMOVED_NAMES = {
     "set_isolines": "use set_lines",
     "set_default_isolines": "use set_default_lines",
@@ -152,11 +154,6 @@ REMOVED_NAMES = {
     "isoline_sets": "use line_sets",
     "set_isoline_style": "use set_line_style",
     "savefig": "use save",
-    "set_process": "use add_cycle, which computes the paths between the states itself",
-    "remove_process": "use remove_cycle",
-    "add_process": "use add_cycle(name, states, closed=False)",
-    "move_process_state": "use move_cycle_state",
-    "process_states": "use cycle_states, which lists the states by number",
 }
 
 
@@ -428,10 +425,19 @@ class Chart:
         """The families of lines by quantity key, as :class:`coolplot.spec.IsolineSet` values."""
         return {s.key: s for s in self.spec.isolines}
 
+    # Names removed in 1.0 for this kind of chart, see REMOVED_NAMES
+    _removed_names = REMOVED_NAMES
+
     def __getattr__(self, name):
         # Only called when normal lookup fails: a name removed in 1.0 gets a
-        # message that says what to write instead (docs/upgrade.md)
-        replacement = REMOVED_NAMES.get(name)
+        # message that says what to write instead (docs/upgrade.md).
+        # Python also lands here when a property's getter raises
+        # AttributeError itself; run the getter again so that its own error,
+        # not a misleading "no attribute", reaches the user.
+        found = inspect.getattr_static(type(self), name, None)
+        if isinstance(found, property):
+            return found.__get__(self, type(self))
+        replacement = type(self)._removed_names.get(name)
         if replacement is not None:
             raise AttributeError("{0}.{1}() was removed in CoolPlot 1.0; {2} (see the upgrade guide).".format(
                 type(self).__name__, name, replacement))

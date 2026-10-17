@@ -13,10 +13,16 @@ guide in the documentation says what to change in your code.
   `set_default_isolines`, `remove_isolines`, `isoline_sets`,
   `set_isoline_style`, `savefig`, `set_process`, `remove_process`, the
   psychrometric `add_process`, `move_process_state`, `process_states`;
-  the unit system name "EUR" and `coolplot.EUR`; the `rankine` keywords
+  the unit system name "EUR" in calls; the `rankine` keywords
   `eta_turbine` and `eta_pump`. A removed chart method raises an
-  AttributeError naming its replacement; "EUR" raises a ValueError
-  naming "engineering". See the upgrade guide.
+  AttributeError naming its replacement, "EUR" a ValueError naming
+  "engineering" and the old `rankine` keywords a TypeError naming theirs.
+  A spec saved by 0.4 with "EUR" still reads, in Python and in
+  coolplot-core. See the upgrade guide.
+
+#### Deprecated
+- The constant `coolplot.EUR` (an old name of `coolplot.ENGINEERING`,
+  silent before 1.0) warns and goes in 2.0.
 
 #### Changed
 - The public API is stable from 1.0 to 2.0 (upgrade guide, "Stability

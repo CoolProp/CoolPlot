@@ -75,6 +75,9 @@ __all__ = ["__version__"] + sorted(_LAZY)
 
 
 def __getattr__(name):
+    if name == "EUR":   # the old name of ENGINEERING, warns until 2.0 (see core.units)
+        from .core.units import _old_eur
+        return _old_eur(2)
     if name in _LAZY:
         import importlib
         module = importlib.import_module(_LAZY[name], __name__)

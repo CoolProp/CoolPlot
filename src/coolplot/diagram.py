@@ -13,7 +13,7 @@ import warnings
 
 from CoolProp import AbstractState
 
-from .chart import Chart, check_fluid
+from .chart import REMOVED_NAMES, Chart, check_fluid
 from .core.diagram_type import DiagramType
 from .core.limits import get_tp_limits
 from .core.units import get_unit_system
@@ -77,6 +77,8 @@ class PropertyDiagram(Chart):
     """
 
     kind = "fluid"
+    _removed_names = dict(REMOVED_NAMES, set_process="use add_cycle, which computes the paths between the "
+                          "states itself", remove_process="use remove_cycle")
 
     def __init__(self, fluid, diagram_type="ph", units="engineering", tp_limits="DEF", theme=None,
                  settings=None, engine: Engine = None, cache: CurveCache = None, background: str = None,

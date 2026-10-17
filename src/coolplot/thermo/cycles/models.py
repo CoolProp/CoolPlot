@@ -189,7 +189,7 @@ def two_stage(fluid, T_evap_C: float, T_cond_C: float, intermediate: str = "flas
 
 
 def rankine(fluid, p_high_Pa: float, p_low_Pa: float, T_live_C: float = None, eta_is_turbine: float = None,
-            eta_is_pump: float = None, name: str = "Rankine") -> Cycle:
+            eta_is_pump: float = None, name: str = "Rankine", **removed) -> Cycle:
     """Simple Rankine cycle (steam or organic)
 
     States: 1 condenser outlet = pump inlet (saturated liquid), 2 pump
@@ -200,6 +200,12 @@ def rankine(fluid, p_high_Pa: float, p_low_Pa: float, T_live_C: float = None, et
     Results: ``q_in_J_kg``, ``q_out_J_kg``, ``w_turbine_J_kg``,
     ``w_pump_J_kg``, ``eta_th`` (net work over heat input).
     """
+    # The keyword names before 0.5 were removed in 1.0; say what to write instead
+    renamed = {"eta_turbine": "eta_is_turbine", "eta_pump": "eta_is_pump"}
+    if removed:
+        hints = ["'{0}' (removed in CoolPlot 1.0, use '{1}')".format(k, renamed[k]) if k in renamed else repr(k)
+                 for k in sorted(removed)]
+        raise TypeError("rankine() got unexpected keyword arguments {0}.".format(", ".join(hints)))
     eta_turbine = 0.85 if eta_is_turbine is None else eta_is_turbine
     eta_pump = 0.75 if eta_is_pump is None else eta_is_pump
     for label, eta in (("eta_is_turbine", eta_turbine), ("eta_is_pump", eta_pump)):

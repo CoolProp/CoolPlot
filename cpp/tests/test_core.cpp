@@ -50,7 +50,8 @@ TEST_CASE("Unit systems", "[core]") {
     CHECK(eng.at("T").from_SI(273.15) == Catch::Approx(0.0));
     CHECK(eng.at("p").from_SI(1e5) == Catch::Approx(1.0));
     CHECK(eng.at("T").difference_label == "K");
-    CHECK(get_unit_system("EUR").name == "engineering");
+    CHECK_THROWS_AS(get_unit_system("EUR"), Error);                       // removed in 1.0
+    CHECK(UnitSystem::from_json(json("EUR")).name == "engineering");     // a record saved by 0.4 still reads
     CHECK(get_unit_system("IP").at("T").from_SI(273.15) == Catch::Approx(32.0));
     CHECK(eng.to_json() == json("engineering"));
     UnitSystem custom = eng;

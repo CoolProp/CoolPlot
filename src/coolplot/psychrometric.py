@@ -18,7 +18,7 @@ Example
 """
 from __future__ import annotations
 
-from .chart import Chart
+from .chart import REMOVED_NAMES, Chart
 from .core.diagram_type import DiagramType
 from .core.limits import Region
 from .core.units import get_unit_system
@@ -51,6 +51,9 @@ class PsychrometricChart(Chart):
     """
 
     kind = "humid_air"
+    _removed_names = dict(REMOVED_NAMES, add_process="use add_cycle(name, states, closed=False)",
+                          move_process_state="use move_cycle_state", remove_process="use remove_cycle",
+                          process_states="use cycle_states, which lists the states by number")
 
     def __init__(self, p: float = None, T_range=(-10.0, 50.0), W_range=(0.0, 30.0), units="engineering",
                  theme=None, settings=None, points: int = None, engine: Engine = None, cache: CurveCache = None,

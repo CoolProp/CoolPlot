@@ -17,6 +17,8 @@ library.
 """
 from __future__ import annotations
 
+import warnings
+
 from dataclasses import dataclass, field, replace
 from typing import Mapping
 
@@ -175,6 +177,26 @@ KSI = UnitSystem("KSI", _KSI)
 ENGINEERING = UnitSystem("engineering", _ENGINEERING)
 IP = UnitSystem("IP", _IP)
 UNIT_SYSTEMS = {u.name.upper(): u for u in (SI, KSI, ENGINEERING, IP)}
+
+
+def _old_eur(stacklevel: int) -> UnitSystem:
+    """ENGINEERING, with a warning: the constant EUR is its old name.
+
+    It never warned before 1.0, so it stays through 1.x and goes in 2.0
+    (the name "EUR" in calls warned from 0.5 and is gone in 1.0).
+    """
+    warnings.warn("EUR is the old name of ENGINEERING (deg C, bar, kJ); it will go in CoolPlot 2.0.",
+                  DeprecationWarning, stacklevel=stacklevel + 1)
+    return ENGINEERING
+
+
+def __getattr__(name):
+    # Only called for names the module does not define (PEP 562)
+    if name == "EUR":
+        return _old_eur(2)
+    raise AttributeError("module {0!r} has no attribute {1!r}".format(__name__, name))
+
+
 # Names removed in 1.0, with the name to use instead
 _REMOVED_NAMES = {"EUR": "engineering"}
 

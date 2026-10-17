@@ -33,11 +33,16 @@ CHART_METHODS = {
 CHART_PROPERTIES = {"cache", "progress", "fluid", "diagram_type", "units", "settings", "theme", "title", "kind"}
 CHART_ATTRIBUTES = {"spec", "engine", "scene"}
 
-#: Names removed in 1.0 (deprecated from 0.5 to 0.9).
-REMOVED = {
-    "set_isolines", "set_default_isolines", "remove_isolines", "isoline_sets", "set_isoline_style", "savefig",
-    "set_process", "remove_process", "add_process", "move_process_state", "process_states",
+#: Names removed in 1.0 (deprecated from 0.5 to 0.9), with the method to use
+#: instead, written out here and not taken from the code.
+REMOVED_COMMON = {
+    "set_isolines": "set_lines", "set_default_isolines": "set_default_lines", "remove_isolines": "remove_lines",
+    "isoline_sets": "line_sets", "set_isoline_style": "set_line_style", "savefig": "save",
 }
+REMOVED_DIAGRAM = dict(REMOVED_COMMON, set_process="add_cycle", remove_process="remove_cycle")
+REMOVED_PSYCHRO = dict(REMOVED_COMMON, add_process="add_cycle", move_process_state="move_cycle_state",
+                       remove_process="remove_cycle", process_states="cycle_states")
+REMOVED = set(REMOVED_DIAGRAM) | set(REMOVED_PSYCHRO)
 
 
 def _public(cls):
@@ -72,26 +77,61 @@ def test_constructors_add_only_their_own_names():
 
 
 def test_removed_names_say_what_to_use_instead():
+    import re
     pytest.importorskip("CoolProp")
     from coolplot import PropertyDiagram, PsychrometricChart
-    from coolplot.chart import REMOVED_NAMES
     from coolplot.thermo.cycles import rankine
-    assert set(REMOVED_NAMES) == REMOVED
     diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP")
     chart = PsychrometricChart(T_range=(0, 40), W_range=(0, 20))
-    for name in sorted(REMOVED):
-        for c in (diagram, chart):
-            with pytest.raises(AttributeError, match="removed in CoolPlot 1.0; " + REMOVED_NAMES[name].split("(")[0]):
+    for c, removed in ((diagram, REMOVED_DIAGRAM), (chart, REMOVED_PSYCHRO)):
+        assert type(c)._removed_names.keys() == removed.keys()
+        for name, new in removed.items():
+            assert new in CHART_METHODS
+            with pytest.raises(AttributeError, match=re.escape("{0}.{1}() was removed in CoolPlot 1.0; use {2}".format(
+                    type(c).__name__, name, new))):
                 getattr(c, name)
             assert not hasattr(c, name)
+    # A name that never existed on this kind of chart gets the usual message
+    with pytest.raises(AttributeError, match="has no attribute 'add_process'"):
+        diagram.add_process
     with pytest.raises(AttributeError, match="has no attribute 'nonsense'"):
         diagram.nonsense
     with pytest.raises(ValueError, match="renamed 'engineering'"):
         PropertyDiagram("R290", "ph", units="EUR")
-    with pytest.raises(TypeError, match="eta_turbine"):
+    with pytest.raises(TypeError, match="'eta_turbine' \\(removed in CoolPlot 1.0, use 'eta_is_turbine'\\)"):
         rankine("Water", 50e5, 0.1e5, eta_turbine=0.8)
-    import coolplot
-    assert not hasattr(coolplot, "EUR")
+
+
+def test_the_constant_eur_warns_until_2_0():
+    """coolplot.EUR never warned before 1.0, so it stays through 1.x with a warning."""
+    import coolplot.core
+    import coolplot.core.units
+    for module in (coolplot, coolplot.core, coolplot.core.units):
+        with pytest.warns(DeprecationWarning, match="go in CoolPlot 2.0"):
+            assert module.EUR is coolplot.ENGINEERING
+    assert "EUR" not in coolplot.__all__
+
+
+def test_a_property_error_is_not_hidden_by_the_removed_name_hints():
+    """Python sends an AttributeError raised inside a property to __getattr__; the real one has to surface."""
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+
+    class Broken(PropertyDiagram):
+        @property
+        def broken(self):
+            return self.engine.no_such_thing
+
+    with pytest.raises(AttributeError, match="no_such_thing"):
+        Broken("R290", "ph").broken
+
+
+def test_a_spec_saved_by_0_4_with_eur_still_reads():
+    pytest.importorskip("CoolProp")
+    from coolplot import DiagramSpec, PropertyDiagram
+    data = PropertyDiagram("R290", "ph").spec.to_dict()
+    data["units"] = "EUR"
+    assert DiagramSpec.from_dict(data).units.name == "engineering"
 
 
 def test_new_names_do_not_warn():
@@ -197,14 +237,17 @@ def test_set_lines_defaults_and_units_per_call():
 
 
 def test_every_removed_name_is_in_the_upgrade_guide():
-    """What 1.0 removed is listed in the upgrade guide with its replacement."""
+    """What 1.0 removed is listed in the guide's "From 0.9 to 1.0" section."""
     import os
     import re
     guide = open(os.path.join(os.path.dirname(__file__), "..", "docs", "upgrade.md"), encoding="utf-8").read()
-    # The whole name in code quotes, "`name`" or "`name(", not a longer name starting with it
-    names = REMOVED | {"EUR", "eta_turbine", "eta_pump"}
-    missing = sorted(n for n in names if not re.search(r"`(units=\")?{0}[`(\"=]".format(re.escape(n)), guide))
+    start = guide.index("## From 0.9 to 1.0")
+    section = guide[start:guide.index("\n## ", start + 1)]
+    # The whole name in code quotes, "`name`" or "`name=", not a longer name starting with it
+    names = REMOVED | {"eta_turbine", "eta_pump"}
+    missing = sorted(n for n in names if not re.search(r"`{0}[`=]".format(re.escape(n)), section))
     assert not missing, missing
+    assert '`"EUR"`' in section and "`coolplot.EUR`" in section
 
 
 def test_nothing_is_deprecated_right_after_1_0():

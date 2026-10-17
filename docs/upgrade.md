@@ -2,14 +2,22 @@
 
 ## Stability from 1.0
 
-From 1.0 to 2.0 the public API is stable: the names importable from
-`coolplot` (frozen in tests/test_api_vocabulary.py), the chart verbs and
-properties, the keyword names, and the records of
-{doc}`reference/contracts`. A name that has to change in 1.x keeps working
-with a `DeprecationWarning` and goes in 2.0. Modules and names starting
-with an underscore, `coolplot.testing` and the scene item ids are not part
-of that promise; neither are the exact coordinates of a chart (better
-numerics may move points).
+From 1.0 to 2.0 the public API is stable. It is:
+
+* the names importable from `coolplot` and the methods and properties of
+  the charts, with their keyword arguments (the names are frozen in
+  tests/test_api_vocabulary.py);
+* the renderers in `coolplot.render` and the cycle models in
+  `coolplot.thermo.cycles`, as the API reference documents them;
+* the records of {doc}`reference/contracts`: a spec, curve or scene saved
+  by 1.x reads in every later 1.x.
+
+A name that has to change in 1.x keeps working with a
+`DeprecationWarning` and goes in 2.0. Not part of the promise: names
+starting with an underscore, the helpers in `coolplot.core`,
+`coolplot.engine`, `coolplot.compose` and `coolplot.corelib`,
+`coolplot.testing`, the scene item ids, and the exact coordinates of a
+chart (better numerics may move points).
 
 ## From 0.9 to 1.0
 
@@ -23,12 +31,19 @@ AttributeError that names its replacement, for example
   `remove_isolines`, `isoline_sets`, `set_isoline_style`, `savefig`,
   `set_process`, `remove_process`, and on psychrometric charts
   `add_process`, `move_process_state`, `process_states`;
-* the unit system name `units="EUR"` and the constant `coolplot.EUR`
-  (use `"engineering"` and `coolplot.ENGINEERING`);
+* the unit system name `"EUR"` in calls such as `units="EUR"` (use
+  `"engineering"`);
 * the keywords `eta_turbine=` and `eta_pump=` of `rankine` (use
   `eta_is_turbine=` and `eta_is_pump=`).
 
-Specs that hold processes (written by `set_process`) still read and draw.
+Saved specs still read: those that hold processes (written by
+`set_process`) still draw them, and those saved by 0.4 with
+`"units": "EUR"` read as engineering units.
+
+The constant `coolplot.EUR` did not warn before 1.0, so it stays through
+1.x as an old name of `coolplot.ENGINEERING`, now with a
+`DeprecationWarning`, and goes in 2.0.
+
 If your code ran under 0.9 without a `DeprecationWarning`, it runs under
 1.0 unchanged.
 
