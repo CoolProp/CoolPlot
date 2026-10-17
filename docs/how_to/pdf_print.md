@@ -41,7 +41,8 @@ PDF gets, for print work where a replaced font must not slip through.
 
 ## Other formats
 
-`save("chart.svg")` writes SVG without any dependency, `save("chart.html")`
-a plotly page (`pip install "coolplot[plotly]"`), and the plotly backend
-writes PDF and PNG too when kaleido and Chrome are installed
-(`pip install "coolplot[images]"`).
+`save("chart.svg")` writes SVG and `save("chart.html")` a web page,
+both without any dependency. `diagram.draw(PlotlyRenderer())` gives a
+plotly figure (`pip install "coolplot[plotly]"`; `renderer.figure`,
+`renderer.save("chart.html")`), and that renderer writes PDF and PNG too
+when kaleido and Chrome are installed (`pip install "coolplot[images]"`).

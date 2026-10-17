@@ -3,10 +3,14 @@
 ## Install
 
 ```bash
-pip install coolplot                # draws SVG files with no further dependencies
+pip install coolplot                # SVG files and web pages, with no further dependencies
 pip install "coolplot[matplotlib]"  # also PNG, PDF and interactive windows
-pip install "coolplot[plotly]"      # also plotly figures and HTML pages
+pip install "coolplot[plotly]"      # also plotly figures
 ```
+
+Four ways of drawing come with CoolPlot and give the same picture: the
+SVG writer and the web page writer (no dependencies), matplotlib and
+plotly. `save` picks one by the file extension.
 
 CoolPlot needs Python 3.10 or later and CoolProp 8.0 or later.
 
@@ -33,7 +37,8 @@ Line by line:
   other choices.
 * `tp_limits="ACHP"` chooses the temperature and pressure region the
   lines cover, here the one of refrigeration practice.
-* `save` writes PNG, PDF, SVG or HTML by the file extension; `show()`
+* `save` writes SVG or HTML without any plotting library, PNG, PDF and
+  the other formats through matplotlib, by the file extension; `show()`
   opens a window.
 
 ## A cycle on the chart

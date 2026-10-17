@@ -10,7 +10,7 @@ boundaries, and each one can be written as JSON and read back:
 | the scene | compose | every renderer | `Scene.to_dict` / `from_dict` |
 
 These are the contracts that a port of any part of the pipeline to
-another language has to honour (docs/v1_review.md, section 6): a C++
+another language has to honour (contributing/v1_review.md, section 6): a C++
 numerics library produces curve records, a C++ presentation library
 turns a spec plus curve records into a scene, and a renderer in any
 language draws a scene. `tests/test_contracts.py` checks that every
@@ -68,7 +68,7 @@ One record describes a property diagram and a psychrometric chart alike;
   range); for humid air absolute bounds on the axis quantities,
   `{"bounds": {"T": [263.15, 323.15], "W": [0.0, 0.03]}}`.
 * `settings`: see `coolplot.spec.settings`; `look` is a theme name or a
-  theme record (`docs/styling.md`).
+  theme record (the how-to on themes).
 * `isolines`: one entry per family, in drawing order. `values_SI` lists
   explicit values, otherwise `num` values are spread over `range_SI` (or
   the calculation domain), round values if `rounding`.
@@ -80,7 +80,7 @@ One record describes a property diagram and a psychrometric chart alike;
   with "auto" (`PATH_KINDS`). Air processes on a psychrometric chart are
   cycles whose paths are straight.
 * `processes`: lines through complete states, kept for `set_process`
-  until it is retired (see docs/v1_plan.md, D4).
+  until it is retired (see contributing/v1_plan.md, D4).
 * `style_overrides`: `LineStyle` field changes per family, on top of
   the theme.
 * `view_SI`: `[x_limits, y_limits]`, each `null` or `[min, max]`.
@@ -115,7 +115,7 @@ and the calculation settings that affect the numbers.
 
 What a renderer draws: one set of axes and a flat list of items in
 drawing order, coordinates in display units. `coolplot.scene` is the
-definition; `docs/backends.md` says how each field is rendered.
+definition; contributing/writing_a_backend.md says how each field is rendered.
 
 ```js
 {

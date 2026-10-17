@@ -6,9 +6,9 @@ section 5) found the following. Each item names what was done in 0.8.
 | # | Finding | Closed by |
 |---|---|---|
 | 1 | No picture anywhere: README and guide start with prose | A chart on the landing page and in the README (`docs/_static/R290_ph.png`) |
-| 2 | No API reference; about 40 exported names and 164 public functions without a documented home | The generated reference (`reference/api`, autosummary, one page per module and object) |
+| 2 | No API reference; about 40 exported names and 164 public functions without a documented home | The generated reference (`reference/api`, autosummary: one page per module with every class and function on it) |
 | 3 | Docstrings use Sphinx roles that nothing renders | Sphinx with numpydoc renders them; cross references resolve |
-| 4 | Public names without docstrings | 108 docstrings added; the build checks for missing ones (`numpydoc_validation_checks`) and `-W` fails the build |
+| 4 | Public names without docstrings | About a hundred docstrings added; the build checks for missing ones (`numpydoc_validation_checks`) and `-W` fails the build |
 | 5 | `INCOMP::MEG[0.3]` listed as a working fluid while every incompressible chart failed at draw | Fixed in 0.3.1; the how-to on blends and brines says what incompressibles need |
 | 6 | `set_isolines("p")` in the p-h example (a quantity the diagram does not offer) | The examples use `set_lines` with quantities the diagram offers; the gallery runs them |
 | 7 | `from CoolPlot import` in the styling guide | `from coolplot import`, everywhere |

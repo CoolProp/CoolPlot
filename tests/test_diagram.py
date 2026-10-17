@@ -143,3 +143,16 @@ def test_no_warnings_from_a_plain_chart():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         diagram.draw(SvgRenderer())
+
+
+def test_save_chooses_the_writer_by_extension(tmp_path):
+    """SVG and HTML need no matplotlib; everything else goes through it."""
+    from coolplot import PropertyDiagram
+    diagram = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP")
+    diagram.set_lines("T", num=3)
+    diagram.save(tmp_path / "chart.svg")
+    diagram.save(tmp_path / "chart.html")
+    diagram.save(tmp_path / "chart.png", dpi=50)
+    assert (tmp_path / "chart.svg").read_text().startswith("<?xml") or "<svg" in (tmp_path / "chart.svg").read_text()
+    assert "<html" in (tmp_path / "chart.html").read_text().lower()
+    assert (tmp_path / "chart.png").stat().st_size > 1000

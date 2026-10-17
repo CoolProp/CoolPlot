@@ -4,7 +4,7 @@ A backend (renderer) draws a `coolplot.scene.Scene` with one plotting
 library. This guide lists what a backend has to do to be accepted. The
 key words MUST, SHOULD and MAY are used as in RFC 2119.
 
-The two backends shipped with CoolPlot are the reference implementations:
+The four backends shipped with CoolPlot (SVG, web, matplotlib, plotly) are the reference implementations:
 
 * `src/coolplot/render/svg.py`: no dependencies, writes a document. Read this
   one first; it is the simplest complete example.
@@ -74,7 +74,7 @@ them from the position in `draw_order()`, not from the raw values.
 ## 3. Styles [style]
 
 The scene carries fully resolved, normalised styles (see
-`docs/styling.md`). A backend MUST render every field; it MUST NOT apply
+the how-to on themes). A backend MUST render every field; it MUST NOT apply
 its own defaults, themes or style sheets on top.
 
 **Units.** All lengths are points. A pixel-based backend uses
@@ -379,7 +379,7 @@ idiomatic defaults:
 * interactive behaviour such as toolbars and zoom gestures.
 
 Tick label *texts* are central (section 3, Axes); tick *positions* are
-not. See docs/architecture.md, section 6.
+not. See contributing/architecture.md, section 6.
 
 A backend SHOULD implement `plot_size_pt()`, returning the size of its
 plot area in points (laying out the page first if needed). The diagram

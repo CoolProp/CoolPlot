@@ -353,7 +353,7 @@ class HumidAir:
 
     @property
     def name(self) -> str:
-        """"humid air (p Pa)", for messages."""
+        """"humid air at <p> Pa", for messages."""
         return "humid air at {0:.6g} Pa".format(self.p_Pa)
 
     @property

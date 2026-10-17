@@ -26,16 +26,19 @@ pressure and the fact that throttling keeps the enthalpy of state 3.
 ```python
 from coolplot import PropertyDiagram
 
-diagram = PropertyDiagram("R410A.mix", "ph", units="engineering", tp_limits="ACHP")
+diagram = PropertyDiagram("R290", "ph", units="engineering", tp_limits="ACHP")
 diagram.set_lines("T", num=10, rounding=True, labels=True)
 diagram.set_lines("Q", num=11)
 diagram.add_cycle("Test rig, 2026-03-14", measured)
 diagram.save("test_rig.png")
 ```
 
-R410A is a blend: the isotherms show its temperature glide inside the
-dome, and the chart takes a few seconds because the lines of a blend are
-traced point by point.
+At 17.3 bar propane condenses at 50.4 deg C, so state 3 at 42 deg C is
+subcooled liquid, and at 4.2 bar it evaporates at -3.9 deg C, so state 1
+at 2.5 deg C is superheated vapour; both show on the chart. (For a blend
+such as R410A the same pressures would mean other temperatures; the
+chart would then show the temperature glide inside the dome and take a
+few seconds, because the lines of a blend are traced point by point.)
 
 ## Numbers from the states
 
@@ -53,7 +56,7 @@ temperature minus the dew temperature at that pressure:
 
 ```python
 from coolplot import Fluid
-fluid = Fluid("R410A.mix")
+fluid = Fluid("R290")
 T_dew_K = fluid.state_point("p", 4.2e5, "Q", 1.0).T
 dT_sh_K = states[1].T - T_dew_K
 ```
@@ -65,8 +68,8 @@ the same chart:
 
 ```python
 from coolplot.thermo.cycles import simple_compression
-diagram.add_cycle(simple_compression("R410A.mix", T_evap_C=-3, T_cond_C=40, dT_sh_K=5,
-                                     dT_sc_K=3, eta_is=0.65, name="Model"))
+diagram.add_cycle(simple_compression("R290", T_evap_C=-4, T_cond_C=50, dT_sh_K=6,
+                                     dT_sc_K=8, eta_is=0.65, name="Model"))
 diagram.save("test_rig_vs_model.png")
 ```
 

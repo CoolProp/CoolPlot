@@ -5,4 +5,4 @@ sphinx-gallery>=0.19
 pydata-sphinx-theme>=0.16
 matplotlib>=3.8
 plotly>=5
-coolprop>=8.0
+coolprop==8.0.0

@@ -30,8 +30,7 @@ extensions = [
 
 source_suffix = {".md": "markdown", ".rst": "restructuredtext"}
 master_doc = "index"
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "v1_plan.md", "v1_review.md"]
-templates_path = ["_templates"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 # The gallery configuration holds a function (the scraper below), which
 # Sphinx cannot cache between builds; that is a notice, not a problem
 suppress_warnings = ["config.cache"]
@@ -94,10 +93,15 @@ html_css_files = ["coolplot.css"]
 
 
 def setup(app):
-    """Write the generated reference tables before the sources are read."""
+    """Write the generated reference tables, and clear the examples' old output files."""
+    import glob
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import _tables
     _tables.write(os.path.join(os.path.dirname(__file__), "reference", "tables.md"))
+    examples = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "examples")
+    for pattern in ("*.svg", "*.png", "*.pdf", "*.html"):
+        for path in glob.glob(os.path.join(examples, pattern)):
+            os.remove(path)   # a file of an earlier run must not be shown as this run's output
 
 
 def _files_written(block, block_vars, gallery_conf):
@@ -112,13 +116,16 @@ def _files_written(block, block_vars, gallery_conf):
     import shutil
     from sphinx_gallery.scrapers import figure_rst
     example_dir = os.path.dirname(block_vars["src_file"])
-    seen = block_vars.setdefault("_files_seen", set())
     found = []
     for pattern in ("*.svg", "*.png"):
         for path in sorted(glob.glob(os.path.join(example_dir, pattern))):
-            if path in seen:
+            # A file is claimed once, by the block after which it appeared
+            # (or was rewritten); files other examples wrote are claimed
+            # already, and setup() removes files of earlier builds
+            stamp = (path, os.stat(path).st_mtime_ns)
+            if stamp in _CLAIMED_FILES:
                 continue
-            seen.add(path)
+            _CLAIMED_FILES.add(stamp)
             target = next(block_vars["image_path_iterator"])
             if path.endswith(".svg"):
                 target = target[:-4] + ".svg"
@@ -127,4 +134,5 @@ def _files_written(block, block_vars, gallery_conf):
     return figure_rst(found, gallery_conf["src_dir"])
 
 
+_CLAIMED_FILES = set()
 sphinx_gallery_conf["image_scrapers"] = ("matplotlib", _files_written)

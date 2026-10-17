@@ -660,8 +660,22 @@ class Chart:
         self.draw().show()
 
     def save(self, path, **kwargs):
-        """Draw and write the chart to a file (PNG, PDF, SVG, ... by extension)."""
-        self.draw().save(path, **kwargs)
+        """Draw and write the chart to a file, choosing the writer by the extension.
+
+        ``.svg`` is written by the SVG writer and ``.html`` by the web
+        renderer (a static page), neither of which needs matplotlib;
+        every other extension (PNG, PDF, EPS, ...) goes through matplotlib,
+        with ``kwargs`` such as ``dpi`` or ``pdf_fonts`` passed on.
+        """
+        extension = str(path).rsplit(".", 1)[-1].lower() if "." in str(path) else ""
+        if extension == "svg":
+            from .render.svg import SvgRenderer
+            self.draw(SvgRenderer(**kwargs)).save(path)
+        elif extension in ("html", "htm"):
+            from .render.web import WebRenderer
+            self.draw(WebRenderer(**kwargs)).save(path)
+        else:
+            self.draw().save(path, **kwargs)
 
     @deprecated("use save")
     def savefig(self, path, **kwargs):

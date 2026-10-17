@@ -55,8 +55,11 @@ cycle = simple_compression("R290", T_evap_C=-5, T_cond_C=45, dT_sh_K=5, dT_sc_K=
 cycle.result["COP_heating"]          # results in SI units
 diagram.add_cycle(cycle)
 diagram.add_cycle(two_stage("R290", -30, 45, intermediate="economizer"))
-diagram.add_cycle(rankine("Water", p_high_Pa=40e5, p_low_Pa=0.1e5, T_live_C=400))
+steam = PropertyDiagram("Water", "Ts", units="engineering", tp_limits="ORC")
+steam.add_cycle(rankine("Water", p_high_Pa=40e5, p_low_Pa=0.1e5, T_live_C=400))
 ```
+
+A cycle computed for one fluid is refused by a chart of another.
 
 For blends the models take the evaporating and condensing temperatures
 as dew points (EN 12900).

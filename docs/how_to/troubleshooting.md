@@ -12,7 +12,8 @@ The messages CoolPlot gives, and what to do.
 
 **`UserWarning: Skipping the line T=1000 in R290: CoolProp failed for 150 of 150 points`**
 : No point of the line could be computed, usually a value outside the
-  equation of state. The line is left out; each line warns once.
+  equation of state. The line is left out; each line warns once. The
+  value in the message is in SI units (K, Pa, J/kg).
 
 **`UserWarning: The line s=1500 in R410A.mix has gaps: CoolProp failed for 20 of 190 points inside the line`**
 : CoolProp could not compute some points inside the line; they are drawn
@@ -24,15 +25,16 @@ The messages CoolPlot gives, and what to do.
   drawn part is right. Fewer points (`Settings.calc.points`) or a smaller
   region help.
 
-**`ValueError: R290 has no two-phase region ...` or `... has no saturation curve ...; give absolute temperature and pressure limits`**
-: An incompressible fluid (`INCOMP::`) was given relative limits or asked
-  for quality lines. Give `tp_limits=[T_min_K, T_max_K, p_min_Pa, p_max_Pa]`
-  and leave quality lines out.
+**`ValueError: INCOMP::MEG[0.3] has no two-phase region ...` or `... has no saturation curve ...; give absolute temperature and pressure limits`**
+: An incompressible fluid was given relative limits (the default) or
+  asked for quality lines; the second message comes when the chart is
+  drawn. Give `tp_limits=[T_min_K, T_max_K, p_min_Pa, p_max_Pa]` and
+  leave quality lines out.
 
-**`ValueError: A state has unknown properties ['x'], expected two of [...]`**
+**`ValueError: A state has unknown properties ['foo'], expected two of ['T', 'p', 'h', 's', 'rho', 'v', 'u', 'Q']`**
 : A state of a cycle names a quantity the chart does not know. The keys
-  are T, p, h, s, rho, v, u, Q for fluids and T, W, RH, Twb, Tdp, h, v
-  for humid air; `"x"` is an alias of `"Q"`.
+  are those listed for fluids, and T, W, RH, Twb, Tdp, h, v for humid
+  air; `"x"` is accepted as an alias of `"Q"`, `"P"` of `"p"`.
 
 **`UserWarning: Inter is installed here only as CFF OpenType, which matplotlib cannot embed as TrueType ...`**
 : A font of the theme cannot go into a PDF as TrueType and the next font

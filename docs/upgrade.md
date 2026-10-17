@@ -23,8 +23,11 @@ go in 1.0:
 
 | Old | New |
 |---|---|
-| `set_isolines`, `isolines` | `set_lines`, `line_sets` |
-| `set_process(name, line_states, marker_states)` | `add_cycle(name, states, closed=False)` |
+| `set_isolines`, `set_default_isolines`, `remove_isolines` | `set_lines`, `set_default_lines`, `remove_lines` |
+| `isoline_sets`, `set_isoline_style` | `line_sets`, `set_line_style` |
+| `set_process(name, line_states, marker_states)` | `add_cycle(name, states)`, which computes the paths between the states itself |
+| `remove_process` | `remove_cycle` |
+| psychrometric `add_process`, `move_process_state`, `process_states`, `remove_process` | `add_cycle(..., closed=False)`, `move_cycle_state`, `cycle_states`, `remove_cycle` |
 | `savefig` | `save` |
 | `units="EUR"` | `units="engineering"` |
 | `rankine(eta_turbine=..., eta_pump=...)` | `rankine(eta_is_turbine=..., eta_is_pump=...)` |

@@ -49,9 +49,9 @@ What else it does:
   costs no new calculation.
 * Output: PNG and PDF through matplotlib (fonts embedded, texts kept as
   text, several charts per file), SVG with no dependencies, plotly
-  figures and HTML pages, a browser backend for web applications.
+  figures and HTML pages, live charts in a web page.
 * Interactive: zoom, hover and dragging of cycle states in matplotlib
-  and in the browser; only what changed is recomputed and redrawn;
+  and in a web page; only what changed is recomputed and redrawn;
   lines can be computed in the background.
 
 The documentation (getting started, tutorials, how-to pages, the API
