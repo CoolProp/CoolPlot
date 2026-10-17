@@ -80,7 +80,11 @@ RULES = {
 # Deliberate, documented exceptions: (module, imported name, reason)
 ALLOWED = {
     ("coolplot.chart", "coolplot.render.mpl"):
-        "Chart.draw/show/savefig create a MatplotlibRenderer on demand for scripts",
+        "Chart.draw/show/save create a MatplotlibRenderer on demand for scripts",
+    ("coolplot.chart", "coolplot.render.svg"):
+        "Chart.save writes an .svg file with the SVG writer on demand, without matplotlib",
+    ("coolplot.chart", "coolplot.render.web"):
+        "Chart.save writes an .html file with the web renderer on demand, without matplotlib",
     ("coolplot.render.plotly", "coolplot.testing.pdf_reader"):
         "PlotlyRenderer.save rewrites the PDF information Kaleido wrote, only when a PDF is saved",
 }
