@@ -47,11 +47,19 @@ RULES = {
     # Nothing a chart draws with may load the test tooling (coolplot.testing).
     "coolplot.render": LIBS | {"coolplot.testing", "coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
                                "coolplot.diagram", "coolplot.psychrometric", "coolplot.interaction", "coolplot.style.theme",
-                               "coolplot.render.mpl", "coolplot.render.svg"},
+                               "coolplot.render.mpl", "coolplot.render.svg", "coolplot.render.pdf"},
     "coolplot.render.base": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
                                     "coolplot.diagram", "coolplot.psychrometric", "coolplot.interaction", "coolplot.style.theme"},
     "coolplot.render.svg": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
                                    "coolplot.diagram", "coolplot.psychrometric", "coolplot.interaction", "coolplot.style.theme"},
+    # The PDF backend draws the SVG backend's geometry and writes through coolplot-core
+    "coolplot.render.pdf": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
+                                   "coolplot.diagram", "coolplot.psychrometric", "coolplot.interaction", "coolplot.style.theme",
+                                   "coolplot.render.mpl", "coolplot.render.plotly", "coolplot.testing"},
+    # The bridge to coolplot-core sits below compose and render: plain data in, plain data out
+    "coolplot.corelib": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
+                                "coolplot.render", "coolplot.chart", "coolplot.diagram", "coolplot.psychrometric",
+                                "coolplot.export", "coolplot.interaction", "coolplot.testing", "coolplot.style.theme"},
     "coolplot.testing": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine",
                                        "coolplot.compose", "coolplot.diagram", "coolplot.psychrometric", "coolplot.interaction", "coolplot.style.theme",
                                        "coolplot.render.mpl", "coolplot.render.plotly"},
@@ -85,6 +93,8 @@ ALLOWED = {
         "Chart.save writes an .svg file with the SVG writer on demand, without matplotlib",
     ("coolplot.chart", "coolplot.render.web"):
         "Chart.save writes an .html file with the web renderer on demand, without matplotlib",
+    ("coolplot.render.pdf", "coolplot.render.svg"):
+        "PdfRenderer is an SvgRenderer: the PDF page is drawn with the SVG backend's geometry and read-back",
     ("coolplot.render.plotly", "coolplot.testing.pdf_reader"):
         "PlotlyRenderer.save rewrites the PDF information Kaleido wrote, only when a PDF is saved",
 }

@@ -148,6 +148,10 @@ class SvgRenderer(Renderer):
     id_prefix : str
         Prefix for the few document-level ids (the clip path). Give every
         SVG embedded in the same HTML page its own prefix.
+    native : bool, optional
+        Write the document with coolplot-core (:mod:`coolplot.corelib`)
+        when it is installed. None (the default) follows ``COOLPLOT_NATIVE``;
+        the document is the same either way.
     """
 
     capabilities = frozenset({"file_output", "css_classes"})
@@ -156,8 +160,9 @@ class SvgRenderer(Renderer):
     owns_canvas = True
 
     def __init__(self, width: int = 800, height: int = 600, margins=(80, 20, 40, 60),
-                 id_prefix: str = "coolplot"):
+                 id_prefix: str = "coolplot", native: bool = None):
         super().__init__()
+        self.native = native
         self.width = width
         self.height = height
         self.margins = margins
@@ -165,6 +170,7 @@ class SvgRenderer(Renderer):
         # An XML id has to start with a letter or underscore
         self.id_prefix = prefix if re.match(r"[A-Za-z_]", prefix or "") else "cp-" + prefix
         self._items: Dict[str, Item] = {}
+        self._scene_ids: List[str] = []
         self._elements: Dict[str, str] = {}
         self._mapping_key = None
         self._legend_entries: List = []
@@ -172,6 +178,11 @@ class SvgRenderer(Renderer):
         self._parsed = None
         self._extra_margins = (0.0, 0.0, 0.0, 0.0)   # room for unclipped text, see _finish
         self.elements_built = 0  # element strings generated, for tests
+
+    def sync(self, scene):
+        """Make the document match ``scene``; see :meth:`coolplot.render.base.Renderer.sync`."""
+        self._scene_ids = scene.ids()   # the scene order, for the legend of the coolplot-core writer
+        return super().sync(scene)
 
     # Backend hooks -----------------------------------------------------
     def _set_axes(self, axes: AxesSpec):
@@ -298,8 +309,22 @@ class SvgRenderer(Renderer):
     # Output ------------------------------------------------------------
     def to_svg(self) -> str:
         """The complete SVG document for the last synchronised scene, ASCII only."""
+        if self._use_native():
+            from .. import corelib
+            # In scene order: coolplot-core takes the legend from that order and
+            # sorts by z order for drawing, with the same tie-break as the scene
+            items = [self._items[i] for i in self._scene_ids if i in self._items]
+            document = corelib.scene_to_svg(self._axes, items, self.width, self.height, self.margins, self.id_prefix)
+            if document is not None:
+                return document
         head, items, tail = self._document_parts()
         return "\n".join([head, '<g class="cp-items">'] + [e for _, e in items] + ['</g>', tail])
+
+    def _use_native(self) -> bool:
+        if self.native is None:
+            from .. import corelib
+            return corelib.enabled()
+        return bool(self.native)
 
     def _build_elements(self):
         """Make the SVG element of every item that has none yet (all of them after the axes changed)."""

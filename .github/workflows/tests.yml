@@ -29,6 +29,42 @@ jobs:
           MPLBACKEND: Agg
         run: python -m pytest -v
 
+  core:
+    # coolplot-core (cpp/): its own tests, then the whole Python suite through
+    # its module, so both paths stay green
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install
+        run: |
+          sudo apt-get install -y fonts-dejavu-core zlib1g-dev
+          python -m pip install --upgrade pip
+          python -m pip install "coolprop==8.0.0" nanobind -e ".[test]"
+      - name: Build and test the C++ library
+        run: |
+          cmake -B cpp/build -S cpp -DCMAKE_BUILD_TYPE=Release
+          cmake --build cpp/build -j4
+          ./cpp/build/coolplot_core_tests
+      - name: Build the Python module
+        run: |
+          cmake -B cpp/build_py -S cpp -DCMAKE_BUILD_TYPE=Release -DCOOLPLOT_CORE_TESTS=OFF \
+                -DCOOLPLOT_CORE_PYTHON=ON -DPython_EXECUTABLE="$(which python)"
+          cmake --build cpp/build_py -j4 --target coolplot_core_py
+      - name: Test through coolplot-core
+        env:
+          MPLBACKEND: Agg
+          PYTHONPATH: cpp/build_py/python
+          COOLPLOT_NATIVE: "1"
+        run: |
+          python -c "import coolplot_core"
+          python -m pytest -v
+
   build:
     runs-on: ubuntu-latest
     steps:
