@@ -61,6 +61,12 @@ def browser():
 
 
 @pytest.fixture(autouse=True)
+def _no_curves_on_disk_unless_a_test_asks(monkeypatch):
+    """A developer's COOLPLOT_CACHE_DIR must not feed stored lines into the tests."""
+    monkeypatch.delenv("COOLPLOT_CACHE_DIR", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _native_mode_follows_the_environment():
     """A test that calls coolplot.set_native_mode cannot leak its mode into the next one."""
     from coolplot.core import implementation

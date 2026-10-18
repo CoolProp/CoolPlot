@@ -53,7 +53,7 @@ coolplot::Scene parse_scene(const char* scene_json) {
 extern "C" {
 
 const char* coolplot_version(void) {
-    return "0.1.0";
+    return COOLPLOT_CORE_VERSION;
 }
 
 int coolplot_compose(const char* input_json, char** scene_json, char** error) {

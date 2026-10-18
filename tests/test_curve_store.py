@@ -5,7 +5,6 @@ import json
 import os
 import subprocess
 import sys
-import warnings
 import zlib
 
 import numpy as np
@@ -49,6 +48,16 @@ def test_a_second_cache_reads_every_line_from_disk(tmp_path):
     for item in scene:
         if item.id.startswith("iso/") and not item.id.endswith("/label"):
             assert np.array_equal(np.asarray(item.x), np.asarray(again[item.id].x), equal_nan=True), item.id
+            assert np.array_equal(np.asarray(item.y), np.asarray(again[item.id].y), equal_nan=True), item.id
+    # Other inputs, other lines: the key is not too coarse
+    third = CurveCache(directory=str(tmp_path))
+    other = _chart(third)
+    other.settings = other.settings.with_(calc={"points": 61})
+    other.update_scene()
+    from coolplot.engine import plan
+    n_quality = len([r for r in plan(other.spec, other.engine.domain(other.spec)) if r.key == "Q"])
+    # Lines of constant quality are traced in saturation points, not in Settings.calc.points: they are reused
+    assert n_quality > 0 and third.disk_hits == n_quality and third.misses == first.misses - n_quality
 
 
 def test_another_process_with_another_hash_seed_finds_the_lines(tmp_path):
@@ -118,10 +127,9 @@ def test_the_size_limit_of_coolprops_tables_applies(tmp_path, monkeypatch):
         assert store._room_for(1000)
     cache = CurveCache(directory=str(tmp_path))
     cache.disk.limit_GB = 1e-12
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with pytest.warns(UserWarning, match="1.5 times"):
         _chart(cache).update_scene()
-    assert cache.disk.saved == 0 and _files(tmp_path) == []
+    assert cache.disk.saved == 0 and _files(tmp_path) == [] and cache.disk._writable
 
 
 def test_where_the_folder_is(tmp_path, monkeypatch):
@@ -194,9 +202,60 @@ def test_a_background_engine_takes_the_lines_from_disk_at_once(tmp_path):
         chart.close()
 
 
-def test_the_module_does_not_read_the_disk_unless_asked(monkeypatch):
+def test_the_module_does_not_touch_the_disk_unless_asked(monkeypatch, tmp_path):
     calls = []
     monkeypatch.setattr(store_module.CurveStore, "load", lambda self, key: calls.append(key))
-    monkeypatch.delenv("COOLPLOT_CACHE_DIR", raising=False)
-    _chart(None).update_scene()
-    assert calls == []
+    monkeypatch.setattr(store_module.CurveStore, "save", lambda self, key, curve: calls.append(key))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    for value in (None, "0", "off", ""):
+        if value is None:
+            monkeypatch.delenv("COOLPLOT_CACHE_DIR", raising=False)
+        else:
+            monkeypatch.setenv("COOLPLOT_CACHE_DIR", value)
+        _chart(None).update_scene()
+    assert calls == [] and list(tmp_path.iterdir()) == []
+
+
+def test_every_input_of_a_line_changes_its_file(tmp_path):
+    from dataclasses import replace
+    from coolplot.engine import Engine, plan
+    chart = _chart(None)
+    spec = chart.spec
+    engine = Engine()
+    domain = engine.domain(spec)
+    request = [r for r in plan(spec, domain) if r.key == "T"][0]
+    store = CurveStore(str(tmp_path))
+    base = store.path(engine.cache_key(spec, domain, request))[0]
+    variants = [
+        engine.cache_key(spec, domain, replace(request, points=request.points + 1)),
+        engine.cache_key(spec, domain, replace(request, value_SI=request.value_SI + 1e-6)),
+        engine.cache_key(spec.with_(settings=spec.settings.with_(calc={"solver": "flash"})), domain, request),
+        engine.cache_key(spec, replace(domain, tp_box=domain.tp_box[:3] + (domain.tp_box[3] * 0.9,)), request),
+        engine.cache_key(spec.without_isolines("s").with_(diagram="hs"), domain, request),
+    ]
+    paths = {store.path(k)[0] for k in variants}
+    assert base not in paths and len(paths) == len(variants)
+    other_build = CurveStore(str(tmp_path))
+    other_build.environment = ("9.9.9", other_build.environment[1])   # another CoolPlot version
+    assert other_build.path(engine.cache_key(spec, domain, request))[0] != base
+
+
+def test_a_changed_reference_state_never_reaches_the_disk(tmp_path):
+    import CoolProp.CoolProp as CP
+    cache = CurveCache(directory=str(tmp_path))
+    chart = _chart(cache)
+    chart.update_scene()
+    before = set(_files(tmp_path))
+    try:
+        CP.set_reference_state("R290", "NBP")   # without engine.refresh()
+        again = CurveCache(directory=str(tmp_path))
+        moved = _chart(again)
+        moved.engine = chart.engine
+        moved.engine.cache = again
+        moved.update_scene()
+        assert again.misses > 0 and again.disk_hits == 0   # the old lines are not served
+        assert set(_files(tmp_path)) > before              # the new ones go to new files
+    finally:
+        CP.set_reference_state("R290", "DEF")
+        chart.engine.refresh()

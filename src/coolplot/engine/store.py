@@ -14,10 +14,13 @@ folder has a size limit (``MAXIMUM_TABLE_DIRECTORY_SIZE_IN_GB``).
   is set), or the environment variable ``COOLPLOT_CACHE_DIR``, or a folder
   given in the code;
 * inside it, one folder per fluid named like CoolProp's, for example
-  ``HEOS(R32[0.7]&R125[0.3])``;
+  ``HEOS(R32[0.7000000000]&R125[0.3000000000])`` (a pure fluid has no
+  fraction, unlike CoolProp's ``[1.0000000000]``);
 * one zlib-compressed JSON file per line, named by a digest of everything
-  the line depends on (the engine's cache key, which includes CoolProp's
-  version, configuration and reference state);
+  the line depends on: the engine's cache key (which includes CoolProp's
+  version, configuration and reference state), CoolPlot's version and
+  CoolProp's git revision (development builds of CoolProp all report the
+  same version), so a changed tracer never serves lines of the old one;
 * each file holds a revision number and the full key: a file of another
   revision, of another key (a digest collision) or one that cannot be read
   is ignored, and the line is traced again and the file replaced;
@@ -25,7 +28,9 @@ folder has a size limit (``MAXIMUM_TABLE_DIRECTORY_SIZE_IN_GB``).
   never reads half a file;
 * above CoolProp's size limit a warning says so; above 1.5 times the limit
   no more lines are written (CoolProp stops with an error there; a chart
-  should not fail because its cache is full).
+  should not fail because its cache is full). CoolProp counts one fluid's
+  folder, CoolPlot the whole folder of lines, and approximately: each
+  process counts what it found at its first write plus its own writes.
 
 The store is optional. A script that draws one chart gains nothing from
 it; an interactive application, a notebook that restarts, or a batch of
@@ -44,7 +49,8 @@ import warnings
 import zlib
 from typing import Any, Hashable, Optional
 
-from ..thermo.fluid import coolprop_home_dir, coolprop_table_limit_GB
+from ..__version__ import __version__ as COOLPLOT_VERSION
+from ..thermo.fluid import coolprop_home_dir, coolprop_revision, coolprop_table_limit_GB
 from ..thermo.isolines import Curve
 
 #: Bump when the stored record changes; files of another revision are traced again.
@@ -81,7 +87,7 @@ def _canonical(value: Any):
     if isinstance(value, int):
         return value
     if isinstance(value, float):
-        return repr(value)   # every bit, and NaN or infinity as text
+        return repr(float(value))   # every bit, NaN or infinity as text; float() drops numpy's "np.float64(...)"
     if isinstance(value, (tuple, list)):
         return [_canonical(v) for v in value]
     if isinstance(value, dict):
@@ -127,6 +133,8 @@ class CurveStore:
     def __init__(self, directory: Optional[str] = None):
         self.directory = os.path.abspath(os.path.expanduser(directory)) if directory else default_directory()
         self.limit_GB = coolprop_table_limit_GB()
+        # Part of every stored key: lines of another CoolPlot or CoolProp build are traced again
+        self.environment = (COOLPLOT_VERSION, coolprop_revision())
         self.loaded = 0      # lines read from disk
         self.saved = 0       # lines written
         self.rejected = 0    # files that were there but could not be used
@@ -142,7 +150,7 @@ class CurveStore:
     def path(self, key: Hashable):
         """(file path, key text) of a line, or (None, None) when the key has no stable text."""
         try:
-            text = key_text(key)
+            text = key_text((self.environment, key))
         except TypeError:
             return None, None
         fluid = key[0] if isinstance(key, tuple) and key else None
@@ -162,7 +170,7 @@ class CurveStore:
             if record.get("revision") != REVISION or record.get("key") != text:
                 raise ValueError("another revision or key")
             curve = Curve.from_dict(record["curve"])
-        except (OSError, zlib.error, ValueError, KeyError, TypeError, AttributeError):
+        except Exception:   # any damaged or foreign file (it is only ever JSON, never code)
             # Like CoolProp with a table it cannot load: trace again, and the
             # new file replaces this one
             with self._lock:
@@ -190,22 +198,24 @@ class CurveStore:
         folder = os.path.dirname(path)
         try:
             os.makedirs(folder, exist_ok=True)
-            handle, temporary = tempfile.mkstemp(dir=folder, prefix=".tmp-", suffix=SUFFIX)
-            try:
-                with os.fdopen(handle, "wb") as f:
-                    f.write(data)
-                os.replace(temporary, path)   # whole file or nothing, also for a second process
-            except BaseException:
-                try:
-                    os.remove(temporary)
-                except OSError:
-                    pass
-                raise
+            # The temporary name does not end in SUFFIX: it is never read or counted as a line
+            handle, temporary = tempfile.mkstemp(dir=folder, prefix=".tmp-", suffix=".part")
         except OSError as error:
-            # A folder that cannot be written (read-only, full disk): stop trying, say so once
+            # A folder that cannot be written (read-only, a file in the way): stop trying, say so once
             self._writable = False
             self._warn_once("write", "Traced lines cannot be kept in {0} ({1}); they are traced again next "
                             "time.".format(self.directory, error))
+            return False
+        try:
+            with os.fdopen(handle, "wb") as f:
+                f.write(data)
+            os.replace(temporary, path)   # whole file or nothing, also for a second process
+        except OSError:
+            # This one file only (on Windows another process may hold it open); the store keeps working
+            try:
+                os.remove(temporary)
+            except OSError:
+                pass
             return False
         with self._lock:
             self.saved += 1

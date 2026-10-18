@@ -135,8 +135,9 @@ class IsolineSet:
                 object.__setattr__(self, "anchor", SaturationAnchor.from_dict(self.anchor))
             elif not isinstance(self.anchor, SaturationAnchor):
                 raise TypeError("anchor has to be a SaturationAnchor, not {0}.".format(type(self.anchor).__name__))
-            if self.values_SI is not None:
-                raise ValueError("Give either the values of the lines or their saturation anchor, not both.")
+            if self.values_SI is not None or self.range_SI is not None:
+                raise ValueError("Give either the values or range of the lines or their saturation anchor, not "
+                                 "both; the anchor has its own range.")
             if self.key == "Q":
                 raise ValueError("Lines of constant vapour quality cannot be placed by saturation states.")
         if self.values_SI is not None:

@@ -31,11 +31,12 @@ class CurveCache:
     max_size : int
         Curves kept in memory.
     directory : str, True, False or None
-        Folder of the curves on disk: a path, True for the default folder
-        (~/.CoolProp/CoolPlot/Curves), False for none. None (the default)
-        keeps curves on disk only when the environment variable
-        ``COOLPLOT_CACHE_DIR`` names a folder, so a script that draws one
-        chart writes nothing.
+        Folder of the curves on disk: a path; True for the default folder
+        (~/.CoolProp/CoolPlot/Curves, or the folder ``COOLPLOT_CACHE_DIR``
+        names); False for none. None (the default) keeps curves on disk
+        only when ``COOLPLOT_CACHE_DIR`` names a folder ("0", "off" or an
+        empty value mean none), so a script that draws one chart writes
+        nothing.
 
     ``hits`` counts curves served from memory or disk, ``disk_hits`` those
     read from disk, and ``misses`` the curves that had to be computed.
@@ -54,8 +55,10 @@ class CurveCache:
         self.misses = 0
         self.disk_hits = 0
         if directory is None:
-            directory = os.environ.get(ENVIRONMENT_VARIABLE, "").strip() or False
-        if directory is False:
+            directory = os.environ.get(ENVIRONMENT_VARIABLE, "").strip()
+            if directory.lower() in ("", "0", "off", "false", "no"):
+                directory = False
+        if directory is False or directory == "":
             self.disk: Optional[CurveStore] = None
         else:
             self.disk = CurveStore(None if directory is True else str(directory))

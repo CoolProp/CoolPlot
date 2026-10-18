@@ -94,5 +94,28 @@ TEST_CASE("Label texts and axis titles", "[compose]") {
     CHECK(label_text(spec, "Q", 0.4) == "x=0.4");
     CHECK(label_text(spec, "s", 1500.0) == "s=1.5 kJ/kg/K");
     CHECK_THROWS_AS(compose_json("{not json"), Error);
+}
+
+TEST_CASE("Labels of lines placed by saturation states, as in Python", "[compose]") {
+    // The expected texts come from coolplot.compose.label_text for the same record
+    json data = load("compose_r290_ph.json").at("input").at("spec");
+    data["units"] = "IP";
+    for (json& iso : data["isolines"]) {
+        std::string key = iso.at("key").get<std::string>();
+        if (key == "s") iso["anchor"] = {{"by", "T"}, {"step_SI", 10.0}, {"Q", 0.25}, {"range_SI", nullptr}, {"label", "saturation"}};
+        if (key == "rho") iso["anchor"] = {{"by", "p"}, {"step_SI", 1e5}, {"Q", 0.0}, {"range_SI", nullptr}, {"label", "saturation"}};
+        if (key == "T") iso["anchor"] = {{"by", "p"}, {"step_SI", 1e5}, {"Q", 1.0}, {"range_SI", nullptr}, {"label", "value"}};
+    }
+    DiagramSpec spec = DiagramSpec::from_json(data);
+    CHECK(label_text(spec, "s", 1000.0, true, 273.15) == "T(x=0.25)=32 deg F");
+    CHECK(label_text(spec, "rho", 10.0, true, 2e5) == "p_sat,liq=29.01 psi");
+    CHECK(label_text(spec, "T", 300.0, true, 2e5) == "T=80.33 deg F");   // "label": "value"
+    CHECK(label_text(spec, "s", 1000.0) == "s=0.2388 Btu/lb/R");          // no saturation value given
+    data["settings"]["labels"]["show_units"] = false;
+    spec = DiagramSpec::from_json(data);
+    CHECK(label_text(spec, "s", 1000.0, true, 273.15) == "T(x=0.25)=32");
+    CHECK(label_text(spec, "rho", 10.0, true, 2e5) == "p_sat,liq=29.01");
+    data["isolines"][0]["anchor"]["label"] = "both";
+    CHECK_THROWS_AS(DiagramSpec::from_json(data), Error);
     CHECK_THROWS_AS(compose(json{{"spec", {{"diagram", "ph"}}}, {"domain", {{"ranges_SI", json::object()}}}}), Error);
 }

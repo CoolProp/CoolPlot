@@ -25,7 +25,13 @@ guide in the documentation says what to change in your code.
   with a revision and the full key in each file, a rebuild of anything
   unreadable, CoolProp's `ALTERNATIVE_TABLES_DIRECTORY` and
   `MAXIMUM_TABLE_DIRECTORY_SIZE_IN_GB`, and atomic writes so processes can
-  share the folder (`coolplot.engine.store`). Off unless asked for.
+  share the folder (`coolplot.engine.store`). Off unless asked for. The
+  stored key also holds CoolPlot's version and CoolProp's git revision,
+  and with a disk cache the engine notices a changed reference state by
+  itself before anything is written.
+- coolplot-core reports its version from CMake (1.1.0); the bridge
+  refuses a chart with saturation-placed lines on an older core, which
+  would label them by value, and the Python composer draws it.
 
 #### Fixed
 - The fingerprint of a fluid (part of every cache key) used Python's

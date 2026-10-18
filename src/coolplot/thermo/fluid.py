@@ -13,6 +13,7 @@ calculation. Use :meth:`Fluid.clone` to give a worker thread its own copy.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from functools import lru_cache
 from typing import Optional, Tuple
@@ -474,31 +475,39 @@ class Fluid:
         """
         if self._fingerprint is None:
             version = getattr(CoolProp, "__version__", "")
-            try:
-                config = CP.get_config_as_json_string()
-            except Exception:
-                config = ""
-            h = s = float("nan")
-            try:
-                probe = build_state(self._model)
-                T_K = (self.T_max_K or 300.0) * (1.0 - 1e-6)
-                p_Pa = max(self.p_min_Pa or 0.0, 1e5)
-                probe.update(CoolProp.PT_INPUTS, p_Pa, T_K)
-                h, s = probe.hmass(), probe.smass()
-            except Exception:
-                pass
-            # A digest, not hash(): Python salts the hash of a string per
-            # process, and the fingerprint keys lines kept on disk between runs
-            digest = hashlib.sha256(config.encode("utf-8")).hexdigest()[:16]
-            self._fingerprint = (version, digest, round(h, 6), round(s, 6))
+            h, s = self._probe()
+            self._fingerprint = (version, config_digest(), h, s)
         return self._fingerprint
+
+    def _probe(self) -> Tuple[float, float]:
+        """Enthalpy and entropy at one state of a new AbstractState, rounded; they move with the reference state."""
+        h = s = float("nan")
+        try:
+            probe = build_state(self._model)
+            T_K = (self.T_max_K or 300.0) * (1.0 - 1e-6)
+            p_Pa = max(self.p_min_Pa or 0.0, 1e5)
+            probe.update(CoolProp.PT_INPUTS, p_Pa, T_K)
+            h, s = probe.hmass(), probe.smass()
+        except Exception:
+            pass
+        return round(h, 6), round(s, 6)
 
     def configuration_changed(self) -> bool:
         """Whether CoolProp's global configuration differs from the one this fluid was made under."""
-        try:
-            return hash(CP.get_config_as_json_string()) != self.fingerprint[1]
-        except Exception:
-            return False
+        return config_digest() != self.fingerprint[1]
+
+    def reference_state_changed(self) -> bool:
+        """Whether ``set_reference_state`` moved this fluid's enthalpy or entropy since it was made.
+
+        Costs one new AbstractState (0.1 ms for a pure fluid, a few ms for a
+        blend), so the engine asks only before lines can go to disk.
+        """
+        h, s = self._probe()
+        _, _, h0, s0 = self.fingerprint
+
+        def same(a, b):
+            return a == b or (a != a and b != b)   # NaN equals NaN here
+        return not (same(h, h0) and same(s, s0))
 
     @property
     def critical(self) -> dict:
@@ -693,6 +702,39 @@ def _critical_point(fluid: Fluid) -> dict:
 # CoolPlot keeps traced lines on disk the way CoolProp keeps its TTSE and
 # BICUBIC tables (src/Backends/Tabular/TabularBackends.cpp): next to them in
 # the user's ~/.CoolProp folder, and under the same size limit.
+
+# Settings that say where CoolProp keeps files or how much room they get,
+# not how it computes; they stay out of the digest, so following the advice
+# to raise the size limit does not invalidate every stored line
+_CONFIG_NOT_DIGESTED = ("ALTERNATIVE_TABLES_DIRECTORY", "ALTERNATIVE_SVDTABLES_DIRECTORY",
+                        "MAXIMUM_TABLE_DIRECTORY_SIZE_IN_GB", "SAVE_RAW_TABLES")
+
+
+def config_digest() -> str:
+    """A digest of CoolProp's global configuration, the same text in every process.
+
+    Python's ``hash()`` of a string is salted per process; this digest keys
+    lines kept on disk between runs. Settings that only place or limit
+    CoolProp's table files are left out.
+    """
+    try:
+        text = CP.get_config_as_json_string()
+    except Exception:
+        return ""
+    try:
+        config = json.loads(text)
+        for key in _CONFIG_NOT_DIGESTED:
+            config.pop(key, None)
+        text = json.dumps(config, sort_keys=True)
+    except (ValueError, AttributeError):
+        pass
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def coolprop_revision() -> str:
+    """CoolProp's version and git revision: development builds all report the same version."""
+    return "{0}+{1}".format(getattr(CoolProp, "__version__", ""), getattr(CoolProp, "__gitrevision__", ""))
+
 
 def _config(getter, name: str):
     """A CoolProp configuration value. CoolProp 8 takes the key as an enum

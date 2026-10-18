@@ -8,5 +8,6 @@ from .diagram import CycleSpec, DiagramSpec, IsolineSet, ProcessSpec, Saturation
 from .fluid import FluidSpec, HumidAirSpec
 from .settings import PRESETS, CalcSettings, LabelSettings, PageSettings, Settings, get_settings
 
-__all__ = ["CycleSpec", "DiagramSpec", "IsolineSet", "ProcessSpec", "SaturationAnchor", "FluidSpec", "HumidAirSpec", "PRESETS",
+__all__ = ["CycleSpec", "DiagramSpec", "IsolineSet", "ProcessSpec",
+           "SaturationAnchor", "FluidSpec", "HumidAirSpec", "PRESETS",
            "CalcSettings", "LabelSettings", "PageSettings", "Settings", "get_settings"]

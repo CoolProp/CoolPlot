@@ -347,3 +347,23 @@ def test_lines_placed_by_saturation_states_compose_the_same_through_the_port():
     texts = [i.text for i in ported if i.id.endswith("/label")]
     assert any(t.startswith("T_sat=") for t in texts) and any(t.startswith("T_sat,liq=") for t in texts)
     assert any(t.startswith("T=") for t in texts)
+
+
+@needs_core
+def test_an_older_core_refuses_lines_placed_by_saturation_states(monkeypatch):
+    """A core from before 1.1 would ignore the anchor and label the lines by value."""
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    from coolplot.compose import compose
+    from coolplot.engine import plan
+    assert native.core_version() >= (1, 1)
+    chart = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    chart.set_lines("s", at_saturation={"T": 20}, labels=True)
+    spec = chart.spec
+    domain = chart.engine.domain(spec)
+    curves = chart.engine.curves(spec, domain, plan(spec, domain))
+    monkeypatch.setattr(native, "core_version", lambda: (1, 0, 0))
+    monkeypatch.setenv("COOLPLOT_NATIVE", "1")
+    with pytest.warns(native.CoreFallbackWarning, match="older than 1.1"):
+        items, _ = compose(spec, domain, curves)
+    assert any(getattr(i, "text", "").startswith("T_sat=") for i in items)

@@ -25,6 +25,7 @@ the calculation domain is found and how one line is computed.
 from __future__ import annotations
 
 import math
+import warnings
 from typing import Optional, Tuple
 
 from ..core.quantities import quantity_key
@@ -76,17 +77,20 @@ def saturation_anchor_values(provider, key: str, by: str, step_SI: float, Q: flo
     saturation states.
     """
     key = quantity_key(key)
-    if provider.kind != "fluid":
-        raise ValueError("Lines are placed by saturation states only in charts of a fluid.")
-    lo, hi = provider.saturation_range(by, margin)   # ValueError for fluids without a saturation curve
+    if provider.kind != "fluid" or not provider.has_critical_point:
+        raise ValueError("Lines are placed by saturation states only for fluids with a saturation curve; "
+                         "{0} has none.".format(provider.name))
+    lo, hi = provider.saturation_range(by, margin)
     box_lo, box_hi = (tp_box[0], tp_box[1]) if by == "T" else (tp_box[2], tp_box[3])
     lo, hi = max(lo, box_lo), min(hi, box_hi)
     if range_SI is not None:
         lo, hi = max(lo, range_SI[0]), min(hi, range_SI[1])
     if not hi >= lo:
         return ()
-    # Round steps in the display unit: a difference converts with the scale only
-    step_shown = abs(step_SI * unit.scale)
+    # Round steps in the display unit: a difference converts with the scale
+    # only; 10 digits drop the noise of the conversion (20 deg F is
+    # 11.1111111111 K, which converts back to 19.99999999998)
+    step_shown = float("{0:.10g}".format(abs(step_SI * unit.scale)))
     lo_shown, hi_shown = sorted(float(v) for v in unit.from_SI([lo, hi]))
     first = math.ceil(lo_shown / step_shown - 1e-9)
     last = math.floor(hi_shown / step_shown + 1e-9)
@@ -94,8 +98,9 @@ def saturation_anchor_values(provider, key: str, by: str, step_SI: float, Q: flo
         raise ValueError("A step of {0:g} {1} would place {2} lines; choose a larger step.".format(
             step_shown, unit.difference.label, last - first + 1))
     values = []
+    failed = 0
     for k in range(first, last + 1):
-        shown = float("{0:.12g}".format(k * step_shown))   # 30.000000000000004 becomes 30
+        shown = float("{0:.10g}".format(k * step_shown))   # 30.000000000000004 becomes 30
         saturation_SI = min(max(float(unit.to_SI(shown)), lo), hi)
         if key == by:
             values.append((saturation_SI, saturation_SI))
@@ -103,9 +108,15 @@ def saturation_anchor_values(provider, key: str, by: str, step_SI: float, Q: flo
         try:
             value = provider.state_point(by, saturation_SI, "Q", Q)[key]
         except (ValueError, KeyError):
-            continue   # CoolProp cannot compute this saturation state; the line is left out
+            value = float("nan")
         if math.isfinite(value):
             values.append((saturation_SI, float(value)))
+        else:
+            failed += 1   # CoolProp cannot compute this saturation state; the line is left out
+    if failed:
+        warnings.warn("{0} of {1} saturation states for the lines of constant {2} of {3} could not be computed; "
+                      "they have no line.".format(failed, last - first + 1, key, provider.name), UserWarning,
+                      stacklevel=2)
     return tuple(values)
 
 

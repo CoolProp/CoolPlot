@@ -114,10 +114,13 @@ from their shape in plot coordinates (`coolplot.thermo.stepping`), so a
 straight line has about `points / 2` points and a bent one more.
 
 A curve is identified by the cache key `(fluid, fingerprint, diagram,
-key, value_SI, points, ...)`: the fingerprint names the CoolProp version
-and its configuration, so curves of one installation are never served
-to another; the rest are the request (`coolplot.engine.planning.CurveRequest`)
-and the calculation settings that affect the numbers.
+key, value_SI, points, ...)`: the fingerprint names the CoolProp version,
+a digest of its configuration and the reference state, so curves made
+under other settings are never served; the rest are the request
+(`coolplot.engine.planning.CurveRequest`) and the calculation settings
+that affect the numbers. Curves kept on disk (since 1.1) add CoolPlot's
+version and CoolProp's git revision to that key, see the how-to on
+caching.
 
 ## 3. The scene
 

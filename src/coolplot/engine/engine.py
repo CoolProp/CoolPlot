@@ -80,6 +80,14 @@ class Engine:
     def domain(self, spec: DiagramSpec) -> Domain:
         """The calculation region of a diagram: the T-p box, the range of every
         quantity and the values of the families placed by saturation states."""
+        if self.cache.disk is not None:
+            # Lines on disk outlive the process: a reference state changed
+            # without refresh() would put new lines (and enthalpy and entropy
+            # ranges) under the old fingerprint. One new state per update, so
+            # only when lines can go to disk.
+            changed = getattr(self.fluid(spec.fluid), "reference_state_changed", None)
+            if changed is not None and changed():
+                self.refresh()
         margin = spec.settings.calc.critical_margin
         key = (spec.fluid, spec.limits, margin)
         if key not in self._domains:

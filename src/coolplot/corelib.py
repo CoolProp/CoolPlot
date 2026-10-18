@@ -47,6 +47,14 @@ def available() -> bool:
     return _core is not None and hasattr(_core, "compose") and hasattr(_core, "scene_to_svg")
 
 
+def core_version():
+    """The version of the installed coolplot_core as a tuple of ints, (0,) when unknown."""
+    try:
+        return tuple(int(part) for part in str(_core.version()).split(".")[:3])
+    except Exception:
+        return (0,)
+
+
 def has_pdf() -> bool:
     """Whether the installed ``coolplot_core`` module also writes PDF."""
     return _core is not None and hasattr(_core, "scene_to_pdf") and hasattr(_core, "pdf_plot_size_pt")
@@ -112,6 +120,10 @@ def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycle
     """
     if not available():
         return None
+    if any(s.anchor is not None for s in spec.isolines) and core_version() < (1, 1):
+        # An older core ignores the anchor and would label the lines by value
+        raise CoreRefusal("this coolplot_core ({0}) is older than 1.1 and cannot label lines placed by saturation "
+                          "states".format(".".join(str(v) for v in core_version())))
     record = compose_record(spec, domain, curves, plot_size_pt, previous_labels, cycles)
     try:
         text = _core.compose(_dumps(record))

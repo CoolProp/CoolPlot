@@ -72,7 +72,7 @@ def test_steps_are_round_in_the_units_shown():
     ip = PropertyDiagram("HEOS::R290", "ph", units="IP", tp_limits="ACHP")
     ip.set_lines("s", at_saturation={"T": 20, "range": (0, 100)})
     T_F = sorted(r.anchor_SI * 1.8 - 459.67 for r in _requests(ip, "s"))
-    assert T_F == pytest.approx([0.0, 20.0, 40.0, 60.0, 80.0, 100.0], abs=1e-9)
+    assert T_F == pytest.approx([0.0, 20.0, 40.0, 60.0, 80.0, 100.0], abs=1e-11)   # no drift of the step
     bar = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP")
     bar.set_lines("T", at_saturation={"p": 5, "range": (1, 22)}, labels=True)
     requests = _requests(bar, "T")
@@ -88,7 +88,8 @@ def test_the_steps_stop_below_the_critical_point_and_inside_the_chart():
     T_sat = [r.anchor_SI for r in _requests(chart, "s")]
     T_crit = chart.fluid.critical["T"]
     box = chart.engine.domain(chart.spec).tp_box
-    assert max(T_sat) < T_crit and min(T_sat) >= box[0] and len(T_sat) == 20
+    assert max(T_sat) < T_crit and T_crit - max(T_sat) < 10.0 + 1e-9   # up to the last step below the critical point
+    assert min(T_sat) >= box[0] and min(T_sat) - box[0] < 10.0 + 1e-9 and len(T_sat) >= 15
 
 
 def test_wrong_requests_are_refused_with_a_reason():
@@ -109,9 +110,14 @@ def test_wrong_requests_are_refused_with_a_reason():
         chart.set_lines("s", at_saturation={"T": 10, "label": "both"})
     with pytest.raises(ValueError, match="vapour quality"):
         chart.set_lines("Q", at_saturation={"T": 10})
-    chart.set_lines("s", at_saturation={"T": 0.1})
-    with pytest.raises(ValueError, match="larger step"):
-        chart.update_scene()
+    with pytest.raises(ValueError, match="larger step"):   # reported by set_lines, not at the next draw
+        chart.set_lines("s", at_saturation={"T": 0.1})
+    assert "s" not in chart.line_sets()
+    # the quality may be written x, as the labels write it
+    chart.set_lines("s", at_saturation={"T": 20, "x": 0, "range": (0, 20)})
+    assert chart.line_sets()["s"].anchor.Q == 0.0
+    with pytest.raises(ValueError, match="not both"):
+        IsolineSet("s", range_SI=(1.0, 2.0), anchor=SaturationAnchor())
     air = PsychrometricChart(T_range=(0, 40), W_range=(0, 20))
     with pytest.raises(ValueError, match="charts of a fluid"):
         air.set_lines("h", at_saturation={"T": 10})
@@ -132,9 +138,11 @@ def test_the_spec_record_round_trips_and_reads_1_0_records():
 
 def test_anchored_lines_share_the_cache_with_the_same_values_given_explicitly():
     chart = PropertyDiagram("HEOS::R290", "ph", units="SI", tp_limits="ACHP")
-    chart.set_lines("s", at_saturation={"T": 10, "range": (-20, 20)})
+    chart.set_lines("s", at_saturation={"T": 10, "range": (253.15, 293.15)})   # SI units: kelvin
     chart.update_scene()
     values = [r.value_SI for r in _requests(chart, "s")]
+    # round in the chart's units, here kelvin
+    assert sorted(round(r.anchor_SI, 9) for r in _requests(chart, "s")) == [260.0, 270.0, 280.0, 290.0]
     misses = chart.cache.misses
     chart.set_lines("s", values=values)
     chart.update_scene()
@@ -163,3 +171,27 @@ def test_the_drawn_lines_pass_through_their_saturation_states():
         h_at_p = np.interp(np.log(dew.p), np.log(y[ok])[::-1] if y[ok][0] > y[ok][-1] else np.log(y[ok]),
                            x[ok][::-1] if y[ok][0] > y[ok][-1] else x[ok])
         assert h_at_p == pytest.approx(dew.h, rel=2e-3)
+
+
+def test_states_that_cannot_be_computed_are_left_out_with_a_warning():
+    from coolplot.thermo.fluid import Fluid
+    from coolplot.thermo.provider import saturation_anchor_values
+    from coolplot.core.units import ENGINEERING
+    fluid = Fluid("HEOS::R290")
+    real = fluid.state_point
+
+    def refuse_zero(k1, v1, k2, v2):
+        if k1 == "T" and abs(v1 - 273.15) < 1e-9:
+            raise ValueError("no state")
+        return real(k1, v1, k2, v2)
+    fluid.state_point = refuse_zero
+    with pytest.warns(UserWarning, match="1 of 3 saturation states"):
+        pairs = saturation_anchor_values(fluid, "s", "T", 10.0, 1.0, (263.15, 283.15), (100.0, 400.0, 1.0, 1e8),
+                                         1e-7, ENGINEERING["T"])
+    assert [round(t, 2) for t, _ in pairs] == [263.15, 283.15]
+
+
+def test_a_fluid_without_a_saturation_curve_is_refused_when_the_lines_are_set():
+    chart = PropertyDiagram("INCOMP::MEG[0.3]", "Ts", units="engineering", tp_limits=[260.0, 360.0, 1e5, 1e6])
+    with pytest.raises(ValueError, match="no saturation curve|has none"):
+        chart.set_lines("h", at_saturation={"T": 10})

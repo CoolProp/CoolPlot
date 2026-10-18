@@ -421,8 +421,12 @@ class Chart:
                 raise ValueError("Give the lines either values or a range, or at_saturation, not both; a range "
                                  "of saturation states goes into at_saturation as 'range'.")
             anchor = self._saturation_anchor(at_saturation, units)
-        self.spec = self.spec.with_isolines(IsolineSet(key, values_SI, num, range_SI, rounding, points, labels,
-                                                       anchor))
+        spec = self.spec.with_isolines(IsolineSet(key, values_SI, num, range_SI, rounding, points, labels, anchor))
+        if anchor is not None:
+            # Place the lines now, so a step that is too small or a fluid
+            # without a saturation curve is reported here, not at the next draw
+            self.engine.domain(spec)
+        self.spec = spec
         return key
 
     def _saturation_anchor(self, at_saturation, units) -> SaturationAnchor:
@@ -430,9 +434,12 @@ class Chart:
         if isinstance(at_saturation, SaturationAnchor):
             return at_saturation
         given = dict(at_saturation)
-        Q = float(given.pop("Q", 1.0))
         span = given.pop("range", None)
         label = given.pop("label", "saturation")
+        Q = 1.0
+        for name in list(given):   # the quality may be written Q or x, as the labels write it
+            if name in ("Q", "x", "q"):
+                Q = float(given.pop(name))
         if len(given) != 1:
             raise ValueError("at_saturation takes one step, by saturation temperature or pressure, e.g. "
                              "{{'T': 10}} or {{'p': 2, 'Q': 0}}, not {0}.".format(at_saturation))

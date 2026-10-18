@@ -43,6 +43,16 @@ for the liquid side. For a blend, `"Q": 1` is the dew point and `"Q": 0`
 the bubble point at that temperature. A line placed this way is the same
 line, and the same cache entry, as one given by its value.
 
+Only fluids with a saturation curve can place lines this way, not
+incompressibles or humid air; `set_lines` says so at once, as it does for
+a step that would give more than 200 lines. A saturation state CoolProp
+cannot compute (a blend close to its critical point) has no line, with a
+warning. The steps end at the critical point: for a blend, dew states
+between the critical point and the highest dew temperature are left out.
+The step is kept in SI units and rounded in the chart's units, so a spec
+made in deg F and drawn in deg C places its lines on multiples of the
+converted step.
+
 ## The region the lines cover
 
 `tp_limits` is the temperature and pressure region in which lines are
