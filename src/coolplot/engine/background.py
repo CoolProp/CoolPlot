@@ -28,9 +28,10 @@ One engine serves one diagram: every request for curves replaces the
 previous plan. Diagrams share curves by sharing a cache instead.
 
 Workers only receive plain data (the fluid model, the request, the region
-and the calculation settings) and return a :class:`Curve`, which is what
-makes process workers possible. Each worker builds its own CoolProp state,
-because states are not thread safe.
+and the calculation settings) and return a curve with the fingerprint it
+was computed under, which is what makes process workers possible. Each
+worker builds its own CoolProp state, because states are not thread safe,
+and builds it again when the parent expects another fingerprint.
 
 Domains (the calculation region) and cycles are still computed right away:
 they are needed before anything can be drawn and are fast.
@@ -38,12 +39,12 @@ they are needed before anything can be drawn and are fast.
 from __future__ import annotations
 
 import threading
+import warnings
 from concurrent.futures import BrokenExecutor, Future, ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import replace
 from typing import Callable, Dict, Optional, Tuple
 
 from ..spec.diagram import DiagramSpec
-from ..thermo.isolines import Curve
 from ..thermo.provider import compute_curve as _compute_curve, make_provider
 from .cache import CurveCache
 from .engine import Engine
@@ -55,28 +56,38 @@ MODES = ("threads", "processes")
 _local = threading.local()
 
 
-def _worker_fluid(fluid_spec):
-    """The property provider of this worker for a FluidSpec or HumidAirSpec."""
+def _worker_fluid(fluid_spec, fingerprint=None):
+    """The property provider of this worker for a FluidSpec or HumidAirSpec.
+
+    A provider whose fingerprint differs from the one the parent expects
+    (a reference state or configuration changed since it was made) is made
+    again: a CoolProp state keeps the reference state it was made under.
+    """
     fluids = getattr(_local, "fluids", None)
     if fluids is None:
         fluids = _local.fluids = {}
-    if fluid_spec not in fluids:
+    provider = fluids.get(fluid_spec)
+    if provider is None or (fingerprint is not None and provider.fingerprint != fingerprint):
         if len(fluids) > 8:
             fluids.clear()
-        fluids[fluid_spec] = make_provider(fluid_spec)
-    return fluids[fluid_spec]
+        provider = fluids[fluid_spec] = make_provider(fluid_spec)
+    return provider
 
 
 def compute_curve(fluid_spec, diagram, key: str, value_SI: float, points: int,
                   tp_box: Tuple[float, float, float, float], solver: str, margin: float, spacing: str,
-                  ranges=None, use_native: bool = False) -> Curve:
-    """One curve from plain data; runs in a worker thread or process.
+                  ranges=None, use_native: bool = False, fingerprint=None):
+    """One curve from plain data, and the fingerprint it was computed under; runs in a worker.
 
-    ``use_native`` comes from the parent's cache key: a worker process does
-    not see :func:`coolplot.core.implementation.set_native_mode` called in the parent.
+    ``use_native`` and ``fingerprint`` come from the parent's cache key: a
+    worker process does not see :func:`coolplot.core.implementation.set_native_mode`,
+    ``set_reference_state`` or ``set_config_*`` called in the parent. The
+    parent stores a curve on disk only when the fingerprints agree.
     """
-    return _compute_curve(_worker_fluid(fluid_spec), diagram, key, value_SI, tp_box, points, solver, margin,
-                          spacing, ranges, use_native=use_native)
+    provider = _worker_fluid(fluid_spec, fingerprint)
+    curve = _compute_curve(provider, diagram, key, value_SI, tp_box, points, solver, margin,
+                           spacing, ranges, use_native=use_native)
+    return curve, provider.fingerprint
 
 
 class BackgroundEngine(Engine):
@@ -248,7 +259,7 @@ class BackgroundEngine(Engine):
         pool = self._new_pool(workers=1) if alone else self._pool
         future = pool.submit(compute_curve, spec.fluid, spec.diagram, request.key, request.value_SI,
                              request.points, domain.tp_box, calc.solver, calc.critical_margin,
-                             calc.saturation_spacing, domain.ranges_SI, self.key_uses_native(key))
+                             calc.saturation_spacing, domain.ranges_SI, self.key_uses_native(key), key[1])
         if alone:
             pool.shutdown(wait=False)   # the process ends after this one job
         self._jobs[key] = future
@@ -289,11 +300,27 @@ class BackgroundEngine(Engine):
             return True
         return False
 
+    def _warn_once_mismatch(self, key: Tuple):
+        if not getattr(self, "_mismatch_warned", False):
+            self._mismatch_warned = True
+            warnings.warn("A background worker computed {0} under another CoolProp reference state or "
+                          "configuration than this process (a worker process does not see set_reference_state "
+                          "or set_config_* called here); its lines are not kept on disk. Use threads, or set "
+                          "the state before the engine starts its workers.".format(key[0]), UserWarning,
+                          stacklevel=2)
+
     def _record(self, key: Tuple, future: Future, pool, alone: bool):
         """Keep the outcome of one job: the curve, a crashed pool, or a failure (lock held)."""
         error = future.exception()
         if error is None:
-            self.cache.put(key, future.result())
+            curve, fingerprint = future.result()
+            # A worker that computed under another reference state or
+            # configuration (a spawned process never sees the parent's
+            # set_reference_state) gives a line that must not outlive this run
+            same = fingerprint == key[1]
+            if not same:
+                self._warn_once_mismatch(key)
+            self.cache.put(key, curve, disk=same)
             self._failed.pop(key, None)
             self._suspects.discard(key)
         elif isinstance(error, BrokenExecutor) and not alone:

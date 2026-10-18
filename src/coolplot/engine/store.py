@@ -63,6 +63,27 @@ SUFFIX = ".json.z"
 ENVIRONMENT_VARIABLE = "COOLPLOT_CACHE_DIR"
 
 
+# The modules whose code decides the points of a traced line
+_NUMERICS_MODULES = ("isolines", "tracer", "stepping", "native", "provider", "fluid", "limits", "humid_air")
+_numerics_digest = None
+
+
+def numerics_digest() -> str:
+    """A digest of the source of the modules that trace lines, computed once per process."""
+    global _numerics_digest
+    if _numerics_digest is None:
+        folder = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "thermo")
+        digest = hashlib.sha256()
+        for name in _NUMERICS_MODULES:
+            try:
+                with open(os.path.join(folder, name + ".py"), "rb") as f:
+                    digest.update(f.read())
+            except OSError:
+                digest.update(name.encode("ascii"))   # a frozen or zipped install: the version decides
+        _numerics_digest = digest.hexdigest()[:16]
+    return _numerics_digest
+
+
 def default_directory() -> str:
     """The folder of the store: ``COOLPLOT_CACHE_DIR``, or ~/.CoolProp/CoolPlot/Curves."""
     chosen = os.environ.get(ENVIRONMENT_VARIABLE, "").strip()
@@ -133,8 +154,10 @@ class CurveStore:
     def __init__(self, directory: Optional[str] = None):
         self.directory = os.path.abspath(os.path.expanduser(directory)) if directory else default_directory()
         self.limit_GB = coolprop_table_limit_GB()
-        # Part of every stored key: lines of another CoolPlot or CoolProp build are traced again
-        self.environment = (COOLPLOT_VERSION, coolprop_revision())
+        # Part of every stored key: lines of another CoolPlot or CoolProp build
+        # are traced again. Development builds of CoolPlot share a version, so
+        # the source of the numerics is part of it as well.
+        self.environment = (COOLPLOT_VERSION, coolprop_revision(), numerics_digest())
         self.loaded = 0      # lines read from disk
         self.saved = 0       # lines written
         self.rejected = 0    # files that were there but could not be used
@@ -210,12 +233,15 @@ class CurveStore:
             with os.fdopen(handle, "wb") as f:
                 f.write(data)
             os.replace(temporary, path)   # whole file or nothing, also for a second process
-        except OSError:
-            # This one file only (on Windows another process may hold it open); the store keeps working
+        except OSError as error:
+            # This one file only (on Windows another process may hold it open,
+            # or the disk is full); the store keeps working and says so once
             try:
                 os.remove(temporary)
             except OSError:
                 pass
+            self._warn_once("file", "A traced line could not be written to {0} ({1}); it is traced again next "
+                            "time.".format(folder, error))
             return False
         with self._lock:
             self.saved += 1

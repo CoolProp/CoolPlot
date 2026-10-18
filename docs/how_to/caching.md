@@ -41,8 +41,12 @@ How the folder is kept follows CoolProp's own table cache:
 
 With a disk cache the engine checks once per update whether
 `CoolProp.CoolProp.set_reference_state` moved the fluid's enthalpy and
-entropy, and starts afresh if it did, so lines of one reference state are
-never stored under another.
+entropy, and starts afresh if it did. The workers of a background engine
+report the fingerprint they computed under: thread workers make their
+CoolProp states again when it differs, and a line from a worker process
+that never saw the change (`set_reference_state` or `set_config_*` called
+after the workers started) is kept in memory only, with a warning. So
+lines of one reference state are never stored under another.
 
 Several processes may share the folder: files are written whole or not
 at all, and a file another process holds open is simply skipped. To start

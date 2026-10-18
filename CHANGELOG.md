@@ -28,7 +28,10 @@ guide in the documentation says what to change in your code.
   share the folder (`coolplot.engine.store`). Off unless asked for. The
   stored key also holds CoolPlot's version and CoolProp's git revision,
   and with a disk cache the engine notices a changed reference state by
-  itself before anything is written.
+  itself before anything is written; background workers report the
+  fingerprint they computed under, and a line from a worker that differs
+  stays off disk. The source of the numerics modules is part of the stored
+  key too, so development builds that share a version do not share lines.
 - coolplot-core reports its version from CMake (1.1.0); the bridge
   refuses a chart with saturation-placed lines on an older core, which
   would label them by value, and the Python composer draws it.

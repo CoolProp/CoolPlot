@@ -436,10 +436,10 @@ class Chart:
         given = dict(at_saturation)
         span = given.pop("range", None)
         label = given.pop("label", "saturation")
-        Q = 1.0
-        for name in list(given):   # the quality may be written Q or x, as the labels write it
-            if name in ("Q", "x", "q"):
-                Q = float(given.pop(name))
+        qualities = [given.pop(name) for name in ("Q", "x", "q") if name in given]   # written as the labels write it
+        if len(qualities) > 1:
+            raise ValueError("Give the vapour quality of the saturation states once, as 'Q' or 'x'.")
+        Q = float(qualities[0]) if qualities else 1.0
         if len(given) != 1:
             raise ValueError("at_saturation takes one step, by saturation temperature or pressure, e.g. "
                              "{{'T': 10}} or {{'p': 2, 'Q': 0}}, not {0}.".format(at_saturation))

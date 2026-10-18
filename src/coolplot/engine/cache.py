@@ -86,10 +86,10 @@ class CurveCache:
         last to be dropped."""
         return self._find(key)
 
-    def put(self, key: Hashable, curve: Any):
-        """Store a curve computed elsewhere (for example in a worker)."""
+    def put(self, key: Hashable, curve: Any, disk: bool = True):
+        """Store a curve computed elsewhere (for example in a worker); ``disk=False`` keeps it in memory only."""
         self._remember(key, curve)
-        if self.disk is not None:
+        if disk and self.disk is not None:
             self.disk.save(key, curve)
 
     def clear(self):

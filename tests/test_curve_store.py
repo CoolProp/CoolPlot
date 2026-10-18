@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import warnings
 import zlib
 
 import numpy as np
@@ -258,4 +259,46 @@ def test_a_changed_reference_state_never_reaches_the_disk(tmp_path):
         assert set(_files(tmp_path)) > before              # the new ones go to new files
     finally:
         CP.set_reference_state("R290", "DEF")
+        chart.engine.refresh()
+
+
+@pytest.mark.parametrize("mode", ["threads", "processes"])
+def test_background_workers_never_store_lines_of_another_reference_state(tmp_path, mode):
+    """A worker keeps the CoolProp states it made (threads), or never sees the change (processes)."""
+    import CoolProp.CoolProp as CP
+    cache = CurveCache(directory=str(tmp_path))
+    chart = PropertyDiagram("HEOS::R290", "ph", units="SI", tp_limits="ACHP", settings="interactive", cache=cache,
+                            background=mode)
+    chart.set_lines("T", values=[260.0, 280.0])
+    try:
+        chart.update_scene()
+        chart.wait()                             # the workers exist and hold their states
+        CP.set_reference_state("R290", "NBP")   # without refresh()
+        chart.set_lines("T", values=[260.0, 280.0, 300.0, 320.0])
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            chart.update_scene()
+            chart.wait()
+        mismatch = [w for w in caught if "another CoolProp reference state" in str(w.message)]
+        # Read back under the new reference state, and compute the same lines afresh without any disk
+        reader = CurveCache(directory=str(tmp_path))
+        stored = PropertyDiagram("HEOS::R290", "ph", units="SI", tp_limits="ACHP", settings="interactive",
+                                 cache=reader)
+        stored.spec = chart.spec
+        from_disk = stored.update_scene()
+        fresh = PropertyDiagram("HEOS::R290", "ph", units="SI", tp_limits="ACHP", settings="interactive",
+                                cache=CurveCache(directory=False))
+        fresh.spec = chart.spec
+        reference = fresh.update_scene()
+        for value in (300, 320):
+            item_id = "iso/T/{0}".format(value)
+            got, want = np.asarray(from_disk[item_id].x), np.asarray(reference[item_id].x)
+            assert got.shape == want.shape and np.allclose(got, want, rtol=1e-9, equal_nan=True), value
+        if mode == "threads":   # the workers made their states again and the lines went to disk
+            assert reader.disk_hits >= 2 and not mismatch
+        else:                   # forked before the change: the lines stay off disk, with a warning
+            assert reader.disk_hits == 0 and mismatch
+    finally:
+        CP.set_reference_state("R290", "DEF")
+        chart.close()
         chart.engine.refresh()

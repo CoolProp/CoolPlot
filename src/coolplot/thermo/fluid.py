@@ -494,7 +494,16 @@ class Fluid:
 
     def configuration_changed(self) -> bool:
         """Whether CoolProp's global configuration differs from the one this fluid was made under."""
-        return config_digest() != self.fingerprint[1]
+        try:
+            raw = CP.get_config_as_json_string()
+        except Exception:
+            raw = None
+        if raw is not None and raw == getattr(self, "_config_seen", None):
+            return False   # the same text as last time: nothing to digest
+        changed = config_digest() != self.fingerprint[1]
+        if not changed:
+            self._config_seen = raw
+        return changed
 
     def reference_state_changed(self) -> bool:
         """Whether ``set_reference_state`` moved this fluid's enthalpy or entropy since it was made.
