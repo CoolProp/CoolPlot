@@ -6,6 +6,33 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### 1.1.0
+
+#### Added
+- Lines placed through saturation states:
+  `set_lines("s", at_saturation={"T": 10})` draws the isentropes through
+  the saturated vapour every 10 K of saturation temperature (round values
+  in the chart's units, up to the critical point), labelled
+  "T_sat=0 deg C". `"Q": 0` uses the saturated liquid (the bubble point of
+  a blend), `"p": 2` steps the saturation pressure, `"range"` limits the
+  states, `"label": "value"` keeps the lines' own values as labels. Stored
+  as `IsolineSet.anchor` (`coolplot.spec.SaturationAnchor`); coolplot-core
+  composes it the same way. Example `examples/saturation_lines.py`.
+- Traced lines kept on disk between runs, the way CoolProp keeps its
+  TTSE and BICUBIC tables: `CurveCache(directory=True)` (or the
+  environment variable `COOLPLOT_CACHE_DIR`) writes one compressed file
+  per line under `~/.CoolProp/CoolPlot/Curves`, one folder per fluid,
+  with a revision and the full key in each file, a rebuild of anything
+  unreadable, CoolProp's `ALTERNATIVE_TABLES_DIRECTORY` and
+  `MAXIMUM_TABLE_DIRECTORY_SIZE_IN_GB`, and atomic writes so processes can
+  share the folder (`coolplot.engine.store`). Off unless asked for.
+
+#### Fixed
+- The fingerprint of a fluid (part of every cache key) used Python's
+  salted `hash()` of CoolProp's configuration, which differs between
+  processes; it is a SHA-256 digest now, so keys mean the same in every
+  run.
+
 ### 1.0.0rc1
 
 #### Removed

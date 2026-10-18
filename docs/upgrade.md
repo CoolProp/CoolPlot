@@ -19,6 +19,13 @@ starting with an underscore, the helpers in `coolplot.core`,
 `coolplot.testing`, the scene item ids, and the exact coordinates of a
 chart (better numerics may move points).
 
+## From 1.0 to 1.1
+
+Nothing to change. 1.1 adds `set_lines(..., at_saturation=...)` and a
+cache of traced lines on disk (off unless asked for, see the how-to on
+caching). Spec records gain an `anchor` field per family; records of 1.0
+read unchanged.
+
 ## From 0.9 to 1.0
 
 The names deprecated since 0.5 are removed (the table under "From 0.4 to

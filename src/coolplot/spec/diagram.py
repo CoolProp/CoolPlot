@@ -30,14 +30,94 @@ from .settings import Settings, get_settings
 
 Limits = Optional[Tuple[float, float]]
 
+#: The saturation quantities a family of lines can be placed by.
+ANCHOR_KEYS = ("T", "p")
+
+#: How lines placed by saturation states are labelled.
+ANCHOR_LABELS = ("saturation", "value")
+
+
+def _snap(value: float) -> float:
+    """12 significant digits, as coolplot.engine.planning.snap does for isoline values."""
+    return float("{0:.12g}".format(value))
+
+
+@dataclass(frozen=True)
+class SaturationAnchor:
+    """Place a family of lines through saturation states at even steps
+
+    For example the isentropes of a log(p)-h chart through the saturated
+    vapour every 10 K of saturation temperature: ``by="T"``,
+    ``step_SI=10.0``, ``Q=1.0``. The steps land on round values in the
+    chart's display units (0, 10, 20 deg C, not 273.15, 283.15 K), from
+    the lowest saturation state of the chart to just below the critical
+    point, or within ``range_SI`` when given.
+
+    Attributes
+    ----------
+    by : str
+        "T" (saturation temperature) or "p" (saturation pressure).
+    step_SI : float
+        The step as a difference in SI units: K for "T", Pa for "p".
+    Q : float
+        Vapour quality of the saturation states: 1 the saturated vapour
+        (dew point of a blend), 0 the saturated liquid (bubble point).
+    range_SI : (min, max) or None
+        Saturation temperatures or pressures to place lines between, in SI
+        units; None for the whole saturation range of the chart.
+    label : str
+        "saturation" labels each line with its saturation state, e.g.
+        "T_sat=0 deg C"; "value" with its own value, e.g. "s=2.3 kJ/kg/K".
+    """
+    by: str = "T"
+    step_SI: float = 10.0
+    Q: float = 1.0
+    range_SI: Limits = None
+    label: str = "saturation"
+
+    def __post_init__(self):
+        by = quantity_key(self.by)
+        if by not in ANCHOR_KEYS:
+            raise ValueError("Lines can be placed by saturation temperature 'T' or pressure 'p', "
+                             "not '{0}'.".format(self.by))
+        # Snapped like isoline values: -40 deg C converted to K is 233.14999999999998
+        step = _snap(float(self.step_SI))
+        if not step > 0.0:
+            raise ValueError("The step between saturation states has to be positive, not {0}.".format(self.step_SI))
+        Q = float(self.Q)
+        if not 0.0 <= Q <= 1.0:
+            raise ValueError("The vapour quality of the saturation states has to lie between 0 and 1, "
+                             "not {0}.".format(self.Q))
+        if self.label not in ANCHOR_LABELS:
+            raise ValueError("The label of lines placed by saturation states is one of {0}, not '{1}'.".format(
+                ANCHOR_LABELS, self.label))
+        object.__setattr__(self, "by", by)
+        object.__setattr__(self, "step_SI", step)
+        object.__setattr__(self, "Q", Q)
+        if self.range_SI is not None:
+            lo, hi = sorted(_snap(float(v)) for v in self.range_SI)
+            object.__setattr__(self, "range_SI", (lo, hi))
+
+    def to_dict(self) -> dict:
+        """The record of docs/reference/contracts.md for this placement."""
+        return {"by": self.by, "step_SI": self.step_SI, "Q": self.Q,
+                "range_SI": None if self.range_SI is None else list(self.range_SI), "label": self.label}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SaturationAnchor":
+        """A placement from its record, see :meth:`to_dict`."""
+        return cls(**data)
+
 
 @dataclass(frozen=True)
 class IsolineSet:
     """One family of isolines, values in SI units
 
-    Either ``values_SI`` lists the constant values, or ``num`` values are
-    spread over ``range_SI`` (the whole calculation region if None).
-    ``points`` overrides ``Settings.calc`` for this family when given.
+    Either ``values_SI`` lists the constant values, or ``anchor`` places
+    the lines through saturation states (see :class:`SaturationAnchor`),
+    or ``num`` values are spread over ``range_SI`` (the whole calculation
+    region if None). ``points`` overrides ``Settings.calc`` for this
+    family when given.
     """
     key: str
     values_SI: Optional[Tuple[float, ...]] = None
@@ -46,9 +126,19 @@ class IsolineSet:
     rounding: bool = False
     points: Optional[int] = None
     labels: bool = False
+    anchor: Optional[SaturationAnchor] = None
 
     def __post_init__(self):
         object.__setattr__(self, "key", quantity_key(self.key))
+        if self.anchor is not None:
+            if isinstance(self.anchor, dict):
+                object.__setattr__(self, "anchor", SaturationAnchor.from_dict(self.anchor))
+            elif not isinstance(self.anchor, SaturationAnchor):
+                raise TypeError("anchor has to be a SaturationAnchor, not {0}.".format(type(self.anchor).__name__))
+            if self.values_SI is not None:
+                raise ValueError("Give either the values of the lines or their saturation anchor, not both.")
+            if self.key == "Q":
+                raise ValueError("Lines of constant vapour quality cannot be placed by saturation states.")
         if self.values_SI is not None:
             object.__setattr__(self, "values_SI", tuple(float(v) for v in self.values_SI))
         if self.range_SI is not None:
@@ -66,12 +156,15 @@ class IsolineSet:
         """The record of docs/reference/contracts.md for this family of lines."""
         return {"key": self.key, "values_SI": None if self.values_SI is None else list(self.values_SI),
                 "num": self.num, "range_SI": None if self.range_SI is None else list(self.range_SI),
-                "rounding": self.rounding, "points": self.points, "labels": self.labels}
+                "rounding": self.rounding, "points": self.points, "labels": self.labels,
+                "anchor": None if self.anchor is None else self.anchor.to_dict()}
 
     @classmethod
     def from_dict(cls, data: dict) -> "IsolineSet":
-        """A family of lines from its record, see :meth:`to_dict`."""
-        return cls(**data)
+        """A family of lines from its record, see :meth:`to_dict`. Records of 1.0 have no anchor."""
+        data = dict(data)
+        anchor = data.pop("anchor", None)
+        return cls(**data, anchor=None if anchor is None else SaturationAnchor.from_dict(anchor))
 
 
 @dataclass(frozen=True)
@@ -221,6 +314,9 @@ class DiagramSpec:
             if not diagram.supports(iso_set.key):
                 raise ValueError("Lines of constant '{0}' cannot be drawn in a {1} diagram.".format(
                     iso_set.key, diagram.name))
+            if iso_set.anchor is not None and fluid.kind != "fluid":
+                raise ValueError("Lines are placed by saturation states only in charts of a fluid, "
+                                 "not of {0}.".format(fluid.name))
         _unique([p.name for p in self.processes], "Process names have to be unique")
         _unique([c.name for c in self.cycles], "Cycle names have to be unique")
         object.__setattr__(self, "cycles", tuple(self.cycles))

@@ -94,7 +94,7 @@ def compose_record(spec, domain, curves, plot_size_pt=None, previous_labels=None
         "spec": spec.to_dict(),
         "domain": {"tp_box": list(domain.tp_box), "ranges_SI": {k: list(v) for k, v in domain.ranges_SI}},
         "curves": [{"request": {"item_id": r.item_id, "key": r.key, "value_SI": r.value_SI, "points": r.points,
-                                "labels": r.labels},
+                                "labels": r.labels, "anchor_SI": r.anchor_SI},
                     "curve": c.to_dict()} for r, c in curves],
         "cycles": [{"states": {str(n): s.to_dict() for n, s in states.items()},
                     "chains": [[s.to_dict() for s in chain] for chain in chains]} for states, chains in (cycles or ())],

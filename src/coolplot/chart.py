@@ -50,7 +50,8 @@ from .core.state import StatePoint
 from .core.units import get_unit_system
 from .engine import BackgroundEngine, CurveCache, Engine, plan
 from .scene import Scene
-from .spec import CycleSpec, DiagramSpec, IsolineSet, get_settings
+from .spec import CycleSpec, DiagramSpec, IsolineSet, SaturationAnchor, get_settings
+from .spec.diagram import ANCHOR_KEYS
 from .style.theme import Theme, get_theme
 from .style.values import LineStyle, MarkerStyle
 
@@ -349,7 +350,7 @@ class Chart:
     # Content
     # ------------------------------------------------------------------
     def set_lines(self, key: str, values=None, num: int = None, range=None, rounding: bool = None,
-                  labels: bool = None, points: int = None, units=None):
+                  labels: bool = None, points: int = None, units=None, at_saturation=None):
         """Add or replace the family of lines of constant ``key``.
 
         Parameters
@@ -379,7 +380,26 @@ class Chart:
         points : int, optional
             Points per line; default from ``settings.calc``.
         units : str or UnitSystem, optional
-            Units of ``values`` and ``range``; default the chart's units.
+            Units of ``values``, ``range`` and ``at_saturation``; default the
+            chart's units.
+        at_saturation : dict, optional
+            Place the lines through saturation states at even steps instead
+            of giving values: ``{"T": 10}`` puts a line through the saturated
+            vapour every 10 K of saturation temperature (in deg C charts at
+            0, 10, 20 deg C), ``{"p": 2}`` every 2 bar of saturation
+            pressure. ``"Q": 0`` uses the saturated liquid (the bubble point
+            of a blend) instead of the vapour (the dew point), and
+            ``"range": (lo, hi)`` limits the saturation temperatures or
+            pressures. Steps and range are in ``units``. The labels show the
+            saturation state ("T_sat=0 deg C"); ``"label": "value"`` shows
+            the lines' own values instead. Charts of a fluid only.
+
+        Examples
+        --------
+        Isentropes through the saturated vapour every 10 K, as compressor
+        lines read off at round evaporating temperatures:
+
+        >>> diagram.set_lines("s", at_saturation={"T": 10}, labels=True)   # doctest: +SKIP
         """
         key = quantity_key(key)
         family = self._family(key)
@@ -395,8 +415,35 @@ class Chart:
             _checked_range(family, label, range_SI)
         if num is None:
             num = family.default_num
-        self.spec = self.spec.with_isolines(IsolineSet(key, values_SI, num, range_SI, rounding, points, labels))
+        anchor = None
+        if at_saturation is not None:
+            if values is not None or range is not None:
+                raise ValueError("Give the lines either values or a range, or at_saturation, not both; a range "
+                                 "of saturation states goes into at_saturation as 'range'.")
+            anchor = self._saturation_anchor(at_saturation, units)
+        self.spec = self.spec.with_isolines(IsolineSet(key, values_SI, num, range_SI, rounding, points, labels,
+                                                       anchor))
         return key
+
+    def _saturation_anchor(self, at_saturation, units) -> SaturationAnchor:
+        """A SaturationAnchor from set_lines(at_saturation=...), converted from ``units`` to SI."""
+        if isinstance(at_saturation, SaturationAnchor):
+            return at_saturation
+        given = dict(at_saturation)
+        Q = float(given.pop("Q", 1.0))
+        span = given.pop("range", None)
+        label = given.pop("label", "saturation")
+        if len(given) != 1:
+            raise ValueError("at_saturation takes one step, by saturation temperature or pressure, e.g. "
+                             "{{'T': 10}} or {{'p': 2, 'Q': 0}}, not {0}.".format(at_saturation))
+        (by, step), = given.items()
+        by = quantity_key(by)
+        if by not in ANCHOR_KEYS:
+            raise ValueError("Lines are placed by saturation temperature 'T' or pressure 'p', not '{0}'.".format(by))
+        unit = self._units(units)[by]
+        step_SI = float(step) / abs(unit.scale)   # a difference: the scale only, no offset
+        span_SI = None if span is None else tuple(float(v) for v in unit.to_SI(span))
+        return SaturationAnchor(by, step_SI, Q, span_SI, label)
 
     def _family(self, key: str):
         """The line family of a quantity in this chart, or ValueError."""

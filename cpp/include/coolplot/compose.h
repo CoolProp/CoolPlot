@@ -35,7 +35,7 @@ std::string compose_json(const std::string& input_text);
 std::string axis_label(const DiagramSpec& spec, const std::string& key);
 
 /// Text of an isoline label, e.g. "T=0 deg C" or "x=0.4".
-std::string label_text(const DiagramSpec& spec, const std::string& key, double value_SI);
+std::string label_text(const DiagramSpec& spec, const std::string& key, double value_SI, bool has_anchor = false, double anchor_SI = 0.0);
 
 /// Estimated size of the plot area before a renderer reports the real one.
 std::pair<double, double> default_plot_size_pt(const DiagramSpec& spec);

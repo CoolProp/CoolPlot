@@ -123,7 +123,7 @@ TEST_CASE("Autoscaled axes and a narrow log range", "[svg]") {
 }
 
 TEST_CASE("The composed charts render as in Python", "[svg]") {
-    for (const char* name : {"compose_r290_ph", "compose_r290_ph_sized", "compose_blend_ts_margin", "compose_r290_hs_inline", "compose_psychrometric"}) {
+    for (const char* name : {"compose_r290_ph", "compose_r290_ph_sized", "compose_blend_ts_margin", "compose_r290_hs_inline", "compose_psychrometric", "compose_r290_ph_anchored"}) {
         json data = load(std::string(name) + ".json");
         Scene scene = Scene::from_json(data.at("scene_order"));  // the legend follows the scene order
         check_svg(scene, std::string(name) + ".svg");

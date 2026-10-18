@@ -57,6 +57,12 @@ struct IsolineSet
 {
     std::string key;
     bool labels = false;
+    // Placed by saturation states (IsolineSet.anchor in Python): the values
+    // come with the curves; the composer needs only what the labels show
+    bool has_anchor = false;
+    std::string anchor_by;                   ///< "T" or "p"
+    double anchor_Q = 1.0;                   ///< vapour quality of the saturation states
+    std::string anchor_label = "saturation"; ///< "saturation" or "value"
 };
 
 /// A legacy process: states along a line and states with markers (SI values by key).

@@ -13,6 +13,7 @@ blends
 pdf_print
 themes
 embedding
+caching
 web
 troubleshooting
 ```

@@ -163,7 +163,8 @@ def test_vocabulary_covers_every_public_name():
     assert names == methods | properties | deprecated | {"kind"}
     import inspect
     assert set(inspect.signature(Chart.set_lines).parameters) == {
-        "self", "key", "values", "num", "range", "rounding", "labels", "points", "units"}
+        "self", "key", "values", "num", "range", "rounding", "labels", "points", "units",
+        "at_saturation"}   # added in 1.1
     assert "closed" in inspect.signature(Chart.add_cycle).parameters
     for name in ("set_view", "state_at", "move_cycle_state", "cycle_states"):
         assert "units" in inspect.signature(getattr(Chart, name)).parameters, name

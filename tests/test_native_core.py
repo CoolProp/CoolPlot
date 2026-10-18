@@ -331,3 +331,19 @@ def test_the_pdf_page_has_the_svg_geometry_and_all_text_on_it(tmp_path):
         path.write_bytes(data)
         texts = read_pdf(str(path)).texts
         assert any(t.startswith("A cycle whose") and t.endswith("...") for t in texts), texts
+
+
+@needs_core
+def test_lines_placed_by_saturation_states_compose_the_same_through_the_port():
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    chart = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    chart.set_lines("s", at_saturation={"T": 10, "range": (-40, 60)}, labels=True)
+    chart.set_lines("rho", at_saturation={"T": 20, "Q": 0}, labels=True)
+    chart.set_lines("T", at_saturation={"p": 5, "label": "value"}, labels=True)
+    python, ported = _both_scenes(chart)
+    difference = _same(python.to_dict(), ported.to_dict())
+    assert difference == "", difference
+    texts = [i.text for i in ported if i.id.endswith("/label")]
+    assert any(t.startswith("T_sat=") for t in texts) and any(t.startswith("T_sat,liq=") for t in texts)
+    assert any(t.startswith("T=") for t in texts)

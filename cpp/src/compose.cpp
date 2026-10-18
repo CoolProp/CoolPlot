@@ -21,6 +21,8 @@ struct CurveRequest
     double value_SI;
     int points;
     bool labels;
+    bool has_anchor = false;  ///< the line passes through a saturation state of its family's anchor
+    double anchor_SI = 0.0;   ///< that saturation temperature or pressure
 };
 
 struct CurveInput
@@ -155,10 +157,29 @@ std::string axis_label(const DiagramSpec& spec, const std::string& key) {
     return spec.diagram.quantity_label(key) + " " + get_quantity(key).symbol + " / " + spec.units.at(key).label;
 }
 
-std::string label_text(const DiagramSpec& spec, const std::string& key, double value_SI) {
+std::string label_text(const DiagramSpec& spec, const std::string& key, double value_SI, bool has_anchor, double anchor_SI) {
     const LabelSettings& labels = spec.settings.labels;
-    const Unit& unit = spec.units.at(key);
-    std::string text = get_quantity(key).symbol + "=" + labels.format_value(unit.from_SI(value_SI));
+    // A line of a family placed by saturation states shows its saturation
+    // state, "T_sat=0 deg C", unless the family asks for its values
+    const IsolineSet* anchored = nullptr;
+    if (has_anchor)
+        for (const IsolineSet& s : spec.isolines)
+            if (s.key == key && s.has_anchor) anchored = &s;
+    std::string shown_key = key, symbol = get_quantity(key).symbol;
+    double shown = value_SI;
+    if (anchored && anchored->anchor_label == "saturation") {
+        shown_key = anchored->anchor_by;
+        shown = anchor_SI;
+        symbol = get_quantity(shown_key).symbol;
+        if (anchored->anchor_Q == 1.0)
+            symbol += "_sat";
+        else if (anchored->anchor_Q == 0.0)
+            symbol += "_sat,liq";
+        else
+            symbol += "(" + get_quantity("Q").symbol + "=" + labels.format_value(anchored->anchor_Q) + ")";
+    }
+    const Unit& unit = spec.units.at(shown_key);
+    std::string text = symbol + "=" + labels.format_value(unit.from_SI(shown));
     if (labels.show_units && unit.label != "-" && !unit.label.empty()) text += " " + unit.label;
     return text;
 }
@@ -260,7 +281,7 @@ std::vector<LabelRequest> label_requests(const DiagramSpec& spec, const Theme& t
             r.id = line->id + "/label";
             r.group = line->group + "/label";
             r.family = key;
-            r.text = label_text(spec, key, c->request.value_SI);
+            r.text = label_text(spec, key, c->request.value_SI, c->request.has_anchor, c->request.anchor_SI);
             r.style = theme.isoline_label;
             r.x = line->x;
             r.y = line->y;
@@ -440,6 +461,10 @@ Scene compose(const json& input) {
         CurveInput c;
         c.request = {r.at("item_id").get<std::string>(), quantity_key(r.at("key").get<std::string>()), r.at("value_SI").get<double>(),
                      r.value("points", 250), r.value("labels", false)};
+        if (r.contains("anchor_SI") && !r.at("anchor_SI").is_null()) {
+            c.request.has_anchor = true;
+            c.request.anchor_SI = r.at("anchor_SI").get<double>();
+        }
         c.x = numbers_from(entry.at("curve").at("x"));
         c.y = numbers_from(entry.at("curve").at("y"));
         if (c.x.size() != c.y.size()) throw Error("Curve '" + c.request.item_id + "': x and y need the same length.");

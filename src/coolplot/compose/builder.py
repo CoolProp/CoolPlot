@@ -122,11 +122,31 @@ def isoline_look(spec: DiagramSpec, theme: Theme, key: str, value_SI: float):
     return style, "isoline", spec.diagram.quantity_label(key), Z_ISOLINE
 
 
-def label_text(spec: DiagramSpec, key: str, value_SI: float) -> str:
-    """Text of an isoline label, e.g. "T=0 deg C" or "x=0.4"."""
+def label_text(spec: DiagramSpec, key: str, value_SI: float, anchor_SI: float = None) -> str:
+    """Text of an isoline label, e.g. "T=0 deg C" or "x=0.4".
+
+    A line of a family placed by saturation states (``anchor_SI`` given)
+    is labelled with its saturation state instead, "T_sat=0 deg C" (the
+    saturated vapour), "T_sat,liq=0 deg C" (the saturated liquid) or
+    "T(x=0.5)=0 deg C", unless the family asks for its values.
+    """
     labels = spec.settings.labels
+    anchor = None
+    if anchor_SI is not None:
+        anchor = next((s.anchor for s in spec.isolines if s.key == key and s.anchor is not None), None)
+    if anchor is not None and anchor.label == "saturation":
+        key, value_SI = anchor.by, anchor_SI
+        symbol = get_quantity(key).symbol
+        if anchor.Q == 1.0:
+            symbol += "_sat"
+        elif anchor.Q == 0.0:
+            symbol += "_sat,liq"
+        else:
+            symbol += "({0}={1})".format(get_quantity("Q").symbol, labels.format_value(anchor.Q))
+    else:
+        symbol = get_quantity(key).symbol
     unit = spec.units[key]
-    text = "{0}={1}".format(get_quantity(key).symbol, labels.format_value(float(unit.from_SI(value_SI))))
+    text = "{0}={1}".format(symbol, labels.format_value(float(unit.from_SI(value_SI))))
     if labels.show_units and unit.label not in ("-", ""):
         text += " " + unit.label
     return text
@@ -173,7 +193,7 @@ def label_requests(spec: DiagramSpec, theme: Theme, curves, lines: Sequence[Line
     for key in order:
         for request, line in by_family[key][::every]:
             requests.append(LabelRequest(id=line.id + "/label", group=line.group + "/label", family=key,
-                                         text=label_text(spec, key, request.value_SI),
+                                         text=label_text(spec, key, request.value_SI, request.anchor_SI),
                                          style=theme.isoline_label, x=line.x, y=line.y))
     return requests
 

@@ -12,6 +12,8 @@ calculation. Use :meth:`Fluid.clone` to give a worker thread its own copy.
 """
 from __future__ import annotations
 
+import hashlib
+import os
 from functools import lru_cache
 from typing import Optional, Tuple
 
@@ -485,7 +487,10 @@ class Fluid:
                 h, s = probe.hmass(), probe.smass()
             except Exception:
                 pass
-            self._fingerprint = (version, hash(config), round(h, 6), round(s, 6))
+            # A digest, not hash(): Python salts the hash of a string per
+            # process, and the fingerprint keys lines kept on disk between runs
+            digest = hashlib.sha256(config.encode("utf-8")).hexdigest()[:16]
+            self._fingerprint = (version, digest, round(h, 6), round(s, 6))
         return self._fingerprint
 
     def configuration_changed(self) -> bool:
@@ -682,3 +687,38 @@ def _critical_point(fluid: Fluid) -> dict:
         return {"T": T_crit_K, "p": p_crit_Pa, "h": np.nan, "s": np.nan,
                 "rho": np.nan, "u": np.nan}
     raise ValueError("Could not evaluate the critical point of {0}: {1}".format(fluid.name, " | ".join(errors)))
+
+
+# CoolProp's own cache of tabular data ----------------------------------------
+# CoolPlot keeps traced lines on disk the way CoolProp keeps its TTSE and
+# BICUBIC tables (src/Backends/Tabular/TabularBackends.cpp): next to them in
+# the user's ~/.CoolProp folder, and under the same size limit.
+
+def _config(getter, name: str):
+    """A CoolProp configuration value. CoolProp 8 takes the key as an enum
+    member (CP.ALTERNATIVE_TABLES_DIRECTORY), older bindings as its name."""
+    key = getattr(CP, name, None)
+    if key is not None:
+        return getter(key)
+    return getter(name)
+
+
+def coolprop_home_dir() -> str:
+    """The folder CoolProp keeps its tables in, ~/.CoolProp, as CoolProp finds the home folder."""
+    try:
+        home = _config(CP.get_config_string, "ALTERNATIVE_TABLES_DIRECTORY")
+    except (TypeError, ValueError, RuntimeError, AttributeError):   # a binding without the key
+        home = ""
+    if home:
+        # The tables were moved; CoolPlot's folder moves with them
+        return os.path.abspath(home)
+    return os.path.join(os.path.expanduser("~"), ".CoolProp")
+
+
+def coolprop_table_limit_GB() -> float:
+    """CoolProp's MAXIMUM_TABLE_DIRECTORY_SIZE_IN_GB (1 GB unless changed)."""
+    try:
+        value = float(_config(CP.get_config_double, "MAXIMUM_TABLE_DIRECTORY_SIZE_IN_GB"))
+    except (TypeError, ValueError, RuntimeError, AttributeError):   # a binding without the key
+        return 1.0
+    return value if value > 0.0 else 1.0

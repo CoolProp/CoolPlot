@@ -39,7 +39,10 @@ One record describes a property diagram and a psychrometric chart alike;
   "limits": {"T_min": {"relative": 1.01}, "T_max": {"relative": 2.25}, "p_min": 25000.0, "p_max": null},
   "settings": {"calc": {...}, "look": {...}, "labels": {...}, "page": {...}},
   "isolines": [{"key": "T", "values_SI": null, "num": 15, "range_SI": null, "rounding": true,
-                "points": null, "labels": true}],
+                "points": null, "labels": true, "anchor": null},
+               {"key": "s", "values_SI": null, "num": 15, "range_SI": null, "rounding": false,
+                "points": null, "labels": true,
+                "anchor": {"by": "T", "step_SI": 10.0, "Q": 1.0, "range_SI": null, "label": "saturation"}}],
   "cycles": [{"name": "heat pump", "states": [[1, {"props": [["p", 300000.0], ["T", 273.15]]}],
                                               [2, {"props": [["p", 1500000.0]], "via": "compression",
                                                    "eta_is": 0.7}]],
@@ -70,8 +73,12 @@ One record describes a property diagram and a psychrometric chart alike;
 * `settings`: see `coolplot.spec.settings`; `look` is a theme name or a
   theme record (the how-to on themes).
 * `isolines`: one entry per family, in drawing order. `values_SI` lists
-  explicit values, otherwise `num` values are spread over `range_SI` (or
-  the calculation domain), round values if `rounding`.
+  explicit values; `anchor` (since 1.1) places the lines through
+  saturation states every `step_SI` of saturation temperature or
+  pressure `by`, at vapour quality `Q`, within `range_SI` (see
+  `coolplot.spec.SaturationAnchor`); otherwise `num` values are spread
+  over `range_SI` (or the calculation domain), round values if
+  `rounding`. A record of 1.0 has no `anchor` and reads as `null`.
 * `cycles`: numbered states, each given by a full state (`{"state":
   {"T": ..., "p": ..., ...}}`, holding every quantity of the chart's
   fluid or of humid air, in any order), two properties, or one property and

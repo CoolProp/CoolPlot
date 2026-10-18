@@ -4,9 +4,9 @@
 Nothing here computes properties or draws; the spec layer imports neither
 CoolProp nor a plotting library.
 """
-from .diagram import CycleSpec, DiagramSpec, IsolineSet, ProcessSpec
+from .diagram import CycleSpec, DiagramSpec, IsolineSet, ProcessSpec, SaturationAnchor
 from .fluid import FluidSpec, HumidAirSpec
 from .settings import PRESETS, CalcSettings, LabelSettings, PageSettings, Settings, get_settings
 
-__all__ = ["CycleSpec", "DiagramSpec", "IsolineSet", "ProcessSpec", "FluidSpec", "HumidAirSpec", "PRESETS",
+__all__ = ["CycleSpec", "DiagramSpec", "IsolineSet", "ProcessSpec", "SaturationAnchor", "FluidSpec", "HumidAirSpec", "PRESETS",
            "CalcSettings", "LabelSettings", "PageSettings", "Settings", "get_settings"]
