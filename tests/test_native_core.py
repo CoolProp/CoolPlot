@@ -367,3 +367,50 @@ def test_an_older_core_refuses_lines_placed_by_saturation_states(monkeypatch):
     with pytest.warns(native.CoreFallbackWarning, match="older than 1.1"):
         items, _ = compose(spec, domain, curves)
     assert any(getattr(i, "text", "").startswith("T_sat=") for i in items)
+
+
+@needs_core
+def test_labels_in_the_colour_of_their_lines_compose_the_same_through_the_port():
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    from coolplot.style.theme import get_theme
+    chart = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    chart.theme = get_theme("print").with_(isoline_label_color="line")
+    chart.set_default_lines(labels=True)
+    chart.set_line_style("T", color="#7a3cc8")
+    python, ported = _both_scenes(chart)
+    difference = _same(python.to_dict(), ported.to_dict())
+    assert difference == "", difference
+    assert {t.style.color for t in ported if t.role == "isoline_label" and t.id.startswith("iso/T/")} == {"#7a3cc8"}
+
+
+@needs_core
+def test_an_older_core_is_not_sent_the_label_colour(monkeypatch):
+    """A core from before 1.1 refuses theme fields it does not know."""
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    from coolplot.engine import plan
+    real = native._core
+    sent = []
+
+    class OlderCore:
+        Error = real.Error
+        scene_to_svg = staticmethod(real.scene_to_svg)
+
+        @staticmethod
+        def compose(text):
+            sent.append(json.loads(text))
+            return real.compose(text)
+    monkeypatch.setattr(native, "_core", OlderCore)
+    monkeypatch.setattr(native, "core_version", lambda: (1, 0, 0))
+    chart = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    chart.set_lines("T", num=4, labels=True)
+    spec = chart.spec
+    domain = chart.engine.domain(spec)
+    curves = chart.engine.curves(spec, domain, plan(spec, domain))
+    assert native.compose(spec, domain, curves) is not None
+    assert "isoline_label_color" not in sent[-1]["spec"]["settings"]["look"]   # the default: left out
+    chart.theme = chart.theme.with_(isoline_label_color="line")
+    spec = chart.spec
+    with pytest.raises(native.CoreRefusal, match="older than 1.1"):
+        native.compose(spec, domain, curves)

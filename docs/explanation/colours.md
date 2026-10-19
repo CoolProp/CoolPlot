@@ -41,9 +41,11 @@ theme does this for every family.
 In `default` and `dark`, isolines are thin reference lines in colour.
 The saturation dome and the cycles are drawn in ink, heavier and with a
 casing in the background colour, so they read as the subject of the
-chart and stay visible where they cross the reference lines. Text always
-uses ink colours, never a series colour, so a label is readable whatever
+chart and stay visible where they cross the reference lines. Text uses
+ink colours by default, not series colours, so a label is readable whatever
 it sits on; a halo in the background colour keeps it readable on a line.
+A theme with `isoline_label_color="line"` trades some of that contrast
+for labels that match their family at a glance.
 
 ## Roles and drawing order
 

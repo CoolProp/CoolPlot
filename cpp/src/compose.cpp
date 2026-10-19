@@ -283,6 +283,8 @@ std::vector<LabelRequest> label_requests(const DiagramSpec& spec, const Theme& t
             r.family = key;
             r.text = label_text(spec, key, c->request.value_SI, c->request.has_anchor, c->request.anchor_SI);
             r.style = theme.isoline_label;
+            if (theme.isoline_label_color == "line" && line->line_style.color.present)
+                r.style.color = line->line_style.color;   // the label in its line's colour
             r.x = line->x;
             r.y = line->y;
             requests.push_back(r);

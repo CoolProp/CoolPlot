@@ -186,6 +186,7 @@ struct Theme
     LineStyle saturation;
     LineStyle quality;
     TextStyle isoline_label;
+    std::string isoline_label_color = "text"; ///< "text" (isoline_label's colour) or "line" (each label in its line's colour)
     std::vector<LineStyle> processes;
     std::vector<MarkerStyle> state_points;
     TextStyle state_number;

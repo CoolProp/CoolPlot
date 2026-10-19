@@ -23,8 +23,12 @@ chart (better numerics may move points).
 
 Nothing to change. 1.1 adds `set_lines(..., at_saturation=...)` and a
 cache of traced lines on disk (off unless asked for, see the how-to on
-caching). Spec records gain an `anchor` field per family; records of 1.0
-read unchanged.
+caching). Spec records gain an `anchor` field per family and theme
+records an `isoline_label_color` field (labels in the colour of their
+lines); records of 1.0 read unchanged. A coolplot-core older than 1.1
+still composes a 1.1 chart unless it uses lines labelled by their
+saturation state or labels in line colours; then the Python composer
+draws it, with a warning.
 
 ## From 0.9 to 1.0
 

@@ -13,6 +13,7 @@ from coolplot.compose.builder import compose
 from coolplot.engine import plan
 from coolplot.render.svg import SvgRenderer
 from coolplot.scene import Scene, item_to_dict
+from coolplot.style.theme import get_theme
 from coolplot.testing import conformance_scene
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -125,6 +126,13 @@ def main():
     anchored.set_lines("rho", at_saturation={"T": 20, "Q": 0.5, "label": "saturation"}, labels=True)
     anchored.set_lines("T", at_saturation={"p": 2}, labels=True)
     compose_case("compose_r290_ph_anchored", anchored)
+
+    # Labels in the colour of their lines, on the dark theme (the halo in the
+    # dark surface colour)
+    coloured = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    coloured.theme = get_theme("dark").with_(isoline_label_color="line")
+    coloured.set_default_lines(labels=True)
+    compose_case("compose_r290_ph_line_labels", coloured)
 
 
 if __name__ == "__main__":

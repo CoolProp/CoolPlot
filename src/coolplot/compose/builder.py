@@ -192,9 +192,12 @@ def label_requests(spec: DiagramSpec, theme: Theme, curves, lines: Sequence[Line
     requests = []
     for key in order:
         for request, line in by_family[key][::every]:
+            style = theme.isoline_label
+            if theme.isoline_label_color == "line" and line.style.color is not None:
+                style = style.with_(color=line.style.color)   # the label in its line's colour
             requests.append(LabelRequest(id=line.id + "/label", group=line.group + "/label", family=key,
                                          text=label_text(spec, key, request.value_SI, request.anchor_SI),
-                                         style=theme.isoline_label, x=line.x, y=line.y))
+                                         style=style, x=line.x, y=line.y))
     return requests
 
 

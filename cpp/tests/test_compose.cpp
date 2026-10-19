@@ -83,6 +83,7 @@ TEST_CASE("Inline labels, a style override, a scaled theme and a title", "[compo
 TEST_CASE("A psychrometric chart with an air process", "[compose]") {
     check_case("compose_psychrometric.json");
     check_case("compose_r290_ph_anchored.json");
+    check_case("compose_r290_ph_line_labels.json");
 }
 
 TEST_CASE("Label texts and axis titles", "[compose]") {

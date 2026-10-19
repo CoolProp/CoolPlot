@@ -222,3 +222,39 @@ def test_font_files_survive_json():
     from coolplot.style.values import Font, TextStyle, style_from_dict, style_to_dict
     style = TextStyle(font=Font(family=("Brand", "sans-serif"), files=("fonts/Brand.ttf",)))
     assert style_from_dict(TextStyle, style_to_dict(style)) == style
+
+
+def test_labels_in_the_colour_of_their_lines():
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    d = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP", settings="interactive")
+    d.set_lines("T", num=5, labels=True)
+    d.set_lines("Q", num=6, labels=True)
+    d.set_lines("s", num=5, labels=True)
+
+    def labels(scene):
+        return [item for item in scene if item.role == "isoline_label"]
+    scene = d.update_scene()
+    assert labels(scene) and all(t.style.color == DEFAULT.isoline_label.color for t in labels(scene))
+    misses = d.cache.misses
+    d.theme = DEFAULT.with_(isoline_label_color="line")
+    d.set_line_style("s", color="#7a3cc8")   # a family's own colour is followed as well
+    scene = d.update_scene()
+    assert d.cache.misses == misses   # a change of look only, nothing traced again
+    families = set()
+    for t in labels(scene):
+        line = scene[t.id[:-len("/label")]]
+        assert t.style.color == line.style.color and t.style.halo_color == DEFAULT.isoline_label.halo_color
+        families.add(t.id.split("/")[1])
+    assert families == {"T", "Q", "s"}
+    assert {t.style.color for t in labels(scene) if t.id.startswith("iso/s/")} == {"#7a3cc8"}
+
+
+def test_the_label_colour_option_is_checked_and_stored():
+    with pytest.raises(ValueError, match="isoline_label_color"):
+        DEFAULT.with_(isoline_label_color="family")
+    theme = DARK.with_(isoline_label_color="line")
+    assert Theme.from_dict(json.loads(json.dumps(theme.to_dict()))) == theme
+    record = DEFAULT.to_dict()
+    del record["isoline_label_color"]   # a theme saved by 1.0
+    assert Theme.from_dict(record) == DEFAULT

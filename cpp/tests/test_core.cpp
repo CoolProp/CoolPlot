@@ -131,6 +131,17 @@ TEST_CASE("Themes round-trip through JSON and give out colours per slot", "[styl
         CHECK(again.name == name);
     }
     CHECK_THROWS_AS(Theme::from_json({{"colour", "red"}}), Error);
+    // Labels in the colour of their lines: "text" when not given (a 1.0 record), checked, kept
+    json record = get_theme("default").to_json();
+    CHECK(record.at("isoline_label_color") == "text");
+    record.erase("isoline_label_color");
+    CHECK(Theme::from_json(record).isoline_label_color == "text");
+    record["isoline_label_color"] = "line";
+    CHECK(Theme::from_json(json::parse(record.dump())).to_json().at("isoline_label_color") == "line");
+    record["isoline_label_color"] = "family";
+    CHECK_THROWS_AS(Theme::from_json(record), Error);
+    record["isoline_label_color"] = nullptr;
+    CHECK_THROWS_AS(Theme::from_json(record), Error);
     const Theme& base = get_theme("default");
     std::vector<std::string> ph = {"T", "s", "rho"}, hs = {"T", "p", "rho"}, ts = {"p", "h", "rho"};
     CHECK(base.isoline_style("T", ph).color.hex == base.categorical[0]);

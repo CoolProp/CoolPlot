@@ -33,6 +33,11 @@ guide in the documentation says what to change in your code.
   fingerprint they computed under, and a line from a worker that differs
   stays off disk. The source of the numerics modules is part of the stored
   key too, so development builds that share a version do not share lines.
+- Labels in the colour of their lines:
+  `diagram.theme = diagram.theme.with_(isoline_label_color="line")` draws
+  each isoline label in its line's colour (with its halo), following
+  `set_line_style` colours too; the default `"text"` keeps the ink colour.
+  The same option in coolplot-core.
 - coolplot-core reports its version from CMake (1.1.0); the bridge
   refuses a chart whose lines are labelled by their saturation state on an
   older core, which would label them by value, and the Python composer

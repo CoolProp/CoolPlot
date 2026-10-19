@@ -127,6 +127,13 @@ def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycle
         raise CoreRefusal("this coolplot_core ({0}) is older than 1.1 and cannot label lines by their saturation "
                           "states".format(".".join(str(v) for v in core_version())))
     record = compose_record(spec, domain, curves, plot_size_pt, previous_labels, cycles)
+    if core_version() < (1, 1):
+        # A core older than 1.1 refuses theme fields it does not know; the
+        # default label colour is what it draws anyway
+        look = record["spec"]["settings"].get("look")
+        if isinstance(look, dict) and look.pop("isoline_label_color", "text") != "text":
+            raise CoreRefusal("this coolplot_core ({0}) is older than 1.1 and cannot colour labels like their "
+                              "lines".format(".".join(str(v) for v in core_version())))
     try:
         text = _core.compose(_dumps(record))
     except _core.Error as error:   # the port's own refusal; anything else is a bug and raises
