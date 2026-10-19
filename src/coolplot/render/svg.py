@@ -365,7 +365,7 @@ class SvgRenderer(Renderer):
             if math.isfinite(qx) and math.isfinite(qy) and (qx, qy) != (px, py):
                 # Screen y points down, so a rising line has a negative SVG angle.
                 angle = math.degrees(math.atan2(qy - py, qx - px))
-                if angle > 90.0:
+                if angle >= 90.0:   # straight down on screen reads bottom to top, as in matplotlib
                     angle -= 180.0
                 elif angle < -90.0:
                     angle += 180.0

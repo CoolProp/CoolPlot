@@ -95,7 +95,7 @@ class Fluid:
         """
         return (self._state.backend_name(),
                 tuple(self._state.fluid_names()),
-                tuple(np.round(self._state.get_mole_fractions(), 12)))
+                tuple(float(x) for x in self._state.get_mole_fractions()))
 
     def clone(self) -> "Fluid":
         """An independent Fluid with the same model, for example for a worker thread."""

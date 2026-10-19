@@ -111,7 +111,7 @@ class PropertyDiagram:
 
     Examples
     --------
-    >>> from CoolPlot import PropertyDiagram
+    >>> from coolplot import PropertyDiagram
     >>> from coolplot.render.mpl import MatplotlibRenderer
     >>> diagram = PropertyDiagram("HEOS::R290", "ph", units="EUR")
     >>> diagram.set_isolines("Q", num=11)
@@ -159,6 +159,14 @@ class PropertyDiagram:
         self._diagram = DiagramType.parse(value)
         self._domain = None
         self._view = (None, None)
+        # Families that cannot be drawn in the new diagram (an axis quantity)
+        # are dropped, with a warning naming them
+        dropped = [key for key in self._isolines if not self._diagram.supports(key)]
+        for key in dropped:
+            del self._isolines[key]
+        if dropped:
+            warnings.warn("The isolines {0} cannot be drawn in a {1} diagram and were removed.".format(
+                dropped, self._diagram.name), UserWarning, stacklevel=2)
 
     @property
     def units(self):

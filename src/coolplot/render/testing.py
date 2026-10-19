@@ -203,7 +203,7 @@ def expected_axes(scene: Scene, owns_canvas: bool) -> dict:
         out["x_limits"] = safe_limits(a.x_limits, a.x_log)
     if a.y_limits is not None:
         out["y_limits"] = safe_limits(a.y_limits, a.y_log)
-    if st.grid_major is not None:
+    if st.grid_major is not None and st.grid_major.color is not None:   # a grid colour of None is no grid
         g = st.grid_major
         out.update(grid_width_pt=g.width_pt, grid_dash_pt=dash_pattern_pt(g.dash, g.width_pt),
                    grid_below_items=True)
@@ -287,7 +287,8 @@ def _check_scene(renderer, scene: Scene, failures: List[str], label: str):
         return
     owns = bool(getattr(renderer, "owns_canvas", True))
     _compare(label + ": axes", expected_axes(scene, owns), axes_actual, failures)
-    if scene.axes.style.grid_major is not None and axes_actual.get("grid_lines", 0) < 4:
+    grid = scene.axes.style.grid_major
+    if grid is not None and grid.color is not None and axes_actual.get("grid_lines", 0) < 4:
         failures.append("{0}: only {1} major grid lines [style]".format(label, axes_actual.get("grid_lines")))
     if "plot_size_pt" not in axes_actual:
         failures.append("{0}: backend does not report 'plot_size_pt' [read-back]".format(label))

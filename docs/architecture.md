@@ -163,12 +163,12 @@ caches its results (curves) or compares them with the previous ones
 
 ## 4. Package layout for 0.2
 
-The layering exists in the new modules, but the package as a whole has not
-been reworked: `diagram.py` stores settings, generates isoline values,
-builds cache keys, calls the calculations, applies units and styles,
-places labels and opens matplotlib windows; the curve cache lives in
-`thermo`; the legacy code and old tooling are still in the tree. 0.2
-restructures the package explicitly, one responsibility per layer, listed
+Before this step the layering existed in the new modules, but the package
+as a whole had not been reworked: `diagram.py` stored settings, generated
+isoline values, built cache keys, called the calculations, applied units
+and styles, placed labels and opened matplotlib windows; the curve cache
+lived in `thermo`; the legacy code and old tooling were still in the tree
+(they are gone now, see the status below). 0.2 restructures the package explicitly, one responsibility per layer, listed
 in dependency order:
 
 ```
