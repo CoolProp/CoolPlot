@@ -25,7 +25,7 @@ from xml.sax.saxutils import escape, quoteattr
 import numpy as np
 
 from ..core.numbers import format_number
-from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
+from ..scene import BADGE_BASELINE, AxesSpec, Item, Line, Markers, Text, drawable_limits
 from .ticks import ticks as _ticks
 from ..style.values import AxesStyle, TextStyle, dash_pattern_pt
 from .base import Renderer, SyncReport
@@ -34,8 +34,6 @@ PX_PER_PT = 4.0 / 3.0
 _CAPS = {"butt": "butt", "round": "round", "square": "square"}
 #: Units of the document size and how many of them make one pixel.
 SIZE_UNITS = {"px": 1.0, "pt": 1.0 / PX_PER_PT, "mm": 25.4 / 72.0 / PX_PER_PT}
-#: Baseline of a badge line below the top of its line box, relative to the font size.
-_BADGE_BASELINE = 0.95
 
 
 def _px(value_pt: float) -> str:
@@ -460,7 +458,7 @@ class SvgRenderer(Renderer):
         size = badge.text.font.size_pt * PX_PER_PT
         for i, line in enumerate(badge.lines):
             out.append('<text class="cp-badge-text" x="{0}" y="{1}" text-anchor="start" {2}>{3}</text>'.format(
-                _num(x + pad), _num(top + i * line_h + _BADGE_BASELINE * size), _text_attrs(badge.text),
+                _num(x + pad), _num(top + i * line_h + BADGE_BASELINE * size), _text_attrs(badge.text),
                 _xml_text(line)))
         out.append('</g>')
         return out

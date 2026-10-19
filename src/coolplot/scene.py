@@ -216,6 +216,8 @@ def drawable_limits(limits, log: bool) -> Tuple[float, float]:
 CORNERS = ("upper left", "upper right", "lower left", "lower right")
 #: Distance between the baselines of the badge lines, relative to the font size.
 BADGE_LINE_HEIGHT = 1.25
+#: Baseline of a badge line below the top of its line, relative to the font size.
+BADGE_BASELINE = 0.95
 
 
 def _pictures(value) -> Tuple[Picture, ...]:
@@ -310,8 +312,10 @@ class Badge:
         """Estimated (width, height) of the box in points.
 
         The text widths come from :func:`coolplot.core.textwidth.text_width_pt`,
-        which errs on the wide side; the label layout keeps clear of this
-        box, and the SVG writer draws it at exactly this size.
+        an estimate that errs on the wide side for common sans-serif fonts
+        (an unusually wide font can overflow it). The label layout keeps
+        clear of this box, and the SVG and matplotlib writers draw it at
+        exactly this size.
         """
         size = self.text.font.size_pt
         text_w = max((text_width_pt(line, size) for line in self.lines), default=0.0)

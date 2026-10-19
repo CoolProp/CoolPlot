@@ -55,6 +55,9 @@ def latex_to_text(text: str) -> str:
     text = re.sub(r"""\\(['`"^~=.])\s*(?:\{([A-Za-z])\}|([A-Za-z]))""", accent, text)
     text = re.sub(r"\\([vcruH])\s*(?:\{([A-Za-z])\}|\s([A-Za-z]))", accent, text)
     text = re.sub(r"\\(ss|AA|aa|AE|ae|o|O|l|L|i)(?![A-Za-z])", lambda m: _LETTERS[m.group(1)], text)
+    # Inline math such as $_3$ or $^{13}$: the characters, without the markup
+    text = re.sub(r"\$([^$]*)\$", lambda m: re.sub(r"[_^{}\\]", "", m.group(1)), text)
+    text = re.sub(r"\\([&%$#_])", r"\1", text)   # escaped special characters: \& -> &
     text = re.sub(r"\\[A-Za-z]+\s*", "", text)   # any other command
     text = text.replace("{", "").replace("}", "").replace("--", "-")
     return re.sub(r"\s+", " ", text).strip()
@@ -123,14 +126,52 @@ def _bibtex_value(text: str, pos: int) -> Tuple[str, int]:
     return match.group(0), pos + match.end()
 
 
+#: Name suffixes that are not a family name: "Rachford Jr." is cited as "Rachford".
+_SUFFIXES = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv"}
+
+
+def _split_top(text: str, separator: str) -> List[str]:
+    """``text`` split at ``separator`` (a regular expression) outside braces."""
+    parts, depth, start = [], 0, 0
+    for match in re.finditer(r"[{}]|" + separator, text):
+        token = match.group(0)
+        if token == "{":
+            depth += 1
+        elif token == "}":
+            depth = max(depth - 1, 0)
+        elif depth == 0:
+            parts.append(text[start:match.start()])
+            start = match.end()
+    parts.append(text[start:])
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _last_name(author: str) -> str:
+    """The family name of one BibTeX author, with its particles ("de Vries").
+
+    "Last, First" gives what stands before the comma; "First von Last" gives
+    the words from the first lower-case one ("von", "de", "van der") on, or
+    the last word; a braced group counts as one word; a trailing "Jr." or
+    "II" is dropped.
+    """
+    parts = _split_top(author, ",")
+    if len(parts) > 1:
+        words = _split_top(parts[0], r"\s+")
+    else:
+        words = _split_top(author, r"\s+")
+        while len(words) > 1 and latex_to_text(words[-1]).lower() in _SUFFIXES:
+            words.pop()
+        start = next((i for i, w in enumerate(words[:-1]) if i > 0 and latex_to_text(w)[:1].islower()), None)
+        words = words[start:] if start is not None else words[-1:]
+    text = latex_to_text(" ".join(words))
+    tokens = text.split()
+    while len(tokens) > 1 and tokens[-1].lower() in _SUFFIXES:
+        tokens.pop()
+    return " ".join(tokens)
+
+
 def _last_names(authors: str) -> List[str]:
-    names = []
-    for author in re.split(r"\s+and\s+", latex_to_text(authors)):
-        author = author.strip()
-        if not author:
-            continue
-        names.append(author.split(",")[0].strip() if "," in author else author.split()[-1])
-    return names
+    return [_last_name(a) for a in _split_top(authors, r"\s+and\s+")]
 
 
 def _authors_short(authors: str) -> str:
@@ -233,7 +274,9 @@ def _fluid_lines(backend: str, components: Tuple[str, ...], style: str) -> Tuple
             key = CP.get_BibTeXKey(name, "EOS")
         except Exception:   # an unknown name: nothing to cite
             continue
-        lines.append("{0}: {1}".format(name, cite(key, style)))
+        # Some fluids name several sources, separated by commas
+        sources = [k.strip() for k in key.split(",") if k.strip()]
+        lines.append("{0}: {1}".format(name, "; ".join(cite(k, style) for k in sources)))
     if len(components) > 1:
         keys = []
         for a, b in combinations(components, 2):

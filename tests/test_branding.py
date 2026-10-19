@@ -319,3 +319,117 @@ def test_a_pseudo_pure_blend_gets_one_warning_naming_the_mixture():
         warnings.simplefilter("always")
         mixture.update_scene()
     assert not any("pseudo-pure" in str(w.message) for w in caught)
+
+
+# Review fixes ------------------------------------------------------------------
+def _grey_png(width: int, height: int) -> bytes:
+    """An 8-bit greyscale PNG (colour type 0): left half black, right half light grey."""
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+    row = b"\x00" + b"\x00" * (width // 2) + b"\xc8" * (width - width // 2)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(row * height)) + chunk(b"IEND", b""))
+
+
+def test_a_greyscale_logo_stays_grey_in_matplotlib(tmp_path):
+    pytest.importorskip("matplotlib")
+    from PIL import Image
+    logo = tmp_path / "grey.png"
+    logo.write_bytes(_grey_png(200, 50))
+    d = _diagram(dict(logo=str(logo), logo_width_pt=150, location="lower left"))
+    d.set_lines("T", num=2)
+    d.save(str(tmp_path / "grey_logo.png"), dpi=72)
+    colours = {c for _, c in Image.open(tmp_path / "grey_logo.png").convert("RGB").getcolors(1 << 20)}
+    assert (68, 1, 84) not in colours and (253, 231, 36) not in colours   # the ends of viridis
+    assert (0, 0, 0) in colours and (200, 200, 200) in colours
+
+
+def test_postscript_leaves_the_watermark_out(tmp_path, logo_files):
+    pytest.importorskip("matplotlib")
+    d = _diagram(dict(watermark=logo_files[1], lines=("x",)))
+    with pytest.warns(UserWarning, match="watermark is left out of PS and EPS"):
+        d.save(str(tmp_path / "chart.eps"))
+    assert b"colorimage" not in (tmp_path / "chart.eps").read_bytes()   # no image at all
+    d.save(str(tmp_path / "chart.pdf"))   # PDF keeps it, and the figure keeps it afterwards
+    assert b"/ca 0.06" in (tmp_path / "chart.pdf").read_bytes()
+
+
+def test_references_with_several_keys_escapes_and_name_particles():
+    oxygen = fluid_references("Oxygen")[0]
+    assert oxygen == "Oxygen: Schmidt and Wagner (1985); Stewart et al. (1991)"
+    assert "\\" not in fluid_references("n-Dodecane", "full")[0] and "Energy & Fuels" in fluid_references(
+        "n-Dodecane", "full")[0]
+    assert fluid_references("R124")[0].startswith("R124: de Vries et al.")
+    assert latex_to_text(r"CO$_2$ and HVAC\&R") == "CO2 and HVAC&R"
+    from coolplot.thermo.references import _last_name
+    assert [_last_name(a) for a in ("H. H. Rachford Jr.", "{Rachford Jr.}, H. H.", "{van der Waals}, J. D.")] == [
+        "Rachford", "Rachford", "van der Waals"]
+
+
+def test_badge_drawn_where_the_labels_keep_clear(logo_files):
+    """The box the label layout keeps clear of is the box both writers draw, in every corner."""
+    pytest.importorskip("matplotlib")
+    from coolplot.render.mpl import MatplotlibRenderer
+    from coolplot.render.svg import PX_PER_PT, SvgRenderer
+    branding = dict(logo=logo_files, references="full", versions=True, lines=("example.com",))
+    for corner in CORNERS:
+        d = _diagram(dict(branding, location=corner))
+        svg = d.draw(SvgRenderer(width=900, height=650))
+        size = svg.plot_size_pt()
+        badge = d.scene.axes.badge
+        box = corner_box(_frame(d.scene, size), corner, *badge.size_pt(), badge.inset_pt)
+        bx, by, bw, bh = svg._box
+        x, y, w, h = svg.badge_box_px()
+        # SVG pixels from the top of the plot area against points from its bottom
+        assert (x - bx) / PX_PER_PT == pytest.approx(box.cx - box.half_w, abs=0.01)
+        assert (by + bh - y - h) / PX_PER_PT == pytest.approx(box.cy - box.half_h, abs=0.01)
+        assert (w / PX_PER_PT, h / PX_PER_PT) == pytest.approx((2 * box.half_w, 2 * box.half_h), abs=0.01)
+        d2 = _diagram(dict(branding, location=corner))
+        mpl = d2.draw(MatplotlibRenderer(use_pyplot=False, figsize=(9.0, 6.5)))
+        size = mpl.plot_size_pt()
+        box = corner_box(_frame(d2.scene, size), corner, *badge.size_pt(), badge.inset_pt)
+        ex, ey, ew, eh = mpl.badge_extent_pt()
+        assert (ex, ey, ew, eh) == pytest.approx(
+            (box.cx - box.half_w, box.cy - box.half_h, 2 * box.half_w, 2 * box.half_h), abs=0.5)
+
+
+def test_the_native_svg_writer_is_used_only_without_branding(monkeypatch, logo_files):
+    from coolplot import corelib
+    from coolplot.render.svg import SvgRenderer
+    calls = []
+
+    def native(axes, items, *args):
+        calls.append(axes)
+        return "<svg native/>"
+
+    monkeypatch.setattr(corelib, "scene_to_svg", native)
+    plain = _diagram()
+    assert plain.draw(SvgRenderer(native=True)).to_svg() == "<svg native/>" and len(calls) == 1
+    branded = _diagram(dict(logo=logo_files, lines=("x",)))
+    text = branded.draw(SvgRenderer(native=True)).to_svg()
+    assert "cp-badge" in text and len(calls) == 1
+    assert "<svg native/>" != plain.draw(SvgRenderer(native=True, unit="pt")).to_svg() and len(calls) == 1
+    assert "<svg native/>" != plain.draw(SvgRenderer(native=True, width=800.5)).to_svg() and len(calls) == 1
+
+
+def test_scene_page_warns_that_it_leaves_the_branding_out(logo_files):
+    from coolplot.render import base
+    from coolplot.render.web import scene_page
+    base._branding_warned.discard("scene_page (the JavaScript writer)")
+    scene = _diagram(dict(lines=("x",))).update_scene()
+    with pytest.warns(UserWarning, match="scene_page .the JavaScript writer. does not draw the badge"):
+        scene_page(scene)
+
+
+def test_clear_removes_the_branding_and_paths_and_wide_text_are_handled(tmp_path, logo_files):
+    pytest.importorskip("matplotlib")
+    from pathlib import Path
+    from coolplot.core.textwidth import text_width_em
+    from coolplot.render.mpl import MatplotlibRenderer
+    d = _diagram(dict(logo=(Path(logo_files[1]),), lines=("x",), watermark=Path(logo_files[1])))
+    assert d.settings.branding.logo == (logo_files[1],) and d.settings.branding.watermark == (logo_files[1],)
+    renderer = d.draw(MatplotlibRenderer(use_pyplot=False))
+    assert renderer.badge_extent_pt() is not None
+    renderer.clear()
+    assert renderer.badge_extent_pt() is None and renderer._branding == []
+    assert text_width_em("\u4e2d\u6587") == 2.0 and text_width_em("\u00e9") == 0.6

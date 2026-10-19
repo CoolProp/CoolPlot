@@ -18,12 +18,17 @@ guide in the documentation says what to change in your code.
   the bibliography in its package: every component of a mixture plus the
   references of its mixture model, ASHRAE RP-1485 for humid air, the
   backend's name for REFPROP and cubic equations. `location="auto"` takes
-  the corner with the fewest lines in it; isoline labels keep clear of
-  the badge. Drawn by the matplotlib and SVG writers (logos in PDF keep
-  all their pixels); the scene record carries it as `axes.badge` and
+  the corner where the badge covers the fewest points of the drawn
+  lines; edge labels (the default label mode) keep clear of the badge.
+  Drawn by the matplotlib and SVG writers, which give the badge the same
+  size, the size the label layout keeps clear (logos in PDF keep all
+  their pixels; PS and EPS leave the watermark out, with a warning, as
+  PostScript has no transparent images); the web renderer draws it as
+  the SVG writer does. The scene record carries it as `axes.badge` and
   `axes.watermark`. coolplot-core does not compose or draw it, so a
   branded chart uses the Python composer and SVG writer; the plotly
-  backend and the coolplot-core PDF writer warn and leave it out.
+  backend, the coolplot-core PDF writer and the JavaScript writer of
+  `scene_page` warn and leave it out.
   How-to page "Logo, references and watermark".
 - `Chart.uncached_curves()`: how many lines the next update would
   calculate, counting the curve cache in memory and on disk; an
@@ -34,7 +39,10 @@ guide in the documentation says what to change in your code.
 #### Changed
 - `save("chart.svg")` writes the size of `settings.page` (in points)
   instead of 800 x 600 pixels; `width`, `height` and `unit` still
-  override it.
+  override it. A size in points is not a whole number of pixels, so this
+  document is written by the Python SVG writer, also with the native
+  mode on; `SvgRenderer(native=True)` with whole pixels still uses
+  coolplot-core.
 - `save()` to PNG, PDF and other matplotlib formats draws into a figure
   outside pyplot unless `draw()` or `show()` made one before, so saving
   charts in a server or a loop no longer collects pyplot figures.

@@ -19,6 +19,7 @@ Presets cover the common cases; derive variants with :meth:`Settings.with_`.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import asdict, dataclass, field, fields, replace
 from typing import Tuple
 
@@ -221,10 +222,10 @@ REFERENCE_STYLES = ("none", "short", "full")
 
 
 def _sources(value) -> Tuple[str, ...]:
-    """Picture sources as a tuple of strings; one string is one source."""
-    if isinstance(value, str):
-        value = (value,) if value else ()
-    sources = tuple(str(v) for v in value)
+    """Picture sources as a tuple of strings; one string or path is one source."""
+    if isinstance(value, (str, os.PathLike)):
+        value = (value,) if os.fspath(value) else ()
+    sources = tuple(os.fspath(v) for v in value)
     if any(not s for s in sources):
         raise ValueError("BrandingSettings: an empty picture source.")
     return sources
@@ -262,7 +263,8 @@ class BrandingSettings:
     lines : tuple of str
         Further lines, for example a web address and a date.
     location : str
-        "auto" (the corner with the fewest lines in it) or a corner:
+        "auto" (the corner where the badge covers the fewest points of
+        the drawn lines) or a corner:
         "upper left", "upper right", "lower left", "lower right".
     font_size_pt : float
         Size of the badge text (the theme's tick label font family).

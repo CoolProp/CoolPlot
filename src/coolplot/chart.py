@@ -734,12 +734,13 @@ class Chart:
         every other extension (PNG, PDF, EPS, ...) goes through matplotlib,
         with ``kwargs`` such as ``dpi`` or ``pdf_fonts`` passed on.
 
-        The size is that of ``settings.page`` in every format: the SVG
-        document states it in points (``width``, ``height`` and ``unit``
-        passed as ``kwargs`` override it). Without a renderer from
-        :meth:`draw` or :meth:`show`, matplotlib files are drawn into a
-        figure of their own outside pyplot, so that saving charts in a
-        server or a loop does not collect pyplot figures.
+        An SVG file has the size of ``settings.page``, stated in points
+        (``width``, ``height`` and ``unit`` passed as ``kwargs`` override
+        it). Matplotlib files are drawn into a figure of their own outside
+        pyplot, of the size of ``settings.page``, so that saving charts in
+        a server or a loop does not collect pyplot figures; after
+        :meth:`draw` or :meth:`show` made a figure, that figure is saved
+        instead, at its own size.
         """
         extension = str(path).rsplit(".", 1)[-1].lower() if "." in str(path) else ""
         page = self.spec.settings.page
@@ -767,14 +768,19 @@ class Chart:
         return self._file_renderer
 
     def uncached_curves(self) -> int:
-        """How many lines of the chart would be calculated by the next update.
+        """How many isolines of the chart are in neither part of the curve cache.
 
-        Lines found in the curve cache, in memory or in its folder on disk
-        (see :class:`coolplot.engine.CurveCache`), do not count. The answer
+        Lines in memory or in the cache's folder on disk (see
+        :class:`coolplot.engine.CurveCache`) do not count; looking for one
+        on disk loads it into memory, as the next update would. The answer
         costs the calculation region of the chart (the T-p box and, for
         mixtures, the phase envelope), which the next update needs anyway,
-        but no line. An application can use it to tell a cheap request
-        (only drawing) from an expensive one before doing the work.
+        but no line is calculated. An application can use it to tell a
+        request that only draws from one that calculates.
+
+        It counts the final lines of the isoline families only: cycles are
+        left out, and with a background engine a line counts until its
+        final version is in the cache, also while a job for it is running.
         """
         spec = self.spec
         domain = self.engine.domain(spec)

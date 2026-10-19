@@ -27,7 +27,10 @@ From top to bottom: the logo, the references, the versions line and your
 own `lines`. `location="auto"` (the default) puts it into the corner
 where it covers the fewest points of the drawn lines; name a corner
 ("upper left", "upper right", "lower left", "lower right") to fix it.
-Isoline labels keep clear of the badge.
+Edge labels (the default label mode) keep clear of the badge; inline and
+margin labels do not. matplotlib and the SVG writer draw the badge at
+the same size, the one the label layout keeps clear; the text widths are
+estimated, generously for common sans-serif fonts.
 
 The background has the colour of the plot area at `background_alpha`
 (0.85), so lines under the badge stay faintly visible; `frame=False`
@@ -74,6 +77,8 @@ background works best.
 
 | Backend | Badge and watermark |
 |---|---|
-| matplotlib (PNG, PDF, EPS, windows) | drawn |
-| SVG writer, static web page | drawn |
-| coolplot-core (native SVG and PDF), plotly, the live web page | not yet; the Python writers are used where they can be, the others warn once and leave them out |
+| matplotlib: PNG, PDF, windows | drawn |
+| matplotlib: PS and EPS | badge drawn; the watermark is left out with a warning (PostScript has no transparent images) |
+| SVG writer, web renderer (`WebRenderer`) | drawn |
+| coolplot-core | a branded chart is composed and written by Python instead |
+| plotly, coolplot-core PDF writer (`PdfRenderer`), JavaScript writer (`scene_page`) | not yet; they warn once and leave them out |

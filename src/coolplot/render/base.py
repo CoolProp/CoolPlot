@@ -36,10 +36,11 @@ _branding_warned = set()   # renderer classes that already said they leave the b
 
 
 def warn_without_branding(renderer, axes: AxesSpec):
-    """Warn once per renderer class when the axes carry a badge or watermark it does not draw."""
+    """Warn once per renderer (a renderer object, or a name) when the axes carry a badge or
+    watermark it does not draw."""
     if axes is None or (axes.badge is None and axes.watermark is None):
         return
-    name = type(renderer).__name__
+    name = renderer if isinstance(renderer, str) else type(renderer).__name__
     if name in _branding_warned:
         return
     _branding_warned.add(name)

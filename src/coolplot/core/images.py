@@ -132,7 +132,8 @@ def _svg_size(data: bytes) -> Tuple[float, float]:
             return values[2], values[3]
     sizes = []
     for name in ("width", "height"):
-        found = re.search(r'\b{0}\s*=\s*["\']\s*({1})\s*(px)?\s*["\']'.format(name, _NUMBER), attrs)
+        # (?<![-\w]) so that "stroke-width" on the root element is not taken for "width"
+        found = re.search(r'(?<![-\w]){0}\s*=\s*["\']\s*({1})\s*(px)?\s*["\']'.format(name, _NUMBER), attrs)
         if found is None:
             raise ValueError("Picture: an SVG needs a viewBox, or a width and height in pixels.")
         sizes.append(float(found.group(1)))

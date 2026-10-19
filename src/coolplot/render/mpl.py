@@ -54,12 +54,13 @@ import matplotlib
 from matplotlib import patheffects
 from matplotlib.colors import to_hex
 from matplotlib.font_manager import FontProperties
+from matplotlib.image import BboxImage
 from matplotlib.markers import MarkerStyle as _MplMarker
 
 from ..core.events import Click, Drag, DragEnd, DragStart, Hover, Resized, ViewChanged
 from ..core.numbers import format_number
 from ..core.images import PNG
-from ..scene import BADGE_LINE_HEIGHT, AxesSpec, Item, Line, Markers, Text, drawable_limits, first_picture
+from ..scene import BADGE_BASELINE, AxesSpec, Item, Line, Markers, Text, drawable_limits, first_picture
 from ..style.values import AxesStyle, dash_pattern_pt
 from .base import Renderer, SyncReport
 
@@ -70,6 +71,7 @@ _ITEM_BASE = 1.0      # items start above the grid (0.5)
 _DECORATION_Z = 1e5   # the frame above all items
 _LEGEND_Z = 1e6
 _WATERMARK_Z = 0.25   # above the plot background, below the grid (0.5) and the items
+_BADGE_Z = _LEGEND_Z - 1.0   # above the items and the frame, below the legend
 _GENERIC = {"sans-serif", "serif", "monospace", "cursive", "fantasy"}
 _installed = None
 _registered = set()   # font files given in Font.files, registered once per process
@@ -194,7 +196,11 @@ _png_arrays = {}   # id of the picture bytes -> (bytes, decoded array); a logo i
 
 
 def _png_array(picture):
-    """The pixels of a PNG picture as matplotlib reads them (cached)."""
+    """The pixels of a PNG picture as an RGB or RGBA array (cached).
+
+    matplotlib reads a greyscale PNG as a 2-D array, which an image artist
+    would colour with a colour map; it is turned into RGB(A) here.
+    """
     import io
     from matplotlib.image import imread
     key = id(picture.data)
@@ -202,27 +208,36 @@ def _png_array(picture):
     if cached is None or cached[0] is not picture.data:
         if len(_png_arrays) > 16:
             _png_arrays.clear()
-        cached = _png_arrays[key] = (picture.data, imread(io.BytesIO(picture.data), format="png"))
+        array = imread(io.BytesIO(picture.data), format="png")
+        if array.ndim == 2:                                  # grey
+            array = np.dstack([array, array, array])
+        elif array.ndim == 3 and array.shape[2] == 2:        # grey and alpha
+            array = np.dstack([array[..., 0], array[..., 0], array[..., 0], array[..., 1]])
+        cached = _png_arrays[key] = (picture.data, array)
     return cached[1]
 
 
-def _full_resolution_image(array, zoom: float, alpha: float = None):
-    """An OffsetImage that PDF, PS and SVG output embed with all its pixels.
+class _UnsampledBboxImage(BboxImage):
+    """A BboxImage that PDF, PS and SVG output embed with all its pixels.
 
     matplotlib resamples a BboxImage (what OffsetImage draws with) to the
     figure dpi in vector output, which makes a logo in a PDF blurry (about
     100 dpi). An AxesImage with interpolation "none" is embedded unsampled
-    instead; BboxImage has the same machinery but never asks for it. The
-    subclass below only answers that question differently, so swapping the
-    class of the existing BboxImage keeps all its state.
+    instead; BboxImage has the same machinery but never asks for it. This
+    class only answers that question differently.
     """
-    from matplotlib.image import BboxImage
+
+    def _check_unsampled_image(self):
+        return self.get_interpolation() == "none"
+
+
+def _full_resolution_image(array, zoom: float, alpha: float = None):
+    """An OffsetImage whose image is an :class:`_UnsampledBboxImage`.
+
+    OffsetImage creates its BboxImage itself; swapping the class of that
+    object keeps all its state, since the subclass adds no state of its own.
+    """
     from matplotlib.offsetbox import OffsetImage
-
-    class _UnsampledBboxImage(BboxImage):
-        def _check_unsampled_image(self):
-            return self.get_interpolation() == "none"
-
     image = OffsetImage(array, zoom=zoom, alpha=alpha, interpolation="none")
     image.image.__class__ = _UnsampledBboxImage
     return image
@@ -483,7 +498,8 @@ class MatplotlibRenderer(Renderer):
     def _set_branding(self, axes: AxesSpec):
         """Draw the watermark and the badge (see coolplot.scene.Badge) as anchored boxes in the axes."""
         from matplotlib.colors import to_rgba
-        from matplotlib.offsetbox import AnchoredOffsetbox, TextArea, VPacker
+        from matplotlib.offsetbox import AnchoredOffsetbox, DrawingArea, VPacker
+        from matplotlib.text import Text as MplText
         for artist in self._branding:
             artist.remove()
         self._branding = []
@@ -498,19 +514,27 @@ class MatplotlibRenderer(Renderer):
         badge = axes.badge
         if badge is None or badge.empty:
             return
+        # The badge has exactly the size of Badge.size_pt, as in the SVG writer,
+        # so the label layout's keep-out box is the box drawn: the lines sit on
+        # fixed baselines in a DrawingArea (in points) instead of being measured.
         size = badge.text.font.size_pt
+        width, height = badge.size_pt()
         children = []
         picture = _png_or_warn(badge.logo, "logo")
         if picture is not None:
             children.append(_full_resolution_image(_png_array(picture), badge.logo_width_pt / picture.width_px))
+        elif badge.logo:
+            children.append(DrawingArea(badge.logo_width_pt, badge.logo_height_pt()))   # keep the room
         if badge.lines:
-            area = TextArea("\n".join(badge.lines), textprops=dict(
-                fontproperties=_font(badge.text.font, self.strict_fonts), color=badge.text.color or "none",
-                linespacing=BADGE_LINE_HEIGHT, multialignment="left"))
-            _plain_text(area._text)
+            line_h = badge.line_height_pt
+            area = DrawingArea(width - 2.0 * badge.padding_pt, len(badge.lines) * line_h, clip=False)
+            for i, line in enumerate(badge.lines):
+                text = MplText(0.0, area.height - i * line_h - BADGE_BASELINE * size, line, ha="left",
+                               va="baseline", fontproperties=_font(badge.text.font, self.strict_fonts),
+                               color=badge.text.color or "none")
+                _plain_text(text)
+                area.add_artist(text)
             children.append(area)
-        if not children:
-            return
         packed = VPacker(children=children, align="left", pad=0.0, sep=badge.gap_pt)
         # pad and borderpad are fractions of the font size of ``prop``
         box = AnchoredOffsetbox(loc=badge.location, child=packed, pad=badge.padding_pt / size,
@@ -519,9 +543,28 @@ class MatplotlibRenderer(Renderer):
         box.patch.set_facecolor(to_rgba(badge.background, badge.background_alpha) if badge.background else "none")
         box.patch.set_edgecolor(badge.frame_color or "none")
         box.patch.set_linewidth(badge.frame_width_pt if badge.frame_color else 0.0)
-        box.set_zorder(_LEGEND_Z - 1.0)
+        box.set_zorder(_BADGE_Z)
         self.ax.add_artist(box)
         self._branding.append(box)
+
+    def badge_extent_pt(self):
+        """(x, y, width, height) of the drawn badge frame in points from the lower left corner
+        of the plot area, y up, or None without a badge."""
+        boxes = [a for a in self._branding if a.get_zorder() == _BADGE_Z]
+        if not boxes:
+            return None
+        self.figure.draw_without_rendering()   # places the box; its frame then knows where it is
+        frame = boxes[0].patch.get_window_extent()
+        scale = 72.0 / self.figure.dpi
+        return ((frame.x0 - self.ax.bbox.x0) * scale, (frame.y0 - self.ax.bbox.y0) * scale,
+                frame.width * scale, frame.height * scale)
+
+    def clear(self):
+        """Remove everything this renderer has drawn, the badge and the watermark included."""
+        super().clear()
+        for artist in self._branding:
+            artist.remove()
+        self._branding = []
 
     def _set_frame_and_ticks(self, st: AxesStyle):
         ax = self.ax
@@ -1169,7 +1212,8 @@ class MatplotlibRenderer(Renderer):
         if metadata:
             kwargs["metadata"] = metadata
         with matplotlib.rc_context(_save_rc(fmt, pdf_fonts)), \
-                self._truetype_fonts(fmt in _FONTTYPE_RC and pdf_fonts == "truetype"):
+                self._truetype_fonts(fmt in _FONTTYPE_RC and pdf_fonts == "truetype"), \
+                self._without_watermark(fmt in ("ps", "eps")):
             self.figure.savefig(path, **kwargs)
         if fmt in ("ps", "eps") and isinstance(path, (str, os.PathLike)):
             _strip_postscript_date(path)
@@ -1194,6 +1238,22 @@ class MatplotlibRenderer(Renderer):
                 for renderer in renderers:
                     with renderer._truetype_fonts(pdf_fonts == "truetype"):
                         pages.savefig(renderer.figure)
+
+    @contextlib.contextmanager
+    def _without_watermark(self, active: bool):
+        """Inside: the watermark is hidden, with a warning. PostScript has no
+        transparency for images, so a watermark there would be an opaque block."""
+        hidden = [a for a in self._branding if active and a.get_zorder() == _WATERMARK_Z and a.get_visible()]
+        if hidden:
+            warnings.warn("PostScript cannot draw a transparent picture; the watermark is left out of PS and EPS "
+                          "files.", UserWarning, stacklevel=4)
+        for artist in hidden:
+            artist.set_visible(False)
+        try:
+            yield
+        finally:
+            for artist in hidden:
+                artist.set_visible(True)
 
     @contextlib.contextmanager
     def _truetype_fonts(self, active: bool = True):

@@ -171,8 +171,9 @@ frame), with the logo on top and the text lines below it, left aligned;
 writer draws the first one it can. `watermark` is a picture centred in
 the plot area, above its background and below the grid and the items.
 Sizes are in points; the heights follow from the pictures. The
-matplotlib and SVG writers draw both; coolplot-core, the plotly backend
-and the live web page do not yet (the Python writers warn once).
+matplotlib and SVG writers (and the web renderer built on the latter)
+draw both; coolplot-core, the plotly backend and the JavaScript writer do
+not yet (the Python side warns once).
 
 Item types: `line` (a polyline; `null` splits it), `markers` (points
 without a line) and `text` (one label; `direction` is a direction in

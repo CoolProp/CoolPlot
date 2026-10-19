@@ -7,12 +7,14 @@ estimate. The estimate uses the advance widths of Helvetica, taken from
 the Adobe font metrics file ``phvr8a.afm`` that ships with matplotlib, for
 the printable ASCII characters. Common sans-serif fonts are a little wider
 (DejaVu Sans and Poppins by 5 to 12 % on typical reference lines), so
-:func:`text_width_pt` adds :data:`MARGIN`. Any other character counts as
-:data:`OTHER_EM`.
+:func:`text_width_pt` adds :data:`MARGIN`. Wide characters (East Asian
+scripts) count as :data:`WIDE_EM`, every other character as :data:`OTHER_EM`.
 
 This module is plain Python; no CoolProp, no plotting library.
 """
 from __future__ import annotations
+
+import unicodedata
 
 #: Advance widths in 1/1000 em of the characters " " (32) to "~" (126), Helvetica.
 HELVETICA_WIDTHS = (
@@ -23,8 +25,10 @@ HELVETICA_WIDTHS = (
     222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
 )
 
-#: Width of a character outside printable ASCII, in em.
+#: Width of a character outside printable ASCII, in em (accented letters and the like).
 OTHER_EM = 0.6
+#: Width of a wide character (Chinese, Japanese, Korean, full-width forms), in em.
+WIDE_EM = 1.0
 
 #: Factor for fonts wider than Helvetica.
 MARGIN = 1.15
@@ -35,7 +39,10 @@ def text_width_em(text: str) -> float:
     total = 0.0
     for char in text:
         code = ord(char)
-        total += HELVETICA_WIDTHS[code - 32] / 1000.0 if 32 <= code <= 126 else OTHER_EM
+        if 32 <= code <= 126:
+            total += HELVETICA_WIDTHS[code - 32] / 1000.0
+        else:
+            total += WIDE_EM if unicodedata.east_asian_width(char) in ("W", "F") else OTHER_EM
     return total
 
 
