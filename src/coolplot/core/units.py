@@ -52,6 +52,11 @@ class UnitSystem:
     # still compare unequal, which is all the rest of CoolPlot relies on.
     units: Mapping[str, Unit] = field(hash=False)
 
+    def __post_init__(self):
+        # Keep a copy, so that changing the dictionary a system was made from
+        # (or the one of another system) does not change this one
+        object.__setattr__(self, "units", dict(self.units))
+
     def __getitem__(self, key: str) -> Unit:
         return self.units[quantity_key(key)]
 
