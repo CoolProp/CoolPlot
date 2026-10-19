@@ -37,7 +37,7 @@ One record describes a property diagram and a psychrometric chart alike;
   "diagram": "ph",
   "units": "engineering",
   "limits": {"T_min": {"relative": 1.01}, "T_max": {"relative": 2.25}, "p_min": 25000.0, "p_max": null},
-  "settings": {"calc": {...}, "look": {...}, "labels": {...}, "page": {...}},
+  "settings": {"calc": {...}, "look": {...}, "labels": {...}, "page": {...}, "branding": {...}},
   "isolines": [{"key": "T", "values_SI": null, "num": 15, "range_SI": null, "rounding": true,
                 "points": null, "labels": true, "anchor": null},
                {"key": "s", "values_SI": null, "num": 15, "range_SI": null, "rounding": false,
@@ -152,6 +152,27 @@ definition; contributing/writing_a_backend.md says how each field is rendered.
   ]
 }
 ```
+
+Two optional keys of `axes` carry the branding (1.2), and are left out
+when the chart has none, so an unbranded record is the same as before:
+
+```js
+"badge": {"location": "upper left", "logo": ["data:image/svg+xml;base64,...", "data:image/png;base64,..."],
+          "logo_width_pt": 60.0, "lines": ["R290: Lemmon et al. (2009)", "example.com"],
+          "text": {...}, "background": "#ffffff", "background_alpha": 0.85, "frame_color": "#000000",
+          "frame_width_pt": 0.5, "padding_pt": 4.0, "gap_pt": 3.0, "inset_pt": 6.0},
+"watermark": {"picture": ["data:image/png;base64,..."], "width_pt": 300.0, "opacity": 0.06}
+```
+
+`badge` is a box in one corner of the plot area (`location`: "upper
+left", "upper right", "lower left" or "lower right", `inset_pt` from the
+frame), with the logo on top and the text lines below it, left aligned;
+`logo` lists variants of one picture as `data:` URIs, best first, and a
+writer draws the first one it can. `watermark` is a picture centred in
+the plot area, above its background and below the grid and the items.
+Sizes are in points; the heights follow from the pictures. The
+matplotlib and SVG writers draw both; coolplot-core, the plotly backend
+and the live web page do not yet (the Python writers warn once).
 
 Item types: `line` (a polyline; `null` splits it), `markers` (points
 without a line) and `text` (one label; `direction` is a direction in

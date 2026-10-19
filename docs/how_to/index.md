@@ -11,6 +11,7 @@ labels
 cycles
 blends
 pdf_print
+branding
 themes
 embedding
 caching

@@ -197,6 +197,7 @@ class Chart:
             self.engine = Engine(cache)
         self.scene = Scene()
         self._default_renderer = None
+        self._file_renderer = None   # the matplotlib renderer of save(), outside pyplot
         self._plot_size_pt = None
         try:
             check_fluid(self.engine, spec.fluid)   # a misspelt fluid fails here, not at the first draw
@@ -672,7 +673,8 @@ class Chart:
         curves = self.engine.curves(spec, domain, plan(spec, domain))
         previous = {item.id: item for item in self.scene if item.role == "isoline_label"}
         cycles = [self.engine.cycle(spec, c) for c in spec.cycles]
-        items, axes = compose(spec, domain, curves, self._plot_size_pt, previous, cycles)
+        items, axes = compose(spec, domain, curves, self._plot_size_pt, previous, cycles,
+                              self.engine.source_lines(spec))
         self.scene.replace_all(items, axes=axes)
         return self.scene
 
@@ -731,13 +733,51 @@ class Chart:
         renderer (a static page), neither of which needs matplotlib;
         every other extension (PNG, PDF, EPS, ...) goes through matplotlib,
         with ``kwargs`` such as ``dpi`` or ``pdf_fonts`` passed on.
+
+        The size is that of ``settings.page`` in every format: the SVG
+        document states it in points (``width``, ``height`` and ``unit``
+        passed as ``kwargs`` override it). Without a renderer from
+        :meth:`draw` or :meth:`show`, matplotlib files are drawn into a
+        figure of their own outside pyplot, so that saving charts in a
+        server or a loop does not collect pyplot figures.
         """
         extension = str(path).rsplit(".", 1)[-1].lower() if "." in str(path) else ""
+        page = self.spec.settings.page
         if extension == "svg":
-            from .render.svg import SvgRenderer
-            self.draw(SvgRenderer(**kwargs)).save(path)
+            from .render.svg import PX_PER_PT, SvgRenderer
+            options = dict(width=page.width_pt * PX_PER_PT, height=page.height_pt * PX_PER_PT, unit="pt")
+            options.update(kwargs)
+            self.draw(SvgRenderer(**options)).save(path)
         elif extension in ("html", "htm"):
             from .render.web import WebRenderer
             self.draw(WebRenderer(**kwargs)).save(path)
-        else:
+        elif self._default_renderer is not None:
             self.draw().save(path, **kwargs)
+        else:
+            self.draw(self._matplotlib_file_renderer()).save(path, **kwargs)
+
+    def _matplotlib_file_renderer(self):
+        """The renderer of :meth:`save` for matplotlib formats: a figure outside pyplot, sized by settings.page."""
+        size = self.spec.settings.page.size_in
+        if self._file_renderer is None:
+            from .render.mpl import MatplotlibRenderer
+            self._file_renderer = MatplotlibRenderer(use_pyplot=False, figsize=size)
+        elif tuple(self._file_renderer.figure.get_size_inches()) != tuple(size):
+            self._file_renderer.figure.set_size_inches(size)   # the page settings changed since
+        return self._file_renderer
+
+    def uncached_curves(self) -> int:
+        """How many lines of the chart would be calculated by the next update.
+
+        Lines found in the curve cache, in memory or in its folder on disk
+        (see :class:`coolplot.engine.CurveCache`), do not count. The answer
+        costs the calculation region of the chart (the T-p box and, for
+        mixtures, the phase envelope), which the next update needs anyway,
+        but no line. An application can use it to tell a cheap request
+        (only drawing) from an expensive one before doing the work.
+        """
+        spec = self.spec
+        domain = self.engine.domain(spec)
+        cache = self.engine.cache
+        return sum(1 for request in plan(spec, domain)
+                   if cache.peek(self.engine.cache_key(spec, domain, request)) is None)

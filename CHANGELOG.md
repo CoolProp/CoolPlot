@@ -6,6 +6,43 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### 1.2.0
+
+#### Added
+- Branding: `Settings.branding` (`coolplot.BrandingSettings`) puts a badge
+  in a corner of the plot area, with a logo (PNG or SVG), the references
+  of the equation of state of the fluid ("short": "R290: Lemmon et al.
+  (2009)", or "full" with journal, volume and pages), the CoolProp and
+  CoolPlot versions and lines of your own, and a faint watermark picture
+  behind the lines. The references come from CoolProp's BibTeX keys and
+  the bibliography in its package: every component of a mixture plus the
+  references of its mixture model, ASHRAE RP-1485 for humid air, the
+  backend's name for REFPROP and cubic equations. `location="auto"` takes
+  the corner with the fewest lines in it; isoline labels keep clear of
+  the badge. Drawn by the matplotlib and SVG writers (logos in PDF keep
+  all their pixels); the scene record carries it as `axes.badge` and
+  `axes.watermark`. coolplot-core does not compose or draw it, so a
+  branded chart uses the Python composer and SVG writer; the plotly
+  backend and the coolplot-core PDF writer warn and leave it out.
+  How-to page "Logo, references and watermark".
+- `Chart.uncached_curves()`: how many lines the next update would
+  calculate, counting the curve cache in memory and on disk; an
+  application can tell a cheap request from an expensive one first.
+- `SvgRenderer(unit="pt" | "mm")` writes the document size with a unit,
+  and the size may be fractional.
+
+#### Changed
+- `save("chart.svg")` writes the size of `settings.page` (in points)
+  instead of 800 x 600 pixels; `width`, `height` and `unit` still
+  override it.
+- `save()` to PNG, PDF and other matplotlib formats draws into a figure
+  outside pyplot unless `draw()` or `show()` made one before, so saving
+  charts in a server or a loop no longer collects pyplot figures.
+- CoolProp's pseudo-pure models of blends ("R407C", "R410A", "Air") give
+  one warning that names the mixture to use ("R407C.mix") instead of one
+  warning per missing line of constant quality.
+- CI also tests Python 3.14.
+
 ### 1.1.0
 
 #### Added

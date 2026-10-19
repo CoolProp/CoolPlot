@@ -14,6 +14,8 @@ every requirement. Nothing else in CoolPlot needs to change.
 """
 from __future__ import annotations
 
+import warnings
+
 from dataclasses import dataclass, field
 from typing import Callable, Dict, FrozenSet, List, Optional, Tuple
 
@@ -28,6 +30,21 @@ CAPABILITIES = {
     "events": "reports hover, click, drag, view changes and resizes with connect(callback)",
     "pdf_output": "save(path) writes print-ready PDF for a .pdf path: TrueType or Type 1 fonts, all embedded",
 }
+
+
+_branding_warned = set()   # renderer classes that already said they leave the branding out
+
+
+def warn_without_branding(renderer, axes: AxesSpec):
+    """Warn once per renderer class when the axes carry a badge or watermark it does not draw."""
+    if axes is None or (axes.badge is None and axes.watermark is None):
+        return
+    name = type(renderer).__name__
+    if name in _branding_warned:
+        return
+    _branding_warned.add(name)
+    warnings.warn("{0} does not draw the badge or the watermark of the chart (BrandingSettings) and leaves them "
+                  "out; the matplotlib and SVG backends draw them.".format(name), UserWarning, stacklevel=3)
 
 
 @dataclass

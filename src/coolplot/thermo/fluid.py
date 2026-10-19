@@ -51,6 +51,12 @@ def _as_density(key: str, value_SI: float) -> Tuple[str, float]:
     return key, value_SI
 
 
+@lru_cache(maxsize=1)
+def _predefined_mixtures() -> frozenset:
+    """The names of CoolProp's predefined blends, e.g. "R407C.mix"."""
+    return frozenset(CP.get_global_param_string("predefined_mixtures").split(","))
+
+
 def model_from_state(state: AbstractState) -> Tuple:
     """Snapshot of the fluid model of an AbstractState, as plain data.
 
@@ -193,6 +199,26 @@ class Fluid:
         """(backend, components, fractions, basis, interactions): everything
         that determines the properties, so it can serve as a cache key."""
         return self._model
+
+    @property
+    def pseudo_pure_blend(self) -> Optional[str]:
+        """For CoolProp's pseudo-pure model of a blend ("R407C"), the name of the
+        blend as a mixture ("R407C.mix"); None for every other fluid.
+
+        A pseudo-pure model treats the blend as one substance: it has no
+        two-phase states, so lines of constant vapour quality cannot be
+        drawn, and no temperature glide.
+        """
+        components = self._model[1]
+        if len(components) != 1 or "Helmholtz" not in str(self._state.backend_name()):
+            return None
+        try:
+            if self._state.fluid_param_string("pure") != "false":
+                return None
+        except Exception:   # a backend without the parameter: not a pseudo-pure fluid
+            return None
+        name = components[0] + ".mix"
+        return name if name in _predefined_mixtures() else None
 
     def with_backend(self, backend: str) -> "Fluid":
         """The same fluid model on another CoolProp backend."""

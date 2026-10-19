@@ -405,7 +405,8 @@ def _between(x0, y0, x1, y1, spacing_pt: float):
 
 def place_edge_labels(requests: Sequence[LabelRequest], frame: Frame, keep_out_lines, keep_out_pt: float,
                       preferred_edges: Dict[str, Tuple[str, ...]],
-                      previous: Optional[Dict[str, Text]] = None, fallback: bool = True) -> List[Text]:
+                      previous: Optional[Dict[str, Text]] = None, fallback: bool = True,
+                      occupied: Sequence[Box] = ()) -> List[Text]:
     """Edge labels for the requests, in the order given (most important first).
 
     ``keep_out_lines`` are (x, y) display-unit lines, or (x, y, False) for
@@ -414,13 +415,14 @@ def place_edge_labels(requests: Sequence[LabelRequest], frame: Frame, keep_out_l
     label items of the previous layout, see the module docstring; a label
     that stays where it was is returned as the very same item, so a
     renderer does not redraw it. ``fallback`` allows positions along the
-    line when no spot near the frame is free.
+    line when no spot near the frame is free. ``occupied`` are boxes no
+    label may overlap, such as the badge (:mod:`coolplot.compose.branding`).
     """
     if not frame.usable:
         return []
     previous = previous or {}
     kx, ky = keep_out_points(frame, keep_out_lines)
-    placed: List[Box] = []
+    placed: List[Box] = list(occupied)
     labels = []
     for request in requests:
         width, height = text_size_pt(request.text, request.style)

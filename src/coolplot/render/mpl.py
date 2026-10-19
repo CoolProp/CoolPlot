@@ -58,7 +58,8 @@ from matplotlib.markers import MarkerStyle as _MplMarker
 
 from ..core.events import Click, Drag, DragEnd, DragStart, Hover, Resized, ViewChanged
 from ..core.numbers import format_number
-from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
+from ..core.images import PNG
+from ..scene import BADGE_LINE_HEIGHT, AxesSpec, Item, Line, Markers, Text, drawable_limits, first_picture
 from ..style.values import AxesStyle, dash_pattern_pt
 from .base import Renderer, SyncReport
 
@@ -68,6 +69,7 @@ _RANK_STEP = 1e-3     # z order step between consecutive items in the drawing or
 _ITEM_BASE = 1.0      # items start above the grid (0.5)
 _DECORATION_Z = 1e5   # the frame above all items
 _LEGEND_Z = 1e6
+_WATERMARK_Z = 0.25   # above the plot background, below the grid (0.5) and the items
 _GENERIC = {"sans-serif", "serif", "monospace", "cursive", "fantasy"}
 _installed = None
 _registered = set()   # font files given in Font.files, registered once per process
@@ -186,6 +188,53 @@ def _legend_frame_kwargs(style) -> dict:
     return dict(labelcolor=style.text.color or "none",
                 frameon=style.background is not None or style.frame_color is not None,
                 facecolor=style.background or "none", edgecolor=style.frame_color or "none", framealpha=1.0)
+
+
+_png_arrays = {}   # id of the picture bytes -> (bytes, decoded array); a logo is decoded once per process
+
+
+def _png_array(picture):
+    """The pixels of a PNG picture as matplotlib reads them (cached)."""
+    import io
+    from matplotlib.image import imread
+    key = id(picture.data)
+    cached = _png_arrays.get(key)
+    if cached is None or cached[0] is not picture.data:
+        if len(_png_arrays) > 16:
+            _png_arrays.clear()
+        cached = _png_arrays[key] = (picture.data, imread(io.BytesIO(picture.data), format="png"))
+    return cached[1]
+
+
+def _full_resolution_image(array, zoom: float, alpha: float = None):
+    """An OffsetImage that PDF, PS and SVG output embed with all its pixels.
+
+    matplotlib resamples a BboxImage (what OffsetImage draws with) to the
+    figure dpi in vector output, which makes a logo in a PDF blurry (about
+    100 dpi). An AxesImage with interpolation "none" is embedded unsampled
+    instead; BboxImage has the same machinery but never asks for it. The
+    subclass below only answers that question differently, so swapping the
+    class of the existing BboxImage keeps all its state.
+    """
+    from matplotlib.image import BboxImage
+    from matplotlib.offsetbox import OffsetImage
+
+    class _UnsampledBboxImage(BboxImage):
+        def _check_unsampled_image(self):
+            return self.get_interpolation() == "none"
+
+    image = OffsetImage(array, zoom=zoom, alpha=alpha, interpolation="none")
+    image.image.__class__ = _UnsampledBboxImage
+    return image
+
+
+def _png_or_warn(variants, what: str):
+    """The first PNG among the variants of a picture; warns (once per message) and returns None without one."""
+    picture = first_picture(variants, (PNG,))
+    if picture is None and variants:
+        warnings.warn("matplotlib draws PNG pictures only; the {0} is left out. Give a PNG rendering of it as "
+                      "well, e.g. logo=('logo.svg', 'logo.png').".format(what), UserWarning, stacklevel=4)
+    return picture
 
 
 def _legend_location_kwargs(location: str) -> dict:
@@ -391,6 +440,7 @@ class MatplotlibRenderer(Renderer):
         self.ax = ax
         self.figure = ax.figure
         self._artists = {}
+        self._branding = []   # the badge and watermark artists, replaced with the axes
         self._halos = {}   # item id -> the text artist drawing its halo
         self._text_angles = {}   # item id -> the data angle its text was given
         self._rank = {}
@@ -428,6 +478,50 @@ class MatplotlibRenderer(Renderer):
             _central_tick_format(axis, log, axes.tick_digits)
         self._set_frame_and_ticks(st)
         self._set_grid(st)
+        self._set_branding(axes)
+
+    def _set_branding(self, axes: AxesSpec):
+        """Draw the watermark and the badge (see coolplot.scene.Badge) as anchored boxes in the axes."""
+        from matplotlib.colors import to_rgba
+        from matplotlib.offsetbox import AnchoredOffsetbox, TextArea, VPacker
+        for artist in self._branding:
+            artist.remove()
+        self._branding = []
+        mark = axes.watermark
+        picture = _png_or_warn(mark.picture, "watermark") if mark is not None else None
+        if picture is not None:
+            image = _full_resolution_image(_png_array(picture), mark.width_pt / picture.width_px, mark.opacity)
+            box = AnchoredOffsetbox(loc="center", child=image, frameon=False, pad=0.0, borderpad=0.0)
+            box.set_zorder(_WATERMARK_Z)
+            self.ax.add_artist(box)
+            self._branding.append(box)
+        badge = axes.badge
+        if badge is None or badge.empty:
+            return
+        size = badge.text.font.size_pt
+        children = []
+        picture = _png_or_warn(badge.logo, "logo")
+        if picture is not None:
+            children.append(_full_resolution_image(_png_array(picture), badge.logo_width_pt / picture.width_px))
+        if badge.lines:
+            area = TextArea("\n".join(badge.lines), textprops=dict(
+                fontproperties=_font(badge.text.font, self.strict_fonts), color=badge.text.color or "none",
+                linespacing=BADGE_LINE_HEIGHT, multialignment="left"))
+            _plain_text(area._text)
+            children.append(area)
+        if not children:
+            return
+        packed = VPacker(children=children, align="left", pad=0.0, sep=badge.gap_pt)
+        # pad and borderpad are fractions of the font size of ``prop``
+        box = AnchoredOffsetbox(loc=badge.location, child=packed, pad=badge.padding_pt / size,
+                                borderpad=badge.inset_pt / size, prop=dict(size=size), frameon=True)
+        box.patch.set_boxstyle("square", pad=0.0)
+        box.patch.set_facecolor(to_rgba(badge.background, badge.background_alpha) if badge.background else "none")
+        box.patch.set_edgecolor(badge.frame_color or "none")
+        box.patch.set_linewidth(badge.frame_width_pt if badge.frame_color else 0.0)
+        box.set_zorder(_LEGEND_Z - 1.0)
+        self.ax.add_artist(box)
+        self._branding.append(box)
 
     def _set_frame_and_ticks(self, st: AxesStyle):
         ax = self.ax
