@@ -1,9 +1,0 @@
-numpy
-matplotlib
-coolprop
-nose
-coverage
-sphinx
-numpydoc
-nbsphinx
-twine
