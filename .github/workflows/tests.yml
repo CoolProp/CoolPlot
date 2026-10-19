@@ -2,7 +2,9 @@ name: tests
 
 on:
   push:
+    branches: ["**"]   # every branch; a version tag runs these tests through release.yml instead
   pull_request:
+  workflow_call:       # release.yml runs the whole workflow before it publishes
 
 jobs:
   test:

@@ -1,0 +1,131 @@
+name: release
+
+# Publishes CoolPlot when a version tag is pushed (v1.0.0, v1.0.0rc1, ...):
+# the whole test workflow, then the sdist and wheel are built, checked
+# against the tag, installed and tried, uploaded to PyPI and attached to a
+# GitHub release. Started by hand (Actions tab, "Run workflow") it does the
+# same against TestPyPI, as a rehearsal, and makes no GitHub release.
+#
+# Uploads use PyPI's trusted publishing: no password or token is stored in
+# GitHub. PyPI trusts this file instead, once a maintainer has registered
+# it on pypi.org and test.pypi.org (docs/contributing/releasing.md).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build twine packaging
+          python -m build
+          python -m twine check --strict dist/*
+      - name: The tag names the version that was built
+        if: github.ref_type == 'tag'
+        shell: python
+        run: |
+          import glob, os, sys
+          from packaging.version import Version
+          wheels = glob.glob("dist/*.whl")
+          tag = os.environ["GITHUB_REF_NAME"]
+          if len(wheels) != 1:
+              sys.exit("Expected one wheel in dist/, found {0}".format(wheels))
+          built = wheels[0].split("-")[1]   # coolplot-1.0.0rc1-py3-none-any.whl
+          if not tag.startswith("v") or Version(tag[1:]) != Version(built):
+              sys.exit("Tag {0} does not match the version that was built, {1}. Set VERSION in "
+                       "src/coolplot/__version__.py and tag again.".format(tag, built))
+          print("Tag {0} matches the version that was built, {1}".format(tag, built))
+      - name: Install the wheel in a fresh environment and draw a chart
+        run: |
+          python -m venv /tmp/try
+          /tmp/try/bin/python -m pip install --quiet "coolprop==8.0.0" dist/*.whl
+          cd /tmp
+          /tmp/try/bin/python -c "
+          import coolplot
+          from coolplot import PropertyDiagram
+          from coolplot.render.svg import SvgRenderer
+          chart = PropertyDiagram('HEOS::R290', 'ph', units='engineering', tp_limits='ACHP')
+          chart.set_default_lines(labels=True)
+          chart.draw(SvgRenderer()).save('try.svg')
+          print('CoolPlot', coolplot.__version__, 'drew', len(open('try.svg').read()), 'bytes of SVG')
+          "
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  pypi:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: [tests, build]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/CoolPlot/
+    permissions:
+      id-token: write   # the short-lived identity that trusted publishing hands to PyPI
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  testpypi:
+    if: github.event_name == 'workflow_dispatch'
+    needs: [tests, build]
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/CoolPlot/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true   # a rehearsal of a version already there is not an error
+
+  github-release:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # to create the release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Create the GitHub release with the files that went to PyPI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          version="${tag#v}"
+          prerelease=""
+          if python3 -c "import re, sys; sys.exit(0 if re.search(r'(a|b|rc|dev)[0-9]*$', sys.argv[1]) else 1)" "$version"; then
+            prerelease="--prerelease"
+          fi
+          gh release create "$tag" dist/* --repo "$GITHUB_REPOSITORY" --title "CoolPlot $version" $prerelease \
+            --notes "CoolPlot $version on PyPI: https://pypi.org/project/CoolPlot/$version/
+
+          What changed: https://github.com/$GITHUB_REPOSITORY/blob/$tag/CHANGELOG.md
+          How to upgrade: the upgrade guide in the documentation (docs/upgrade.md)."
