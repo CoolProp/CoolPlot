@@ -7,9 +7,11 @@ before it (see docs/architecture.md, section 4):
 * ``core``: quantities and units, plain data.
 * ``style``: style values and themes.
 * ``scene``: the backend-neutral description of a plot.
+* ``spec``: what the user asks for (fluid, diagram, settings) as data.
 * ``thermo``: all property calculations, in SI units; the only layer that
   imports CoolProp.
 * ``engine``: which curves are needed, computing and caching them.
+* ``compose``: computed curves plus spec and settings become a scene.
 * ``render``: backends that draw a scene; ``render.mpl`` is the only module
   that imports matplotlib.
 * ``diagram``: :class:`PropertyDiagram`, the facade users work with.
@@ -23,11 +25,23 @@ from .__version__ import __version__  # noqa: F401
 # module such as coolplot.scene therefore does not pull in CoolProp.
 _LAZY = {
     "PropertyDiagram": ".diagram",
+    "Cycle": ".core.cycle",
+    "CycleSpec": ".spec",
+    "StateInput": ".core.cycle",
+    "DiagramSpec": ".spec",
+    "FluidSpec": ".spec",
+    "IsolineSet": ".spec",
+    "ProcessSpec": ".spec",
+    "Settings": ".spec",
+    "CalcSettings": ".spec",
+    "LabelSettings": ".spec",
+    "PageSettings": ".spec",
+    "Engine": ".engine",
     "Fluid": ".thermo",
-    "DiagramType": ".thermo",
-    "TpLimits": ".thermo",
-    "Relative": ".thermo",
-    "StatePoint": ".thermo",
+    "DiagramType": ".core.diagram_type",
+    "TpLimits": ".core.limits",
+    "Relative": ".core.limits",
+    "StatePoint": ".core.state",
     "state_point": ".thermo",
     "process_path": ".thermo",
     "Theme": ".style.theme",

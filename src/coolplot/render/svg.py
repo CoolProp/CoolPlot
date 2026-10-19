@@ -24,7 +24,8 @@ from xml.sax.saxutils import escape, quoteattr
 
 import numpy as np
 
-from ..scene import AxesSpec, Item, Line, Markers, Text
+from ..core.numbers import format_number
+from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
 from ..style.values import AxesStyle, TextStyle, dash_pattern_pt
 from .base import Renderer, SyncReport
 
@@ -44,12 +45,24 @@ def _num(value: float) -> str:
     return "0" if text in ("-0", "") else text
 
 
-_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+# Characters XML 1.0 does not allow anywhere: control characters, lone
+# surrogates (invalid Unicode) and the two non-characters U+FFFE and U+FFFF.
+_CONTROL = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+
+
+def _clean(text: str) -> str:
+    """Drop characters that would make the document invalid XML."""
+    return _CONTROL.sub("", str(text))
 
 
 def _xml_text(text: str) -> str:
-    """Escape text for XML; control characters (not allowed in XML) are dropped."""
-    return escape(_CONTROL.sub("", text))
+    """Escape text for XML; characters not allowed in XML are dropped."""
+    return escape(_clean(text))
+
+
+def _attr(text: str) -> str:
+    """A quoted, escaped XML attribute value."""
+    return quoteattr(_clean(text))
 
 
 def _css_class(prefix: str, value: str) -> str:
@@ -62,7 +75,7 @@ def _font_family(families) -> str:
 
 def _text_attrs(style: TextStyle) -> str:
     f = style.font
-    attrs = ['font-family={0}'.format(quoteattr(_font_family(f.family))),
+    attrs = ['font-family={0}'.format(_attr(_font_family(f.family))),
              'font-size="{0}"'.format(_px(f.size_pt)),
              'font-weight="{0}"'.format(f.weight), 'font-style="{0}"'.format(f.style),
              'fill="{0}"'.format(style.color or "none"), 'fill-opacity="{0}"'.format(_num(style.alpha))]
@@ -142,6 +155,7 @@ class SvgRenderer(Renderer):
         self._legend_entries: List = []
         self._legend_style = None
         self._parsed = None
+        self._extra_margins = (0.0, 0.0, 0.0, 0.0)   # room for unclipped text, see _finish
         self.elements_built = 0  # element strings generated, for tests
 
     # Backend hooks -----------------------------------------------------
@@ -168,6 +182,8 @@ class SvgRenderer(Renderer):
 
     def _finish(self, report: SyncReport):
         self._parsed = None
+        if report.changed:
+            self._extra_margins = self._unclipped_margins()
 
     # Geometry ----------------------------------------------------------
     @property
@@ -192,9 +208,61 @@ class SvgRenderer(Renderer):
         longest = max(len(self._legend_text(text)) for text, _ in self._legend_entries)
         return 44.0 + 0.6 * size_px * longest, 8.0 + 1.6 * size_px * len(self._legend_entries)
 
+    def _unclipped_margins(self) -> Tuple[float, float, float, float]:
+        """Extra (left, right, top, bottom) margins in px for text outside the frame.
+
+        Margin labels sit on the frame and reach outwards; without room they
+        would run off the drawing. The text size is estimated from its length,
+        as for the legend.
+        """
+        need = [0.0, 0.0, 0.0, 0.0]
+        (x0, x1), (y0, y1) = self._limits()
+        axes = self._axes or AxesSpec()
+
+        def frac(v, lo, hi, log):
+            if log:
+                return (math.log10(v) - math.log10(lo)) / (math.log10(hi) - math.log10(lo)) if v > 0 else math.nan
+            return (v - lo) / (hi - lo)
+
+        for item in self._items.values():
+            if not (isinstance(item, Text) and item.visible and not item.clip):
+                continue
+            if not (math.isfinite(item.x) and math.isfinite(item.y)):
+                continue
+            fx, fy = frac(item.x, x0, x1, axes.x_log), frac(item.y, y0, y1, axes.y_log)
+            if not (math.isfinite(fx) and math.isfinite(fy)):
+                continue
+            size_px = item.style.font.size_pt * PX_PER_PT
+            length, height = 0.6 * size_px * len(item.text), 1.25 * size_px
+            vertical = item.direction is not None and abs(item.direction[1]) > abs(item.direction[0])
+            h_align, v_align = item.style.h_align, item.style.v_align
+            along = {"left": (0.0, length), "center": (length / 2, length / 2), "right": (length, 0.0)}[h_align]
+            across = {"bottom": (0.0, height), "center": (height / 2, height / 2), "top": (height, 0.0)}[v_align]
+            # (extent to the left, right, down, up) from the anchor in px
+            if vertical:   # reads upwards: its start is at the bottom
+                left_px, right_px, down_px, up_px = across[1], across[0], along[0], along[1]
+            else:
+                left_px, right_px, down_px, up_px = along[0], along[1], across[0], across[1]
+            dx, dy = item.offset_pt[0] * PX_PER_PT, item.offset_pt[1] * PX_PER_PT
+            if fy >= 1.0 - 1e-9:
+                need[2] = max(need[2], up_px + dy + 4.0)
+            if fy <= 1e-9:
+                need[3] = max(need[3], down_px - dy + 4.0)
+            if fx >= 1.0 - 1e-9:
+                need[1] = max(need[1], right_px + dx + 4.0)
+            if fx <= 1e-9:
+                need[0] = max(need[0], left_px - dx + 4.0)
+        left, right, top, bottom = self.margins
+        # With a title the configured top margin holds the title, so labels
+        # above the frame need their whole height on top of it
+        top_extra = need[2] if axes.title else max(0.0, need[2] - top)
+        return (max(0.0, need[0] - left), max(0.0, need[1] - right), top_extra,
+                max(0.0, need[3] - bottom))
+
     @property
     def _box(self) -> Tuple[float, float, float, float]:
-        left, right, top, bottom = self.margins
+        extra = self._extra_margins
+        left, right, top, bottom = (m + e for m, e in zip(self.margins, extra))
         st = self._legend_style
         if st is not None and st.location == "outside right":
             right += self._legend_size()[0] + 12.0 if self._legend_size()[0] else 0.0
@@ -217,18 +285,7 @@ class SvgRenderer(Renderer):
                     limits = (1.0, 10.0) if log else (0.0, 1.0)
                 else:
                     limits = (float(values.min()), float(values.max()))
-            lo, hi = float(min(limits)), float(max(limits))
-            if log:
-                if not hi > 0.0:
-                    hi = 10.0
-                if not lo > 0.0:
-                    lo = hi * 1e-3   # same rule as the matplotlib backend
-                if lo == hi:
-                    lo, hi = lo / 10.0, hi * 10.0
-            elif lo == hi:
-                pad = abs(lo) * 0.1 or 0.5
-                lo, hi = lo - pad, hi + pad
-            result.append((lo, hi))
+            result.append(drawable_limits(limits, log))
         return result
 
     def _mapper(self):
@@ -281,9 +338,9 @@ class SvgRenderer(Renderer):
                 _num(bx), _num(by), _num(bw), _num(bh), st.background or "none"),
         ]
         out.extend(self._grid(to_px, axes))
-        out.append('<g clip-path="url(#{0})">'.format(clip))
+        # Every item clips itself (see _open), so that unclipped text keeps
+        # its place in the drawing order.
         out.extend(self._elements[i] for i in self._order if i in self._elements and self._elements[i])
-        out.append('</g>')
         out.append('<rect class="cp-frame" x="{0}" y="{1}" width="{2}" height="{3}" fill="none" '
                    'stroke="{4}" stroke-width="{5}"/>'.format(_num(bx), _num(by), _num(bw), _num(bh),
                                                             st.frame_color or "none", _px(st.frame_width_pt)))
@@ -291,6 +348,10 @@ class SvgRenderer(Renderer):
         out.extend(self._legend_elements())
         out.append('</svg>')
         return "\n".join(out).encode("ascii", "xmlcharrefreplace").decode("ascii")
+
+    def plot_size_pt(self):
+        bx, by, bw, bh = self._box
+        return bw / PX_PER_PT, bh / PX_PER_PT
 
     def save(self, path):
         with open(path, "w", encoding="ascii", newline="\n") as f:
@@ -300,7 +361,9 @@ class SvgRenderer(Renderer):
     def _open(self, item: Item, extra: str = "") -> str:
         classes = " ".join(c for c in ("cp-item", _css_class("cp-role-", item.role) if item.role else "",
                                        _css_class("cp-group-", item.group) if item.group else "") if c)
-        return '<g data-item={0} class="{1}"{2}>'.format(quoteattr(item.id), classes, extra)
+        if getattr(item, "clip", True):
+            extra = ' clip-path="url(#{0}-plot-area)"'.format(self.id_prefix) + extra
+        return '<g data-item={0} class="{1}"{2}>'.format(_attr(item.id), classes, extra)
 
     def _element(self, item: Item, to_px) -> str:
         """SVG text for one item; empty for hidden items, which are not drawn."""
@@ -348,7 +411,7 @@ class SvgRenderer(Renderer):
                   if math.isfinite(x) and math.isfinite(y)]
         extra = (' fill="{0}" stroke="{1}" stroke-width="{2}" opacity="{3}" data-shape={4} '
                  'data-size-pt="{5}"').format(face, s.edge_color or "none", _px(s.edge_width_pt),
-                                              _num(s.alpha), quoteattr(s.shape), _num(s.size_pt))
+                                              _num(s.alpha), _attr(s.shape), _num(s.size_pt))
         return self._open(item, extra) + "".join(shapes) + "</g>"
 
     def _text(self, item: Text, to_px) -> str:
@@ -358,6 +421,9 @@ class SvgRenderer(Renderer):
         if not (math.isfinite(px) and math.isfinite(py)):
             return ""
         angle = 0.0
+        # The angle is measured at the anchor point; the offset moves the
+        # text afterwards. Screen y points down, the offset y up.
+        offset_x, offset_y = item.offset_pt[0] * PX_PER_PT, -item.offset_pt[1] * PX_PER_PT
         if item.direction is not None:
             dx, dy = item.direction
             step = 1e-3
@@ -365,7 +431,10 @@ class SvgRenderer(Renderer):
             if math.isfinite(qx) and math.isfinite(qy) and (qx, qy) != (px, py):
                 # Screen y points down, so a rising line has a negative SVG angle.
                 angle = math.degrees(math.atan2(qy - py, qx - px))
-                if angle >= 90.0:   # straight down on screen reads bottom to top, as in matplotlib
+                # Upright: the screen angle (counter-clockwise, the negative
+                # of the SVG angle) stays in (-90, 90], so straight down
+                # becomes straight up and the text reads bottom to top.
+                if angle >= 90.0:
                     angle -= 180.0
                 elif angle < -90.0:
                     angle += 180.0
@@ -374,7 +443,8 @@ class SvgRenderer(Renderer):
         baseline = {"bottom": "text-after-edge", "center": "central", "top": "text-before-edge"}[s.v_align]
         return (self._open(item) + '<text x="{0}" y="{1}" text-anchor="{2}" dominant-baseline="{3}" '
                 'transform="rotate({4} {0} {1})" {5}>{6}</text></g>').format(
-            _num(px), _num(py), anchor, baseline, _num(angle), _text_attrs(s), _xml_text(item.text))
+            _num(px + offset_x), _num(py + offset_y), anchor, baseline, _num(angle), _text_attrs(s),
+            _xml_text(item.text))
 
     # Axes decoration ---------------------------------------------------
     def _grid(self, to_px, axes: AxesSpec) -> List[str]:
@@ -410,16 +480,18 @@ class SvgRenderer(Renderer):
             px = float(to_px(value, y0)[0])
             out.append('<line class="cp-tick cp-tick-x" x1="{0}" y1="{1}" x2="{0}" y2="{2}" {3}/>'.format(
                 _num(px), _num(by + bh), _num(by + bh + length), tick))
-            out.append('<text class="cp-tick-label" x="{0}" y="{1}" text-anchor="middle" '
-                       'dominant-baseline="text-before-edge" {2}>{3}</text>'.format(
-                           _num(px), _num(by + bh + gap + 3.0), label_attrs, _fmt(value)))
+            out.append('<text class="cp-tick-label cp-tick-label-x" x="{0}" y="{1}" text-anchor="middle" '
+                       'dominant-baseline="text-before-edge" data-value="{4}" {2}>{3}</text>'.format(
+                           _num(px), _num(by + bh + gap + 3.0), label_attrs,
+                           format_number(value, axes.tick_digits), repr(float(value))))
         for value in _ticks(y0, y1, axes.y_log):
             py = float(to_px(x0, value)[1])
             out.append('<line class="cp-tick cp-tick-y" x1="{0}" y1="{1}" x2="{2}" y2="{1}" {3}/>'.format(
                 _num(bx), _num(py), _num(bx - length), tick))
-            out.append('<text class="cp-tick-label" x="{0}" y="{1}" text-anchor="end" '
-                       'dominant-baseline="central" {2}>{3}</text>'.format(
-                           _num(bx - gap - 3.0), _num(py), label_attrs, _fmt(value)))
+            out.append('<text class="cp-tick-label cp-tick-label-y" x="{0}" y="{1}" text-anchor="end" '
+                       'dominant-baseline="central" data-value="{4}" {2}>{3}</text>'.format(
+                           _num(bx - gap - 3.0), _num(py), label_attrs,
+                           format_number(value, axes.tick_digits), repr(float(value))))
         out.append('<text class="cp-x-label" x="{0}" y="{1}" text-anchor="middle" '
                    'dominant-baseline="text-after-edge" {2}>{3}</text>'.format(
                        _num(bx + bw / 2.0), _num(self.height - 8.0), _text_attrs(st.axis_label),
@@ -430,7 +502,8 @@ class SvgRenderer(Renderer):
         if axes.title:
             out.append('<text class="cp-title" x="{0}" y="{1}" text-anchor="middle" '
                        'dominant-baseline="text-after-edge" {2}>{3}</text>'.format(
-                           _num(bx + bw / 2.0), _num(by - 8.0), _text_attrs(st.title), _xml_text(axes.title)))
+                           _num(bx + bw / 2.0), _num(by - 8.0 - self._extra_margins[2]), _text_attrs(st.title),
+                           _xml_text(axes.title)))
         return out
 
     def _legend_elements(self) -> List[str]:
@@ -496,11 +569,20 @@ class SvgRenderer(Renderer):
         kind = {Line: "line", Markers: "markers", Text: "text"}[type(item)]
         if element is None:
             return {"visible": False, "kind": kind}
-        out = {"visible": True, "kind": kind, "draw_rank": groups.index(element)}
+        out = {"visible": True, "kind": kind, "draw_rank": groups.index(element),
+               "clip": element.get("clip-path") is not None}
+        bx, by, bw, bh = self._box
+
+        def frac(px, py):
+            """A drawn point as a fraction of the plot area, y up."""
+            return ((px - bx) / bw, 1.0 - (py - by) / bh)
+
         if kind == "line":
             paths = {p.get("class"): p for p in element.iter(_NS + "path")}
             main, casing = paths["cp-stroke"], paths.get("cp-casing")
-            out.update(_stroke_description(main), n_points=len(re.findall(r"[ML]", main.get("d") or "")))
+            vertices = re.findall(r"[ML](-?[0-9.e]+),(-?[0-9.e]+)", main.get("d") or "")
+            out.update(_stroke_description(main), n_points=len(vertices),
+                       drawn_points=[frac(float(x), float(y)) for x, y in vertices])
             if casing is not None:
                 cased = _stroke_description(casing)
                 out.update(casing_color=cased["color"], casing_width_pt=(cased["width_pt"] - out["width_pt"]) / 2.0,
@@ -509,8 +591,11 @@ class SvgRenderer(Renderer):
                 out.update(casing_color=None, casing_width_pt=0.0)
         elif kind == "markers":
             shapes = list(element)
-            out.update(shape=element.get("data-shape"),
+            out.update(shape=_shape_from_geometry(shapes[0]) if shapes else None,
                        size_pt=_shape_width_px(shapes[0]) / PX_PER_PT if shapes else 0.0,
+                       drawn_points=[frac(*_shape_centre(el)) for el in shapes],
+                       connected=any(el.tag in (_NS + "polyline", _NS + "line") for el in shapes)
+                       or any(_shape_width_px(el) > 3.0 * _shape_width_px(shapes[0]) for el in shapes),
                        face_color=_color(element.get("fill")), edge_color=_color(element.get("stroke")),
                        edge_width_pt=float(element.get("stroke-width")) / PX_PER_PT,
                        alpha=float(element.get("opacity")), n_points=len(shapes))
@@ -527,6 +612,12 @@ class SvgRenderer(Renderer):
                        halo_width_pt=float(text.get("stroke-width")) / PX_PER_PT / 2.0 if halo else 0.0,
                        screen_angle_deg=-angle)   # SVG angles turn clockwise
             out["alpha"] = float(text.get("fill-opacity"))
+            # Offset: where the text was drawn, compared with its anchor
+            to_px, _ = self._mapper()
+            px, py = (float(v) for v in to_px(item.x, item.y))
+            drawn_x, drawn_y = float(text.get("x")), float(text.get("y"))
+            out["offset_pt"] = ((drawn_x - px) / PX_PER_PT, (py - drawn_y) / PX_PER_PT)
+            out["drawn_points"] = [frac(drawn_x, drawn_y)]
         return out
 
     def describe_axes(self) -> dict:
@@ -554,6 +645,8 @@ class SvgRenderer(Renderer):
             frame_color=_color(frame.get("stroke")), frame_width_pt=float(frame.get("stroke-width")) / PX_PER_PT,
             plot_size_pt=(bw / PX_PER_PT, bh / PX_PER_PT),
             legend=self._legend_description(by_class),
+            x_tick_labels=[(float(t.get("data-value")), t.text or "") for t in by_class.get("cp-tick-label-x", [])],
+            y_tick_labels=[(float(t.get("data-value")), t.text or "") for t in by_class.get("cp-tick-label-y", [])],
         )
         tick = first("cp-tick-x")
         if tick is not None:
@@ -561,12 +654,32 @@ class SvgRenderer(Renderer):
             out.update(tick_direction="out" if length > 0 else "in", tick_color=_color(tick.get("stroke")),
                        tick_length_pt=abs(length) / PX_PER_PT,
                        tick_width_pt=float(tick.get("stroke-width")) / PX_PER_PT)
+        tick = first("cp-tick-y")
+        if tick is not None:
+            length = float(tick.get("x1")) - float(tick.get("x2"))   # outward points left
+            out.update(y_tick_direction="out" if length > 0 else "in", y_tick_color=_color(tick.get("stroke")),
+                       y_tick_length_pt=abs(length) / PX_PER_PT,
+                       y_tick_width_pt=float(tick.get("stroke-width")) / PX_PER_PT)
+        # One rectangle draws all four sides of the frame with one style
+        out["frame_sides"] = 4 if frame is not None and frame.get("stroke") not in (None, "none") else 0
+        item_positions = [order[id(g)] for g in root.iter() if g.get("data-item") is not None]
+        out["items_below_frame"] = not item_positions or max(item_positions) < order[id(frame)]
+        legend_box = first("cp-legend-box")
+        if legend_box is not None:
+            legend_text = first("cp-legend-text")
+            out.update(legend_background=_color(legend_box.get("fill")),
+                       items_below_legend=not item_positions or max(item_positions) < order[id(legend_box)])
+            if legend_text is not None:
+                described = _text_description("legend", legend_text)
+                out.update({k: v for k, v in described.items() if not k.endswith(("weight", "style"))})
         major, minor = by_class.get("cp-grid-major"), by_class.get("cp-grid-minor")
         out["grid_color"] = _color(major[0].get("stroke")) if major else None
         out["grid_minor_color"] = _color(minor[0].get("stroke")) if minor else None
         if major:
             grid = _stroke_description(major[0])
             items = [order[id(g)] for g in root.iter() if g.get("data-item") is not None]
+            vertical = [g for g in major if g.get("x1") == g.get("x2")]
+            out.update(x_grid_lines=len(vertical), y_grid_lines=len(major) - len(vertical))
             out.update(grid_width_pt=grid["width_pt"], grid_dash_pt=grid["dash_pt"], grid_lines=len(major),
                        grid_below_items=not items or max(order[id(g)] for g in major + (minor or [])) < min(items))
         box = first("cp-legend-box")
@@ -629,6 +742,48 @@ def _text_description(prefix, el) -> dict:
             p + "color": _color(el.get("fill"))}
 
 
+def _path_points(el):
+    return [(float(x), float(y)) for x, y in re.findall(r"[ML](-?[0-9.e]+),(-?[0-9.e]+)", el.get("d") or "")]
+
+
+def _shape_centre(el):
+    """Centre of one drawn marker in pixels, from its geometry."""
+    if el.tag == _NS + "circle":
+        return float(el.get("cx")), float(el.get("cy"))
+    if el.tag == _NS + "rect":
+        return float(el.get("x")) + float(el.get("width")) / 2.0, float(el.get("y")) + float(el.get("height")) / 2.0
+    points = _path_points(el)
+    if not points:
+        return math.nan, math.nan
+    xs, ys = [p[0] for p in points], [p[1] for p in points]
+    return (min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0
+
+
+def _shape_from_geometry(el) -> Optional[str]:
+    """Which marker shape an element draws, judged from its geometry only."""
+    if el.tag == _NS + "circle":
+        return "o"
+    if el.tag == _NS + "rect":
+        return "s"
+    if el.tag != _NS + "path":
+        return None
+    d = el.get("d") or ""
+    points = _path_points(el)
+    if d.rstrip().endswith("Z"):
+        if len(points) == 4:
+            return "D"
+        if len(points) == 3:
+            cx, cy = _shape_centre(el)
+            # One corner above the centre (screen y points down): pointing up
+            above = sum(1 for _, y in points if y < cy)
+            return "^" if above == 1 else "v"
+        return None
+    if len(points) == 4 and d.count("M") == 2:
+        (x0, y0), (x1, y1) = points[0], points[1]
+        return "+" if (x0 == x1 or y0 == y1) else "x"
+    return None
+
+
 def _shape_width_px(el) -> float:
     """Width of one drawn marker, from its geometry."""
     if el.tag == _NS + "circle":
@@ -653,7 +808,10 @@ def _ticks(lo: float, hi: float, log: bool, minor: bool = False) -> List[float]:
         else:
             mantissas = (1.0,) if last - first > 2 else (1.0, 2.0, 5.0)
         ticks = [m * 10.0 ** e for e in range(first, last + 1) for m in mantissas]
-        return [t for t in ticks if lo <= t <= hi]
+        ticks = [t for t in ticks if lo <= t <= hi]
+        if len(ticks) >= 2 or minor:
+            return ticks
+        # A range inside one decade, e.g. 1.5 to 1.9 bar: round linear steps
     span = hi - lo
     if not span > 0.0:
         return [lo]

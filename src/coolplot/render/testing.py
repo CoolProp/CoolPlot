@@ -31,7 +31,8 @@ from typing import Callable, List
 
 import numpy as np
 
-from ..scene import AxesSpec, Line, Markers, Scene, Text
+from ..core.numbers import format_number
+from ..scene import AxesSpec, Line, Markers, Scene, Text, drawable_limits
 from ..style.values import (AxesStyle, Font, GENERIC_FONTS, LegendStyle, LineStyle, MarkerStyle, MARKER_SHAPES,
                      TextStyle, dash_pattern_pt)
 
@@ -42,6 +43,9 @@ REL_TOL = 1e-6
 ABS_TOL = 0.005
 #: Text angles are compared with this tolerance in degrees.
 ANGLE_TOL = 1.0
+#: Drawn positions, as fractions of the plot area: 1e-3 is about half a
+#: point on a typical plot.
+POSITION_TOL = 1e-3
 
 
 # ---------------------------------------------------------------------------
@@ -112,6 +116,15 @@ def conformance_scene() -> Scene:
         Text(id="text/left-down", x=2.0, y=20.0, text="left down", z_order=4.0, direction=(-1.0, -10.0)),
         Text(id="text/left-up", x=8.0, y=0.5, text="left up", z_order=4.0, direction=(-2.0, 0.1)),
         Text(id="text/nan", x=float("nan"), y=1.0, text="nowhere"),
+        # A margin label: shifted on screen and not cut off at the plot area
+        Text(id="text/margin", role="isoline_label", x=6.0, y=100.0, text="margin", z_order=4.0,
+             offset_pt=(4.0, 6.0), clip=False, style=TextStyle(v_align="bottom")),
+        # Straight down and straight up both read from bottom to top
+        Text(id="text/vertical-down", x=9.0, y=2.0, text="down", z_order=4.0, direction=(0.0, -1.0)),
+        Text(id="text/vertical-up", x=9.5, y=2.0, text="up", z_order=4.0, direction=(0.0, 1.0)),
+        # A huge z order still stays below the frame and the legend
+        Line(id="line/on-top", role="process", x=[0.2, 9.8], y=[0.15, 95.0], z_order=1e12,
+             style=LineStyle(color="#4a3aa7", width_pt=1.0)),
     ]
     return Scene(conformance_axes(), items)
 
@@ -140,17 +153,13 @@ def _sample_colors(item):
 
 
 def safe_limits(limits, log):
-    """The limits a backend has to use: a log axis cannot start at or below zero."""
-    lo, hi = limits
-    if log and not lo > 0.0:
-        hi = hi if hi > 0.0 else 10.0
-        lo = hi * 1e-3
-    return lo, hi
+    """The limits a backend has to use, see :func:`coolplot.scene.drawable_limits`."""
+    return drawable_limits(limits, log)
 
 
 def expected_item(item, axes: AxesSpec) -> dict:
     """The normalised description a conforming backend reports for ``item``."""
-    out = {"visible": item.visible}
+    out = {"visible": item.visible, "clip": getattr(item, "clip", True)}
     s = item.style
     if isinstance(item, Line):
         cased = s.casing_color is not None and s.casing_width_pt > 0.0
@@ -166,14 +175,14 @@ def expected_item(item, axes: AxesSpec) -> dict:
         out.update(kind="markers", shape=s.shape, size_pt=s.size_pt,
                    face_color=s.face_color if has_face else None,
                    edge_color=s.edge_color, edge_width_pt=s.edge_width_pt, alpha=s.alpha,
-                   n_points=int(np.sum(_ok_mask(item.x, item.y, axes))))
+                   n_points=int(np.sum(_ok_mask(item.x, item.y, axes))), connected=False)
     elif isinstance(item, Text):
         drawable = math.isfinite(item.x) and math.isfinite(item.y)
         out.update(kind="text", text=item.text, font_family=tuple(s.font.family),
                    font_size_pt=s.font.size_pt, font_weight=s.font.weight, font_style=s.font.style,
                    color=s.color, alpha=s.alpha, h_align=s.h_align, v_align=s.v_align,
                    halo_color=s.halo_color if s.halo_width_pt > 0 else None,
-                   halo_width_pt=s.halo_width_pt if s.halo_color else 0.0)
+                   halo_width_pt=s.halo_width_pt if s.halo_color else 0.0, offset_pt=item.offset_pt)
         if not drawable:
             out["visible"] = False
     return out
@@ -191,31 +200,64 @@ def expected_axes(scene: Scene, owns_canvas: bool) -> dict:
     a = scene.axes
     st = a.style
     legend_shown = bool(st.legend.visible and scene.legend_entries())
+    grid_major = _painted(st.grid_major)
+    grid_minor = _painted(st.grid_minor)
     out = dict(x_label=a.x_label, y_label=a.y_label, x_log=a.x_log, y_log=a.y_log, title=a.title,
                background=st.background, frame_color=st.frame_color,
                frame_width_pt=st.frame_width_pt, tick_direction=st.tick_direction,
                tick_color=st.tick_color, tick_length_pt=st.tick_length_pt, tick_width_pt=st.tick_width_pt,
-               grid_color=st.grid_major.color if st.grid_major is not None else None,
-               grid_minor_color=st.grid_minor.color if st.grid_minor is not None else None,
+               y_tick_direction=st.tick_direction, y_tick_color=st.tick_color,
+               y_tick_length_pt=st.tick_length_pt, y_tick_width_pt=st.tick_width_pt,
+               grid_color=grid_major.color if grid_major is not None else None,
+               grid_minor_color=grid_minor.color if grid_minor is not None else None,
+               items_below_frame=True,
                legend=[(text, tuple(sorted(set().union(*(_sample_colors(i) for i in items)))))
                        for text, items in scene.legend_entries()] if legend_shown else [])
-    if a.x_limits is not None:
-        out["x_limits"] = safe_limits(a.x_limits, a.x_log)
-    if a.y_limits is not None:
-        out["y_limits"] = safe_limits(a.y_limits, a.y_log)
-    if st.grid_major is not None and st.grid_major.color is not None:   # a grid colour of None is no grid
-        g = st.grid_major
+    if st.frame_color is not None and st.frame_width_pt > 0.0:
+        out["frame_sides"] = 4
+    for name, limits, log in (("x_limits", a.x_limits, a.x_log), ("y_limits", a.y_limits, a.y_log)):
+        if limits is not None:
+            out[name] = safe_limits(limits, log)
+    if grid_major is not None:
+        g = grid_major
         out.update(grid_width_pt=g.width_pt, grid_dash_pt=dash_pattern_pt(g.dash, g.width_pt),
                    grid_below_items=True)
     if legend_shown:
         out["legend_location"] = st.legend.location
+        out["items_below_legend"] = True
+        out["legend_background"] = st.legend.background
+        out.update(_font_keys("legend", st.legend.text, full=False))
     if owns_canvas:
         out["figure_background"] = st.figure_background
     out.update(_font_keys("x_label", st.axis_label))
     out.update(_font_keys("y_label", st.axis_label))
-    out.update(_font_keys("title", st.title))
+    if a.title:
+        out.update(_font_keys("title", st.title))   # nothing to read back without a title
     out.update(_font_keys("tick_label", st.tick_label, full=False))
     return out
+
+
+def _painted(grid):
+    """A grid level that is drawn: set and with a colour."""
+    return grid if grid is not None and grid.color is not None else None
+
+
+def _frac(v, lo, hi, log):
+    if log:
+        return (math.log10(v) - math.log10(lo)) / (math.log10(hi) - math.log10(lo))
+    return (v - lo) / (hi - lo)
+
+
+def expected_points(item, axes: AxesSpec, plot_size_pt, limits):
+    """Where the points of an item belong, as fractions of the plot area (y up)."""
+    (x0, x1), (y0, y1) = limits
+    if isinstance(item, Text):
+        width, height = plot_size_pt
+        return [(_frac(item.x, x0, x1, axes.x_log) + item.offset_pt[0] / width,
+                 _frac(item.y, y0, y1, axes.y_log) + item.offset_pt[1] / height)]
+    ok = _ok_mask(item.x, item.y, axes)
+    return [(_frac(x, x0, x1, axes.x_log), _frac(y, y0, y1, axes.y_log))
+            for x, y in zip(np.asarray(item.x, dtype=float)[ok], np.asarray(item.y, dtype=float)[ok])]
 
 
 def expected_screen_angle(item: Text, axes: AxesSpec, plot_size_pt, limits) -> float:
@@ -287,11 +329,32 @@ def _check_scene(renderer, scene: Scene, failures: List[str], label: str):
         return
     owns = bool(getattr(renderer, "owns_canvas", True))
     _compare(label + ": axes", expected_axes(scene, owns), axes_actual, failures)
-    grid = scene.axes.style.grid_major
-    if grid is not None and grid.color is not None and axes_actual.get("grid_lines", 0) < 4:
-        failures.append("{0}: only {1} major grid lines [style]".format(label, axes_actual.get("grid_lines")))
+    if _painted(scene.axes.style.grid_major) is not None:
+        for name in ("x_grid_lines", "y_grid_lines"):
+            if axes_actual.get(name, 0) < 2:
+                failures.append("{0}: only {1} major grid lines on the {2} axis [style]".format(
+                    label, axes_actual.get(name), name[0]))
+    for name, limits in (("x_limits", scene.axes.x_limits), ("y_limits", scene.axes.y_limits)):
+        if limits is not None and limits[0] == limits[1]:
+            lo, hi = axes_actual.get(name, (None, None))
+            if lo is None or not lo < limits[0] < hi:
+                failures.append("{0}: equal {1} {2} drawn as {3} [robustness]".format(
+                    label, name, limits, (lo, hi)))
     if "plot_size_pt" not in axes_actual:
         failures.append("{0}: backend does not report 'plot_size_pt' [read-back]".format(label))
+    for name in ("x", "y"):
+        labels = axes_actual.get(name + "_tick_labels")
+        if labels is None:
+            failures.append("{0}: backend does not report '{1}_tick_labels' [read-back]".format(label, name))
+        elif not labels:
+            failures.append("{0}: no {1} tick labels [number format]".format(label, name))
+        else:
+            for value, text in labels:
+                want = format_number(value, scene.axes.tick_digits)
+                if text != want:
+                    failures.append("{0}: {1} tick label {2!r} at {3!r}, expected {4!r} [number format]".format(
+                        label, name, text, value, want))
+                    break
 
     visible_order = [i for i in scene.draw_order() if expected_item(scene[i], scene.axes)["visible"]]
     for item in scene:
@@ -310,13 +373,33 @@ def _check_scene(renderer, scene: Scene, failures: List[str], label: str):
         if actual.get("draw_rank") != visible_order.index(item.id):
             failures.append("{0}: drawn at rank {1}, expected {2} [order]".format(
                 where, actual.get("draw_rank"), visible_order.index(item.id)))
-        if want["kind"] == "text" and "plot_size_pt" in axes_actual:
+        if "plot_size_pt" not in axes_actual:
+            continue
+        limits = (axes_actual.get("x_limits"), axes_actual.get("y_limits"))
+        if want["kind"] == "text":
             angle = actual.get("screen_angle_deg")
-            limits = (axes_actual.get("x_limits"), axes_actual.get("y_limits"))
             target = expected_screen_angle(item, scene.axes, axes_actual["plot_size_pt"], limits)
-            if angle is None or abs(angle - target) > ANGLE_TOL:
+            if angle is None or not math.isfinite(angle) or abs(angle - target) > ANGLE_TOL:
                 failures.append("{0}: drawn at {1} deg, expected {2:.2f} deg [text direction]".format(
                     where, angle, target))
+        _check_positions(where, item, scene.axes, axes_actual["plot_size_pt"], limits, actual, failures)
+
+
+def _check_positions(where, item, axes, plot_size_pt, limits, actual, failures):
+    """Drawn points against where they belong, within POSITION_TOL of the plot size."""
+    drawn = actual.get("drawn_points")
+    if drawn is None:
+        failures.append("{0}: backend does not report 'drawn_points' [read-back]".format(where))
+        return
+    want = expected_points(item, axes, plot_size_pt, limits)
+    if len(drawn) != len(want):
+        failures.append("{0}: {1} points drawn, expected {2} [position]".format(where, len(drawn), len(want)))
+        return
+    for (fx, fy), (ex, ey) in zip(drawn, want):
+        if not (abs(fx - ex) <= POSITION_TOL and abs(fy - ey) <= POSITION_TOL):
+            failures.append("{0}: point drawn at {1}, expected {2} (fractions of the plot area) "
+                            "[position]".format(where, (round(fx, 4), round(fy, 4)), (round(ex, 4), round(ey, 4))))
+            return
 
 
 # ---------------------------------------------------------------------------
@@ -427,7 +510,18 @@ def run_conformance(factory: Callable[[], object]) -> List[str]:
     # 9. Log axis with a lower limit at zero, and autoscaling
     failures.extend(_check_limits(factory))
 
-    # 10. File output: valid, ASCII, no NaN, deterministic
+    # 10. Awkward but valid axes: no title, a grid without colour, equal limits
+    scene = conformance_scene()
+    scene.set_axes(replace(scene.axes, title="", x_limits=(5.0, 5.0),
+                           style=replace(scene.axes.style, grid_major=LineStyle(color=None))))
+    renderer = factory()
+    try:
+        renderer.sync(scene)
+        _check_scene(renderer, scene, failures, "awkward axes")
+    except Exception as e:
+        failures.append("awkward axes raised {0!r} [robustness]".format(e))
+
+    # 11. File output: valid, ASCII, no NaN, deterministic
     if "file_output" in getattr(renderer, "capabilities", ()):
         failures.extend(_check_file_output(factory))
     return failures

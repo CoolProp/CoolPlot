@@ -79,8 +79,8 @@ only three pass that test for all pairs (worst pair: CVD Delta E 9.2,
 normal vision 24.0 in OKLab x100, light surface). Every diagram type offers
 exactly three coloured isoline families (plus quality, drawn in ink, and
 the rarely used internal energy), so three are enough. On the dark
-surface the stepped hues give a worst pair of CVD Delta E 9.4 (deuteranopia
-and protanopia) and 20.9 for normal vision. Tritanopia, which is very
+surface the stepped hues give a worst pair of CVD Delta E 9.4 for
+deuteranopia and 12.6 for protanopia, and 20.9 for normal vision. Tritanopia, which is very
 rare, separates blue and aqua less well in the dark theme (Delta E 4.0);
 labels or the dash-based `print` theme cover that case.
 

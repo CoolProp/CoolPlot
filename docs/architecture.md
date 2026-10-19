@@ -152,11 +152,11 @@ caches its results (curves) or compares them with the previous ones
 
 | Stage | Module | Status |
 |-------|--------|--------|
-| Settings | `diagram.py` (`PropertyDiagram`); an immutable `DiagramSpec` is planned | partly |
-| Plan | inside `PropertyDiagram.update_scene` today; a pure `plan(spec)` is planned | partly |
-| Engine | `thermo/isolines.py` (`compute_isoline`, `CurveCache`), synchronous | partly |
-| Compose | `PropertyDiagram.update_scene`: display units and theme styles | done |
-| Layout | label placement inside compose today; a viewport-aware pass is planned | planned |
+| Settings | `spec/` (`DiagramSpec`, `Settings`), held by `PropertyDiagram` in `diagram.py` | done |
+| Plan | `engine/plan.py` (`plan(spec, domain)`), pure | done |
+| Engine | `engine/engine.py` (`Engine`), `engine/cache.py` (`CurveCache`), `thermo/` for the calculations; synchronous | done |
+| Compose | `compose/builder.py`: display units, theme styles, texts | done |
+| Layout | `compose/layout.py`: labels for the reported plot size, keep-out zones | done |
 | Sync | `render/base.py` and the backends | done |
 | Events | backend-neutral events back into the diagram | planned |
 
@@ -193,9 +193,48 @@ renderers; it contains no calculation, styling or layout logic of its own.
 ### Status of the move
 
 Step 1 moved the modules into `core`, `style`, `scene`, `thermo`,
-`engine` (the curve cache) and `render`, and removed the legacy code and
-old tooling. `spec` and `compose` arrive in step 2; until then the facade
-`diagram.py` still builds the scene itself.
+`engine` and `render`, and removed the legacy code and old tooling.
+Step 2 added `spec` (`FluidSpec`, `DiagramSpec`, `Settings`) and
+`compose`, and moved the plain data (`DiagramType`, `StatePoint`,
+`TpLimits`) into `core`. The facade now only holds a `DiagramSpec`:
+
+```
+update_scene():
+    domain = engine.domain(spec)                  # T-p box and quantity ranges, cached
+    curves = engine.curves(spec, domain, plan(spec, domain))
+    items, axes = compose(spec, domain, curves)   # units, styles, texts, labels
+    scene.replace_all(items, axes)                # renderers redraw only what changed
+```
+
+`plan()` is pure: it lists the isolines with snapped values (12
+significant digits, so -20 deg C and 253.15 K are the same line and the
+same id) and, with `rounding=True`, round values in display units with an
+even step (1, 2, 2.5 or 5 times a power of ten on linear axes, mantissas
+1-2-5 and finer on log axes). A Fluid built from an `AbstractState` is a
+snapshot of its fluid, fractions and interaction parameters, so later
+changes to the user's state cannot leave stale curves in the cache; the
+INCOMP backend takes mass fractions by default.
+
+Step 3 added the numerics in `thermo`: `tracer.py` (the `IsoLineTracer`
+ported from CoolProp 8), saturation states inserted where an isoline
+meets the dome, the bubble and dew lines of mixtures from the phase
+envelope, and diagnostics on every `Curve` (`n_failed`, `n_gaps`,
+`n_fallback`, `n_inserted`, `method`).
+
+Step 4 added `compose/layout.py`, the label layout (section 6): edge
+labels just inside the frame where the lines leave the plot, keep-out
+zones of `Settings.labels.keep_out_pt` around every process, one pass in
+order of importance, earlier positions kept while they stay free (the
+scene then sees the same item and nothing is redrawn), optional fallback
+positions along the line, margin labels outside the frame, and the old
+inline labels. Renderers report `plot_size_pt()`; `PropertyDiagram.draw`
+re-runs the layout once if the plot area changed when the scene was
+drawn. Tick label texts follow `coolplot.core.numbers.format_number`
+in every backend; `Text` gained `offset_pt` and `clip` for margin labels.
+
+Step 5 added cycles (section 7): `core/cycle.py` (`StateInput`,
+`Cycle`), `CycleSpec` in the spec, `thermo/cycles/` (state resolution,
+paths, models) and the engine cache for cycles; compose draws them.
 
 Backends never see themes: the scene carries concrete styles on every
 item, so a backend cannot apply its own idea of a default.
@@ -212,14 +251,30 @@ change costs, because that decides what is recomputed:
 | `calc` | points per isoline, points and spacing on the saturation line, distance kept from the triple and critical point, solver (tracer or plain flash), failure tolerance | recalculation of the affected curves; part of the cache key |
 | `look` | the theme: every colour, line, marker and font | restyling only |
 | `labels` | mode (edge, margin, inline), keep-out margin around processes, density, number format and rounding of all values shown | new label layout only |
-| `page` | hints for the backends: preferred canvas size, font scale, legend position | backend layout only |
+| `page` | hints for the backends: preferred canvas size, font scale (the legend position is part of the theme) | backend layout only |
 
 Defaults come from presets (`screen`, `print`, `publication`,
-`interactive`); the interactive preset uses few points while the user
-drags and full resolution when the drag ends. Settings can be overridden
-per isoline family. Values that are hard-coded today become settings:
-points per line (250, in three places), the saturation margin (1e-7 of
-the critical values), the quality-line spacing and the rounding rules.
+`interactive`). An application that wants few points while the user drags
+switches only the calculation part, `settings.with_(calc="interactive")`,
+and back with `settings.with_(calc="screen")`; assigning a whole preset
+would also replace the theme, labels and page. The number of points can
+be overridden per isoline family.
+
+Implemented in step 2 (`coolplot.spec.settings`):
+
+* `calc`: `points`, `saturation_points`, `saturation_spacing`
+  ("critical" or "linear"), `solver` ("auto", "tracer" or "flash", step
+  3), `critical_margin` (1e-7 of the critical values) and
+  `warn_failed_fraction` (warn once per curve with more failed points
+  inside the line than this).
+* `look`: a `Theme`.
+* `labels`: `mode` ("edge", "margin" or "inline"), `keep_out_pt`,
+  preferred `edges` per family, `margin_edges`, `fallback`, `every`
+  (label every n-th line), `position` (inline mode), `digits` of the
+  values shown, `show_units` and `tick_digits` (step 4).
+* `page`: `width_pt`, `height_pt` (used when the diagram creates its own
+  renderer) and `font_scale`, which compose applies to every font of the
+  theme.
 
 ## 6. What is central and what backends decide
 
@@ -249,31 +304,46 @@ Overlaying a cycle on a diagram has to take a few lines, whether the
 states come from CoolPlot's own cycle models, from the user's own
 calculation or from measurements.
 
-### The interface (proposed)
+### The interface (implemented in step 5)
 
 ```python
 diagram.add_cycle("Heat pump", [
-    {"p": 3.0, "T": 0.0},                  # 1 compressor inlet, in the diagram's units
-    {"p": 15.0, "T": 75.0},                # 2 compressor outlet
-    {"p": 15.0, "Q": 0.0},                 # 3 condenser outlet
-    {"p": 3.0, "via": "isenthalpic"},      # 4 after the valve, h follows from the process
+    {"p": 3.0, "T": 0.0},                                     # 1 compressor inlet, diagram units
+    {"p": 15.0, "via": "compression", "eta_is": 0.7},         # 2 compressor outlet
+    {"p": 15.0, "Q": 0.0},                                    # 3 condenser outlet
+    {"p": 3.0, "via": "isenthalpic"},                         # 4 after the valve
 ])
+diagram.add_cycle(simple_compression("R290", T_evap_C=-5, T_cond_C=45))   # from a model
+diagram.add_cycle("measured", p=[...], h=[...])                           # from arrays
 ```
 
-* States are given by any two properties in the diagram's units (or SI
-  with `units="SI"`), by `StatePoint` objects, or as arrays
-  (`add_cycle(name, p=[...], h=[...])`). A state given with `via` takes
-  its missing property from the process that leads to it.
-* Paths between states follow the physics: equal pressure gives an
-  isobar (bending along the dome in heat exchangers), equal enthalpy an
-  isenthalp, equal entropy an isentrope, anything else a polytropic path
-  (linear in log p and s). Each connection can be set explicitly with
-  `paths=[...]`.
+* States are given by any two properties in the diagram's units (or
+  another unit system with `units=`), by `StatePoint` objects, or as
+  arrays. A state given with `via` takes its missing property from the
+  state before it in the cycle: "isenthalpic", "isentropic", "isobaric",
+  "isothermal", "isochoric", or "compression" and "expansion" with an
+  isentropic efficiency `eta_is` (the outlet pressure is the given
+  property). The proposal used "polytropic" here; a pressure alone does
+  not fix a compressor outlet, so "polytropic" is a path shape only.
+* Paths between states follow the physics ("auto"): equal pressure gives
+  an isobar (with the saturation states inserted, so heat exchangers bend
+  exactly on the dome), equal enthalpy an isenthalp, equal entropy an
+  isentrope, equal temperature an isotherm, anything else a polytropic
+  path (linear in log p and s). Each connection can be set explicitly
+  with `paths={(from, to): kind}`, including "straight".
 * The cycle gets theme styles, markers, state numbers (shown by default,
-  `numbers=False` hides them), one legend entry and a keep-out zone for
-  isoline labels. Several cycles get different styles.
+  `numbers=False` hides them, moved around their marker so they do not
+  cover each other), one legend entry and a keep-out zone for isoline
+  labels. Several cycles get different styles. Without a zoom window the
+  axes grow so that every state is inside the frame.
 * Calling `add_cycle` again with the same name replaces that cycle; only
-  it is recalculated and redrawn.
+  it is recalculated and redrawn. Errors (a state CoolProp cannot
+  compute, a chain referring to an unknown state) are raised by
+  `add_cycle`, not at the next draw. `cycle_states(name)` returns the
+  computed states.
+* Values are stored in SI units in a `CycleSpec` inside the
+  `DiagramSpec`, so a cycle survives unit changes and JSON round trips;
+  the engine computes states and paths once per fluid and cycle.
 
 ### Split and two-stage cycles
 
@@ -282,8 +352,8 @@ numbers. Without `loops`, the states in order form one closed cycle.
 
 ```python
 diagram.add_cycle("Two-stage, flash tank", states={
-        1: {"p": 1.5, "T": -30.0}, 2: {"p": 5.0, "via": "polytropic"},
-        3: {"p": 5.0, "Q": 1.0},   4: {"p": 18.0, "via": "polytropic"},
+        1: {"p": 1.5, "T": -30.0}, 2: {"p": 5.0, "via": "compression", "eta_is": 0.7},
+        3: {"p": 5.0, "Q": 1.0},   4: {"p": 18.0, "via": "compression", "eta_is": 0.7},
         5: {"p": 18.0, "Q": 0.0},  6: {"p": 5.0, "via": "isenthalpic"},
         7: {"p": 5.0, "Q": 0.0},   8: {"p": 1.5, "via": "isenthalpic"}},
     loops=[[1, 2, 3, 4, 5, 6, 7, 8, 1]])        # one split cycle
@@ -302,8 +372,10 @@ diagram.add_cycle("Two-stage, flash tank", states={
 ### Cycle models
 
 Models live in `thermo/cycles/` and return the same `Cycle` object that
-`add_cycle` accepts, with states, loops, mass-flow fractions per branch
-and results (COP, heat flows, power):
+`add_cycle` accepts, with states, loops and results (COP, specific heat
+flows and work per kg through the evaporator, and the flow ratio between
+the stages, `m_dot_ratio`). For blends the evaporating and condensing
+temperatures are dew points (EN 12900):
 
 * simple vapour compression (`T_evap_C`, `T_cond_C`, `dT_sh_K`,
   `dT_sc_K`, `eta_is`);
@@ -354,14 +426,20 @@ Summary of `docs/backends.md`:
   clear) and checks both the result and that only affected items were
   touched. For file backends it also checks deterministic, ASCII output.
 * The SVG and matplotlib backends pass the kit. Read-back comes from the
-  drawn geometry (marker size from the shape, text angle checked against
-  the plot size in points, legend position from its bounding box), so a
-  backend cannot pass by echoing the scene.
-* `tests/test_backend_conformance.py` plants 25 defects one at a time
-  (casing without dash or alpha, grid above the items, ignored fonts or
-  tick sizes, legend in the wrong place or without samples, text angle in
-  data space or upside down, hidden items in autoscale, markers of the
-  wrong size, no restacking, ...) and checks that the kit catches each.
+  drawn geometry where the library exposes it: drawn positions as
+  fractions of the plot area, marker size and shape from the drawn shape,
+  text angle checked against the plot size in points, legend position
+  from its bounding box. That makes it hard, not impossible, to pass by
+  echoing the scene: a backend that reports the scene's drawing order
+  instead of its own, for example, would still pass the order check.
+  The kit is a strong safety net, not a proof.
+* `tests/test_backend_conformance.py` plants 51 defects one at a time
+  (casing without dash or alpha, grid above the items or on one axis
+  only, ignored fonts, tick sizes or tick label format, legend in the
+  wrong place, without samples or with the wrong text colour, text angle
+  in data space or upside down, hidden items in autoscale, markers of the
+  wrong size or shape or joined by a line, data drawn in the wrong place,
+  items above the frame, ...) and checks that the kit catches each.
 
 What a change costs today:
 
@@ -388,11 +466,11 @@ units, styles, one added line, cycles, zoom and themes.
 | - | Layered skeleton, styling layer, backend guide, conformance kit, SVG and matplotlib backends | done |
 | - | Legacy release 0.1.7 | done, waiting for merge and upload |
 | 1 | Restructure into the package layout of section 4 (`src/coolplot`, `pyproject.toml`), remove the legacy code, CI on GitHub Actions with CoolProp 6.8, 7.x and 8.x | done |
-| 2 | Specs and settings: `FluidSpec` (backend, components, fractions, interaction parameters), `DiagramSpec`, `Settings` with presets, pure `plan()`, scene building moved from the facade into `compose` | next |
-| 3 | Numerics: port `IsoLineTracer`, isolines built from phase segments with the saturation states inserted, mixture dome from the phase envelope, per-curve diagnostics | |
-| 4 | Label layout: edge labels with keep-out zones around processes, margin labels as an option, stable placement while dragging; central number formats | |
-| 5 | Cycles on diagrams (section 7): `add_cycle` with states, `via`, automatic paths, loops for split and two-stage cycles, state numbers; models for simple compression, two-stage (flash tank, economizer) and Rankine | |
-| 6 | Close the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising); examples and user documentation | |
+| 2 | Specs and settings: `FluidSpec` (backend, components, fractions, interaction parameters), `DiagramSpec`, `Settings` with presets, pure `plan()`, scene building moved from the facade into `compose` | done |
+| 3 | Numerics: port `IsoLineTracer`, isolines built from phase segments with the saturation states inserted, mixture dome from the phase envelope, per-curve diagnostics | done |
+| 4 | Label layout: edge labels with keep-out zones around processes, margin labels as an option, stable placement while dragging; central number formats | done |
+| 5 | Cycles on diagrams (section 7): `add_cycle` with states, `via`, automatic paths, loops for split and two-stage cycles, state numbers; models for simple compression, two-stage (flash tank, economizer) and Rankine | done |
+| 6 | Close the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising); examples and user documentation | done |
 
 ### 0.3 and later
 
@@ -402,18 +480,43 @@ drag), plotly and web backends, psychrometric charts.
 
 ### Open findings from the reviews
 
-* Step 2: cached curves can go stale when a caller changes a passed-in
-  `AbstractState` (fractions, interaction parameters), because the cache
-  key does not capture them; fractions given for a single fluid string
-  (`INCOMP::MEG[0.3]`) are dropped.
-* Step 3: lines of constant T or p cut diagonally across the two-phase
-  region, because no saturation states are inserted; the dome of tabular
-  backends closes with a kink; a failing line warns again on every update.
-* Step 2: item ids are built from values with 12 significant digits and
-  can collide; rounded isoline values can be spaced unevenly.
-* Step 6: the conformance-kit findings listed there.
+* Fixed in step 2: stale curves after a caller changed a passed-in
+  `AbstractState` (the Fluid is now a snapshot), dropped fractions for
+  `INCOMP::MEG[0.3]`, colliding item ids, unevenly spaced rounded values,
+  and a failing line warning again on every update (now once per curve).
+* Fixed in step 3: lines of constant T or p cutting diagonally across the
+  two-phase region (saturation states are now inserted where any isoline
+  meets the dome), the kink at the top of the dome of tabular backends
+  (the dome is drawn with the underlying equation of state), and the
+  polygonal dome of mixtures (it comes from the refined phase envelope).
+* Fixed in step 6: the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising, vertical text, stacking, wrongly rejected valid axes).
 
-Calculation speed today: pure fluids are fast (a full ph chart of R290 in
-about 0.2 s). Zeotropic blends are not: one line of constant entropy for
-an R32/R125 blend takes about 15 s for 50 points with plain flash calls,
-which step 3 and the 0.3 background engine address.
+Known trade-offs, from the adversarial review of the 0.2 work:
+
+* Global CoolProp settings are not part of the `FluidSpec`. Curve cache
+  keys carry the fluid's fingerprint (CoolProp version, configuration,
+  reference state), and a changed `set_config_*` makes the engine build the
+  fluid, its domains and its cycles again. After `set_reference_state` or
+  `set_mixture_binary_pair_data`, call `diagram.refresh()`. The path of a
+  REFPROP library is not part of the fingerprint.
+* `CLOSED_ENVELOPE_MARGIN` (0.5 %) is safe on the 104 predefined blends
+  with a closed envelope (envelope maximum within about 0.3 K of the
+  critical point, no two-phase state found above it). A user blend whose
+  envelope stops early but still counts as closed (densities up to 35 %
+  apart) could have points just above the margin accepted unchecked.
+* The flash tank model assumes that vapour and liquid leaving the tank
+  have the circulating composition; for strongly zeotropic blends that
+  is an approximation.
+* Isoline labels and state numbers are not tested against each other
+  (the keep-out zone usually separates them), and inline labels have no
+  overlap or keep-out checks at all; edge mode is the default.
+
+Calculation speed after step 3: pure fluids are fast (a full ph chart of
+R290 in about 0.1 s). For zeotropic blends the isolines are traced
+(`Settings.calc.solver`, "auto" traces mixtures on CoolProp 8 and later):
+one line of constant entropy for an R32/R125 blend takes about 1 s
+instead of 15 to 20 s, and a full default ph chart about 14 s instead of
+several minutes. What remains are near-critical points the tracer hands
+back to a plain flash, at up to 2 s each; the 0.3 background engine
+addresses that. Before CoolProp 8 the tracer is switched off, because
+some of its saturation calls abort the Python process there.

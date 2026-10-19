@@ -145,6 +145,25 @@ def test_colour_fields_without_alpha_refuse_partial_transparency():
         LineStyle(dash=(float("nan"), 1.0))
 
 
+@pytest.mark.parametrize("path, value", [
+    (("axes", "grid_major"), "red"),            # a colour where a line style belongs
+    (("axes", "frame_width_pt"), "3"),          # a number written as text
+    (("axes", "legend", "visible"), "no"),      # a switch written as text
+    (("isoline", "width_pt"), True),            # a switch where a number belongs
+    (("categorical",), "#ff0000"),              # a string where a list belongs
+])
+def test_theme_loading_is_strict(path, value):
+    import json
+    from coolplot.style.theme import Theme, get_theme
+    data = json.loads(json.dumps(get_theme("default").to_dict()))
+    target = data
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    with pytest.raises((TypeError, ValueError)):
+        Theme.from_dict(data)
+
+
 def test_a_unit_system_keeps_its_own_copy_of_the_units():
     from coolplot.core.units import Unit, UnitSystem
     units = {"p": Unit("bar", 1e-5)}

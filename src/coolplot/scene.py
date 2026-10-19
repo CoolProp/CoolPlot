@@ -122,12 +122,33 @@ class Text(Item):
     coordinates, (dx, dy). The renderer turns it into an angle on screen,
     because only the renderer knows the aspect ratio and the axis scales.
     This is how labels follow the slope of an isoline.
+
+    ``offset_pt`` shifts the text on screen by (dx, dy) points from the
+    point (x, y), with y pointing up, independent of the axis scales.
+    ``clip`` says whether the text is cut off at the plot area; margin
+    labels sit outside it and set ``clip=False``.
     """
     x: float
     y: float
     text: str
     direction: Optional[Tuple[float, float]] = None
     style: TextStyle = field(default_factory=TextStyle)
+    offset_pt: Tuple[float, float] = (0.0, 0.0)
+    clip: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        offset = tuple(float(v) for v in self.offset_pt)
+        if len(offset) != 2 or not all(math.isfinite(v) for v in offset):
+            raise ValueError("Text {0!r}: offset_pt has to be two finite numbers.".format(self.id))
+        object.__setattr__(self, "offset_pt", offset)
+        object.__setattr__(self, "clip", bool(self.clip))
+        if self.direction is not None:
+            direction = tuple(float(v) for v in self.direction)
+            if len(direction) != 2 or not all(math.isfinite(v) for v in direction) or direction == (0.0, 0.0):
+                raise ValueError("Text {0!r}: direction has to be two finite numbers, not both zero, or None; "
+                                 "got {1}.".format(self.id, self.direction))
+            object.__setattr__(self, "direction", direction)
 
 
 def items_equal(a: Item, b: Item) -> bool:
@@ -154,11 +175,39 @@ def items_equal(a: Item, b: Item) -> bool:
 # ---------------------------------------------------------------------------
 # Axes and scene
 # ---------------------------------------------------------------------------
+def drawable_limits(limits, log: bool) -> Tuple[float, float]:
+    """The axis limits a backend actually draws for the requested ones.
+
+    One rule for every backend and for the label layout, so that labels
+    are placed in the same frame that is drawn:
+
+    * a log axis cannot reach zero: an upper limit at or below zero
+      becomes 10, a lower limit at or below zero upper / 1000;
+    * equal limits are widened, by a decade on each side of a log axis
+      and by 10 % (0.5 around zero) on a linear one.
+    """
+    lo, hi = float(min(limits)), float(max(limits))
+    if log:
+        if not hi > 0.0:
+            hi = 10.0
+        if not lo > 0.0:
+            lo = hi * 1e-3
+        if lo == hi:
+            lo, hi = lo / 10.0, hi * 10.0
+    elif lo == hi:
+        pad = abs(lo) * 0.1 or 0.5
+        lo, hi = lo - pad, hi + pad
+    return lo, hi
+
+
 @dataclass(frozen=True)
 class AxesSpec:
     """Everything about the axes that is not an item
 
     Limits are in display units. ``None`` lets the renderer autoscale.
+    Tick positions are left to the backend, but every tick label is
+    written with :func:`coolplot.core.numbers.format_number` and
+    ``tick_digits`` significant digits.
     The grid is drawn when ``style.grid_major`` (or ``grid_minor``) is set,
     the legend when ``style.legend.visible`` is True and at least one item
     has a legend text.
@@ -171,8 +220,14 @@ class AxesSpec:
     y_limits: Optional[Tuple[float, float]] = None
     title: str = ""
     style: AxesStyle = field(default_factory=AxesStyle)
+    tick_digits: int = 6
 
     def __post_init__(self):
+        # Tick labels are written with coolplot.core.numbers.format_number
+        # and this many significant digits, by every backend.
+        if not 1 <= int(self.tick_digits) <= 12:
+            raise ValueError("AxesSpec: tick_digits has to be between 1 and 12, not {0}.".format(self.tick_digits))
+        object.__setattr__(self, "tick_digits", int(self.tick_digits))
         # Limits are stored ascending; inverted axes are not supported.
         for name in ("x_limits", "y_limits"):
             limits = getattr(self, name)

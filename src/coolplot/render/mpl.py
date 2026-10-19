@@ -35,13 +35,14 @@ from matplotlib.colors import to_hex
 from matplotlib.font_manager import FontProperties
 from matplotlib.markers import MarkerStyle as _MplMarker
 
-from ..scene import AxesSpec, Item, Line, Markers, Text
+from ..core.numbers import format_number
+from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
 from ..style.values import dash_pattern_pt
 from .base import Renderer, SyncReport
 
 _CAPS = {"butt": "butt", "round": "round", "square": "projecting"}
 _CAPS_BACK = {v: k for k, v in _CAPS.items()}
-_RANK_STEP = 1e-9     # z order tie breaker, small against any real z_order difference
+_RANK_STEP = 1e-3     # z order step between consecutive items in the drawing order
 _ITEM_BASE = 1.0      # items start above the grid (0.5)
 _DECORATION_Z = 1e5   # the frame above all items
 _LEGEND_Z = 1e6
@@ -201,6 +202,9 @@ class MatplotlibRenderer(Renderer):
             else:
                 setter(_safe_limits(limits, log))
 
+        for axis, log in ((ax.xaxis, axes.x_log), (ax.yaxis, axes.y_log)):
+            _central_tick_format(axis, log, axes.tick_digits)
+
         ax.set_facecolor(st.background or "none")
         if self.owns_canvas:
             self.figure.set_facecolor(st.figure_background or "none")
@@ -244,7 +248,7 @@ class MatplotlibRenderer(Renderer):
             super()._update(old, new)
             if rank is not None:
                 self._rank[new.id] = rank
-                self._artists[new.id].set_zorder(_ITEM_BASE + new.z_order + rank * _RANK_STEP)
+                self._artists[new.id].set_zorder(_ITEM_BASE + rank * _RANK_STEP)
             return
         self._apply(self._artists[new.id], new)
 
@@ -255,9 +259,12 @@ class MatplotlibRenderer(Renderer):
             artist.remove()
 
     def _reorder(self, order):
+        # matplotlib z orders come from the position in the drawing order,
+        # not from the scene's z_order values themselves: those can be huge
+        # and would then lift items above the frame and the legend.
         self._rank = {item_id: i for i, item_id in enumerate(order)}
         for item_id, artist in self._artists.items():
-            artist.set_zorder(_ITEM_BASE + self._drawn[item_id].z_order + self._rank[item_id] * _RANK_STEP)
+            artist.set_zorder(_ITEM_BASE + self._rank[item_id] * _RANK_STEP)
 
     def _set_legend(self, entries, style):
         old = self.ax.get_legend()
@@ -293,7 +300,7 @@ class MatplotlibRenderer(Renderer):
     # Applying item properties -------------------------------------------
     def _apply(self, artist, item: Item):
         """Copy every property of an item onto its artist."""
-        artist.set_zorder(_ITEM_BASE + item.z_order + self._rank.get(item.id, 0) * _RANK_STEP)
+        artist.set_zorder(_ITEM_BASE + self._rank.get(item.id, len(self._rank)) * _RANK_STEP)
         s = item.style
         if isinstance(item, Line):
             artist.set_data(item.x, item.y)
@@ -325,6 +332,17 @@ class MatplotlibRenderer(Renderer):
         elif isinstance(item, Text):
             artist.set_position((item.x, item.y))
             artist.set_text(item.text)
+            # The offset is a shift in points after the data transform; it
+            # does not change the angle computed by transform_rotates_text.
+            from matplotlib.transforms import ScaledTranslation
+            dx, dy = item.offset_pt
+            transform = self.ax.transData
+            if dx or dy:
+                transform = transform + ScaledTranslation(dx / 72.0, dy / 72.0, self.figure.dpi_scale_trans)
+            artist.set_transform(transform)
+            artist.set_clip_on(item.clip)
+            if item.clip:
+                artist.set_clip_path(self.ax.patch)
             _apply_text_style(artist, s)
             artist.set_horizontalalignment(s.h_align)
             artist.set_verticalalignment(s.v_align)
@@ -348,17 +366,19 @@ class MatplotlibRenderer(Renderer):
     def describe_item(self, item_id: str) -> dict:
         artist = self._artists[item_id]   # KeyError for unknown ids, as required
         item = self._drawn[item_id]
-        out = {"visible": bool(artist.get_visible())}
+        out = {"visible": bool(artist.get_visible()), "clip": bool(artist.get_clip_on())}
         alpha = 1.0 if artist.get_alpha() is None else artist.get_alpha()
         if isinstance(item, Line):
             stroke = _stroke_effect(artist)
             offset, seq = getattr(artist, "_dash_pattern", (0.0, None))   # private: final dashes in points
             dash = tuple(seq) if seq else ()
             width = artist.get_linewidth()
+            # A dashed line is drawn with the dash cap and join styles
+            cap = artist.get_dash_capstyle() if dash else artist.get_solid_capstyle()
+            join = artist.get_dash_joinstyle() if dash else artist.get_solid_joinstyle()
             out.update(kind="line", color=_hex_or_none(artist.get_color()) if _draws_itself(artist) else None,
-                       alpha=alpha, width_pt=width, dash_pt=dash,
-                       cap=_CAPS_BACK[artist.get_solid_capstyle()], join=artist.get_solid_joinstyle(),
-                       n_points=self._n_drawable(artist))
+                       alpha=alpha, width_pt=width, dash_pt=dash, cap=_CAPS_BACK[cap], join=join,
+                       n_points=self._n_drawable(artist), drawn_points=self._drawn_points(artist))
             if stroke is not None:
                 gc = stroke._gc   # private: the overrides the Stroke effect applies
                 out.update(casing_color=_hex_or_none(gc["foreground"]),
@@ -374,7 +394,8 @@ class MatplotlibRenderer(Renderer):
                        face_color=None if shape in ("x", "+") else _hex_or_none(artist.get_markerfacecolor()),
                        edge_color=_hex_or_none(artist.get_markeredgecolor()),
                        edge_width_pt=artist.get_markeredgewidth(), alpha=alpha,
-                       n_points=self._n_drawable(artist))
+                       n_points=self._n_drawable(artist), drawn_points=self._drawn_points(artist),
+                       connected=artist.get_linestyle() not in ("None", "none", "", " "))
         elif isinstance(item, Text):
             stroke = _stroke_effect(artist)
             weight = artist.get_fontweight()
@@ -392,6 +413,15 @@ class MatplotlibRenderer(Renderer):
                        halo_color=_hex_or_none(stroke._gc["foreground"]) if stroke else None,   # private
                        halo_width_pt=stroke._gc["linewidth"] / 2.0 if stroke else 0.0,
                        screen_angle_deg=angle)
+            # Offset: where the text transform puts the anchor, compared with
+            # the plain data transform, in points
+            position = artist.get_position()
+            drawn = artist.get_transform().transform(position)
+            plain = self.ax.transData.transform(position)
+            scale = 72.0 / self.figure.dpi
+            out["offset_pt"] = (float(drawn[0] - plain[0]) * scale, float(drawn[1] - plain[1]) * scale)
+            fx, fy = self.ax.transAxes.inverted().transform(drawn)
+            out["drawn_points"] = [(float(fx), float(fy))]
         if out["visible"]:
             out["draw_rank"] = self._draw_rank(item_id)
         return out
@@ -425,6 +455,7 @@ class MatplotlibRenderer(Renderer):
                        grid_below_items=not items_z or ax.xaxis.get_zorder() < min(items_z),
                        grid_lines=self._count_in_view(ax.xaxis.get_majorticklocs(), x_lim)
                        + self._count_in_view(ax.yaxis.get_majorticklocs(), y_lim))
+        out.update(self._extra_axes_description(tick, spine))
         location = self._legend_location()
         if location is not None:
             out["legend_location"] = location
@@ -434,9 +465,54 @@ class MatplotlibRenderer(Renderer):
         out.update(_font_description("y_label", ax.yaxis.label))
         out.update(_font_description("title", ax.title))
         out.update(_font_description("tick_label", tick.label1, full=False))
+        # Tick label texts as the axis formatters write them
+        for name, axis, limits in (("x", ax.xaxis, x_lim), ("y", ax.yaxis, y_lim)):
+            locations = [v for v in axis.get_majorticklocs() if limits[0] <= v <= limits[1]]
+            texts = axis.get_major_formatter().format_ticks(locations)
+            out[name + "_tick_labels"] = [(float(v), t) for v, t in zip(locations, texts) if t]
         return out
 
     # Read-back helpers -------------------------------------------------
+    def _drawn_points(self, artist):
+        """Where the artist's points end up, as fractions of the plot area."""
+        xy = np.asarray(artist.get_xydata(), dtype=float).reshape(-1, 2)
+        if not len(xy):
+            return []
+        with np.errstate(divide="ignore", invalid="ignore"):
+            screen = artist.get_transform().transform(xy)
+            fractions = self.ax.transAxes.inverted().transform(screen)
+        return [(float(a), float(b)) for a, b in fractions if math.isfinite(a) and math.isfinite(b)]
+
+    def _extra_axes_description(self, x_tick, spine) -> dict:
+        """y-axis ticks, all frame sides, legend style, grid per axis, stacking."""
+        ax = self.ax
+        out = {}
+        y_tick = ax.yaxis.get_major_ticks()[0]
+        out.update(y_tick_direction=getattr(y_tick, "_tickdir", None),   # private: no public getter
+                   y_tick_color=_hex_or_none(y_tick.tick1line.get_color()),
+                   y_tick_length_pt=y_tick.tick1line.get_markersize(),
+                   y_tick_width_pt=y_tick.tick1line.get_markeredgewidth())
+        color, width = spine.get_edgecolor(), spine.get_linewidth()
+        out["frame_sides"] = sum(1 for sp in ax.spines.values()
+                                 if sp.get_visible() and _hex_or_none(sp.get_edgecolor()) == _hex_or_none(color)
+                                 and sp.get_linewidth() == width)
+        items_z = [a.get_zorder() for a in self._artists.values()]
+        out["items_below_frame"] = not items_z or max(items_z) < min(sp.get_zorder() for sp in ax.spines.values())
+        legend = ax.get_legend()
+        if legend is not None:
+            out["items_below_legend"] = not items_z or max(items_z) < legend.get_zorder()
+            out["legend_background"] = _hex_or_none(legend.get_frame().get_facecolor())
+            texts = legend.get_texts()
+            if texts:
+                out.update(_font_description("legend", texts[0], full=False))
+        # matplotlib creates tick objects lazily and copies the first one's
+        # properties, so the first gridline of each axis speaks for all
+        if x_tick.gridline.get_visible():
+            out["x_grid_lines"] = self._count_in_view(ax.xaxis.get_majorticklocs(), ax.get_xlim())
+        if y_tick.gridline.get_visible():
+            out["y_grid_lines"] = self._count_in_view(ax.yaxis.get_majorticklocs(), ax.get_ylim())
+        return out
+
     @staticmethod
     def _count_in_view(locations, limits):
         lo, hi = min(limits), max(limits)
@@ -500,6 +576,14 @@ class MatplotlibRenderer(Renderer):
         return [ours[id(a)] for a in drawn].index(item_id)
 
     # Output ------------------------------------------------------------
+    def plot_size_pt(self):
+        """Size of the plot area; lays out the figure first if it changed."""
+        if self.figure.stale:
+            # Constrained layout moves the axes only when the figure is drawn
+            self.figure.draw_without_rendering()
+        dpi = self.figure.dpi
+        return self.ax.bbox.width * 72.0 / dpi, self.ax.bbox.height * 72.0 / dpi
+
     def save(self, path, **kwargs):
         if str(path).endswith(".png"):
             kwargs.setdefault("metadata", {"Software": None})   # no version string, deterministic
@@ -511,12 +595,8 @@ class MatplotlibRenderer(Renderer):
 
 
 def _safe_limits(limits, log):
-    """A log axis cannot start at zero or below; fall back to a 1000:1 range."""
-    lo, hi = limits
-    if log and not lo > 0.0:
-        hi = hi if hi > 0.0 else 10.0
-        lo = hi * 1e-3
-    return lo, hi
+    """Limits matplotlib can draw; the common rule of :func:`coolplot.scene.drawable_limits`."""
+    return drawable_limits(limits, log)
 
 
 def _upright(angle_deg: float) -> float:
@@ -527,3 +607,20 @@ def _upright(angle_deg: float) -> float:
     elif angle_deg <= -90.0:
         angle_deg += 180.0
     return angle_deg
+
+
+def _central_tick_format(axis, log: bool, digits: int):
+    """Write tick labels with the central number format.
+
+    matplotlib keeps deciding where ticks go and, on a log axis, which
+    minor ticks get a label (none over many decades, some over few); only
+    the text of each label is replaced.
+    """
+    from matplotlib.ticker import FuncFormatter, LogFormatterSciNotation
+
+    axis.set_major_formatter(FuncFormatter(lambda value, pos=None: format_number(value, digits)))
+    if log:
+        class MinorLabels(LogFormatterSciNotation):
+            def __call__(self, value, pos=None):
+                return format_number(value, digits) if super().__call__(value, pos) else ""
+        axis.set_minor_formatter(MinorLabels(labelOnlyBase=False))

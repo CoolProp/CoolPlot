@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from ..core.quantities import get_quantity, quantity_key
+from .quantities import get_quantity, quantity_key
 
 # Every isoline is computed by stepping through a series of values of one
 # quantity (the "sweep" quantity) while the isoline quantity is held

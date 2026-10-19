@@ -35,8 +35,13 @@ RULES = {
     "coolplot.style": LIBS | _after("coolplot.style"),
     "coolplot.style.values": LIBS | _after("coolplot.style") | {"coolplot.style.theme"},
     "coolplot.scene": LIBS | _after("coolplot.scene") | {"coolplot.style.theme"},
-    "coolplot.thermo": {"matplotlib", "coolplot.style", "coolplot.scene"} | _after("coolplot.thermo"),
+    # Specs are plain data: no CoolProp, and themes are the only style part they hold.
+    "coolplot.spec": LIBS | {"coolplot.scene"} | _after("coolplot.spec"),
+    "coolplot.thermo": {"matplotlib", "coolplot.style", "coolplot.scene", "coolplot.spec"}
+                       | _after("coolplot.thermo"),
     "coolplot.engine": {"matplotlib", "coolplot.style", "coolplot.scene"} | _after("coolplot.engine"),
+    # Composing a scene uses no property calculations and no plotting library.
+    "coolplot.compose": LIBS | {"coolplot.thermo", "coolplot.engine"} | _after("coolplot.compose"),
     # Backends see only the scene and style values; themes are resolved before.
     "coolplot.render": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
                                "coolplot.diagram", "coolplot.style.theme",

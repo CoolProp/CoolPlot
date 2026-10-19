@@ -416,38 +416,60 @@ def style_from_dict(cls, data):
 
 
 def _convert(hint, value):
+    """Check and convert one value read from JSON against a type hint.
+
+    Strict on purpose: a saved theme with "grid_major": "red", a number
+    written as text ("3") or "no" for a switch is reported here, with the
+    expected type, instead of failing later while drawing.
+    """
     import typing
-    if value is None:
-        return None
     origin = typing.get_origin(hint)
     args = typing.get_args(hint)
     if origin is Union:
-        # Optional[X]: pick the member that matches the shape of the value
-        # and let its errors through; never keep a raw dict or list.
         members = [a for a in args if a is not type(None)]
-        for arg in members:
-            if isinstance(value, dict) and hasattr(arg, "__dataclass_fields__"):
-                return _convert(arg, value)
-            if isinstance(value, dict) and getattr(typing.get_origin(arg), "__name__", "") in ("Mapping", "dict"):
-                return dict(value)
-            if isinstance(value, (list, tuple)) and typing.get_origin(arg) in (tuple, Tuple):
-                return _convert(arg, value)
-        if isinstance(value, (dict, list)):
-            raise TypeError("Unexpected {0} for {1}.".format(type(value).__name__, hint))
-        return value
+        if value is None:
+            if len(members) < len(args):
+                return None
+            raise TypeError("A value is required, not null.")
+        errors = []
+        for member in members:
+            try:
+                return _convert(member, value)
+            except (TypeError, ValueError) as e:
+                errors.append(str(e))
+        raise TypeError("{0!r} does not match {1}: {2}".format(value, hint, "; ".join(errors)))
+    if value is None:
+        raise TypeError("A value is required, not null.")
     if hasattr(hint, "__dataclass_fields__"):
         if not isinstance(value, dict):
-            raise TypeError("Expected a dict for {0}.".format(hint.__name__))
+            raise TypeError("Expected a dict for {0}, not {1!r}.".format(hint.__name__, value))
         return style_from_dict(hint, value)
     if origin in (tuple, Tuple):
+        if not isinstance(value, (list, tuple)):
+            raise TypeError("Expected a list, not {0!r}.".format(value))
         item = args[0] if args else None
-        if item is not None and hasattr(item, "__dataclass_fields__"):
-            return tuple(_convert(item, v) for v in value)
-        if isinstance(value, (list, tuple)):
+        if item is None or item is Ellipsis:
             return tuple(value)
-        raise TypeError("Expected a list.")
+        return tuple(_convert(item, v) for v in value)
     if origin is not None and getattr(origin, "__name__", "") in ("Mapping", "dict"):
-        return dict(value)
-    if hint is str and not isinstance(value, str):
-        raise TypeError("Expected a string.")
+        if not isinstance(value, dict):
+            raise TypeError("Expected a dict, not {0!r}.".format(value))
+        key_hint, value_hint = args if len(args) == 2 else (str, typing.Any)
+        return {_convert(key_hint, k): _convert(value_hint, v) for k, v in value.items()}
+    if hint is bool:
+        if not isinstance(value, bool):
+            raise TypeError("Expected true or false, not {0!r}.".format(value))
+        return value
+    if hint is float:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise TypeError("Expected a number, not {0!r}.".format(value))
+        return float(value)
+    if hint is int:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise TypeError("Expected a whole number, not {0!r}.".format(value))
+        return value
+    if hint is str:
+        if not isinstance(value, str):
+            raise TypeError("Expected a string, not {0!r}.".format(value))
+        return value
     return value
