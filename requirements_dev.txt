@@ -1,7 +1,7 @@
 numpy
 matplotlib
 coolprop
-nose
+pytest
 coverage
 sphinx
 numpydoc
