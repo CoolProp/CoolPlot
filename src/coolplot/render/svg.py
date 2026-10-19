@@ -253,7 +253,10 @@ class SvgRenderer(Renderer):
             if fx <= 1e-9:
                 need[0] = max(need[0], left_px - dx + 4.0)
         left, right, top, bottom = self.margins
-        return (max(0.0, need[0] - left), max(0.0, need[1] - right), max(0.0, need[2] - top),
+        # With a title the configured top margin holds the title, so labels
+        # above the frame need their whole height on top of it
+        top_extra = need[2] if axes.title else max(0.0, need[2] - top)
+        return (max(0.0, need[0] - left), max(0.0, need[1] - right), top_extra,
                 max(0.0, need[3] - bottom))
 
     @property

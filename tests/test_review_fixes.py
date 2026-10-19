@@ -105,6 +105,11 @@ def test_svg_margin_labels_stay_on_the_canvas():
         size_px = float(text.get("font-size"))
         # Vertical text reading upwards from its anchor: its far end
         assert float(text.get("y")) - 0.6 * size_px * len(text.text) >= 0.0
+    # The title (its bottom edge at y) sits above the far ends of the labels
+    title = next(t for t in root.iter(ns + "text") if t.get("class") == "cp-title")
+    far_ends = [float(t.get("y")) - 0.6 * float(t.get("font-size")) * len(t.text)
+                for g in labels for t in g.iter(ns + "text")]
+    assert float(title.get("y")) <= min(far_ends)
 
 
 def test_svg_ticks_on_a_narrow_log_range():
@@ -125,3 +130,45 @@ def test_no_warnings_from_a_plain_chart():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         diagram.draw(SvgRenderer())
+
+
+class _FailingState:
+    """Stands in for a working state that cannot solve any input."""
+    def update(self, *args):
+        raise ValueError("no solution")
+
+
+def test_a_rescued_single_phase_state_is_returned_as_requested():
+    import CoolProp
+    if int(CoolProp.__version__.split(".")[0]) < 8:
+        pytest.skip("CoolProp before 8 does not solve this state on the guide state either")
+    blend = Fluid(BLEND)
+    blend.update("p", 10e5, "Q", 0.0)
+    T_bubble_K = blend.get("T")
+    assert blend.critical["T"] > T_bubble_K   # computed now, before the working state is replaced
+    blend._state = _FailingState()   # every state now comes from the guide state
+    # Subcooled liquid below the critical temperature: the consistency check
+    # looks up the saturation states at its temperature on the guide state
+    state = blend.update_pair(CoolProp.PT_INPUTS, 10e5, T_bubble_K - 10.0)
+    assert state.T() == pytest.approx(T_bubble_K - 10.0) and state.p() == pytest.approx(10e5)
+    assert blend.get("T") == pytest.approx(T_bubble_K - 10.0)
+
+
+def test_a_clone_builds_its_own_phase_envelope():
+    blend = Fluid(BLEND)
+    assert blend.phase_envelope() is not None
+    twin = blend.clone()
+    assert twin.phase_envelope() is not None and twin.phase_envelope() is not blend.phase_envelope()
+
+
+def test_a_configuration_change_drops_the_cached_cycles():
+    from coolplot.engine import Engine
+    from coolplot.spec import FluidSpec
+    engine = Engine()
+    spec = FluidSpec.parse("HEOS::R290")
+    fluid = engine.fluid(spec)
+    engine._cycles[(spec, "states")] = "old"
+    engine._cycles[(FluidSpec.parse("HEOS::Water"), "states")] = "other fluid"
+    fluid.configuration_changed = lambda: True   # as after CoolProp.set_config_*
+    assert engine.fluid(spec) is not fluid
+    assert list(engine._cycles.values()) == ["other fluid"]

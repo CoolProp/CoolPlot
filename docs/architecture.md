@@ -493,9 +493,12 @@ drag), plotly and web backends, psychrometric charts.
 
 Known trade-offs, from the adversarial review of the 0.2 work:
 
-* Global CoolProp settings (reference states, `set_mixture_binary_pair_data`,
-  REFPROP paths) are not part of the `FluidSpec`; changing them leaves
-  cached fluids and curves stale. Create a new `Engine` after such a change.
+* Global CoolProp settings are not part of the `FluidSpec`. Curve cache
+  keys carry the fluid's fingerprint (CoolProp version, configuration,
+  reference state), and a changed `set_config_*` makes the engine build the
+  fluid, its domains and its cycles again. After `set_reference_state` or
+  `set_mixture_binary_pair_data`, call `diagram.refresh()`. The path of a
+  REFPROP library is not part of the fingerprint.
 * `CLOSED_ENVELOPE_MARGIN` (0.5 %) is safe on the 104 predefined blends
   with a closed envelope (envelope maximum within about 0.3 K of the
   critical point, no two-phase state found above it). A user blend whose
