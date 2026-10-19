@@ -433,3 +433,112 @@ def test_clear_removes_the_branding_and_paths_and_wide_text_are_handled(tmp_path
     renderer.clear()
     assert renderer.badge_extent_pt() is None and renderer._branding == []
     assert text_width_em("\u4e2d\u6587") == 2.0 and text_width_em("\u00e9") == 0.6
+
+
+def _rgba_png(width: int, height: int, pixel) -> bytes:
+    """An RGBA PNG whose pixel (x, y) is ``pixel(x, y)``, a tuple of four bytes."""
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+    rows = b"".join(b"\x00" + b"".join(bytes(pixel(x, y)) for x in range(width)) for y in range(height))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
+def _postscript_pixels(path) -> set:
+    """The RGB pixels of every colorimage in a PostScript file matplotlib wrote."""
+    pixels = set()
+    for block in re.findall(rb"colorimage\s+([0-9a-fA-F\s]+)", path.read_bytes()):
+        data = bytes.fromhex(re.sub(rb"\s", b"", block).decode())
+        pixels.update(data[i:i + 3] for i in range(0, len(data) - 2, 3))
+    return pixels
+
+
+def test_postscript_fills_the_transparent_logo_pixels_and_restores_the_figure(tmp_path):
+    """PostScript drops the alpha channel: the logo is blended onto the badge
+    background for PS/EPS only, and the watermark comes back afterwards."""
+    pytest.importorskip("matplotlib")
+    from coolplot.render.mpl import MatplotlibRenderer
+    logo = tmp_path / "margin.png"   # transparent black around a teal middle
+    logo.write_bytes(_rgba_png(40, 20, lambda x, y: (2, 153, 138, 255) if 10 <= x < 30 else (0, 0, 0, 0)))
+    d = _diagram(dict(logo=str(logo), logo_width_pt=40, lines=("x",), watermark=str(logo)))
+    renderer = d.draw(MatplotlibRenderer(use_pyplot=False))
+    with pytest.warns(UserWarning, match="watermark is left out"):
+        renderer.save(str(tmp_path / "chart.eps"))
+    background = bytes.fromhex(d.scene.axes.badge.background.lstrip("#"))
+    assert _postscript_pixels(tmp_path / "chart.eps") == {background, bytes((2, 153, 138))}   # no black
+    # The renderer is as before: the watermark visible, the logo with its alpha channel
+    # (the PNGs of one renderer are not compared: a PDF or EPS save alone moves a few pixels)
+    assert len(renderer._branding) == 2 and all(a.get_visible() for a in renderer._branding)
+    image, pixels, _ = renderer._badge_logo
+    assert image.get_data() is pixels and pixels.shape == (20, 40, 4)
+
+
+def test_matplotlib_shrinks_the_badge_without_a_drawable_logo(logo_files):
+    pytest.importorskip("matplotlib")
+    from coolplot.render.mpl import MatplotlibRenderer
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        only_logo = _diagram(dict(logo=logo_files[0])).draw(MatplotlibRenderer(use_pyplot=False))
+        with_lines = _diagram(dict(logo=logo_files[0], lines=("x", "y"))).draw(MatplotlibRenderer(use_pyplot=False))
+    assert only_logo.badge_extent_pt() is None   # no empty frame
+    _, _, w, h = with_lines.badge_extent_pt()
+    full = with_lines._axes.badge
+    assert full.logo   # the scene keeps the SVG logo for the SVG writer
+    assert (w, h) == pytest.approx(type(full)(lines=full.lines, text=full.text).size_pt(), abs=0.5)
+    assert h < full.size_pt()[1] - full.logo_height_pt() + 0.5
+
+
+def test_badge_lines_are_split_at_newlines_and_drawn_inside_the_box(logo_files):
+    pytest.importorskip("matplotlib")
+    from matplotlib.offsetbox import AnchoredOffsetbox, DrawingArea
+    from coolplot.render.mpl import MatplotlibRenderer
+    from coolplot.scene import Badge
+    assert Badge(lines=("a\nb", "c\r\nd")).lines == ("a", "b", "c", "d")
+    for corner in CORNERS:
+        d = _diagram(dict(logo=logo_files, lines=("example.com\n2026-10-19", "$x$ 50%"), location=corner))
+        renderer = d.draw(MatplotlibRenderer(use_pyplot=False))
+        assert d.scene.axes.badge.lines[-3:] == ("example.com", "2026-10-19", "$x$ 50%")
+        renderer.badge_extent_pt()   # places the box
+        box = next(a for a in renderer._branding if isinstance(a, AnchoredOffsetbox) and a.patch.get_visible())
+        frame = box.patch.get_window_extent()
+        area = next(c for c in box.get_child().get_children() if isinstance(c, DrawingArea))
+        texts = area.get_children()
+        assert len(texts) == len(d.scene.axes.badge.lines)
+        pad = d.scene.axes.badge.padding_pt * renderer.figure.dpi / 72.0
+        tops = []
+        for text in texts:
+            assert not text.get_parse_math() and text.get_text() != ""
+            extent = text.get_window_extent()
+            assert frame.x0 + 0.9 * pad <= extent.x0 and extent.x1 <= frame.x1, corner
+            assert frame.y0 <= extent.y0 and extent.y1 <= frame.y1, corner
+            tops.append(extent.y1)
+        assert tops == sorted(tops, reverse=True)   # top to bottom, in order
+
+
+def test_clear_takes_the_branding_off_the_axes(logo_files):
+    pytest.importorskip("matplotlib")
+    from matplotlib.offsetbox import AnchoredOffsetbox
+    from coolplot.render.mpl import MatplotlibRenderer
+    renderer = _diagram(dict(logo=logo_files, lines=("x",), watermark=logo_files[1])).draw(
+        MatplotlibRenderer(use_pyplot=False))
+
+    def boxes():
+        return [a for a in renderer.ax.get_children() if isinstance(a, AnchoredOffsetbox)]
+
+    assert len(boxes()) == 2
+    renderer.clear()
+    assert boxes() == []
+
+
+def test_svg_size_ignores_stroke_width():
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" stroke-width="3" width="120" height="40">'
+           '<rect width="120" height="40"/></svg>').encode()
+    picture = picture_from_bytes(svg)
+    assert (picture.width_px, picture.height_px) == (120, 40)
+
+
+def test_short_references_name_each_source_once():
+    assert fluid_references("MM") == ("MM: Thol (2015)",)
+    assert fluid_references("EthyleneOxide") == ("EthyleneOxide: Thol et al. (2015); Thol (2015)",)
+    full = fluid_references("EthyleneOxide", "full")[0]
+    assert full.count("Chem. Eng. Sci.") == 2   # the erratum is named in the full style

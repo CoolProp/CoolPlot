@@ -237,9 +237,10 @@ class Badge:
     The badge says where a chart comes from: the references of the
     equation of state, the program versions, the owner's logo and a line
     of their own (see :class:`coolplot.spec.settings.BrandingSettings`).
-    Like the legend, its corner and content are decided centrally and its
-    exact geometry by the backend: matplotlib measures the texts, the SVG
-    writer estimates them with :mod:`coolplot.core.textwidth`.
+    Like the legend, its corner and content are decided centrally. Its size
+    is :meth:`size_pt`, an estimate of the text widths made with
+    :mod:`coolplot.core.textwidth`; every backend draws the box at exactly
+    that size, so the label layout can keep clear of it.
 
     Attributes
     ----------
@@ -252,7 +253,8 @@ class Badge:
     logo_width_pt : float
         Width of the logo; its height follows from the picture.
     lines : tuple of str
-        Text lines below the logo, left aligned.
+        Text lines below the logo, left aligned. A line containing "\\n" is
+        split into several lines.
     text : TextStyle
         Font and colour of the lines.
     background, background_alpha : str or None, float
@@ -283,7 +285,9 @@ class Badge:
         if self.location not in CORNERS:
             raise ValueError("Badge: location has to be one of {0}, not {1!r}.".format(CORNERS, self.location))
         object.__setattr__(self, "logo", _pictures(self.logo))
-        object.__setattr__(self, "lines", tuple(str(line) for line in self.lines))
+        # one entry per drawn line: the box height counts entries
+        lines = (part for line in self.lines for part in str(line).replace("\r\n", "\n").split("\n"))
+        object.__setattr__(self, "lines", tuple(lines))
         for name in ("logo_width_pt", "frame_width_pt", "padding_pt", "gap_pt", "inset_pt"):
             value = float(getattr(self, name))
             if not (value >= 0.0 and math.isfinite(value)):

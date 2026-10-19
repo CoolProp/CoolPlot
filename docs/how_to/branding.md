@@ -78,7 +78,7 @@ background works best.
 | Backend | Badge and watermark |
 |---|---|
 | matplotlib: PNG, PDF, windows | drawn |
-| matplotlib: PS and EPS | badge drawn; the watermark is left out with a warning (PostScript has no transparent images) |
+| matplotlib: PS and EPS | badge drawn with an opaque background and the logo's transparent pixels filled with that background colour; the watermark is left out with a warning (PostScript has no transparency) |
 | SVG writer, web renderer (`WebRenderer`) | drawn |
 | coolplot-core | a branded chart is composed and written by Python instead |
 | plotly, coolplot-core PDF writer (`PdfRenderer`), JavaScript writer (`scene_page`) | not yet; they warn once and leave them out |

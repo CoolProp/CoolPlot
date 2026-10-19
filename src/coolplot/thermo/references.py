@@ -150,9 +150,13 @@ def _last_name(author: str) -> str:
     """The family name of one BibTeX author, with its particles ("de Vries").
 
     "Last, First" gives what stands before the comma; "First von Last" gives
-    the words from the first lower-case one ("von", "de", "van der") on, or
-    the last word; a braced group counts as one word; a trailing "Jr." or
-    "II" is dropped.
+    the words from the first lower-case one after the first word ("von",
+    "de", "van der") on, or else the last word; a braced group counts as
+    one word; a trailing "Jr." or "II" is dropped, also inside braces.
+    This differs from BibTeX in a few cases on purpose: "Stanley E. Babb
+    Jr." gives "Babb" (BibTeX: "Jr."), "{Rachford Jr.}" gives "Rachford".
+    A name without a first name that starts with a particle ("van der
+    Waals") loses the particle.
     """
     parts = _split_top(author, ",")
     if len(parts) > 1:
@@ -276,7 +280,7 @@ def _fluid_lines(backend: str, components: Tuple[str, ...], style: str) -> Tuple
             continue
         # Some fluids name several sources, separated by commas
         sources = [k.strip() for k in key.split(",") if k.strip()]
-        lines.append("{0}: {1}".format(name, "; ".join(cite(k, style) for k in sources)))
+        lines.append("{0}: {1}".format(name, _join_citations(sources, style)))
     if len(components) > 1:
         keys = []
         for a, b in combinations(components, 2):
@@ -284,8 +288,23 @@ def _fluid_lines(backend: str, components: Tuple[str, ...], style: str) -> Tuple
             if key and key not in keys:
                 keys.append(key)
         if keys:
-            lines.append("Mixture model: " + "; ".join(cite(k, style) for k in keys))
+            lines.append("Mixture model: " + _join_citations(keys, style))
     return tuple(lines)
+
+
+def _join_citations(keys, style: str) -> str:
+    """The citations of several keys, separated by "; ".
+
+    A citation that reads the same as an earlier one is left out: in the
+    short style a paper, its erratum and a thesis of the same author and
+    year all read "Thol (2015)". The full style tells them apart.
+    """
+    texts = []
+    for key in keys:
+        text = cite(key, style)
+        if text not in texts:
+            texts.append(text)
+    return "; ".join(texts)
 
 
 def versions_line() -> str:

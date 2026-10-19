@@ -44,6 +44,7 @@ Points to note for maintainers
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import math
 import os
 import re
@@ -199,7 +200,8 @@ def _png_array(picture):
     """The pixels of a PNG picture as an RGB or RGBA array (cached).
 
     matplotlib reads a greyscale PNG as a 2-D array, which an image artist
-    would colour with a colour map; it is turned into RGB(A) here.
+    would colour with a colour map; it is turned into RGB here. (Grey with
+    alpha matplotlib already reads as RGBA, since 3.8 at least.)
     """
     import io
     from matplotlib.image import imread
@@ -209,12 +211,18 @@ def _png_array(picture):
         if len(_png_arrays) > 16:
             _png_arrays.clear()
         array = imread(io.BytesIO(picture.data), format="png")
-        if array.ndim == 2:                                  # grey
+        if array.ndim == 2:   # grey
             array = np.dstack([array, array, array])
-        elif array.ndim == 3 and array.shape[2] == 2:        # grey and alpha
-            array = np.dstack([array[..., 0], array[..., 0], array[..., 0], array[..., 1]])
         cached = _png_arrays[key] = (picture.data, array)
     return cached[1]
+
+
+def _flatten_alpha(pixels, background):
+    """RGB pixels of an RGB(A) array blended onto the colour ``background`` (r, g, b in 0..1)."""
+    if pixels.shape[2] < 4:
+        return pixels
+    alpha = pixels[..., 3:4]
+    return pixels[..., :3] * alpha + np.asarray(background, dtype=float) * (1.0 - alpha)
 
 
 class _UnsampledBboxImage(BboxImage):
@@ -456,6 +464,7 @@ class MatplotlibRenderer(Renderer):
         self.figure = ax.figure
         self._artists = {}
         self._branding = []   # the badge and watermark artists, replaced with the axes
+        self._badge_logo = None   # (OffsetImage, RGBA pixels, background RGB) of the badge logo, for PostScript
         self._halos = {}   # item id -> the text artist drawing its halo
         self._text_angles = {}   # item id -> the data angle its text was given
         self._rank = {}
@@ -503,6 +512,7 @@ class MatplotlibRenderer(Renderer):
         for artist in self._branding:
             artist.remove()
         self._branding = []
+        self._badge_logo = None
         mark = axes.watermark
         picture = _png_or_warn(mark.picture, "watermark") if mark is not None else None
         if picture is not None:
@@ -514,17 +524,26 @@ class MatplotlibRenderer(Renderer):
         badge = axes.badge
         if badge is None or badge.empty:
             return
+        picture = _png_or_warn(badge.logo, "logo")
+        if picture is None and badge.logo:
+            # A logo matplotlib cannot draw (SVG only) is left out, and the box
+            # shrinks to the lines; it stays in its corner, inside the room the
+            # label layout kept free for the full badge.
+            badge = dataclasses.replace(badge, logo=())
+            if badge.empty:
+                return
         # The badge has exactly the size of Badge.size_pt, as in the SVG writer,
         # so the label layout's keep-out box is the box drawn: the lines sit on
         # fixed baselines in a DrawingArea (in points) instead of being measured.
         size = badge.text.font.size_pt
         width, height = badge.size_pt()
         children = []
-        picture = _png_or_warn(badge.logo, "logo")
         if picture is not None:
-            children.append(_full_resolution_image(_png_array(picture), badge.logo_width_pt / picture.width_px))
-        elif badge.logo:
-            children.append(DrawingArea(badge.logo_width_pt, badge.logo_height_pt()))   # keep the room
+            pixels = _png_array(picture)
+            logo = _full_resolution_image(pixels, badge.logo_width_pt / picture.width_px)
+            children.append(logo)
+            background = to_rgba(badge.background)[:3] if badge.background else (1.0, 1.0, 1.0)
+            self._badge_logo = (logo, pixels, background)
         if badge.lines:
             line_h = badge.line_height_pt
             area = DrawingArea(width - 2.0 * badge.padding_pt, len(badge.lines) * line_h, clip=False)
@@ -565,6 +584,7 @@ class MatplotlibRenderer(Renderer):
         for artist in self._branding:
             artist.remove()
         self._branding = []
+        self._badge_logo = None
 
     def _set_frame_and_ticks(self, st: AxesStyle):
         ax = self.ax
@@ -1213,7 +1233,7 @@ class MatplotlibRenderer(Renderer):
             kwargs["metadata"] = metadata
         with matplotlib.rc_context(_save_rc(fmt, pdf_fonts)), \
                 self._truetype_fonts(fmt in _FONTTYPE_RC and pdf_fonts == "truetype"), \
-                self._without_watermark(fmt in ("ps", "eps")):
+                self._postscript_branding(fmt in ("ps", "eps")):
             self.figure.savefig(path, **kwargs)
         if fmt in ("ps", "eps") and isinstance(path, (str, os.PathLike)):
             _strip_postscript_date(path)
@@ -1240,20 +1260,34 @@ class MatplotlibRenderer(Renderer):
                         pages.savefig(renderer.figure)
 
     @contextlib.contextmanager
-    def _without_watermark(self, active: bool):
-        """Inside: the watermark is hidden, with a warning. PostScript has no
-        transparency for images, so a watermark there would be an opaque block."""
+    def _postscript_branding(self, active: bool):
+        """Inside: the branding as PostScript can draw it, which has no
+        transparency for images (matplotlib writes their colours and drops
+        the alpha channel).
+
+        The watermark would be an opaque block, so it is hidden, with a
+        warning. The transparent pixels of the badge logo would show their
+        stored colour, often black, so the logo is blended onto the colour
+        of the badge background (white without one). Both are restored on
+        exit, also when saving fails.
+        """
         hidden = [a for a in self._branding if active and a.get_zorder() == _WATERMARK_Z and a.get_visible()]
         if hidden:
             warnings.warn("PostScript cannot draw a transparent picture; the watermark is left out of PS and EPS "
                           "files.", UserWarning, stacklevel=4)
         for artist in hidden:
             artist.set_visible(False)
+        logo = self._badge_logo if active else None
+        if logo is not None:
+            image, pixels, background = logo
+            image.set_data(_flatten_alpha(pixels, background))
         try:
             yield
         finally:
             for artist in hidden:
                 artist.set_visible(True)
+            if logo is not None:
+                image.set_data(pixels)
 
     @contextlib.contextmanager
     def _truetype_fonts(self, active: bool = True):
