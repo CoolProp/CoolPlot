@@ -391,8 +391,9 @@ class Chart:
             of a blend) instead of the vapour (the dew point), and
             ``"range": (lo, hi)`` limits the saturation temperatures or
             pressures. Steps and range are in ``units``. The labels show the
-            saturation state ("T_sat=0 deg C"); ``"label": "value"`` shows
-            the lines' own values instead. Charts of a fluid only.
+            lines' own values ("s=2.321 kJ/kg/K"); ``"label": "saturation"``
+            shows the saturation state instead ("T_sat=0 deg C"). Charts of
+            a fluid only.
 
         Examples
         --------
@@ -435,7 +436,7 @@ class Chart:
             return at_saturation
         given = dict(at_saturation)
         span = given.pop("range", None)
-        label = given.pop("label", "saturation")
+        label = given.pop("label", "value")
         qualities = [given.pop(name) for name in ("Q", "x", "q") if name in given]   # written as the labels write it
         if len(qualities) > 1:
             raise ValueError("Give the vapour quality of the saturation states once, as 'Q' or 'x'.")

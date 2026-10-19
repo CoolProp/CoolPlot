@@ -120,9 +120,11 @@ def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycle
     """
     if not available():
         return None
-    if any(s.anchor is not None for s in spec.isolines) and core_version() < (1, 1):
-        # An older core ignores the anchor and would label the lines by value
-        raise CoreRefusal("this coolplot_core ({0}) is older than 1.1 and cannot label lines placed by saturation "
+    if any(s.anchor is not None and s.anchor.label == "saturation" for s in spec.isolines) \
+            and core_version() < (1, 1):
+        # An older core ignores the anchor: lines labelled by value come out
+        # right, lines labelled by their saturation state would not
+        raise CoreRefusal("this coolplot_core ({0}) is older than 1.1 and cannot label lines by their saturation "
                           "states".format(".".join(str(v) for v in core_version())))
     record = compose_record(spec, domain, curves, plot_size_pt, previous_labels, cycles)
     try:

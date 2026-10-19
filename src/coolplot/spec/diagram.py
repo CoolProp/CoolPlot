@@ -66,14 +66,15 @@ class SaturationAnchor:
         Saturation temperatures or pressures to place lines between, in SI
         units; None for the whole saturation range of the chart.
     label : str
-        "saturation" labels each line with its saturation state, e.g.
-        "T_sat=0 deg C"; "value" with its own value, e.g. "s=2.3 kJ/kg/K".
+        "value" (the default) labels each line with its own value, e.g.
+        "s=2.321 kJ/kg/K"; "saturation" with the saturation state it was
+        placed through, e.g. "T_sat=0 deg C".
     """
     by: str = "T"
     step_SI: float = 10.0
     Q: float = 1.0
     range_SI: Limits = None
-    label: str = "saturation"
+    label: str = "value"
 
     def __post_init__(self):
         by = quantity_key(self.by)

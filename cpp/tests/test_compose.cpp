@@ -104,12 +104,14 @@ TEST_CASE("Labels of lines placed by saturation states, as in Python", "[compose
         std::string key = iso.at("key").get<std::string>();
         if (key == "s") iso["anchor"] = {{"by", "T"}, {"step_SI", 10.0}, {"Q", 0.25}, {"range_SI", nullptr}, {"label", "saturation"}};
         if (key == "rho") iso["anchor"] = {{"by", "p"}, {"step_SI", 1e5}, {"Q", 0.0}, {"range_SI", nullptr}, {"label", "saturation"}};
-        if (key == "T") iso["anchor"] = {{"by", "p"}, {"step_SI", 1e5}, {"Q", 1.0}, {"range_SI", nullptr}, {"label", "value"}};
+        if (key == "T") iso["anchor"] = {{"by", "p"}, {"step_SI", 1e5}, {"Q", 1.0}, {"range_SI", nullptr}};   // label: the default
     }
     DiagramSpec spec = DiagramSpec::from_json(data);
+    for (const IsolineSet& set : spec.isolines)
+        if (set.key == "T") CHECK(set.anchor_label == "value");
     CHECK(label_text(spec, "s", 1000.0, true, 273.15) == "T(x=0.25)=32 deg F");
     CHECK(label_text(spec, "rho", 10.0, true, 2e5) == "p_sat,liq=29.01 psi");
-    CHECK(label_text(spec, "T", 300.0, true, 2e5) == "T=80.33 deg F");   // "label": "value"
+    CHECK(label_text(spec, "T", 300.0, true, 2e5) == "T=80.33 deg F");   // labelled by value, the default
     CHECK(label_text(spec, "s", 1000.0) == "s=0.2388 Btu/lb/R");          // no saturation value given
     data["settings"]["labels"]["show_units"] = false;
     spec = DiagramSpec::from_json(data);

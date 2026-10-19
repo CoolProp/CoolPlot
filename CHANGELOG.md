@@ -12,10 +12,11 @@ guide in the documentation says what to change in your code.
 - Lines placed through saturation states:
   `set_lines("s", at_saturation={"T": 10})` draws the isentropes through
   the saturated vapour every 10 K of saturation temperature (round values
-  in the chart's units, up to the critical point), labelled
-  "T_sat=0 deg C". `"Q": 0` uses the saturated liquid (the bubble point of
-  a blend), `"p": 2` steps the saturation pressure, `"range"` limits the
-  states, `"label": "value"` keeps the lines' own values as labels. Stored
+  in the chart's units, up to the critical point), each labelled with its
+  own value ("s=2.321 kJ/kg/K"). `"Q": 0` uses the saturated liquid (the
+  bubble point of a blend), `"p": 2` steps the saturation pressure,
+  `"range"` limits the states, `"label": "saturation"` labels the lines by
+  their saturation state instead ("T_sat=0 deg C"). Stored
   as `IsolineSet.anchor` (`coolplot.spec.SaturationAnchor`); coolplot-core
   composes it the same way. Example `examples/saturation_lines.py`.
 - Traced lines kept on disk between runs, the way CoolProp keeps its
@@ -33,8 +34,9 @@ guide in the documentation says what to change in your code.
   stays off disk. The source of the numerics modules is part of the stored
   key too, so development builds that share a version do not share lines.
 - coolplot-core reports its version from CMake (1.1.0); the bridge
-  refuses a chart with saturation-placed lines on an older core, which
-  would label them by value, and the Python composer draws it.
+  refuses a chart whose lines are labelled by their saturation state on an
+  older core, which would label them by value, and the Python composer
+  draws it.
 
 #### Fixed
 - The fingerprint of a fluid (part of every cache key) used Python's

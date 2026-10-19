@@ -94,7 +94,7 @@ DiagramSpec DiagramSpec::from_json(const json& data) {
             set.anchor_by = quantity_key(anchor.value("by", "T"));
             if (set.anchor_by != "T" && set.anchor_by != "p") throw Error("Lines are placed by saturation 'T' or 'p', not '" + set.anchor_by + "'.");
             set.anchor_Q = anchor.value("Q", 1.0);
-            set.anchor_label = anchor.value("label", "saturation");
+            set.anchor_label = anchor.value("label", "value");
             if (set.anchor_label != "saturation" && set.anchor_label != "value")
                 throw Error("Unknown label '" + set.anchor_label + "' for lines placed by saturation states.");
         }

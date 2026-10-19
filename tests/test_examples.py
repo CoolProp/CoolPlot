@@ -39,7 +39,7 @@ def test_refrigerant_blend(tmp_path):
 def test_saturation_lines(tmp_path):
     assert "s: through the saturated vapour every 10 K" in _run("saturation_lines.py", tmp_path)
     svg = (tmp_path / "R290_saturation.svg").read_text()
-    assert "T_sat=0 deg C" in svg and len(svg) > 10000
+    assert "s=" in svg and "kJ/kg/K" in svg and "T_sat=" not in svg and len(svg) > 10000   # labelled by value
 
 
 def test_psychrometric(tmp_path):

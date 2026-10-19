@@ -338,9 +338,9 @@ def test_lines_placed_by_saturation_states_compose_the_same_through_the_port():
     pytest.importorskip("CoolProp")
     from coolplot import PropertyDiagram
     chart = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
-    chart.set_lines("s", at_saturation={"T": 10, "range": (-40, 60)}, labels=True)
-    chart.set_lines("rho", at_saturation={"T": 20, "Q": 0}, labels=True)
-    chart.set_lines("T", at_saturation={"p": 5, "label": "value"}, labels=True)
+    chart.set_lines("s", at_saturation={"T": 10, "range": (-40, 60), "label": "saturation"}, labels=True)
+    chart.set_lines("rho", at_saturation={"T": 20, "Q": 0, "label": "saturation"}, labels=True)
+    chart.set_lines("T", at_saturation={"p": 5}, labels=True)   # labelled by value, the default
     python, ported = _both_scenes(chart)
     difference = _same(python.to_dict(), ported.to_dict())
     assert difference == "", difference
@@ -351,14 +351,14 @@ def test_lines_placed_by_saturation_states_compose_the_same_through_the_port():
 
 @needs_core
 def test_an_older_core_refuses_lines_placed_by_saturation_states(monkeypatch):
-    """A core from before 1.1 would ignore the anchor and label the lines by value."""
+    """A core from before 1.1 would ignore the anchor and label every line by value."""
     pytest.importorskip("CoolProp")
     from coolplot import PropertyDiagram
     from coolplot.compose import compose
     from coolplot.engine import plan
     assert native.core_version() >= (1, 1)
     chart = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
-    chart.set_lines("s", at_saturation={"T": 20}, labels=True)
+    chart.set_lines("s", at_saturation={"T": 20, "label": "saturation"}, labels=True)
     spec = chart.spec
     domain = chart.engine.domain(spec)
     curves = chart.engine.curves(spec, domain, plan(spec, domain))

@@ -62,7 +62,7 @@ struct IsolineSet
     bool has_anchor = false;
     std::string anchor_by;                   ///< "T" or "p"
     double anchor_Q = 1.0;                   ///< vapour quality of the saturation states
-    std::string anchor_label = "saturation"; ///< "saturation" or "value"
+    std::string anchor_label = "value";      ///< "value" (the line's own value) or "saturation"
 };
 
 /// A legacy process: states along a line and states with markers (SI values by key).

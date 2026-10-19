@@ -125,10 +125,10 @@ def isoline_look(spec: DiagramSpec, theme: Theme, key: str, value_SI: float):
 def label_text(spec: DiagramSpec, key: str, value_SI: float, anchor_SI: float = None) -> str:
     """Text of an isoline label, e.g. "T=0 deg C" or "x=0.4".
 
-    A line of a family placed by saturation states (``anchor_SI`` given)
-    is labelled with its saturation state instead, "T_sat=0 deg C" (the
-    saturated vapour), "T_sat,liq=0 deg C" (the saturated liquid) or
-    "T(x=0.5)=0 deg C", unless the family asks for its values.
+    A line placed by saturation states (``anchor_SI`` given) is labelled
+    with its own value as well, unless its family asks for the saturation
+    state ("label": "saturation"): "T_sat=0 deg C" (the saturated vapour),
+    "T_sat,liq=0 deg C" (the saturated liquid) or "T(x=0.5)=0 deg C".
     """
     labels = spec.settings.labels
     anchor = None

@@ -159,8 +159,8 @@ std::string axis_label(const DiagramSpec& spec, const std::string& key) {
 
 std::string label_text(const DiagramSpec& spec, const std::string& key, double value_SI, bool has_anchor, double anchor_SI) {
     const LabelSettings& labels = spec.settings.labels;
-    // A line of a family placed by saturation states shows its saturation
-    // state, "T_sat=0 deg C", unless the family asks for its values
+    // A line placed by saturation states shows its own value, unless its
+    // family asks for the saturation state ("T_sat=0 deg C")
     const IsolineSet* anchored = nullptr;
     if (has_anchor)
         for (const IsolineSet& s : spec.isolines)

@@ -7,8 +7,9 @@ Isentropes and isochores placed by saturation temperature
 A log(p)-h chart of propane where the isentropes run through the
 saturated vapour every 10 K of saturation temperature, and the isochores
 every 20 K. A compressor that sucks saturated vapour at a round
-evaporating temperature follows one of these isentropes; each line is
-labelled with its saturation temperature instead of an odd entropy value.
+evaporating temperature follows one of these isentropes. Each line is
+labelled with its own entropy or density; "label": "saturation" would
+name the saturation temperature instead ("T_sat=0 deg C").
 
 Run with:  python examples/saturation_lines.py
 Writes R290_saturation.svg.

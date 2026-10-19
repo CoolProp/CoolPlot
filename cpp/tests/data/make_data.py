@@ -118,12 +118,12 @@ def main():
     # Isentropes through the saturated vapour every 10 K and isochores through
     # wet states every 20 K, labelled by their saturation temperature;
     # isotherms through the saturated vapour every 2 bar, labelled by their
-    # own values
+    # own values (the default)
     anchored = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
     anchored.set_lines("Q", num=6, labels=True)
-    anchored.set_lines("s", at_saturation={"T": 10, "range": (-40, 60)}, labels=True)
-    anchored.set_lines("rho", at_saturation={"T": 20, "Q": 0.5}, labels=True)
-    anchored.set_lines("T", at_saturation={"p": 2, "label": "value"}, labels=True)
+    anchored.set_lines("s", at_saturation={"T": 10, "range": (-40, 60), "label": "saturation"}, labels=True)
+    anchored.set_lines("rho", at_saturation={"T": 20, "Q": 0.5, "label": "saturation"}, labels=True)
+    anchored.set_lines("T", at_saturation={"p": 2}, labels=True)
     compose_case("compose_r290_ph_anchored", anchored)
 
 

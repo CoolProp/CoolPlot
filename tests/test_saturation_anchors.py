@@ -33,25 +33,34 @@ def test_isentropes_through_the_saturated_vapour_every_10_K():
     for r in requests:
         dew = chart.fluid.state_point("T", r.anchor_SI, "Q", 1.0)
         assert r.value_SI == pytest.approx(dew.s, rel=1e-10)
-    # The layout leaves out labels where these lines crowd; every label placed names its saturation state
-    labels = _labels(chart, "s")
-    assert labels and all(text.startswith("T_sat=") and text.endswith(" deg C") for text in labels)
+    # The labels show the lines' own entropy, like the labels of any other line
+    # (the layout leaves out labels where these lines crowd)
     from coolplot.compose import label_text
     zero = next(r for r in requests if abs(r.anchor_SI - 273.15) < 1e-9)
+    s_zero = label_text(chart.spec, "s", zero.value_SI, zero.anchor_SI)
+    assert s_zero == label_text(chart.spec, "s", zero.value_SI) == "s=%.4g kJ/kg/K" % (zero.value_SI / 1e3)
+    labels = _labels(chart, "s")
+    assert labels and all(text.startswith("s=") and text.endswith(" kJ/kg/K") for text in labels)
+    # Asked for, they name the saturation state instead
+    chart.set_lines("s", at_saturation={"T": 10, "range": (-40, 60), "label": "saturation"}, labels=True)
     assert label_text(chart.spec, "s", zero.value_SI, zero.anchor_SI) == "T_sat=0 deg C"
+    labels = _labels(chart, "s")
+    assert labels and all(text.startswith("T_sat=") and text.endswith(" deg C") for text in labels)
 
 
-def test_the_liquid_side_and_the_lines_own_values():
+def test_the_liquid_side_and_the_saturation_labels():
     chart = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP")
-    chart.set_lines("rho", at_saturation={"T": 20, "Q": 0, "range": (-20, 40), "label": "value"}, labels=True)
+    chart.set_lines("rho", at_saturation={"T": 20, "Q": 0, "range": (-20, 40)}, labels=True)
     requests = _requests(chart, "rho")
     assert len(requests) == 4
     for r in requests:
         assert r.value_SI == pytest.approx(chart.fluid.state_point("T", r.anchor_SI, "Q", 0.0).rho, rel=1e-10)
     assert all(text.startswith("rho=") for text in _labels(chart, "rho"))
-    chart.set_lines("rho", at_saturation={"T": 20, "Q": 0, "range": (-20, 40)}, labels=True)
+    assert chart.line_sets()["rho"].anchor.label == "value"
+    chart.set_lines("rho", at_saturation={"T": 20, "Q": 0, "range": (-20, 40), "label": "saturation"}, labels=True)
     assert "T_sat,liq=0 deg C" in _labels(chart, "rho")
-    chart.set_lines("rho", at_saturation={"T": 20, "Q": 0.5, "range": (-20, 40)}, labels=True)
+    chart.set_lines("rho", at_saturation={"T": 20, "Q": 0.5, "range": (-20, 40), "label": "saturation"},
+                    labels=True)
     assert "T(x=0.5)=20 deg C" in _labels(chart, "rho")
 
 
@@ -74,7 +83,7 @@ def test_steps_are_round_in_the_units_shown():
     T_F = sorted(r.anchor_SI * 1.8 - 459.67 for r in _requests(ip, "s"))
     assert T_F == pytest.approx([0.0, 20.0, 40.0, 60.0, 80.0, 100.0], abs=1e-11)   # no drift of the step
     bar = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP")
-    bar.set_lines("T", at_saturation={"p": 5, "range": (1, 22)}, labels=True)
+    bar.set_lines("T", at_saturation={"p": 5, "range": (1, 22), "label": "saturation"}, labels=True)
     requests = _requests(bar, "T")
     assert sorted(round(r.anchor_SI / 1e5, 9) for r in requests) == [5.0, 10.0, 15.0, 20.0]
     for r in requests:   # an isotherm through a saturation pressure is at the saturation temperature
@@ -125,12 +134,12 @@ def test_wrong_requests_are_refused_with_a_reason():
 
 def test_the_spec_record_round_trips_and_reads_1_0_records():
     chart = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP")
-    chart.set_lines("s", at_saturation={"T": 10, "Q": 0, "range": (-40, 60), "label": "value"})
+    chart.set_lines("s", at_saturation={"T": 10, "Q": 0, "range": (-40, 60), "label": "saturation"})
     text = json.dumps(chart.spec.to_dict(), sort_keys=True)
     again = DiagramSpec.from_dict(json.loads(text))
     assert again == chart.spec and json.dumps(again.to_dict(), sort_keys=True) == text
     anchor = again.isolines[0].anchor
-    assert anchor == SaturationAnchor("T", 10.0, 0.0, (233.15, 333.15), "value")
+    assert anchor == SaturationAnchor("T", 10.0, 0.0, (233.15, 333.15), "saturation")
     record = IsolineSet("T").to_dict()
     del record["anchor"]   # as written by 1.0
     assert IsolineSet.from_dict(record) == IsolineSet("T")
