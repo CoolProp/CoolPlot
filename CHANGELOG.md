@@ -68,6 +68,7 @@ guide in the documentation says what to change in your code.
   silent before 1.0) warns and goes in 2.0.
 
 #### Changed
+- Python 3.14 is supported and tested in CI (Python 3.10 to 3.14).
 - The public API is stable from 1.0 to 2.0 (upgrade guide, "Stability
   from 1.0"); deprecations in 1.x go in 2.0.
 - The Python numerics and composer stay, behind `set_native_mode`: they
