@@ -162,3 +162,14 @@ def test_blend_lines_meet_the_dome_near_the_critical_point(blend):
 
 def test_pure_fluids_have_no_envelope(r290):
     assert r290.phase_envelope() is None
+
+
+def test_a_straight_line_across_the_chart_gets_about_half_the_resolution():
+    # The documented meaning of Settings.calc.points: a straight line that
+    # crosses the whole chart gets about points / 2 points
+    from coolplot.thermo.stepping import Metric, Sample, trace
+    metric = Metric((0.0, 1.0), (0.0, 1.0))
+    for points in (100, 250, 500):
+        line = trace(lambda u, careful: Sample(u, 0.5), metric, points)
+        n = len([s for s in line.samples if s is not None])
+        assert abs(n - points / 2) <= 0.1 * points / 2
