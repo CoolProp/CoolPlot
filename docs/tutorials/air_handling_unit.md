@@ -50,9 +50,12 @@ m_dot_cond_kg_s = m_dot_kg_s * (W[1] - W[2]) / 1e3
 ## Winter, on the same chart
 
 ```python
-chart.add_cycle("Winter", [{"T": -5.0, "RH": 80.0}, {"T": 20.0, "via": "isobaric"},
-                           {"T": 20.0, "RH": 40.0}], closed=False)
+chart.add_cycle("Winter", [
+    {"T": -5.0, "W": 2.0},       # outdoor air, about 80 % relative humidity
+    {"T": 20.0, "W": 2.0},       # after the heater, same humidity ratio
+    {"T": 20.0, "RH": 40.0},     # after the humidifier
+], closed=False)
 ```
 
-Heating keeps the humidity ratio (a horizontal line), then a humidifier
-raises it. The second process gets its own colour and legend entry.
+Heating keeps the humidity ratio (a horizontal line), so the heated
+state is given by T and the same W; then a humidifier raises it. The second process gets its own colour and legend entry.

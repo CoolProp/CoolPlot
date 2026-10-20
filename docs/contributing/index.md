@@ -11,6 +11,7 @@ to them in {doc}`v1_review`.
 git clone https://github.com/CoolProp/CoolPlot
 cd CoolPlot
 pip install -e ".[test,matplotlib,plotly]"
+pip install -r docs/requirements.txt    # Sphinx and its extensions, for make docs
 make test                      # about four minutes
 make test-all                  # also the browser and Kaleido tests
 make test-slow                 # the numerics sweeps, minutes per fluid

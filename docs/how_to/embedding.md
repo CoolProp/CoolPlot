@@ -8,7 +8,12 @@ from coolplot.render.mpl import MatplotlibRenderer
 from coolplot.interaction import Interaction
 
 renderer = MatplotlibRenderer(ax=ax)                  # your axes, or none for a new figure
-Interaction(diagram, renderer, on_hover=lambda state, event: label.set_text(state.describe("engineering")))
+
+def on_hover(state, event):
+    # state is None where CoolProp has no state under the pointer
+    label.set_text(state.describe("engineering") if state is not None else "")
+
+Interaction(diagram, renderer, on_hover=on_hover)
 
 def on_change(T_evap_C, T_cond_C):
     diagram.add_cycle(simple_compression(diagram.fluid, T_evap_C, T_cond_C, name="Heat pump"))

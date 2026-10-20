@@ -49,6 +49,7 @@ impossible when vacuum is negative.
 A fluid state holds T, p, h, s, rho, v (= 1/rho), u and Q, in SI.
 
 ```python
+diagram.units = "engineering"                    # back from the examples above
 state = diagram.state_at(400, 5)                 # h = 400 kJ/kg, p = 5 bar in the chart's units
 state.describe("engineering")                    # "T = 1.729 deg C, p = 5 bar, h = 400 kJ/kg, ..."
 state.in_units("IP")                             # a dict

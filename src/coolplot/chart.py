@@ -687,9 +687,16 @@ class Chart:
         ``.svg`` is written by the SVG writer and ``.html`` by the web
         renderer (a static page), neither of which needs matplotlib;
         every other extension (PNG, PDF, EPS, ...) goes through matplotlib,
-        with ``kwargs`` such as ``dpi`` or ``pdf_fonts`` passed on.
+        with ``kwargs`` such as ``dpi`` or ``pdf_fonts`` passed on. The
+        canvas has the size of ``settings.page`` for every writer, unless
+        ``width`` and ``height`` (pixels) are given for SVG or HTML.
         """
         extension = str(path).rsplit(".", 1)[-1].lower() if "." in str(path) else ""
+        if extension in ("svg", "html", "htm"):
+            from .render.svg import PX_PER_PT
+            page = self.spec.settings.page
+            kwargs.setdefault("width", round(page.width_pt * PX_PER_PT))
+            kwargs.setdefault("height", round(page.height_pt * PX_PER_PT))
         if extension == "svg":
             from .render.svg import SvgRenderer
             self.draw(SvgRenderer(**kwargs)).save(path)

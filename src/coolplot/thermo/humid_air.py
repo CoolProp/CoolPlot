@@ -66,6 +66,12 @@ def air_state(key1: str, value1: float, key2: str, value2: float, p_Pa: float = 
     key1, key2 = quantity_key(key1), quantity_key(key2)
     if key1 == key2:
         raise ValueError("Give two different properties, not '{0}' twice.".format(key1))
+    # The total pressure is the chart's pressure, not one of the two
+    # properties: CoolProp would return saturated air without a warning.
+    if "p" in (key1, key2):
+        raise ValueError("Humid air is at the total pressure of the chart ({0:.6g} Pa); give two of "
+                         "T, W, RH, Twb, Tdp, h and v. A process that keeps the humidity ratio gives "
+                         "W, a 'via' that keeps the pressure does not work here.".format(p_Pa))
     try:
         values = {k: humid_air(k, key1, value1, key2, value2, p_Pa) for k in HUMID_AIR}
     except ValueError as e:

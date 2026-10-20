@@ -159,6 +159,20 @@ def test_save_chooses_the_writer_by_extension(tmp_path):
     assert (tmp_path / "chart.png").stat().st_size > 1000
 
 
+def test_svg_and_html_saves_use_the_page_size(tmp_path):
+    """The canvas follows settings.page, as for matplotlib, unless a size is given."""
+    import re
+    from coolplot import PropertyDiagram
+    diagram = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP", settings="publication")
+    diagram.set_lines("T", num=3)
+    size = re.compile(r'<svg [^>]*width="(\d+)" height="(\d+)"')
+    for name in ("chart.svg", "chart.html"):
+        diagram.save(tmp_path / name)
+        assert size.search((tmp_path / name).read_text()).groups() == ("336", "252")   # 252 x 189 pt
+    diagram.save(tmp_path / "wide.svg", width=500, height=300)
+    assert size.search((tmp_path / "wide.svg").read_text()).groups() == ("500", "300")
+
+
 def test_changing_the_diagram_type_drops_families_it_cannot_draw():
     d = PropertyDiagram("HEOS::R290", "Ts", units="engineering", tp_limits="ACHP")
     d.set_lines("h", num=3, points=40)
