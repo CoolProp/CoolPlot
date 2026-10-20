@@ -156,3 +156,13 @@ def test_save_chooses_the_writer_by_extension(tmp_path):
     assert (tmp_path / "chart.svg").read_text().startswith("<?xml") or "<svg" in (tmp_path / "chart.svg").read_text()
     assert "<html" in (tmp_path / "chart.html").read_text().lower()
     assert (tmp_path / "chart.png").stat().st_size > 1000
+
+
+def test_changing_the_diagram_type_drops_families_it_cannot_draw():
+    d = PropertyDiagram("HEOS::R290", "Ts", units="EUR", tp_limits="ACHP")
+    d.set_isolines("h", num=3, points=40)
+    d.set_isolines("p", num=3, points=40)
+    d.diagram_type = "ph"   # h and p are the axes of a p-h diagram
+    assert d.spec.isolines == ()
+    d.set_isolines("T", num=3, points=40)
+    d.update_scene()   # draws without the dropped families

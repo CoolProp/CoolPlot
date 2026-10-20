@@ -230,6 +230,11 @@ def test_svg_margin_labels_stay_on_the_canvas():
         size_px = float(text.get("font-size"))
         # Vertical text reading upwards from its anchor: its far end
         assert float(text.get("y")) - 0.6 * size_px * len(text.text) >= 0.0
+    # The title (its bottom edge at y) sits above the far ends of the labels
+    title = next(t for t in root.iter(ns + "text") if t.get("class") == "cp-title")
+    far_ends = [float(t.get("y")) - 0.6 * float(t.get("font-size")) * len(t.text)
+                for g in labels for t in g.iter(ns + "text")]
+    assert float(title.get("y")) <= min(far_ends)
 
 
 def test_svg_ticks_on_a_narrow_log_range():
