@@ -93,5 +93,8 @@ TEST_CASE("Label texts and axis titles", "[compose]") {
     CHECK(label_text(spec, "Q", 0.4) == "x=0.4");
     CHECK(label_text(spec, "s", 1500.0) == "s=1.5 kJ/kg/K");
     CHECK_THROWS_AS(compose_json("{not json"), Error);
+    CHECK_THROWS_AS(compose_json("{}"), Error);   // valid JSON, no spec
+    CHECK_THROWS_AS(compose_json(R"({"spec": {"diagram": "ph"}, "domain": {"ranges_SI": {}},
+                                     "cycles": [{"states": {"one": {}}}]})"), Error);   // state number not a number
     CHECK_THROWS_AS(compose(json{{"spec", {{"diagram", "ph"}}}, {"domain", {{"ranges_SI", json::object()}}}}), Error);
 }
