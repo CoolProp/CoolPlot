@@ -232,3 +232,15 @@ def test_every_old_name_is_in_the_upgrade_guide():
     # The whole name in code quotes, "`name`" or "`name(", not a longer name starting with it
     missing = sorted(name for name in found if not re.search(r"`{0}[`(]".format(re.escape(name)), guide))
     assert not missing, missing
+
+
+def test_the_old_unit_name_warns_at_the_callers_line():
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP")
+    diagram.add_cycle("hp", [{"p": 3.0, "T": 0.0}, {"p": 15.0, "via": "compression", "eta_is": 0.7},
+                             {"p": 15.0, "Q": 0.0}, {"p": 3.0, "via": "isenthalpic"}])
+    with pytest.warns(DeprecationWarning, match="'EUR' is called 'engineering'") as caught:
+        diagram.cycle_states("hp", units="EUR")
+    # Attributed to this file, as Python shows a DeprecationWarning only for the calling code
+    assert all(w.filename == __file__ for w in caught)
