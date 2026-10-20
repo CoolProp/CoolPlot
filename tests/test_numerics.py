@@ -250,9 +250,13 @@ def test_a_crossing_that_does_not_converge_is_no_crossing(r290, monkeypatch):
 
 
 def test_dome_ends_with_the_same_sweep_value_are_ordered_by_quality():
-    from coolplot.thermo.isolines import _same_sweep_value
+    from coolplot.thermo.isolines import _dome_end_comes_first, _same_sweep_value
     assert _same_sweep_value(300.0, 300.0 * (1.0 + 1e-15))
     assert not _same_sweep_value(300.0, 300.001)
+    w_noisy = 300.0 * (1.0 + 1e-15)                                 # the liquid end, a few bits above the vapour end
+    assert _dome_end_comes_first(w_noisy, 0.0, 300.0, 1.0, True)        # sweep in T: liquid first
+    assert not _dome_end_comes_first(w_noisy, 0.0, 300.0, 1.0, False)   # sweep in p: vapour first
+    assert _dome_end_comes_first(300.0, 1.0, 300.001, 0.0, True)        # distinct sweep values decide
 
 
 def test_a_state_whose_saturated_outputs_fail_is_not_two_phases():
@@ -266,9 +270,11 @@ def test_a_state_whose_saturated_outputs_fail_is_not_two_phases():
 
 
 def test_a_limit_that_is_not_a_number_is_refused(r290):
-    from coolplot.core.limits import TpLimits
+    from coolplot.core.limits import Relative, TpLimits
     with pytest.raises(ValueError, match="not a number"):
         resolve_tp_box(r290, TpLimits(float("nan"), 400.0, 1e5, 1e7))
+    with pytest.raises(ValueError, match="not a number"):
+        resolve_tp_box(r290, TpLimits(Relative(float("nan")), 400.0, 1e5, 1e7))
 
 
 def test_a_quality_line_without_states_says_why(r290, monkeypatch):

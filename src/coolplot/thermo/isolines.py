@@ -418,14 +418,10 @@ class _Line:
             ends = self._envelope_ends()
         if len(ends) != 2:
             return None
-        # The bubble and dew states of a pure fluid have the same sweep value,
-        # but computed apart they can differ in the last bits; a plain sort
-        # would then order them by that noise.  Equal up to rounding, the
-        # quality decides.
-        first, second = sorted(ends, key=lambda end: end[0])
-        if _same_sweep_value(first[0], second[0]):
-            liquid_first = self.sweep.key == "T"
-            first, second = sorted(ends, key=lambda end: end[1] if liquid_first else -end[1])
+        # Two ends, so a swap orders them (see _dome_end_comes_first)
+        first, second = ends
+        if not _dome_end_comes_first(first[0], first[1], second[0], second[1], self.sweep.key == "T"):
+            first, second = second, first
         return first, second
 
     def _envelope_ends(self):
@@ -558,6 +554,20 @@ def _saturation_state(fluid: Fluid, sat_key: str, sat_value: float, quality: flo
 def _same_sweep_value(a: float, b: float) -> bool:
     """Whether two sweep values are the same up to rounding (relative 1e-9)."""
     return abs(a - b) <= 1e-9 * max(abs(a), abs(b))
+
+
+def _dome_end_comes_first(w_a: float, q_a: float, w_b: float, q_b: float, liquid_first: bool) -> bool:
+    """Whether the dome end at sweep value w_a and quality q_a comes before the one at (w_b, q_b)
+
+    The bubble and dew states of a pure fluid have the same sweep value, but
+    computed apart they can differ in the last bits; a plain compare would
+    then order them by that noise.  Equal up to rounding, the quality
+    decides: liquid first when the sweep is in temperature (liquid_first,
+    an isobar), vapour first when it is in pressure (an isotherm).
+    """
+    if not _same_sweep_value(w_a, w_b):
+        return w_a < w_b
+    return q_a < q_b if liquid_first else q_a > q_b
 
 
 def _solve_crossing(fluid, diagram, iso_key, value_SI, sweep_key, a, b, quality, metric):

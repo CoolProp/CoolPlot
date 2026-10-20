@@ -58,9 +58,11 @@ guide in the documentation says what to change in your code.
 - The bubble and dew ends of a pure fluid's isotherm or isobar, which
   have the same sweep value up to rounding, are ordered by quality, not
   by the rounding noise.
-- A temperature or pressure limit that is NaN is refused with a clear
-  error (it ended in an "empty plotting region").
-- A line of constant quality without points says why in `reason`.
+- A temperature or pressure limit that is NaN, also a relative limit
+  with a NaN factor, is refused with a clear error (it ended in an
+  "empty plotting region").
+- A line of constant quality with fewer than two points says why in
+  `reason`.
 - All found in the review of CoolProp's port of these numerics; the
   port has the same fixes.
 

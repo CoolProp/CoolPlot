@@ -57,10 +57,11 @@ def _phases_are_distinct(state):
         rho_liq = state.saturated_liquid_keyed_output(CoolProp.iDmolar)
         rho_vap = state.saturated_vapor_keyed_output(CoolProp.iDmolar)
     except Exception:
-        # Every mixture backend (HEOS and the cubics, REFPROP, tabular) gives
-        # these outputs, so a failure is a failed state: count it as not
-        # distinct.  That costs the caller a fallback flash or a gap, never a
-        # collapsed state taken as a point.
+        # HEOS, the cubics, GERG and REFPROP give these outputs after a
+        # quality flash, so a failure there is a failed state.  A backend
+        # without saturated outputs (IF97, PC-SAFT) throws every time.  Both
+        # count as not distinct: that costs the caller a fallback flash or a
+        # gap, never a collapsed state taken as a point.
         return False
     if not (np.isfinite(rho_liq) and np.isfinite(rho_vap)) or rho_liq <= 0.0 or rho_vap <= 0.0:
         return False

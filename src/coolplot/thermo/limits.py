@@ -36,16 +36,18 @@ def resolve_tp_box(fluid: Fluid, limits: TpLimits, margin: float = 1e-7) -> Tupl
     def absolute(bound, key, end, fallback):
         if bound is None:
             return fallback
-        if not isinstance(bound, Relative) and bound != bound:
-            # NaN would silently be clamped away by max/min below, or end in a
-            # confusing "empty region"
-            raise ValueError("The {0} limit of the plotting region is not a number; give a value, or None for "
-                             "the limit of the equation of state.".format(key))
         if isinstance(bound, Relative):
             if key not in saturation:
                 saturation[key] = fluid.saturation_range(key, margin)   # ValueError for incompressibles
-            return bound.factor * saturation[key][end]
-        return float(bound)
+            value = bound.factor * saturation[key][end]
+        else:
+            value = float(bound)
+        if value != value:
+            # A NaN limit, or a NaN factor of a relative one, would end in a
+            # confusing "empty plotting region" below
+            raise ValueError("The {0} limit of the plotting region is not a number; give a value, or None for "
+                             "the limit of the equation of state.".format(key))
+        return value
 
     T_lo_K = absolute(limits.T_min, "T", 0, 0.0)
     T_hi_K = absolute(limits.T_max, "T", 1, np.inf)
