@@ -59,6 +59,13 @@ guide in the documentation says what to change in your code.
 - `coolplot.engine.plan` is the function; the module is
   `coolplot.engine.planning`.
 - The changelog is in Keep-a-Changelog form.
+- `save()` writes SVG and HTML at the size of `settings.page`, as it
+  does for matplotlib; `width` and `height` still override it.
+
+#### Fixed
+- Humid air refuses the total pressure as one of its two properties
+  (CoolProp returned saturated air for it), so a `"via": "isobaric"`
+  on a psychrometric chart raises instead of drawing a wrong state.
 
 ### 0.7.0: numerics
 
