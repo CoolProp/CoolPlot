@@ -254,6 +254,8 @@ def test_a_crashing_line_costs_only_itself(monkeypatch):
         pytest.skip("the patched worker function only reaches forked workers")
     monkeypatch.setattr(background, "_real_compute_curve", background.compute_curve, raising=False)
     monkeypatch.setattr(background, "compute_curve", _crash_at_zero)
+    from concurrent.futures.process import _ExecutorManagerThread
+    before = set(threading.enumerate())
     d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP", background="processes", workers=2)
     d.set_isolines("T", values=[-20.0, 0.0, 20.0, 40.0, 60.0], points=40)
     try:
@@ -265,6 +267,12 @@ def test_a_crashing_line_costs_only_itself(monkeypatch):
         assert len([i for i in d.scene if i.group == "iso/T"]) == 4
     finally:
         d.close()
+    # The pools wind down after close(), also the one whose worker crashed:
+    # their manager threads are not daemons, a stuck one keeps Python from exiting
+    managers = [t for t in threading.enumerate() if isinstance(t, _ExecutorManagerThread) and t not in before]
+    for t in managers:
+        t.join(20.0)
+    assert not [t for t in managers if t.is_alive()]
 
 
 def test_no_notification_after_close():

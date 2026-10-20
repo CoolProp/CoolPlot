@@ -38,6 +38,7 @@ they are needed before anything can be drawn and are fast.
 from __future__ import annotations
 
 import threading
+import weakref
 from concurrent.futures import BrokenExecutor, Future, ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import replace
 from typing import Callable, Dict, Optional, Tuple
@@ -235,10 +236,20 @@ class BackgroundEngine(Engine):
             pool.shutdown(wait=False)   # the process ends after this one job
         self._jobs[key] = future
         self._idle.clear()
-        future.add_done_callback(lambda f, key=key, pool=pool, alone=alone: self._finished(key, f, pool, alone))
+        # The callback keeps only a weak reference to the pool. With a strong
+        # one, the pool of a crashed worker would be freed by its own manager
+        # thread while that thread holds the pool's lock, and the pool's clean
+        # up takes the same lock: the thread hangs and Python cannot exit
+        # (seen with Python 3.12.3; newer versions take no lock there).
+        pool_ref = weakref.ref(pool)
+        future.add_done_callback(lambda f, key=key, pool_ref=pool_ref, alone=alone:
+                                 self._finished(key, f, pool_ref, alone))
 
-    def _finished(self, key: Tuple, future: Future, pool=None, alone: bool = False):
-        """Store a result and tell the application (runs in a worker callback)."""
+    def _finished(self, key: Tuple, future: Future, pool_ref=None, alone: bool = False):
+        """Store a result and tell the application (runs in a worker callback).
+
+        ``pool_ref`` is a weak reference to the pool that ran the job.
+        """
         notify = False
         with self._lock:
             if self._jobs.get(key) is future:
@@ -254,7 +265,7 @@ class BackgroundEngine(Engine):
                     # Some job crashed the shared pool, maybe not this one: no
                     # attempt is counted, the job is retried alone
                     self._suspects.add(key)
-                    if pool is self._pool:
+                    if pool_ref is not None and pool_ref() is self._pool:
                         self._broken = True   # replaced on the next request
                 else:
                     # Not cached: the next request tries again, up to MAX_TRIES
