@@ -55,6 +55,38 @@ TEST_CASE("TrueType fonts are found, read and subset", "[pdf]") {
     CHECK(index.find({"No Such Font"}, false, false).empty());
 }
 
+TEST_CASE("A character map is read only within its declared length", "[pdf]") {
+    // A damaged font: every subtable of the cmap table claims a length of 16
+    // bytes, so its segments or groups lie outside it. Nothing may be mapped
+    // from the bytes that follow (another subtable or another table).
+    FontIndex index(FontIndex::default_dirs());
+    std::string path = index.find({"DejaVu Sans", "sans-serif"}, false, false);
+    if (path.empty()) return;
+    std::ifstream in(path, std::ios::binary);
+    std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    auto get = [&](size_t at, int bytes) {
+        unsigned long v = 0;
+        for (int i = 0; i < bytes; ++i) v = (v << 8) | static_cast<unsigned char>(data[at + i]);
+        return v;
+    };
+    auto put = [&](size_t at, int bytes, unsigned long v) {
+        for (int i = bytes - 1; i >= 0; --i, v >>= 8) data[at + i] = static_cast<char>(v & 0xFF);
+    };
+    size_t cmap = 0;
+    for (unsigned long i = 0; i < get(4, 2); ++i)   // the table directory
+        if (data.compare(12 + 16 * i, 4, "cmap") == 0) cmap = get(12 + 16 * i + 8, 4);
+    REQUIRE(cmap > 0);
+    REQUIRE(TrueTypeFont(data).glyph_of('A') > 0);
+    for (unsigned long i = 0; i < get(cmap + 2, 2); ++i) {
+        size_t sub = cmap + get(cmap + 4 + 8 * i + 4, 4);
+        unsigned long format = get(sub, 2);
+        if (format == 4) put(sub + 2, 2, 16);          // length is a u16 after the format
+        else if (format == 12) put(sub + 4, 4, 16);    // a u32 after format and reserved
+    }
+    TrueTypeFont damaged(data);
+    CHECK(damaged.glyph_of('A') == 0);
+}
+
 TEST_CASE("The conformance scene becomes one PDF page with embedded fonts", "[pdf]") {
     FontIndex index(FontIndex::default_dirs());
     if (index.find({"sans-serif"}, false, false).empty()) return;

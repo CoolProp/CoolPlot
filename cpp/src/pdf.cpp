@@ -7,6 +7,7 @@
 #include <fstream>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <sstream>
 
@@ -104,13 +105,20 @@ struct UsedFont
     std::string resource;                  // /F1, /F2, ...
 };
 
+// The index of the font directories, built once per process and set of
+// directories (scanning them takes long). Writers in several threads (the C
+// ABI and the Python module, which releases the GIL) share it, so the cache
+// is locked; an index is only read after it is built, and a std::map keeps
+// its entries in place, so the reference stays valid after the lock.
 const FontIndex& font_index(const PdfOptions& options) {
     static std::map<std::string, std::shared_ptr<FontIndex>> cache;
+    static std::mutex mutex;
     std::vector<std::string> dirs = options.font_dirs.empty() ? FontIndex::default_dirs() : options.font_dirs;
     std::string key;
     for (const std::string& d : dirs) key += d + "\n";
     key += "--\n";
     for (const std::string& f : options.font_files) key += f + "\n";
+    std::lock_guard<std::mutex> lock(mutex);
     auto found = cache.find(key);
     if (found == cache.end()) found = cache.emplace(key, std::make_shared<FontIndex>(dirs, options.font_files)).first;
     return *found->second;
@@ -200,7 +208,16 @@ class Writer
     double x0_ = 0.0, x1_ = 1.0, y0_ = 0.0, y1_ = 1.0;
     double bx_ = 0.0, by_ = 0.0, bw_ = 1.0, bh_ = 1.0;
     std::vector<UsedFont> fonts_;
+    // The font files a text style names, indexed once per document: every
+    // tick label and isoline label asks for its font
+    std::map<std::vector<std::string>, std::unique_ptr<FontIndex>> file_indexes_;
     std::map<std::pair<double, double>, std::string> states_;  // (CA, ca) -> name
+
+    const FontIndex& file_index(const std::vector<std::string>& files) {
+        std::unique_ptr<FontIndex>& index = file_indexes_[files];
+        if (!index) index = std::make_unique<FontIndex>(std::vector<std::string>{}, files);
+        return *index;
+    }
 
     // Streams -------------------------------------------------------------
     std::string stream(const std::string& data, const std::string& extra) const {
@@ -254,11 +271,10 @@ class Writer
     // Fonts -----------------------------------------------------------------
     UsedFont& font_for(const Font& request) {
         std::string family_used;
-        PdfOptions with_files = options_;
         std::string path;
         if (!request.files.empty()) {
-            FontIndex own(std::vector<std::string>{}, request.files);
-            path = own.find(request.family, request.weight == "bold", request.style == "italic", &family_used);
+            path = file_index(request.files).find(request.family, request.weight == "bold", request.style == "italic",
+                                                  &family_used);
         }
         if (path.empty()) path = index_.find(request.family, request.weight == "bold", request.style == "italic", &family_used);
         if (path.empty()) {

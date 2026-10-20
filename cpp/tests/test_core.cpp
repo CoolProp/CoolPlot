@@ -1,5 +1,6 @@
 // Mirrors tests/test_layout.py (number format) and tests/test_style.py.
 #include <catch2/catch_all.hpp>
+#include <limits>
 
 #include "coolplot/core.h"
 #include "coolplot/style.h"
@@ -24,7 +25,7 @@ TEST_CASE("The central number format", "[core]") {
     CHECK(format_number(1e5, 6) == "100000");
     CHECK(format_number(273.15, 4) == "273.1");   // 273.15 is 273.1499... in binary, as in Python
     CHECK(format_number(std::nan("")) == "nan");
-    CHECK(format_number(-1.0 / 0.0) == "-inf");
+    CHECK(format_number(-std::numeric_limits<double>::infinity()) == "-inf");
     CHECK(repr_number(0.1) == "0.1");
     CHECK(repr_number(100.0) == "100.0");
     CHECK(repr_number(1e-5) == "1e-05");

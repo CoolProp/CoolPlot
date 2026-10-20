@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+# The jobs only read the repository
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -17,6 +21,8 @@ jobs:
           - {python: "3.13", coolprop: "8.0.0"}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -35,6 +41,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -43,6 +51,7 @@ jobs:
           node-version: "22"
       - name: Install
         run: |
+          sudo apt-get update
           sudo apt-get install -y fonts-dejavu-core zlib1g-dev locales
           # A locale with a decimal comma, for the test that the writers ignore it
           sudo locale-gen de_DE.UTF-8
@@ -75,6 +84,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -87,6 +98,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
