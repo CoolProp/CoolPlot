@@ -17,7 +17,8 @@ diagram.units = "SI"        # later: no new property calculations, the lines are
 Every value you pass to a chart method is in the chart's units, and so
 is every value a chart returns. `units=` on a call names another system
 for that call only: `diagram.add_cycle("measured", states, units="SI")`.
-`"EUR"` is the old name of `"engineering"`; it still works and warns.
+`"EUR"`, the name of `"engineering"` before 0.5, is refused in calls
+since 1.0; the constant `coolplot.EUR` still works with a warning until 2.0.
 
 ## Make your own
 

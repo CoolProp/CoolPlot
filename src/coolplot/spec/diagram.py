@@ -363,7 +363,10 @@ def _units_to_dict(units: UnitSystem):
 
 def _units_from_dict(data) -> UnitSystem:
     if isinstance(data, str):
-        return get_unit_system(data)
+        # A record saved by CoolPlot 0.4 names the engineering system "EUR";
+        # it still reads (a saved file is data, not a call). The name is
+        # refused in calls since 1.0, see get_unit_system.
+        return get_unit_system("engineering" if data.strip().upper() == "EUR" else data)
     return UnitSystem(data["name"], {k: Unit(*v) for k, v in data["units"].items()})
 
 

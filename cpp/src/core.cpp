@@ -289,7 +289,8 @@ std::string upper(std::string text) {
 
 const UnitSystem& get_unit_system(const std::string& name) {
     std::string key = upper(name);
-    if (key == "EUR") key = "ENGINEERING";  // the old name
+    if (key == "EUR")
+        throw Error("The unit system '" + name + "' was renamed 'engineering' (deg C, bar, kJ) in CoolPlot 0.5 and the old name removed in 1.0.");
     auto found = unit_systems().find(key);
     if (found == unit_systems().end()) throw Error("Unknown unit system '" + name + "'.");
     return found->second;
@@ -317,7 +318,12 @@ json UnitSystem::to_json() const {
 }
 
 UnitSystem UnitSystem::from_json(const json& data) {
-    if (data.is_string()) return get_unit_system(data.get<std::string>());
+    if (data.is_string()) {
+        // A record saved by CoolPlot 0.4 names the engineering system "EUR";
+        // it still reads (a saved file is data, not a call)
+        std::string name = data.get<std::string>();
+        return get_unit_system(upper(name) == "EUR" ? "engineering" : name);
+    }
     UnitSystem out;
     out.name = data.at("name").get<std::string>();
     for (auto it = data.at("units").begin(); it != data.at("units").end(); ++it) {

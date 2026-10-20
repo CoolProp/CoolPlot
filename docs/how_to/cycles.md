@@ -76,5 +76,4 @@ frame. `numbers=False` hides the state numbers; `line_style` and
 
 States you computed yourself, for example with
 `coolplot.thermo.process_path`, go into `add_cycle` as `StatePoint`
-values. The older `set_process(name, line_states, marker_states)` still
-works and warns; it goes in 1.0.
+values.

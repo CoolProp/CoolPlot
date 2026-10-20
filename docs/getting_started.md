@@ -12,7 +12,7 @@ Four ways of drawing come with CoolPlot and give the same picture: the
 SVG writer and the web page writer (no dependencies), matplotlib and
 plotly. `save` picks one by the file extension.
 
-CoolPlot needs Python 3.10 or later and CoolProp 8.0 or later.
+CoolPlot needs Python 3.10 or later (tested up to 3.14) and CoolProp 8.0 or later.
 
 ## A first chart
 

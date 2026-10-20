@@ -67,12 +67,18 @@ that almost nothing is computed outside the chart.
 {doc}`writing_a_backend` lists what a plotting backend has to do, and
 `coolplot.testing` has the conformance kit that checks it.
 
+## Releasing
+
+A version tag publishes a release to PyPI through GitHub Actions; the
+steps and the one-time setup are in {doc}`releasing`.
+
 ```{toctree}
 :maxdepth: 1
 :hidden:
 
 writing_a_backend
 core
+releasing
 architecture
 v1_plan
 v1_review

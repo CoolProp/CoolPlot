@@ -7,7 +7,7 @@ import pytest
 
 pytest.importorskip("CoolProp")
 
-from coolplot import PropertyDiagram  # noqa: E402
+from coolplot import ProcessSpec, PropertyDiagram  # noqa: E402
 from coolplot.render.svg import SvgRenderer  # noqa: E402
 from coolplot.scene import Line, Markers, Text  # noqa: E402
 from coolplot.thermo import process_path, state_point  # noqa: E402
@@ -90,14 +90,15 @@ def test_moving_a_cycle_touches_only_the_cycle(diagram):
                 + [cond_out, valve_out, evap_out])
         return line, [evap_out, comp_out, cond_out, valve_out]
 
-    diagram.set_process("cycle", *cycle(15e5))
+    # A process of complete states, as kept in the spec (contracts.md, "processes")
+    diagram.spec = diagram.spec.with_process(ProcessSpec("cycle", *map(tuple, cycle(15e5))))
     scene = diagram.update_scene()
     assert isinstance(scene["process/cycle/line"], Line)
     assert isinstance(scene["process/cycle/points"], Markers)
     renderer.sync(scene)
 
     misses = diagram.cache.misses
-    diagram.set_process("cycle", *cycle(18e5))
+    diagram.spec = diagram.spec.with_process(ProcessSpec("cycle", *map(tuple, cycle(18e5))))
     report = renderer.sync(diagram.update_scene())
     assert diagram.cache.misses == misses
     assert sorted(report.updated) == ["process/cycle/line", "process/cycle/points"]
@@ -173,10 +174,10 @@ def test_svg_and_html_saves_use_the_page_size(tmp_path):
 
 
 def test_changing_the_diagram_type_drops_families_it_cannot_draw():
-    d = PropertyDiagram("HEOS::R290", "Ts", units="EUR", tp_limits="ACHP")
-    d.set_isolines("h", num=3, points=40)
-    d.set_isolines("p", num=3, points=40)
+    d = PropertyDiagram("HEOS::R290", "Ts", units="engineering", tp_limits="ACHP")
+    d.set_lines("h", num=3, points=40)
+    d.set_lines("p", num=3, points=40)
     d.diagram_type = "ph"   # h and p are the axes of a p-h diagram
     assert d.spec.isolines == ()
-    d.set_isolines("T", num=3, points=40)
+    d.set_lines("T", num=3, points=40)
     d.update_scene()   # draws without the dropped families

@@ -2,8 +2,8 @@
 """The public vocabulary is frozen (docs/v1_plan.md, 0.5).
 
 A name added here is a promise kept until 2.0; a name removed here needs
-a deprecation period. The old names of 0.4 and before still work and
-warn once per call.
+a deprecation period. The old names of 0.4 and before warned through 0.9
+and are gone in 1.0, with a message that names their replacement.
 """
 import warnings
 
@@ -18,7 +18,7 @@ PACKAGE_NAMES = {
     "Settings", "CalcSettings", "LabelSettings", "PageSettings", "Engine", "Fluid", "DiagramType",
     "TpLimits", "Relative", "Region", "StatePoint", "state_point", "process_path", "PropertyError",
     "Theme", "get_theme", "LineStyle", "MarkerStyle", "TextStyle", "Font", "AxesStyle", "LegendStyle",
-    "Scene", "UnitSystem", "Unit", "SI", "KSI", "ENGINEERING", "IP", "EUR",
+    "Scene", "UnitSystem", "Unit", "SI", "KSI", "ENGINEERING", "IP",
     "native_mode", "set_native_mode",
 }
 
@@ -33,12 +33,16 @@ CHART_METHODS = {
 CHART_PROPERTIES = {"cache", "progress", "fluid", "diagram_type", "units", "settings", "theme", "title", "kind"}
 CHART_ATTRIBUTES = {"spec", "engine", "scene"}
 
-#: Old names: they warn and call the new one.
-OLD_NAMES = {
-    "set_isolines", "set_default_isolines", "remove_isolines", "isoline_sets", "set_isoline_style", "savefig",
+#: Names removed in 1.0 (deprecated from 0.5 to 0.9), with the method to use
+#: instead, written out here and not taken from the code.
+REMOVED_COMMON = {
+    "set_isolines": "set_lines", "set_default_isolines": "set_default_lines", "remove_isolines": "remove_lines",
+    "isoline_sets": "line_sets", "set_isoline_style": "set_line_style", "savefig": "save",
 }
-OLD_DIAGRAM_NAMES = {"set_process", "remove_process"}
-OLD_PSYCHRO_NAMES = {"add_process", "move_process_state", "remove_process", "process_states"}
+REMOVED_DIAGRAM = dict(REMOVED_COMMON, set_process="add_cycle", remove_process="remove_cycle")
+REMOVED_PSYCHRO = dict(REMOVED_COMMON, add_process="add_cycle", move_process_state="move_cycle_state",
+                       remove_process="remove_cycle", process_states="cycle_states")
+REMOVED = set(REMOVED_DIAGRAM) | set(REMOVED_PSYCHRO)
 
 
 def _public(cls):
@@ -54,11 +58,11 @@ def test_package_names_are_frozen():
 def test_chart_vocabulary_is_frozen():
     from coolplot.chart import Chart
     names = _public(Chart)
-    methods = {n for n in names if callable(getattr(Chart, n)) and not getattr(getattr(Chart, n), "deprecated", False)}
+    methods = {n for n in names if callable(getattr(Chart, n))}
     properties = {n for n in names if isinstance(getattr(Chart, n), property)} | {"kind"}
     assert methods == CHART_METHODS
     assert properties == CHART_PROPERTIES
-    assert {n for n in names if getattr(getattr(Chart, n), "deprecated", False)} == OLD_NAMES
+    assert not any(getattr(getattr(Chart, n), "deprecated", False) for n in names)
     pytest.importorskip("CoolProp")
     from coolplot import PropertyDiagram
     chart = PropertyDiagram("R290", "ph")
@@ -68,48 +72,68 @@ def test_chart_vocabulary_is_frozen():
 def test_constructors_add_only_their_own_names():
     from coolplot.diagram import PropertyDiagram
     from coolplot.psychrometric import PsychrometricChart
-    own = {n for n in _public(PropertyDiagram) if not getattr(getattr(PropertyDiagram, n), "deprecated", False)}
-    assert own == {"kind", "fluid", "diagram_type", "tp_limits"}
-    assert {n for n in _public(PropertyDiagram) if getattr(getattr(PropertyDiagram, n), "deprecated", False)} \
-        == OLD_DIAGRAM_NAMES
-    own = {n for n in _public(PsychrometricChart) if not getattr(getattr(PsychrometricChart, n), "deprecated", False)}
-    assert own == {"kind", "p_Pa", "points"}
-    assert {n for n in _public(PsychrometricChart) if getattr(getattr(PsychrometricChart, n), "deprecated", False)} \
-        == OLD_PSYCHRO_NAMES
+    assert _public(PropertyDiagram) == {"kind", "fluid", "diagram_type", "tp_limits"}
+    assert _public(PsychrometricChart) == {"kind", "p_Pa", "points"}
 
 
-def test_old_names_warn_and_work(tmp_path):
+def test_removed_names_say_what_to_use_instead():
+    import re
     pytest.importorskip("CoolProp")
     from coolplot import PropertyDiagram, PsychrometricChart
+    from coolplot.thermo.cycles import rankine
     diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP")
-    with pytest.warns(DeprecationWarning, match="set_lines"):
-        diagram.set_isolines("T", num=3)
-    with pytest.warns(DeprecationWarning, match="line_sets"):
-        assert set(diagram.isoline_sets()) == {"T"}
-    with pytest.warns(DeprecationWarning, match="set_line_style"):
-        diagram.set_isoline_style("T", color="red")
-    with pytest.warns(DeprecationWarning, match="remove_lines"):
-        diagram.remove_isolines("T")
-    with pytest.warns(DeprecationWarning, match="set_default_lines"):
-        diagram.set_default_isolines(num=3)
-    assert set(diagram.line_sets()) == {"T", "s", "rho", "Q"}
-    with pytest.warns(DeprecationWarning, match="'EUR' is called 'engineering'"):
-        assert PropertyDiagram("R290", "ph", units="EUR").units.name == "engineering"
     chart = PsychrometricChart(T_range=(0, 40), W_range=(0, 20))
-    with pytest.warns(DeprecationWarning, match="closed=False"):
-        chart.add_process("Heating", [{"T": 5, "RH": 80}, {"T": 25, "W": 4.3}])
-    with pytest.warns(DeprecationWarning, match="cycle_states"):
-        states = chart.process_states("Heating")
-    assert states[1].T == pytest.approx(298.15)
-    with pytest.warns(DeprecationWarning, match="move_cycle_state"):
-        chart.move_process_state("Heating", 2, 30.0, 4.3)
-    with pytest.warns(DeprecationWarning, match="remove_cycle"):
-        chart.remove_process("Heating")
-    assert chart.spec.cycles == ()
-    pytest.importorskip("matplotlib")
-    with pytest.warns(DeprecationWarning, match="use save"):
-        diagram.savefig(str(tmp_path / "old.svg"))
-    assert (tmp_path / "old.svg").stat().st_size > 1000
+    for c, removed in ((diagram, REMOVED_DIAGRAM), (chart, REMOVED_PSYCHRO)):
+        assert type(c)._removed_names.keys() == removed.keys()
+        for name, new in removed.items():
+            assert new in CHART_METHODS
+            with pytest.raises(AttributeError, match=re.escape("{0}.{1}() was removed in CoolPlot 1.0; use {2}".format(
+                    type(c).__name__, name, new))):
+                getattr(c, name)
+            assert not hasattr(c, name)
+    # A name that never existed on this kind of chart gets the usual message
+    with pytest.raises(AttributeError, match="has no attribute 'add_process'"):
+        diagram.add_process
+    with pytest.raises(AttributeError, match="has no attribute 'nonsense'"):
+        diagram.nonsense
+    with pytest.raises(ValueError, match="renamed 'engineering'"):
+        PropertyDiagram("R290", "ph", units="EUR")
+    with pytest.raises(TypeError, match="'eta_turbine' \\(removed in CoolPlot 1.0, use 'eta_is_turbine'\\)"):
+        rankine("Water", 50e5, 0.1e5, eta_turbine=0.8)
+
+
+def test_the_constant_eur_warns_until_2_0():
+    """coolplot.EUR never warned before 1.0, so it stays through 1.x with a warning."""
+    import coolplot.core
+    import coolplot.core.units
+    for module in (coolplot, coolplot.core, coolplot.core.units):
+        with pytest.warns(DeprecationWarning, match="go in CoolPlot 2.0") as record:
+            assert module.EUR is coolplot.ENGINEERING
+        # Reported at the user's line, so that Python's default filter shows it
+        assert record[0].filename == __file__
+    assert "EUR" not in coolplot.__all__
+
+
+def test_a_property_error_is_not_hidden_by_the_removed_name_hints():
+    """Python sends an AttributeError raised inside a property to __getattr__; the real one has to surface."""
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+
+    class Broken(PropertyDiagram):
+        @property
+        def broken(self):
+            return self.engine.no_such_thing
+
+    with pytest.raises(AttributeError, match="no_such_thing"):
+        Broken("R290", "ph").broken
+
+
+def test_a_spec_saved_by_0_4_with_eur_still_reads():
+    pytest.importorskip("CoolProp")
+    from coolplot import DiagramSpec, PropertyDiagram
+    data = PropertyDiagram("R290", "ph").spec.to_dict()
+    data["units"] = "EUR"
+    assert DiagramSpec.from_dict(data).units.name == "engineering"
 
 
 def test_new_names_do_not_warn():
@@ -214,33 +238,42 @@ def test_set_lines_defaults_and_units_per_call():
     assert chart.line_sets()["RH"].labels is True and chart.line_sets()["RH"].rounding is True
 
 
-def test_every_old_name_is_in_the_upgrade_guide():
-    """0.9 is the deprecation release: whatever warns is listed with its replacement."""
+def test_every_removed_name_is_in_the_upgrade_guide():
+    """What 1.0 removed is listed in the guide's "From 0.9 to 1.0" section."""
+    import os
+    import re
+    guide = open(os.path.join(os.path.dirname(__file__), "..", "docs", "upgrade.md"), encoding="utf-8").read()
+    start = guide.index("## From 0.9 to 1.0")
+    section = guide[start:guide.index("\n## ", start + 1)]
+    # The whole name in code quotes, "`name`" or "`name=", not a longer name starting with it
+    names = REMOVED | {"eta_turbine", "eta_pump"}
+    missing = sorted(n for n in names if not re.search(r"`{0}[`=]".format(re.escape(n)), section))
+    assert not missing, missing
+    assert '`"EUR"`' in section and "`coolplot.EUR`" in section
+
+
+def test_nothing_is_deprecated_right_after_1_0():
+    """No chart method is deprecated in 1.0; one deprecated in 1.x is listed here and in the upgrade guide.
+
+    The one deprecation of 1.0, the constant coolplot.EUR, has its own test.
+    """
     import importlib
     import inspect
-    import os
-    guide = open(os.path.join(os.path.dirname(__file__), "..", "docs", "upgrade.md"), encoding="utf-8").read()
     found = set()
     for module_name in ("coolplot.chart", "coolplot.diagram", "coolplot.psychrometric"):
         module = importlib.import_module(module_name)
         for _, cls in inspect.getmembers(module, inspect.isclass):
-            for name, member in vars(cls).items():
-                if getattr(member, "deprecated", False):
-                    found.add(name)
-    assert found >= OLD_NAMES | OLD_DIAGRAM_NAMES | OLD_PSYCHRO_NAMES
-    import re
-    # The whole name in code quotes, "`name`" or "`name(", not a longer name starting with it
-    missing = sorted(name for name in found if not re.search(r"`{0}[`(]".format(re.escape(name)), guide))
-    assert not missing, missing
+            found |= {name for name, member in vars(cls).items() if getattr(member, "deprecated", False)}
+    assert found == set()
 
 
-def test_the_old_unit_name_warns_at_the_callers_line():
+def test_the_old_unit_name_is_refused_with_its_new_name():
     pytest.importorskip("CoolProp")
     from coolplot import PropertyDiagram
     diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP")
     diagram.add_cycle("hp", [{"p": 3.0, "T": 0.0}, {"p": 15.0, "via": "compression", "eta_is": 0.7},
                              {"p": 15.0, "Q": 0.0}, {"p": 3.0, "via": "isenthalpic"}])
-    with pytest.warns(DeprecationWarning, match="'EUR' is called 'engineering'") as caught:
+    # cycle_states resolves units= like every other call (#12): the removed
+    # name gives the same message there
+    with pytest.raises(ValueError, match="renamed 'engineering'"):
         diagram.cycle_states("hp", units="EUR")
-    # Attributed to this file, as Python shows a DeprecationWarning only for the calling code
-    assert all(w.filename == __file__ for w in caught)

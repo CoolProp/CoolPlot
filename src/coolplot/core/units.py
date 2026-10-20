@@ -9,8 +9,8 @@ change of unit system never triggers a new property calculation.
 One unit system covers every quantity of :mod:`coolplot.core.quantities`,
 for fluids and for humid air alike. The presets are "SI", "KSI" (kJ and
 kPa), "engineering" (deg C, bar, kJ, g/kg, %) and "IP" (deg F, psi,
-Btu/lb, grains per lb). "EUR" is the old name of "engineering" and still
-accepted with a warning.
+Btu/lb, grains per lb). "EUR", the name of "engineering" before 0.5, is
+refused in calls since 1.0; the constant EUR warns until 2.0.
 
 This module is plain data and imports neither CoolProp nor a plotting
 library.
@@ -18,6 +18,7 @@ library.
 from __future__ import annotations
 
 import warnings
+
 from dataclasses import dataclass, field, replace
 from typing import Mapping
 
@@ -60,7 +61,7 @@ class UnitSystem:
     """A named set of units, one per quantity key
 
     Unit systems are immutable. Use :meth:`with_unit` to derive a modified
-    copy, for example to show pressure in MPa in an otherwise EUR system.
+    copy, for example to show pressure in MPa in an otherwise engineering system.
     """
     name: str
     units: Mapping[str, Unit] = field(hash=False)
@@ -175,27 +176,43 @@ SI = UnitSystem("SI", _SI)
 KSI = UnitSystem("KSI", _KSI)
 ENGINEERING = UnitSystem("engineering", _ENGINEERING)
 IP = UnitSystem("IP", _IP)
-#: The old name of the engineering system, kept for existing code.
-EUR = ENGINEERING
-
 UNIT_SYSTEMS = {u.name.upper(): u for u in (SI, KSI, ENGINEERING, IP)}
-_OLD_NAMES = {"EUR": "engineering"}
+
+
+def _old_eur(stacklevel: int) -> UnitSystem:
+    """ENGINEERING, with a warning: the constant EUR is its old name.
+
+    It never warned before 1.0, so it stays through 1.x and goes in 2.0
+    (the name "EUR" in calls warned from 0.5 and is gone in 1.0).
+    """
+    warnings.warn("EUR is the old name of ENGINEERING (deg C, bar, kJ); it will go in CoolPlot 2.0.",
+                  DeprecationWarning, stacklevel=stacklevel + 1)
+    return ENGINEERING
+
+
+def __getattr__(name):
+    # Only called for names the module does not define (PEP 562)
+    if name == "EUR":
+        return _old_eur(2)
+    raise AttributeError("module {0!r} has no attribute {1!r}".format(__name__, name))
+
+
+# Names removed in 1.0, with the name to use instead
+_REMOVED_NAMES = {"EUR": "engineering"}
 
 
 def get_unit_system(units, stacklevel: int = 2) -> UnitSystem:
     """Accept a UnitSystem or the name of a preset: "SI", "KSI", "engineering" or "IP".
 
-    ``stacklevel`` is where the warning about an old name is attributed
-    to; a public method that passes its argument on gives one more than
-    its own depth, so that the warning names the user's line.
+    ``stacklevel`` is kept for callers of 0.x, where it placed the warning
+    about an old name; it has no effect.
     """
     if isinstance(units, UnitSystem):
         return units
     name = str(units).upper()
-    if name in _OLD_NAMES:
-        warnings.warn("The unit system 'EUR' is called 'engineering' now (deg C, bar, kJ); the old name "
-                      "will go in 1.0.", DeprecationWarning, stacklevel=stacklevel)
-        name = _OLD_NAMES[name].upper()
+    if name in _REMOVED_NAMES:
+        raise ValueError("The unit system '{0}' was renamed '{1}' (deg C, bar, kJ) in CoolPlot 0.5 and the old "
+                         "name removed in 1.0.".format(units, _REMOVED_NAMES[name]))
     try:
         return UNIT_SYSTEMS[name]
     except KeyError:

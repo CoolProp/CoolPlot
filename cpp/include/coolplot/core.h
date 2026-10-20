@@ -112,7 +112,8 @@ struct UnitSystem
     static UnitSystem from_json(const json& data);
 };
 
-/// A preset by name ("SI", "KSI", "engineering", "IP"; "EUR" as the old name of engineering).
+/// A preset by name ("SI", "KSI", "engineering", "IP"). "EUR", the name of engineering
+/// before 0.5, is refused since 1.0; UnitSystem::from_json still reads it in saved records.
 const UnitSystem& get_unit_system(const std::string& name);
 
 // ---------------------------------------------------------------------------

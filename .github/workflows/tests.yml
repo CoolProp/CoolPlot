@@ -2,7 +2,9 @@ name: tests
 
 on:
   push:
+    branches: ["**"]   # every branch; a version tag runs these tests through release.yml instead
   pull_request:
+  workflow_call:       # release.yml runs the whole workflow before it publishes
 
 # The jobs only read the repository
 permissions:
@@ -19,6 +21,7 @@ jobs:
           - {python: "3.11", coolprop: "8.0.0"}
           - {python: "3.12", coolprop: "8.0.0"}
           - {python: "3.13", coolprop: "8.0.0"}
+          - {python: "3.14", coolprop: "8.0.0"}
     steps:
       - uses: actions/checkout@v4
         with:

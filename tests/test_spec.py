@@ -6,7 +6,7 @@ import pytest
 
 from coolplot.core.limits import Relative, TpLimits
 from coolplot.core.state import StatePoint
-from coolplot.core.units import EUR, Unit
+from coolplot.core.units import ENGINEERING, Unit
 from coolplot.spec import (CalcSettings, DiagramSpec, FluidSpec, IsolineSet, LabelSettings, PageSettings,
                            ProcessSpec, Settings, get_settings)
 from coolplot.style.values import LineStyle
@@ -91,7 +91,7 @@ def _state(T):
 
 
 def test_diagram_spec_json_round_trip():
-    units = EUR.with_unit("p", Unit("MPa", 1e-6), name="EUR-MPa")
+    units = ENGINEERING.with_unit("p", Unit("MPa", 1e-6), name="engineering-MPa")
     spec = DiagramSpec(
         fluid="HEOS::R32[0.7]&R125[0.3]", diagram="Ts", units=units,
         limits=TpLimits(250.0, Relative(1.1), None, 5e6), settings="publication",

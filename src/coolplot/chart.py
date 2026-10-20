@@ -17,7 +17,7 @@ air. Everything after the constructor is the same for both.
 5. the scene compares the items with the previous ones, so a renderer only
    redraws what really changed.
 
-For example, switching from EUR to SI units reuses every cached curve and
+For example, switching from engineering to SI units reuses every cached curve and
 updates the coordinates of all items, whereas changing the colour of the
 isotherms reuses every curve and only restyles the isotherms. Moving one
 state of a cycle only touches the items of that cycle.
@@ -35,6 +35,7 @@ warn (see the CHANGELOG for 0.5).
 """
 from __future__ import annotations
 
+import inspect
 import warnings
 import weakref
 from dataclasses import replace
@@ -43,7 +44,7 @@ import numpy as np
 
 from .compose import compose
 from .core.cycle import Cycle, StateInput
-from .core.errors import PropertyError, deprecated
+from .core.errors import PropertyError
 from .core.quantities import quantity_key
 from .core.state import StatePoint
 from .core.units import get_unit_system
@@ -142,6 +143,18 @@ def check_state(state: StatePoint, provider) -> StatePoint:
         raise ValueError("The state {0} is at {1:.6g} Pa, but the chart shows {2}.".format(
             state, state.p, provider.name))
     return state
+
+
+#: Methods of every chart removed in 1.0 (deprecated since 0.5), with what to use instead.
+#: PropertyDiagram and PsychrometricChart add their own (``_removed_names``).
+REMOVED_NAMES = {
+    "set_isolines": "use set_lines",
+    "set_default_isolines": "use set_default_lines",
+    "remove_isolines": "use remove_lines",
+    "isoline_sets": "use line_sets",
+    "set_isoline_style": "use set_line_style",
+    "savefig": "use save",
+}
 
 
 class Chart:
@@ -421,26 +434,23 @@ class Chart:
         """The families of lines by quantity key, as :class:`coolplot.spec.IsolineSet` values."""
         return {s.key: s for s in self.spec.isolines}
 
-    # Old names (0.4 and before); they warn and will go in 1.0 ---------------
-    @deprecated("use set_lines")
-    def set_isolines(self, key, values=None, num=None, range=None, rounding=False, points=None, labels=False):
-        return self.set_lines(key, values, num, range, rounding, labels, points)
+    # Names removed in 1.0 for this kind of chart, see REMOVED_NAMES
+    _removed_names = REMOVED_NAMES
 
-    @deprecated("use set_default_lines")
-    def set_default_isolines(self, num=None, **kwargs):
-        return self.set_default_lines(num, **kwargs)
-
-    @deprecated("use remove_lines")
-    def remove_isolines(self, key):
-        return self.remove_lines(key)
-
-    @deprecated("use line_sets")
-    def isoline_sets(self):
-        return self.line_sets()
-
-    @deprecated("use set_line_style")
-    def set_isoline_style(self, key, **changes):
-        return self.set_line_style(key, **changes)
+    def __getattr__(self, name):
+        # Only called when normal lookup fails: a name removed in 1.0 gets a
+        # message that says what to write instead (docs/upgrade.md).
+        # Python also lands here when a property's getter raises
+        # AttributeError itself; run the getter again so that its own error,
+        # not a misleading "no attribute", reaches the user.
+        found = inspect.getattr_static(type(self), name, None)
+        if isinstance(found, property):
+            return found.__get__(self, type(self))
+        replacement = type(self)._removed_names.get(name)
+        if replacement is not None:
+            raise AttributeError("{0}.{1}() was removed in CoolPlot 1.0; {2} (see the upgrade guide).".format(
+                type(self).__name__, name, replacement))
+        raise AttributeError("'{0}' object has no attribute '{1}'".format(type(self).__name__, name))
 
     def add_cycle(self, name, states=None, loops=None, paths=None, numbers: bool = True, units=None,
                   line_style: LineStyle = None, marker_style: MarkerStyle = None, steps: int = 20,
@@ -695,7 +705,3 @@ class Chart:
             self.draw(WebRenderer(**kwargs)).save(path)
         else:
             self.draw().save(path, **kwargs)
-
-    @deprecated("use save")
-    def savefig(self, path, **kwargs):
-        self.save(path, **kwargs)

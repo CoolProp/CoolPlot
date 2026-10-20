@@ -6,6 +6,48 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### 1.0.0rc1
+
+#### Removed
+- The names deprecated since 0.5: the chart methods `set_isolines`,
+  `set_default_isolines`, `remove_isolines`, `isoline_sets`,
+  `set_isoline_style`, `savefig`, `set_process`, `remove_process`, the
+  psychrometric `add_process`, `move_process_state`, `process_states`;
+  the unit system name "EUR" in calls; the `rankine` keywords
+  `eta_turbine` and `eta_pump`. A removed chart method raises an
+  AttributeError naming its replacement, "EUR" a ValueError naming
+  "engineering" and the old `rankine` keywords a TypeError naming theirs.
+  A spec saved by 0.4 with "EUR" still reads, in Python and in
+  coolplot-core. See the upgrade guide.
+
+#### Deprecated
+- The constant `coolplot.EUR` (an old name of `coolplot.ENGINEERING`,
+  silent before 1.0) warns and goes in 2.0.
+
+#### Changed
+- Python 3.14 is supported and tested in CI (Python 3.10 to 3.14).
+- The public API is stable from 1.0 to 2.0 (upgrade guide, "Stability
+  from 1.0"); deprecations in 1.x go in 2.0.
+- The Python numerics and composer stay, behind `set_native_mode`: they
+  are the reference, CoolProp's numerics port is not in a released
+  CoolProp yet, and coolplot-core is slower from Python than the Python
+  composer (plan, 1.0: they go only when the C++ passes the full suite as
+  the default).
+
+#### Fixed
+- A line where no state at all could be computed said nothing: failed
+  looks while the stepping scans outside the axes count as outside, so
+  the curve had no points, `n_outside` > 0 and an empty `reason`. It now
+  says "none of the N states of the line could be computed". A line
+  whose states were computed but lie outside the axes says so also
+  when some of its evaluations failed (it used to say "only 0 point(s)
+  of the line could be computed").
+- The quality solver of the tracer no longer accepts a residual that is
+  not a number (it compared as "same side" and passed the residual
+  check, so the saturated liquid was reported as the point).
+- Both found in the review of CoolProp's port of these numerics; the
+  port has the same fixes.
+
 ### 0.9.0
 
 #### Added

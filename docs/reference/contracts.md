@@ -79,8 +79,9 @@ One record describes a property diagram and a psychrometric chart alike;
   numbers, `paths` lists `[[from, to], kind]` for connections not drawn
   with "auto" (`PATH_KINDS`). Air processes on a psychrometric chart are
   cycles whose paths are straight.
-* `processes`: lines through complete states, kept for `set_process`
-  until it is retired (see contributing/v1_plan.md, D4).
+* `processes`: lines through complete states (`coolplot.spec.ProcessSpec`).
+  `set_process`, which wrote them, was removed in 1.0; specs that hold
+  processes still read and draw, and `DiagramSpec.with_process` adds one.
 * `style_overrides`: `LineStyle` field changes per family, on top of
   the theme.
 * `view_SI`: `[x_limits, y_limits]`, each `null` or `[min, max]`.

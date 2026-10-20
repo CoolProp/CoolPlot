@@ -24,7 +24,6 @@ from __future__ import annotations
 import math
 
 from ...core.cycle import Cycle
-from ...core.errors import check_old_keyword
 from ..fluid import Fluid
 from ..process import state_point
 
@@ -61,13 +60,6 @@ def _liquid_out(fluid, p_Pa, dT_sc_K):
         return state_point(fluid, "p", p_Pa, "Q", 0.0)
     T_bubble_K = state_point(fluid, "p", p_Pa, "Q", 0.0).T
     return state_point(fluid, "p", p_Pa, "T", T_bubble_K - dT_sc_K)
-
-
-def _one_of(new, old, default, name):
-    """The value given under the new or the old keyword name, or the default."""
-    if new is not None and old is not None:
-        raise TypeError("Give {0} once, not under its old name as well.".format(name))
-    return default if new is None and old is None else (new if new is not None else old)
 
 
 def _check_lift(T_evap_C, T_cond_C):
@@ -197,24 +189,25 @@ def two_stage(fluid, T_evap_C: float, T_cond_C: float, intermediate: str = "flas
 
 
 def rankine(fluid, p_high_Pa: float, p_low_Pa: float, T_live_C: float = None, eta_is_turbine: float = None,
-            eta_is_pump: float = None, name: str = "Rankine", **old_names) -> Cycle:
+            eta_is_pump: float = None, name: str = "Rankine", **removed) -> Cycle:
     """Simple Rankine cycle (steam or organic)
 
     States: 1 condenser outlet = pump inlet (saturated liquid), 2 pump
     outlet, 3 boiler outlet (live steam at ``T_live_C``, saturated vapour
     if None), 4 turbine outlet. ``eta_is_turbine`` and ``eta_is_pump``
-    are isentropic efficiencies, 0.85 and 0.75 by default (``eta_turbine``
-    and ``eta_pump`` before 0.5).
+    are isentropic efficiencies, 0.85 and 0.75 by default.
 
     Results: ``q_in_J_kg``, ``q_out_J_kg``, ``w_turbine_J_kg``,
     ``w_pump_J_kg``, ``eta_th`` (net work over heat input).
     """
-    eta_turbine = _one_of(eta_is_turbine, check_old_keyword(old_names, "eta_turbine", "eta_is_turbine", "rankine"),
-                          0.85, "eta_is_turbine")
-    eta_pump = _one_of(eta_is_pump, check_old_keyword(old_names, "eta_pump", "eta_is_pump", "rankine"),
-                       0.75, "eta_is_pump")
-    if old_names:
-        raise TypeError("rankine() got unexpected keyword arguments {0}.".format(sorted(old_names)))
+    # The keyword names before 0.5 were removed in 1.0; say what to write instead
+    renamed = {"eta_turbine": "eta_is_turbine", "eta_pump": "eta_is_pump"}
+    if removed:
+        hints = ["'{0}' (removed in CoolPlot 1.0, use '{1}')".format(k, renamed[k]) if k in renamed else repr(k)
+                 for k in sorted(removed)]
+        raise TypeError("rankine() got unexpected keyword arguments {0}.".format(", ".join(hints)))
+    eta_turbine = 0.85 if eta_is_turbine is None else eta_is_turbine
+    eta_pump = 0.75 if eta_is_pump is None else eta_is_pump
     for label, eta in (("eta_is_turbine", eta_turbine), ("eta_is_pump", eta_pump)):
         if not 0.0 < eta <= 1.0:
             raise ValueError("{0} has to be between 0 and 1, not {1}.".format(label, eta))
