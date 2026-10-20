@@ -90,8 +90,8 @@ def _chromium():
 
 @pytest.mark.parametrize("shape", sorted("os^vDx+"))
 def test_plotly_draws_markers_as_wide_as_asked(shape):
+    exe = _chromium()   # skips without Playwright, so import it only after this
     from playwright.sync_api import sync_playwright
-    exe = _chromium()
     r = PlotlyRenderer(width=300, height=300)
     r.sync(Scene(AxesSpec(x_limits=(0.0, 1.0), y_limits=(0.0, 1.0)), [Markers(
         id="m", x=[0.5], y=[0.5], style=MarkerStyle(shape=shape, size_pt=30.0, face_color="#000000",
