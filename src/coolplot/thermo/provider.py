@@ -57,16 +57,19 @@ def chart_domain(provider, limits, margin: float) -> Tuple[Tuple[float, float, f
 
 
 def compute_curve(provider, diagram, key: str, value_SI: float, tp_box, points: int, solver: str,
-                  margin: float, spacing: str) -> Curve:
+                  margin: float, spacing: str, ranges=None) -> Curve:
     """One line of constant ``key`` for any provider.
 
     Lines of constant quality are traced through saturation states with
-    ``spacing``; all other fluid lines are swept through ``tp_box`` with
+    ``spacing``; all other fluid lines are stepped through ``tp_box`` with
     the ``solver``; humid-air lines are sampled in dry-bulb temperature.
+    ``ranges`` are the (key, (min, max)) pairs of :func:`chart_domain`,
+    which the stepping of fluid lines measures its steps by.
     """
     key = quantity_key(key)
     if provider.kind == "humid_air":
         return provider.line(key, value_SI, tp_box, points)
     if key == "Q":
         return compute_quality_line(provider, diagram, value_SI, points, margin, spacing)
-    return compute_isoline(provider, diagram, key, value_SI, tp_box, points, solver, margin)
+    return compute_isoline(provider, diagram, key, value_SI, tp_box, points, solver, margin,
+                           None if ranges is None else dict(ranges))

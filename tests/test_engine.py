@@ -202,8 +202,8 @@ def test_a_changed_configuration_rebuilds_the_fluid():
 def test_a_curve_that_cannot_be_computed_names_its_reason():
     from coolplot.thermo.isolines import Curve
     import pickle
-    curve = Curve([], [], reason="needs CoolProp 8")
-    assert pickle.loads(pickle.dumps(curve)).reason == "needs CoolProp 8"
+    curve = Curve([], [], reason="no saturation curve")
+    assert pickle.loads(pickle.dumps(curve)).reason == "no saturation curve"
 
 
 # Regression tests from the adversarial review of 0.2 ------------------------

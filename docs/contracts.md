@@ -22,7 +22,7 @@ the display units the spec asked for. Non-finite values are written as
 `null` and read back as NaN (an infinity does not survive the trip).
 CoolPlot's own strings are ASCII; user texts (titles, cycle names) pass
 through as given. Keys of quantities are those of
-`coolplot.core.quantities`: `T`, `p`, `h`, `s`, `rho`, `u`, `Q` for
+`coolplot.core.quantities`: `T`, `p`, `h`, `s`, `rho`, `v`, `u`, `Q` for
 fluids, plus `W`, `RH`, `Twb`, `Tdp`, `v` for humid air.
 
 ## 1. The chart spec
@@ -60,7 +60,9 @@ One record describes a property diagram and a psychrometric chart alike;
   for humid air. The kind of the diagram has to match the fluid.
 * `units`: a name (`SI`, `KSI`, `engineering`, `IP`) or
   `{"name": ..., "units": {"p": ["bar", 1e-5, 0.0], ...}}` with
-  `[label, scale, offset]` per quantity (display = SI * scale + offset).
+  `[label, scale, offset]` per quantity (display = SI * scale + offset),
+  and an optional fourth element, the label of a difference in the
+  quantity (`["deg C", 1.0, -273.15, "K"]`; the label itself if absent).
 * `limits`: for fluids a T-p box, each bound a number, `null` (the limit
   of the equation of state) or `{"relative": f}` (f times the saturation
   range); for humid air absolute bounds on the axis quantities,
@@ -95,7 +97,13 @@ and the engine caches it (`coolplot.thermo.isolines.Curve`).
 | `n_fallback` | int | points the tracer handed back to a plain flash |
 | `n_inserted` | int | saturation states inserted where the line crosses the phase boundary |
 | `method` | str | `"flash"`, `"tracer"` or `"envelope"` |
-| `reason` | str | why a line could not be computed at all (then `x` and `y` are empty) |
+| `reason` | str | why a line could not be computed at all (then `x` and `y` are empty), or why it has fewer than two points |
+| `n_evaluated` | int | states computed for the line (0.7) |
+| `n_outside` | int | of those, states outside the area the axes show (0.7) |
+
+The number of points is not fixed: lines are stepped with steps chosen
+from their shape in plot coordinates (`coolplot.thermo.stepping`), so a
+straight line has about `points / 2` points and a bent one more.
 
 A curve is identified by the cache key `(fluid, fingerprint, diagram,
 key, value_SI, points, ...)`: the fingerprint names the CoolProp version

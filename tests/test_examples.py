@@ -32,9 +32,6 @@ def test_two_stage_cycles(tmp_path):
 
 
 def test_refrigerant_blend(tmp_path):
-    from coolplot.thermo.tracer import TRACER_AVAILABLE
-    if not TRACER_AVAILABLE:
-        pytest.skip("without the tracer (CoolProp 8) the blend takes minutes")
     _run("refrigerant_blend.py", tmp_path)
     assert (tmp_path / "R32_R125_ph.svg").stat().st_size > 10000
 

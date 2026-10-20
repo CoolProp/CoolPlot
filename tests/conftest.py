@@ -4,7 +4,9 @@
 Tests that need a browser (Playwright's Chromium) or Kaleido (plotly
 images) are marked ``browser`` and ``kaleido`` and run only with
 ``--run-browser`` and ``--run-kaleido``; they take most of the suite's
-time and need software the library does not depend on.
+time and need software the library does not depend on. The sweeps over
+every line of every diagram type in ``tests/numerics`` are marked
+``slow`` and run only with ``--run-slow``.
 """
 import glob
 import os
@@ -24,10 +26,12 @@ def pytest_addoption(parser):
                      help="run the tests that drive a real browser through Playwright")
     parser.addoption("--run-kaleido", action="store_true", default=False,
                      help="run the tests that write plotly images and PDF through Kaleido")
+    parser.addoption("--run-slow", action="store_true", default=False,
+                     help="run the sweeps over every line of every diagram type (tests/numerics, minutes)")
 
 
 def pytest_collection_modifyitems(config, items):
-    for marker, option in (("browser", "--run-browser"), ("kaleido", "--run-kaleido")):
+    for marker, option in (("browser", "--run-browser"), ("kaleido", "--run-kaleido"), ("slow", "--run-slow")):
         if config.getoption(option):
             continue
         skip = pytest.mark.skip(reason="needs {0}; run with {1}".format(marker, option))

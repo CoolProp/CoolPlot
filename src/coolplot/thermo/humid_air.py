@@ -42,7 +42,6 @@ HUMID_AIR = tuple(k for k in AIR_STATE_KEYS if k != "p")
 LINE_KEYS = tuple(f.key for f in FAMILIES["humid_air"])
 
 
-
 def _name(key: str) -> str:
     try:
         name = QUANTITIES[quantity_key(key)].humid_air_name
@@ -208,8 +207,31 @@ def psychro_line(key: str, value: float, p_Pa: float, T_range_K: Tuple[float, fl
         raise ValueError("Lines of constant '{0}' are not offered, expected one of {1}.".format(key, LINE_KEYS))
     T_lo, T_hi = T_range_K
     T = np.linspace(T_lo, T_hi, points)
-    W = np.full_like(T, np.nan)
     W_sat = np.array(_saturation_grid(float(T_lo), float(T_hi), int(points), float(p_Pa)))
+    W, n_failed, dry_end = _sample_line(key, value, T, W_sat, p_Pa)
+    limit = np.where(np.isfinite(W_sat), W_sat * (1.0 + 1e-9), np.inf)   # no saturation above boiling
+    inside = np.isfinite(W) & (W >= 0.0) & (W <= limit)
+    if key == "RH" and value >= 1.0:
+        inside = np.isfinite(W)   # the saturation line itself
+    xs, ys = list(T[inside]), list(W[inside])
+    if key != "RH" and xs:
+        crossing = _start_on_saturation(key, value, T, inside, p_Pa)
+        if crossing is not None and crossing < xs[0]:
+            xs.insert(0, crossing)
+            ys.insert(0, float(saturation_W(crossing, p_Pa)))
+    if dry_end is not None and xs and dry_end > xs[-1]:
+        xs.append(dry_end)
+        ys.append(0.0)
+    return Curve(np.array(xs), np.array(ys), n_failed)
+
+
+def _sample_line(key: str, value: float, T: np.ndarray, W_sat: np.ndarray, p_Pa: float):
+    """(W, n_failed, dry_end) of a line sampled at the temperatures T, see :func:`psychro_line`.
+
+    ``dry_end`` is the temperature where a falling line reaches W = 0,
+    or None; the sampling stops there.
+    """
+    W = np.full_like(T, np.nan)
     n_failed = 0
     dry_end = None
     falling = key != "RH"   # W falls with T along lines of Twb, h and v
@@ -240,27 +262,18 @@ def psychro_line(key: str, value: float, p_Pa: float, T_range_K: Tuple[float, fl
             if i > 0 and np.isfinite(W[i - 1]):
                 dry_end = _dry_end(key, value, float(T[i - 1]), float(t), p_Pa)
             break
-    limit = np.where(np.isfinite(W_sat), W_sat * (1.0 + 1e-9), np.inf)   # no saturation above boiling
-    inside = np.isfinite(W) & (W >= 0.0) & (W <= limit)
-    if key == "RH" and value >= 1.0:
-        inside = np.isfinite(W)   # the saturation line itself
-    xs, ys = list(T[inside]), list(W[inside])
-    # Where the line meets saturation, between the last fog point and the first inside one
-    if key != "RH" and xs:
-        crossing = None
-        if key == "Twb" and T_lo <= value <= T_hi:
-            crossing = value
-        else:
-            first = int(np.flatnonzero(inside)[0])
-            if first > 0:
-                crossing = _saturation_crossing(key, value, float(T[first - 1]), float(T[first]), p_Pa)
-        if crossing is not None and crossing < xs[0]:
-            xs.insert(0, crossing)
-            ys.insert(0, float(saturation_W(crossing, p_Pa)))
-    if dry_end is not None and xs and dry_end > xs[-1]:
-        xs.append(dry_end)
-        ys.append(0.0)
-    return Curve(np.array(xs), np.array(ys), n_failed)
+    return W, n_failed, dry_end
+
+
+def _start_on_saturation(key: str, value: float, T: np.ndarray, inside: np.ndarray, p_Pa: float):
+    """The temperature where the line meets saturation, between the last fog point and the first inside one."""
+    T_lo, T_hi = float(T[0]), float(T[-1])
+    if key == "Twb" and T_lo <= value <= T_hi:
+        return value   # a wet-bulb line starts on saturation, at T = Twb by definition
+    first = int(np.flatnonzero(inside)[0])
+    if first > 0:
+        return _saturation_crossing(key, value, float(T[first - 1]), float(T[first]), p_Pa)
+    return None
 
 
 def _saturation_T(W: float, T_lo: float, T_hi: float, p_Pa: float) -> Optional[float]:

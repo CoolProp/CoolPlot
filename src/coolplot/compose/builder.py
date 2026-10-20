@@ -84,8 +84,8 @@ def axes_spec(spec: DiagramSpec, domain, theme: Theme, shown=()) -> AxesSpec:
     """
     diagram = spec.diagram
     limits = []
-    for axis, (key, view, log) in enumerate(zip((diagram.x, diagram.y), spec.view_SI,
-                                                (diagram.x_log, diagram.y_log))):
+    x_log, y_log = axis_scales(spec)
+    for axis, (key, view, log) in enumerate(zip((diagram.x, diagram.y), spec.view_SI, (x_log, y_log))):
         lo_hi = view if view is not None else domain.range_SI(key)
         lo_hi = tuple(sorted(spec.units[key].from_SI(lo_hi).tolist()))
         if view is None:
@@ -93,9 +93,18 @@ def axes_spec(spec: DiagramSpec, domain, theme: Theme, shown=()) -> AxesSpec:
         # What the backends will draw, so that labels are laid out in that frame
         limits.append(drawable_limits(lo_hi, log))
     return AxesSpec(x_label=axis_label(spec, diagram.x), y_label=axis_label(spec, diagram.y),
-                    x_log=diagram.x_log, y_log=diagram.y_log,
+                    x_log=x_log, y_log=y_log,
                     x_limits=limits[0], y_limits=limits[1], title=spec.title, style=theme.axes,
                     tick_digits=spec.settings.labels.tick_digits)
+
+
+def axis_scales(spec: DiagramSpec):
+    """(x_log, y_log): the diagram's scales, except that a quantity shown in a
+    unit with an offset (gauge pressure) gets a linear axis, since its
+    values can be zero or negative."""
+    diagram = spec.diagram
+    return (diagram.x_log and spec.units[diagram.x].offset == 0.0,
+            diagram.y_log and spec.units[diagram.y].offset == 0.0)
 
 
 def isoline_look(spec: DiagramSpec, theme: Theme, key: str, value_SI: float):

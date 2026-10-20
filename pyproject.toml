@@ -12,7 +12,7 @@ authors = [{name = "Jorrit Wronski", email = "coolplot@jorrit.org"}]
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.22",
-    "coolprop>=6.8",
+    "coolprop>=8.0",
 ]
 classifiers = [
     "License :: OSI Approved :: MIT License",
@@ -44,4 +44,5 @@ testpaths = ["tests"]
 markers = [
     "browser: drives a real browser through Playwright (run with --run-browser)",
     "kaleido: writes plotly images or PDF through Kaleido (run with --run-kaleido)",
+    "slow: sweeps every line of every diagram type, minutes per fluid (run with --run-slow)",
 ]

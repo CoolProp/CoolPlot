@@ -22,19 +22,9 @@ from CoolProp.CoolProp import PropsSI
 
 from .fluid import build_state
 
-
-def _major_version(text: str) -> int:
-    try:
-        return int(str(text).split(".")[0])
-    except ValueError:
-        return 0
-
-
-#: The tracer needs CoolProp 8. Older versions abort the whole Python
-#: process (a C++ abort, not an exception) in some of the saturation calls
-#: the tracer makes for mixtures near the critical point, for example on an
-#: R32/R125 blend with CoolProp 7.2. There every point is flashed instead.
-TRACER_AVAILABLE = _major_version(getattr(CoolProp, "__version__", "0")) >= 8
+# The tracer needs CoolProp 8 (pyproject.toml): CoolProp 6 and 7 abort the
+# whole Python process (a C++ abort, not an exception) in some of the
+# saturation calls it makes for mixtures near the critical point.
 
 
 #: A two-phase state whose two phases differ in density by less than this,
@@ -138,10 +128,30 @@ class IsoLineTracer(object):
     #: to 2 s per point for a blend; one isentrope of R32/R125 near the
     #: critical point took 25 s instead of 1 s.
     CLOSED_ENVELOPE_MARGIN = 1.005
+    #: Above the top of a closed envelope by this much (0.07 K at 344 K,
+    #: twice the 0.04 K above) there is no dome: a root there is accepted
+    #: without the density check of TOP_DENSITY_MARGIN. Between the top and
+    #: this, the density check applies. Only for an envelope whose two
+    #: densities at the top agree to TOP_GAP_RTOL: with the coexistence
+    #: curve going as (1 - T/Tc)^0.33, that puts the top within a few
+    #: millikelvin of the critical point, where a gap of 35 % (the
+    #: closedness test) could still leave it 0.3 K short.
+    ABOVE_TOP_RTOL = 2e-4
+    TOP_GAP_RTOL = 0.05
     #: A phase envelope that ends with its two densities still this far apart
     #: did not run to the critical point, so where its dome ends is unknown
     #: and has to be found the expensive way.
     ENVELOPE_CLOSED_RTOL = 0.35
+    #: Near the critical point the saturation solver stops answering some
+    #: kelvin before the top of a closed envelope and in the band above it
+    #: (CLOSED_ENVELOPE_MARGIN). A root there is judged by its density
+    #: against the dome the envelope describes at that temperature: a root
+    #: this far outside those densities cannot be in the dome. The rest is
+    #: handed back to a flash. Without this every point of an isotherm
+    #: 0.5 K above the critical temperature of R410A was flashed (7 s for
+    #: one line; 16 ms per flash), and an isentrope paid 0.3 s for each of
+    #: its points just above the critical pressure.
+    TOP_DENSITY_MARGIN = 1.5
 
     LIQUID = -1
     VAPOUR = 1
@@ -212,6 +222,8 @@ class IsoLineTracer(object):
         else:
             self._sat_index = CoolProp.iP
         self._eos_bounds = self._find_eos_bounds()
+        self._envelope_top = None   # (T, p, rhomolar_liq, rhomolar_vap) at the top of a closed envelope
+        self._dome_densities = None   # (T, rhomolar) tables of the two branches of a closed envelope
         envelope_bounds, self._saturation_bounds = self._find_saturation_bounds()
         self._dome_limit = envelope_bounds.get(self._sat_index)
         self._dome_T_limit = self._find_dome_temperature_limit()
@@ -222,6 +234,8 @@ class IsoLineTracer(object):
         self._rhomolar = np.nan
         self._side = None
         self._out = None
+        self._last_quality = None   # warm start for the next two-phase point
+        self._last_two_phase = None   # (T, rhomolar) of the last two-phase point, a seed of last resort
 
     @property
     def state(self):
@@ -349,6 +363,11 @@ class IsoLineTracer(object):
             data = self._sat.get_phase_envelope_data()
             envelope = {CoolProp.iT: max(data.T), CoolProp.iP: max(data.p)}
             closed = self._envelope_is_closed(data)
+            if closed:
+                hot = int(np.argmax(np.asarray(data.T, dtype=float)))
+                self._envelope_top = (float(data.T[hot]), float(max(data.p)),
+                                      float(data.rhomolar_liq[hot]), float(data.rhomolar_vap[hot]))
+                self._dome_densities = self._dome_density_table(data)
         except Exception:
             pass  # no envelope: every point must be bracketed or handed back
         outer = dict(envelope)
@@ -358,6 +377,7 @@ class IsoLineTracer(object):
                 outer[index] = max(outer.get(index, 0.0), critical)
         except Exception:
             pass  # no component critical data; the envelope alone has to do
+
         def clean(candidate, margin):
             """Drop unusable bounds, clamp to the EOS range, apply the margin"""
             bounds = {}
@@ -557,6 +577,12 @@ class IsoLineTracer(object):
         except Exception:
             if self._dome_limit is not None and sat_value > self._dome_limit:
                 return None
+            if self._beyond_the_envelope_top(sat_value):
+                # A closed envelope ends at the critical point to within a
+                # fraction of a kelvin: beyond its top there is no dome that
+                # a saturation call could find. The root is still checked
+                # by _check_outside_the_dome.
+                return None
             raise
         v_liq, v_vap = ends['liq'][0], ends['vap'][0]
         if not (np.isfinite(v_liq) and np.isfinite(v_vap)):
@@ -570,6 +596,13 @@ class IsoLineTracer(object):
         return {'target_index': target_index, 'liq': ends['liq'], 'vap': ends['vap'],
                 'degenerate': degenerate,
                 'slope': self._branch_slope(target_index, ends['liq'])}
+
+    def _beyond_the_envelope_top(self, sat_value):
+        """Whether a closed envelope puts ``sat_value`` (T or p) past its top"""
+        if self._envelope_top is None:
+            return False
+        top = self._envelope_top[0] if self._sat_index == CoolProp.iT else self._envelope_top[1]
+        return sat_value > top
 
     def _branch_slope(self, target_index, liquid_end):
         """Sign of the target property along density at the saturated liquid
@@ -591,22 +624,88 @@ class IsoLineTracer(object):
     # -------------------------------------------------------------------
     # Two-phase point: solve for the vapour quality
     # -------------------------------------------------------------------
+    @staticmethod
+    def _quality_scale(target_index, target):
+        """The function of the target property that is close to linear in the quality
+
+        Enthalpy, entropy and internal energy are (for a pure fluid exactly)
+        linear in the vapour quality; density is not, but the specific
+        volume is. Solving in that function lets the secant iteration below
+        settle in two or three saturation calls instead of six. A density
+        target that is not positive (nonsense, but possible) is solved as
+        it is.
+        """
+        if target_index in (CoolProp.iDmolar, CoolProp.iDmass) and target > 0.0:
+            return lambda value: 1.0 / value
+        return lambda value: value
+
     def _quality_residual(self, quality, bracket):
-        """How far the two-phase state at this quality is from the target"""
+        """How far the two-phase state at this quality is from the target, in the scale of _quality_scale"""
         if self._sat_index == CoolProp.iT:
             self._sat.update(CoolProp.QT_INPUTS, quality, self._sat_value)
         else:
             self._sat.update(CoolProp.PQ_INPUTS, self._sat_value, quality)
-        return self._sat.keyed_output(bracket['target_index']) - bracket['target']
+        scale = bracket['scale']
+        return scale(self._sat.keyed_output(bracket['target_index'])) - scale(bracket['target'])
 
     def _solve_quality(self, bracket):
-        """Regula falsi (Illinois) on the vapour quality between the saturation states"""
-        target = bracket['target']
-        a, fa = 0.0, bracket['liq'][0] - target
-        b, fb = 1.0, bracket['vap'][0] - target
-        width = abs(fb - fa)
+        """The vapour quality between the saturation states that hits the target
+
+        Along a line the quality changes little from one point to the next,
+        so a secant iteration from the previous quality usually needs two
+        or three saturation calls. The first point of a line, and any point
+        the secant cannot settle, uses a bracketed regula falsi over the
+        whole dome (five or six calls). The saturation calls are what a
+        two-phase point costs (an isentrope of R410A in a p-h chart spent
+        60 % of its time in them).
+        """
+        scale = bracket['scale'] = self._quality_scale(bracket['target_index'], bracket['target'])
+        target = scale(bracket['target'])
+        fa, fb = scale(bracket['liq'][0]) - target, scale(bracket['vap'][0]) - target
         if fa * fb > 0.0:
             raise ValueError("The saturation bracket does not contain the target.")
+        width = abs(fb - fa)
+        quality = self._secant_quality(bracket, fa, fb, width)
+        if quality is None:
+            quality = self._bracketed_quality(bracket, fa, fb, width)
+        self._out = self._sat
+        self._last_quality = quality
+        try:
+            self._last_two_phase = (self._sat.T(), self._sat.rhomolar())
+        except Exception:
+            self._last_two_phase = None
+        # A two-phase point says nothing about the single-phase root.
+        self._T = np.nan
+        self._rhomolar = np.nan
+        self._side = None
+
+    def _secant_quality(self, bracket, fa, fb, width):
+        """Secant iteration from the previous point's quality; None if it does not settle"""
+        if self._last_quality is None:
+            return None
+        tolerance = self.QUALITY_RTOL * width
+        q0 = min(max(self._last_quality, 1e-6), 1.0 - 1e-6)
+        f0 = self._quality_residual(q0, bracket)
+        if abs(f0) <= tolerance:
+            return q0
+        slope = fb - fa   # the dome crossed in one step, the first guess of the slope
+        q1 = q0 - f0 / slope
+        for _ in range(8):
+            if not np.isfinite(q1) or not 0.0 < q1 < 1.0:
+                return None
+            f1 = self._quality_residual(q1, bracket)
+            if abs(f1) <= tolerance:
+                return q1
+            if f1 == f0:
+                return None
+            slope = (f1 - f0) / (q1 - q0)
+            q0, f0 = q1, f1
+            q1 = q0 - f0 / slope
+        return None
+
+    def _bracketed_quality(self, bracket, fa, fb, width):
+        """Regula falsi (Illinois) on the vapour quality between the saturation states"""
+        a, b = 0.0, 1.0
         for _ in range(self.QUALITY_ITMAX):
             quality = b - fb * (b - a) / (fb - fa)
             # The endpoints are already known and a regula falsi can creep onto
@@ -630,11 +729,7 @@ class IsoLineTracer(object):
         if abs(fb) > self.QUALITY_RTOL * width:
             raise ValueError("The quality solver ran out of bracket with the "
                              "residual unresolved.")
-        self._out = self._sat
-        # A two-phase point says nothing about the single-phase root.
-        self._T = np.nan
-        self._rhomolar = np.nan
-        self._side = None
+        return b
 
     # -------------------------------------------------------------------
     # Single-phase point: Newton iteration in (T, rhomolar)
@@ -648,6 +743,12 @@ class IsoLineTracer(object):
         if bracket is not None:
             end = bracket['liq'] if side == self.LIQUID else bracket['vap']
             return end[1], end[2]
+        if self._last_two_phase is not None:
+            # Beyond the dome right after a two-phase point, which happens
+            # where a line leaves the dome through its top: the bulk state
+            # of that point is close to the root, and the root is checked
+            # against the dome like any other unbracketed one.
+            return self._last_two_phase
         raise ValueError("No initial guess is available for the Newton iteration.")
 
     def _solve_single_phase(self, targets, bracket):
@@ -657,38 +758,13 @@ class IsoLineTracer(object):
         the side of the saturation curve the bracket says it should be.
         """
         T, rhomolar = self._seed(bracket)
-        i1, i2, state = self._i1, self._i2, self._sp
-        v1, v2 = targets[i1], targets[i2]
+        state = self._sp
         for _ in range(self.NEWTON_ITMAX):
             state.update(CoolProp.DmolarT_INPUTS, rhomolar, T)
-            f1 = state.keyed_output(i1) - v1
-            f2 = state.keyed_output(i2) - v2
-            J11 = state.first_partial_deriv(i1, CoolProp.iT, CoolProp.iDmolar)
-            J12 = state.first_partial_deriv(i1, CoolProp.iDmolar, CoolProp.iT)
-            J21 = state.first_partial_deriv(i2, CoolProp.iT, CoolProp.iDmolar)
-            J22 = state.first_partial_deriv(i2, CoolProp.iDmolar, CoolProp.iT)
-            det = J11 * J22 - J12 * J21
-            if not np.isfinite(det) or det == 0.0:
-                raise ValueError("The Newton iteration hit a singular Jacobian.")
-            dT = (J12 * f2 - J22 * f1) / det
-            dD = (J21 * f1 - J11 * f2) / det
-            if not (np.isfinite(dT) and np.isfinite(dD)):
-                raise ValueError("The Newton iteration produced a non-finite step.")
+            residual, jacobian = self._newton_system(targets)
+            dT, dD = self._newton_step(residual, jacobian)
             if abs(dT) <= self.NEWTON_RTOL * T and abs(dD) <= self.NEWTON_RTOL * rhomolar:
-                # A small step is not by itself a small residual: where the
-                # Jacobian is large -- cv near the critical point, say -- the
-                # iteration can stall with the residual intact.  Scale each
-                # residual by how much its property moves over the iteration
-                # variables, which is finite and non-zero even for an enthalpy
-                # that happens to sit near its reference value.
-                scale1 = abs(J11) * T + abs(J12) * rhomolar
-                scale2 = abs(J21) * T + abs(J22) * rhomolar
-                if not (np.isfinite(scale1) and np.isfinite(scale2)):
-                    raise ValueError("The residual cannot be scaled at this point.")
-                if abs(f1) > self.RESIDUAL_RTOL * scale1 \
-                        or abs(f2) > self.RESIDUAL_RTOL * scale2:
-                    raise ValueError("The Newton iteration stalled with the "
-                                     "residual unresolved.")
+                self._check_residual(residual, jacobian, T, rhomolar)
                 self._check_in_range(T)
                 side = None if bracket is None else bracket['side']
                 self._check_branch(bracket, side, T, rhomolar)
@@ -706,6 +782,51 @@ class IsoLineTracer(object):
             if not (T > 0.0 and rhomolar > 0.0):
                 raise ValueError("The Newton iteration left the physical domain.")
         raise ValueError("The Newton iteration did not converge.")
+
+    def _newton_system(self, targets):
+        """(residuals, Jacobian) of the two target properties at the state ``self._sp`` holds
+
+        The Jacobian is ((J11, J12), (J21, J22)): the derivatives of the two
+        properties with respect to T and rhomolar.
+        """
+        i1, i2, state = self._i1, self._i2, self._sp
+        residual = (state.keyed_output(i1) - targets[i1], state.keyed_output(i2) - targets[i2])
+        jacobian = ((state.first_partial_deriv(i1, CoolProp.iT, CoolProp.iDmolar),
+                     state.first_partial_deriv(i1, CoolProp.iDmolar, CoolProp.iT)),
+                    (state.first_partial_deriv(i2, CoolProp.iT, CoolProp.iDmolar),
+                     state.first_partial_deriv(i2, CoolProp.iDmolar, CoolProp.iT)))
+        return residual, jacobian
+
+    @staticmethod
+    def _newton_step(residual, jacobian):
+        """The Newton step (dT, drhomolar) that solves the linearised system"""
+        (f1, f2), ((J11, J12), (J21, J22)) = residual, jacobian
+        det = J11 * J22 - J12 * J21
+        if not np.isfinite(det) or det == 0.0:
+            raise ValueError("The Newton iteration hit a singular Jacobian.")
+        dT = (J12 * f2 - J22 * f1) / det
+        dD = (J21 * f1 - J11 * f2) / det
+        if not (np.isfinite(dT) and np.isfinite(dD)):
+            raise ValueError("The Newton iteration produced a non-finite step.")
+        return dT, dD
+
+    def _check_residual(self, residual, jacobian, T, rhomolar):
+        """Reject a settled iteration whose residual is still large
+
+        A small step is not by itself a small residual: where the Jacobian
+        is large -- cv near the critical point, say -- the iteration can
+        stall with the residual intact.  Each residual is scaled by how
+        much its property moves over the iteration variables, which is
+        finite and non-zero even for an enthalpy that happens to sit near
+        its reference value.
+        """
+        (f1, f2), ((J11, J12), (J21, J22)) = residual, jacobian
+        scale1 = abs(J11) * T + abs(J12) * rhomolar
+        scale2 = abs(J21) * T + abs(J22) * rhomolar
+        if not (np.isfinite(scale1) and np.isfinite(scale2)):
+            raise ValueError("The residual cannot be scaled at this point.")
+        if abs(f1) > self.RESIDUAL_RTOL * scale1 or abs(f2) > self.RESIDUAL_RTOL * scale2:
+            raise ValueError("The Newton iteration stalled with the residual unresolved.")
 
     #: How far past the equation of state's stated temperature range a root
     #: may sit.  Deliberately loose: this is not a validity check.  CoolProp
@@ -756,6 +877,46 @@ class IsoLineTracer(object):
             raise ValueError("The Newton iteration converged on the wrong side "
                              "of the saturation curve.")
 
+    @staticmethod
+    def _dome_density_table(data):
+        """(T, bulk rhomolar) of the dew and the bubble branch of a phase envelope, each sorted by T
+
+        CoolProp keeps the bulk phase in the "vap" fields on both branches.
+        """
+        T_K = np.asarray(data.T, dtype=float)
+        rho = np.asarray(data.rhomolar_vap, dtype=float)
+        Q = np.asarray(data.Q, dtype=float)
+        tables = []
+        for quality in (1.0, 0.0):
+            rows = np.flatnonzero((Q == quality) & np.isfinite(T_K) & np.isfinite(rho))
+            order = rows[np.argsort(T_K[rows])]
+            tables.append((T_K[order], rho[order]))
+        return tables
+
+    def _far_from_the_dome(self, T, rhomolar):
+        """Whether a root is clear of the dome a closed envelope describes at its temperature
+
+        Used where the saturation solver does not answer, near the critical
+        point: the densities of the dome there are read from the envelope
+        instead, widened by TOP_DENSITY_MARGIN, and a root outside them
+        cannot be in the dome. Above the top of the envelope its last
+        densities are used. Only for closed envelopes, which run up to the
+        critical point.
+        """
+        if self._dome_densities is None:
+            return False
+        rho_liq_top, rho_vap_top = self._envelope_top[2], self._envelope_top[3]
+        top_is_critical = abs(rho_liq_top - rho_vap_top) <= self.TOP_GAP_RTOL * max(rho_liq_top, rho_vap_top)
+        if top_is_critical and T > self._envelope_top[0] * (1.0 + self.ABOVE_TOP_RTOL):
+            return True
+        bounds = []
+        for T_table, rho_table in self._dome_densities:
+            if len(T_table) < 2:
+                return False
+            bounds.append(float(np.interp(T, T_table, rho_table)))   # clamps beyond the table's ends
+        rho_lo, rho_hi = min(bounds), max(bounds)
+        return rhomolar > rho_hi * self.TOP_DENSITY_MARGIN or rhomolar < rho_lo / self.TOP_DENSITY_MARGIN
+
     def _check_outside_the_dome(self, T, rhomolar):
         """Confirm there is no two-phase region around this root
 
@@ -791,6 +952,8 @@ class IsoLineTracer(object):
         if undecided is not None:
             bound = self._dome_T_limit
             if bound is None or T <= bound:
+                if self._far_from_the_dome(T, rhomolar):
+                    return  # near the critical point, but away from what is left of the dome
                 raise ValueError("This root cannot be shown to be outside the "
                                  "two-phase dome: {0}.".format(undecided))
             return          # above any possible dome, so there is none to be in

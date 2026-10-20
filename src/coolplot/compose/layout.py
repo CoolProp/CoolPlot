@@ -195,96 +195,83 @@ class Piece:
 
     def project(self, qx: float, qy: float) -> Tuple[float, float]:
         """(arc length, distance) of the point on the piece nearest to (qx, qy)."""
-        best = (0.0, math.inf)
-        for i in range(len(self.px) - 1):
-            ax, ay, bx, by = self.px[i], self.py[i], self.px[i + 1], self.py[i + 1]
-            dx, dy = bx - ax, by - ay
-            seg = dx * dx + dy * dy
-            t = 0.0 if seg == 0.0 else min(1.0, max(0.0, ((qx - ax) * dx + (qy - ay) * dy) / seg))
-            dist = math.hypot(ax + t * dx - qx, ay + t * dy - qy)
-            if dist < best[1]:
-                best = (self.arc[i] + t * math.sqrt(seg), dist)
-        return best
+        ax, ay = self.px[:-1], self.py[:-1]
+        dx, dy = np.diff(self.px), np.diff(self.py)
+        seg = dx * dx + dy * dy
+        safe = np.where(seg == 0.0, 1.0, seg)
+        t = np.where(seg == 0.0, 0.0, np.clip(((qx - ax) * dx + (qy - ay) * dy) / safe, 0.0, 1.0))
+        dist = np.hypot(ax + t * dx - qx, ay + t * dy - qy)
+        i = int(np.argmin(dist))   # the first of equally near segments, like a loop would find
+        return float(self.arc[i] + t[i] * math.sqrt(seg[i])), float(dist[i])
 
 
-def _clip_segment(x0, y0, x1, y1, width, height):
-    """Liang-Barsky clipping of a segment to the plot area.
+#: Frame edges by the code the clipping below uses; -1 means no edge.
+_EDGE_NAMES = ("left", "right", "bottom", "top")
 
-    Returns (t0, t1, edge0, edge1): the visible parameter range and the
-    edges crossed at either end (None where the end point is inside), or
-    None if nothing is visible.
+
+def _clip_segments(x0, y0, x1, y1, width: float, height: float):
+    """Liang-Barsky clipping of all segments to the plot area at once.
+
+    Returns (t0, t1, edge0, edge1, visible): per segment the visible
+    parameter range, the codes of the edges crossed at either end (-1
+    where the end point is inside) and whether anything is visible. An
+    end point exactly on the frame also counts as crossing it: isolines
+    often end exactly at the axis limits, because the calculation domain
+    and the axis limits are the same.
     """
-    crossings = _frame_crossings(x0, y0, x1 - x0, y1 - y0, width, height)
-    if crossings is None:
-        return None
-    t0, t1, edge0, edge1 = crossings
-    # An end point exactly on the frame also counts as crossing it: isolines
-    # often end exactly at the axis limits, because the calculation domain
-    # and the axis limits are the same.
-    if edge0 is None:
-        edge0 = _on_edge(x0, y0, width, height)
-    if edge1 is None:
-        edge1 = _on_edge(x1, y1, width, height)
-    return t0, t1, edge0, edge1
+    dx, dy = x1 - x0, y1 - y0
+    n = len(x0)
+    t0, t1 = np.zeros(n), np.ones(n)
+    edge0, edge1 = np.full(n, -1), np.full(n, -1)
+    visible = np.isfinite(x0) & np.isfinite(y0) & np.isfinite(x1) & np.isfinite(y1)
+    for code, (p, q) in enumerate(((-dx, x0), (dx, width - x0), (-dy, y0), (dy, height - y0))):
+        parallel = p == 0.0
+        visible &= ~(parallel & (q < 0.0))   # parallel to this edge and outside it
+        t = q / np.where(parallel, 1.0, p)
+        entering = (p < 0.0) & (t > t0)
+        t0, edge0 = np.where(entering, t, t0), np.where(entering, code, edge0)
+        leaving = (p > 0.0) & (t < t1)
+        t1, edge1 = np.where(leaving, t, t1), np.where(leaving, code, edge1)
+    visible &= t0 <= t1
+    edge0 = np.where(edge0 == -1, _on_edges(x0, y0, width, height), edge0)
+    edge1 = np.where(edge1 == -1, _on_edges(x1, y1, width, height), edge1)
+    return t0, t1, edge0, edge1, visible
 
 
-def _frame_crossings(x0, y0, dx, dy, width, height):
-    """(t0, t1, entering edge, leaving edge) of the segment against the four frame edges, or None."""
-    t0, t1, edge0, edge1 = 0.0, 1.0, None, None
-    for p, q, edge in ((-dx, x0, "left"), (dx, width - x0, "right"),
-                       (-dy, y0, "bottom"), (dy, height - y0, "top")):
-        if p == 0.0:   # parallel to this edge: visible only if on the inside
-            if q < 0.0:
-                return None
-            continue
-        t = q / p
-        if p < 0.0 and t > t0:   # entering through this edge
-            t0, edge0 = t, edge
-        elif p > 0.0 and t < t1:   # leaving through this edge
-            t1, edge1 = t, edge
-    return None if t0 > t1 else (t0, t1, edge0, edge1)
-
-
-def _on_edge(x, y, width, height, tol=1e-6):
-    """The frame edge a point lies on, or None."""
-    for value, limit, edge in ((y, height, "top"), (x, width, "right"), (y, 0.0, "bottom"), (x, 0.0, "left")):
-        if abs(value - limit) <= tol * max(width, height):
-            return edge
-    return None
+def _on_edges(x, y, width: float, height: float, tol: float = 1e-6):
+    """The code of the frame edge each point lies on, or -1; top, right, bottom, left in that order of preference."""
+    near = tol * max(width, height)
+    codes = np.full(len(x), -1)
+    for value, limit, code in ((x, 0.0, 0), (y, 0.0, 2), (x, width, 1), (y, height, 3)):
+        codes = np.where(np.abs(value - limit) <= near, code, codes)   # later edges win, so top comes first
+    return codes
 
 
 def visible_pieces(px: np.ndarray, py: np.ndarray, width: float, height: float) -> List[Piece]:
     """The parts of a polyline inside the plot area. NaN points split a line."""
+    px, py = np.asarray(px, dtype=float), np.asarray(py, dtype=float)
+    if len(px) < 2:
+        return []
+    x0, y0, x1, y1 = px[:-1], py[:-1], px[1:], py[1:]
+    t0, t1, edge0, edge1, visible = _clip_segments(x0, y0, x1, y1, width, height)
+    # A piece starts at a visible segment that enters through an edge or
+    # follows an invisible segment or one that left through an edge; it
+    # ends at a segment that leaves, or is followed by one that does not
+    # continue it.
+    before = np.concatenate(([False], visible[:-1]))
+    left_before = np.concatenate(([True], edge1[:-1] != -1))
+    starts = np.flatnonzero(visible & ((edge0 != -1) | ~before | left_before))
+    after = np.concatenate((visible[1:], [False]))
+    enters_after = np.concatenate((edge0[1:] != -1, [True]))
+    ends = np.flatnonzero(visible & ((edge1 != -1) | ~after | enters_after))
     pieces: List[Piece] = []
-    xs: List[float] = []
-    ys: List[float] = []
-    start_edge = None
-
-    def close(end_edge):
-        nonlocal xs, ys
-        if len(xs) >= 2:
-            pieces.append(Piece(np.array(xs), np.array(ys), start_edge, end_edge))
-        xs, ys = [], []
-
-    for i in range(len(px) - 1):
-        x0, y0, x1, y1 = px[i], py[i], px[i + 1], py[i + 1]
-        if not (math.isfinite(x0) and math.isfinite(y0) and math.isfinite(x1) and math.isfinite(y1)):
-            close(None)
-            continue
-        clipped = _clip_segment(x0, y0, x1, y1, width, height)
-        if clipped is None:
-            close(None)
-            continue
-        t0, t1, edge0, edge1 = clipped
-        if edge0 is not None or not xs:
-            close(None)
-            start_edge = edge0
-            xs, ys = [x0 + t0 * (x1 - x0)], [y0 + t0 * (y1 - y0)]
-        xs.append(x0 + t1 * (x1 - x0))
-        ys.append(y0 + t1 * (y1 - y0))
-        if edge1 is not None:
-            close(edge1)
-    close(None)
+    for a, b in zip(starts, ends):
+        rows = slice(a, b + 1)
+        xs = np.concatenate(([x0[a] + t0[a] * (x1[a] - x0[a])], x0[rows] + t1[rows] * (x1[rows] - x0[rows])))
+        ys = np.concatenate(([y0[a] + t0[a] * (y1[a] - y0[a])], y0[rows] + t1[rows] * (y1[rows] - y0[rows])))
+        start_edge = _EDGE_NAMES[edge0[a]] if edge0[a] != -1 else None
+        end_edge = _EDGE_NAMES[edge1[b]] if edge1[b] != -1 else None
+        pieces.append(Piece(xs, ys, start_edge, end_edge))
     return pieces
 
 

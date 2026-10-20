@@ -11,8 +11,10 @@ from typing import Dict, Tuple
 
 from .quantities import quantity_key
 
-#: Quantities stored in every state of a fluid, in this order.
-STATE_KEYS = ("T", "p", "h", "s", "rho", "u", "Q")
+#: Quantities stored in every state of a fluid, in this order. The
+#: specific volume v is 1/rho, kept so that states read the same way as
+#: those of humid air and can be given by v.
+STATE_KEYS = ("T", "p", "h", "s", "rho", "v", "u", "Q")
 
 #: Quantities stored in every state of humid air (per kg of dry air).
 AIR_STATE_KEYS = ("T", "W", "RH", "Twb", "Tdp", "h", "v", "p")
