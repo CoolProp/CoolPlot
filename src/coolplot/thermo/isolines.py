@@ -290,8 +290,8 @@ def compute_isoline(fluid: Fluid, diagram: DiagramType, iso_key: str, value_SI: 
     pressure (see :meth:`DiagramType.sweep_quantity`) is stepped through
     its range in ``tp_box`` = (T_min_K, T_max_K, p_min_Pa, p_max_Pa), see
     the module docstring. Both axis values are read from each resulting
-    state. ``points`` sets the resolution: about the number of points a
-    line across the whole chart gets, before its bends add more.
+    state. ``points`` sets the resolution: a straight line across the
+    whole chart gets about ``points / 2`` points, bends add more.
 
     ``solver`` is "flash" (one CoolProp flash per point), "tracer" (walk
     along the line, see :mod:`coolplot.thermo.tracer`, with a flash for
