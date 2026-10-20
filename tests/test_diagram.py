@@ -143,3 +143,13 @@ def test_no_warnings_from_a_plain_chart():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         diagram.draw(SvgRenderer())
+
+
+def test_changing_the_diagram_type_drops_families_it_cannot_draw():
+    d = PropertyDiagram("HEOS::R290", "Ts", units="EUR", tp_limits="ACHP")
+    d.set_isolines("h", num=3, points=40)
+    d.set_isolines("p", num=3, points=40)
+    d.diagram_type = "ph"   # h and p are the axes of a p-h diagram
+    assert d.spec.isolines == ()
+    d.set_isolines("T", num=3, points=40)
+    d.update_scene()   # draws without the dropped families

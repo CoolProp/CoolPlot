@@ -61,6 +61,7 @@ class Renderer:
         self.last_report: Optional[SyncReport] = None
         self._callbacks: Dict[int, Callable] = {}
         self._next_token = 0
+        self._events_started = False   # _start_events() runs on the first connect only
         # True while sync() runs: limit changes made by sync are not user events
         self._syncing = False
 
@@ -191,14 +192,16 @@ class Renderer:
         """
         self._next_token += 1
         self._callbacks[self._next_token] = callback
-        self._start_events()
+        if not self._events_started:
+            self._events_started = True
+            self._start_events()
         return self._next_token
 
     def disconnect(self, token: int):
         self._callbacks.pop(token, None)
 
     def _start_events(self):
-        """Hook: begin listening to the library's input events (called on connect)."""
+        """Hook: begin listening to the library's input events (called on the first connect)."""
 
     def _emit(self, event):
         for callback in list(self._callbacks.values()):
