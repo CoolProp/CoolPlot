@@ -45,7 +45,25 @@ guide in the documentation says what to change in your code.
 - The quality solver of the tracer no longer accepts a residual that is
   not a number (it compared as "same side" and passed the residual
   check, so the saturated liquid was reported as the point).
-- Both found in the review of CoolProp's port of these numerics; the
+- The crossing of an isoline with the dome (a regula falsi on the
+  saturation states) no longer returns its last iterate when it has not
+  converged in 60 steps.  A mixture line then takes the phase-envelope
+  crossing; a pure fluid's line goes on without a point at the dome.
+- The trivial-solution check of a mixture's two-phase state fails
+  closed: when the saturated outputs cannot be computed, the state is
+  not taken as two distinct phases (a fallback flash or a gap instead).
+- A saturation pressure or density that is not a number leaves the
+  tracer's outside-the-dome check undecided; before, `max()` dropped a
+  NaN pressure and a NaN density made the inside-the-dome test false.
+- The bubble and dew ends of a pure fluid's isotherm or isobar, which
+  have the same sweep value up to rounding, are ordered by quality, not
+  by the rounding noise.
+- A temperature or pressure limit that is NaN, also a relative limit
+  with a NaN factor, is refused with a clear error (it ended in an
+  "empty plotting region").
+- A line of constant quality with fewer than two points says why in
+  `reason`.
+- All found in the review of CoolProp's port of these numerics; the
   port has the same fixes.
 
 ### 0.9.0
