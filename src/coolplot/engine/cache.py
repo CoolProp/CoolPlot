@@ -6,6 +6,7 @@ the thermo layer only knows how to compute a single curve.
 """
 from __future__ import annotations
 
+import threading
 from collections import OrderedDict
 from typing import Any, Callable, Hashable
 
@@ -19,10 +20,15 @@ class CurveCache:
     full, the least recently used curve is dropped.
 
     ``hits`` and ``misses`` count how often a curve was reused or computed.
+
+    One cache may serve several diagrams and their worker threads at once,
+    so every access to the store holds a lock; a curve is computed outside
+    of it.
     """
 
     def __init__(self, max_size: int = 2000):
         self._store: "OrderedDict[Hashable, Any]" = OrderedDict()
+        self._lock = threading.RLock()
         self.max_size = max_size
         self.hits = 0
         self.misses = 0
@@ -32,15 +38,14 @@ class CurveCache:
 
     def get_or_compute(self, key: Hashable, compute: Callable[[], Any]) -> Any:
         """The value stored under ``key``, or the result of ``compute()``, which is stored first."""
-        if key in self._store:
-            self._store.move_to_end(key)
-            self.hits += 1
-            return self._store[key]
-        self.misses += 1
+        with self._lock:
+            if key in self._store:
+                self._store.move_to_end(key)
+                self.hits += 1
+                return self._store[key]
+            self.misses += 1
         curve = compute()
-        self._store[key] = curve
-        if len(self._store) > self.max_size:
-            self._store.popitem(last=False)
+        self.put(key, curve)
         return curve
 
     def peek(self, key: Hashable):
@@ -48,18 +53,21 @@ class CurveCache:
 
         A curve found counts as recently used, so curves on screen are the
         last to be dropped."""
-        curve = self._store.get(key)
-        if curve is not None:
-            self._store.move_to_end(key)
-        return curve
+        with self._lock:
+            curve = self._store.get(key)
+            if curve is not None:
+                self._store.move_to_end(key)
+            return curve
 
     def put(self, key: Hashable, curve: Any):
         """Store a curve computed elsewhere (for example in a worker)."""
-        self._store[key] = curve
-        self._store.move_to_end(key)
-        if len(self._store) > self.max_size:
-            self._store.popitem(last=False)
+        with self._lock:
+            self._store[key] = curve
+            self._store.move_to_end(key)
+            if len(self._store) > self.max_size:
+                self._store.popitem(last=False)
 
     def clear(self):
         """Forget every stored value."""
-        self._store.clear()
+        with self._lock:
+            self._store.clear()

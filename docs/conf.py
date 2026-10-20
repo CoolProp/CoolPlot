@@ -52,8 +52,12 @@ numpydoc_class_members_toctree = False
 # docstring. The section checks (parameters, returns) are not enforced:
 # the docstrings describe what matters in prose.
 numpydoc_validation_checks = {"GL08"}
+# Chart.kind is a class attribute set to None (documented with a "#:"
+# comment); before Python 3.13 None has no docstring of its own, so the
+# check would report it there and pass on newer Pythons.
 numpydoc_validation_exclude = {r"\.__init__$", r"\.__getattr__$", r"\.__reduce__$", r"coolplot\.testing\..*",
-                               r"\.AbstractState$", r"\.ProcessPoolExecutor$", r"\.ThreadPoolExecutor$"}
+                               r"\.AbstractState$", r"\.ProcessPoolExecutor$", r"\.ThreadPoolExecutor$",
+                               r"coolplot\.chart\.Chart\.kind$"}
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
