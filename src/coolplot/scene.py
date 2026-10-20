@@ -17,6 +17,10 @@ Items are immutable. To change one, build a new item with the same id and
 put it into the scene. If the new item equals the old one, the scene keeps
 the old object and nothing is redrawn.
 
+A scene can be written as plain data (:meth:`Scene.to_dict`) and read
+back (:meth:`Scene.from_dict`); docs/contracts.md describes that form,
+which is the contract for renderers written in other languages.
+
 This module imports neither CoolProp nor any plotting library.
 """
 from __future__ import annotations
@@ -28,7 +32,8 @@ from typing import Dict, Iterable, Iterator, Optional, Tuple
 import numpy as np
 
 
-from .style.values import AxesStyle, LineStyle, MarkerStyle, TextStyle  # noqa: F401 (re-exported)
+from .style.values import (AxesStyle, LineStyle, MarkerStyle, TextStyle,  # noqa: F401 (re-exported)
+                           style_from_dict, style_to_dict)
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +172,8 @@ def items_equal(a: Item, b: Item) -> bool:
         if isinstance(va, np.ndarray) or isinstance(vb, np.ndarray):
             if not np.array_equal(va, vb, equal_nan=True):
                 return False
+        elif isinstance(va, float) and isinstance(vb, float) and math.isnan(va) and math.isnan(vb):
+            continue   # a text at NaN stays where it is, like a NaN in an array
         elif va != vb:
             return False
     return True
@@ -352,3 +359,87 @@ class Scene:
         if changed:
             self.revision += 1
         return changed
+
+    # Storage ---------------------------------------------------------------
+    def to_dict(self) -> dict:
+        """Plain data (dicts, lists, numbers, strings, None) describing the
+        scene, in drawing order; see docs/contracts.md. NaN becomes None."""
+        return {"axes": axes_to_dict(self._axes), "items": [item_to_dict(self._items[i]) for i in self.draw_order()]}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Scene":
+        """A scene from :meth:`to_dict` data. The items keep their order."""
+        items = [item_from_dict(d) for d in data.get("items", ())]
+        seen = set()
+        for item in items:
+            # The scene keeps one item per id: a second one would silently replace the first
+            if item.id in seen:
+                raise ValueError("Duplicate item id '{0}' in scene.".format(item.id))
+            seen.add(item.id)
+        return cls(axes_from_dict(data.get("axes", {})), items)
+
+
+# ---------------------------------------------------------------------------
+# Plain data
+# ---------------------------------------------------------------------------
+_ITEM_TYPES = {"line": Line, "markers": Markers, "text": Text}
+_STYLE_TYPES = {Line: LineStyle, Markers: MarkerStyle, Text: TextStyle}
+
+
+def _number(value):
+    """A float for JSON: finite as it is, NaN and infinities as None."""
+    return float(value) if math.isfinite(value) else None
+
+
+def _numbers(values) -> list:
+    return [_number(v) for v in values]
+
+
+def _float(value) -> float:
+    return float("nan") if value is None else float(value)
+
+
+def item_to_dict(item: Item) -> dict:
+    """An item as plain data; ``"type"`` says which kind it is."""
+    out = {"type": next(name for name, cls in _ITEM_TYPES.items() if cls is type(item)),
+           "id": item.id, "group": item.group, "role": item.role, "legend": item.legend,
+           "visible": item.visible, "z_order": item.z_order, "style": style_to_dict(item.style)}
+    if isinstance(item, Text):
+        out.update(x=_number(item.x), y=_number(item.y), text=item.text, direction=None if item.direction is None else
+                   list(item.direction), offset_pt=list(item.offset_pt), clip=item.clip)
+    else:
+        out.update(x=_numbers(item.x), y=_numbers(item.y))
+    return out
+
+
+def item_from_dict(data: dict) -> Item:
+    """The inverse of :func:`item_to_dict`."""
+    try:
+        cls = _ITEM_TYPES[data["type"]]
+    except KeyError:
+        raise ValueError("Unknown item type {0!r}, expected one of {1}.".format(data.get("type"), sorted(_ITEM_TYPES)))
+    style = style_from_dict(_STYLE_TYPES[cls], data.get("style", {}))
+    common = dict(id=data["id"], group=data.get("group", ""), role=data.get("role", ""), legend=data.get("legend"),
+                  visible=data.get("visible", True), z_order=data.get("z_order", 1.0), style=style)
+    if cls is Text:
+        direction = data.get("direction")
+        return Text(x=_float(data["x"]), y=_float(data["y"]), text=data["text"],
+                    direction=None if direction is None else tuple(direction),
+                    offset_pt=tuple(data.get("offset_pt", (0.0, 0.0))), clip=data.get("clip", True), **common)
+    return cls(x=[_float(v) for v in data["x"]], y=[_float(v) for v in data["y"]], **common)
+
+
+def axes_to_dict(axes: AxesSpec) -> dict:
+    return {"x_label": axes.x_label, "y_label": axes.y_label, "x_log": axes.x_log, "y_log": axes.y_log,
+            "x_limits": None if axes.x_limits is None else list(axes.x_limits),
+            "y_limits": None if axes.y_limits is None else list(axes.y_limits),
+            "title": axes.title, "style": style_to_dict(axes.style), "tick_digits": axes.tick_digits}
+
+
+def axes_from_dict(data: dict) -> AxesSpec:
+    return AxesSpec(x_label=data.get("x_label", ""), y_label=data.get("y_label", ""),
+                    x_log=data.get("x_log", False), y_log=data.get("y_log", False),
+                    x_limits=None if data.get("x_limits") is None else tuple(data["x_limits"]),
+                    y_limits=None if data.get("y_limits") is None else tuple(data["y_limits"]),
+                    title=data.get("title", ""), style=style_from_dict(AxesStyle, data.get("style", {})),
+                    tick_digits=data.get("tick_digits", 6))

@@ -21,6 +21,9 @@ from ..core.limits import Relative, TpLimits
 from ..core.quantities import quantity_key
 from .fluid import Fluid
 
+# Charts of humid air have a region of their own (bounds on T and W);
+# coolplot.thermo.provider.chart_domain dispatches to it.
+
 
 def resolve_tp_box(fluid: Fluid, limits: TpLimits, margin: float = 1e-7) -> Tuple[float, float, float, float]:
     """Absolute (T_min_K, T_max_K, p_min_Pa, p_max_Pa) for one fluid.

@@ -14,7 +14,9 @@ before it (see docs/architecture.md, section 4):
 * ``compose``: computed curves plus spec and settings become a scene.
 * ``render``: backends that draw a scene; ``render.mpl`` is the only module
   that imports matplotlib.
-* ``diagram``: :class:`PropertyDiagram`, the facade users work with.
+* ``chart``: :class:`Chart`, the facade users work with;
+  :class:`PropertyDiagram` and :class:`PsychrometricChart` are its two
+  constructors.
 
 See docs/styling.md for themes and docs/backends.md for writing a new
 backend.
@@ -24,8 +26,10 @@ from .__version__ import __version__  # noqa: F401
 # The names below are loaded on first access (PEP 562). Importing a light
 # module such as coolplot.scene therefore does not pull in CoolProp.
 _LAZY = {
+    "Chart": ".chart",
     "PropertyDiagram": ".diagram",
     "PsychrometricChart": ".psychrometric",
+    "HumidAirSpec": ".spec",
     "save_pdf": ".export",
     "Cycle": ".core.cycle",
     "CycleSpec": ".spec",
@@ -43,6 +47,7 @@ _LAZY = {
     "DiagramType": ".core.diagram_type",
     "TpLimits": ".core.limits",
     "Relative": ".core.limits",
+    "Region": ".core.limits",
     "StatePoint": ".core.state",
     "state_point": ".thermo",
     "process_path": ".thermo",

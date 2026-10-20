@@ -94,19 +94,6 @@ class CalcSettings:
 LABEL_MODES = ("edge", "margin", "inline")
 EDGES = ("top", "right", "bottom", "left")
 
-#: Where the labels of each isoline family preferably go in "edge" mode.
-#: Families not listed accept any edge.
-DEFAULT_EDGES = (
-    ("Q", ("bottom", "top")),
-    ("T", ("top", "right")),
-    ("p", ("right", "left")),
-    ("h", ("top", "bottom")),
-    ("s", ("top", "right")),
-    ("rho", ("right", "top")),
-    ("u", ("top", "bottom")),
-)
-
-
 @dataclass(frozen=True)
 class LabelSettings:
     """What isoline labels say and where they sit
@@ -123,7 +110,8 @@ class LabelSettings:
         state points in "edge" mode.
     edges : tuple of (family, edges)
         Preferred frame edges per isoline family, best first, for "edge"
-        mode; see DEFAULT_EDGES.
+        mode. Families not listed use the edges of their
+        :class:`coolplot.core.diagram_type.Family`.
     margin_edges : tuple of str
         Edges that carry labels in "margin" mode. The default legend sits
         outside on the right, so only "top" is used unless the legend is
@@ -147,7 +135,7 @@ class LabelSettings:
     """
     mode: str = "edge"
     keep_out_pt: float = 12.0
-    edges: Tuple[Tuple[str, Tuple[str, ...]], ...] = DEFAULT_EDGES
+    edges: Tuple[Tuple[str, Tuple[str, ...]], ...] = ()
     margin_edges: Tuple[str, ...] = ("top",)
     fallback: bool = True
     every: int = 1
@@ -181,8 +169,9 @@ class LabelSettings:
         object.__setattr__(self, "every", int(self.every))
         object.__setattr__(self, "position", float(self.position))
 
-    def preferred_edges(self, family: str) -> Tuple[str, ...]:
-        return dict(self.edges).get(family, EDGES)
+    def preferred_edges(self, family: str, default: Tuple[str, ...] = EDGES) -> Tuple[str, ...]:
+        """The edges set for a family, or ``default`` (usually the family's own)."""
+        return dict(self.edges).get(family, default)
 
     def format_value(self, value: float) -> str:
         """A label value in the central number format with ``digits`` digits."""

@@ -21,7 +21,7 @@ PACKAGE = os.path.join(SRC, "coolplot")
 # layers listed before its own, never the ones after it.
 LIBS = {"CoolProp", "matplotlib", "plotly"}
 ALL_LAYERS = ["coolplot.core", "coolplot.style", "coolplot.scene", "coolplot.spec", "coolplot.thermo",
-              "coolplot.engine", "coolplot.compose", "coolplot.render", "coolplot.diagram",
+              "coolplot.engine", "coolplot.compose", "coolplot.render", "coolplot.chart", "coolplot.diagram",
               "coolplot.psychrometric", "coolplot.export", "coolplot.interaction"]
 
 
@@ -63,7 +63,9 @@ RULES = {
                                "coolplot.style.theme", "coolplot.render.mpl", "coolplot.render.svg"},
     "coolplot.render.mpl": {"CoolProp", "plotly", "coolplot.spec", "coolplot.thermo", "coolplot.engine",
                             "coolplot.compose", "coolplot.diagram", "coolplot.psychrometric", "coolplot.interaction", "coolplot.style.theme"},
-    "coolplot.diagram": {"matplotlib", "coolplot.render", "coolplot.interaction"},
+    "coolplot.chart": {"matplotlib", "coolplot.render", "coolplot.interaction"},
+    # The two constructors over Chart; neither knows the other
+    "coolplot.diagram": {"matplotlib", "coolplot.render", "coolplot.interaction", "coolplot.psychrometric"},
     "coolplot.psychrometric": {"matplotlib", "plotly", "coolplot.render", "coolplot.interaction",
                                "coolplot.diagram"},
     # Writing several charts into one file uses the matplotlib backend only.
@@ -76,10 +78,8 @@ RULES = {
 
 # Deliberate, documented exceptions: (module, imported name, reason)
 ALLOWED = {
-    ("coolplot.diagram", "coolplot.render.mpl"):
-        "PropertyDiagram.draw/show/savefig create a MatplotlibRenderer on demand for scripts",
-    ("coolplot.psychrometric", "coolplot.render.mpl"):
-        "PsychrometricChart.draw/show/savefig create a MatplotlibRenderer on demand for scripts",
+    ("coolplot.chart", "coolplot.render.mpl"):
+        "Chart.draw/show/savefig create a MatplotlibRenderer on demand for scripts",
 }
 
 
@@ -147,7 +147,7 @@ def test_import_rules():
 
 
 def test_the_scanner_sees_lazy_imports():
-    path = os.path.join(PACKAGE, "diagram.py")
+    path = os.path.join(PACKAGE, "chart.py")
     assert "coolplot.render.mpl.MatplotlibRenderer" in _imports(path)
 
 

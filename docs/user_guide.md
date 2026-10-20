@@ -401,13 +401,17 @@ and joined by straight lines (`closed=True` closes the loop). Labels,
 themes, settings and every backend work as for property diagrams; the
 properties come from CoolProp's `HAPropsSI`, which covers about -100 to
 350 deg C and 0.1 to 100 bar. Without values, `set_lines` picks round
-values (3 to 15 lines per family).
+values (about 9 to 13 lines per family; `num=` changes that).
 
 `chart.set_view(x_limits, y_limits)` zooms without new calculations, and
 `Interaction(chart, renderer)` gives zoom, hover (`chart.state_at`) and
 dragging of process states (`chart.move_process_state`), as for property
 diagrams. `chart.spec.to_dict()` saves a chart and
-`PsychrometricChart.from_spec(PsychroSpec.from_dict(data))` restores it.
+`PsychrometricChart.from_spec(DiagramSpec.from_dict(data))` restores it.
+A psychrometric chart is a `Chart` like a property diagram: an air
+process is a cycle (`add_cycle`, `cycle_states`, `move_cycle_state`
+work on it), its items are `iso/RH/0.5` and `cycle/<name>/states`, and
+the lines come from `set_isolines` with rounding switched on.
 
 ## 9. Refrigerant blends and other mixtures
 

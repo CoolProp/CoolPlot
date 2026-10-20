@@ -8,12 +8,15 @@ from ..core.diagram_type import DiagramType
 from ..core.limits import TP_LIMITS, Relative, TpLimits, get_tp_limits
 from ..core.state import StatePoint
 from .fluid import Fluid
+from .humid_air import HumidAir
 from .isolines import Curve, compute_isoline, compute_quality_line, value_grid
 from .limits import axis_ranges_SI, property_range_SI, resolve_tp_box
 from .process import process_path, state_point
+from .provider import chart_domain, compute_curve, make_provider
 
 __all__ = [
-    "DiagramType", "Fluid", "Curve", "compute_isoline", "compute_quality_line",
+    "DiagramType", "Fluid", "HumidAir", "Curve", "compute_isoline", "compute_quality_line",
     "value_grid", "Relative", "TpLimits", "TP_LIMITS", "get_tp_limits", "axis_ranges_SI",
     "property_range_SI", "resolve_tp_box", "StatePoint", "state_point", "process_path",
+    "make_provider", "chart_domain", "compute_curve",
 ]

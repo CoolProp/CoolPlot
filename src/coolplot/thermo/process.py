@@ -14,17 +14,19 @@ from typing import List, Sequence
 import numpy as np
 
 from ..core.quantities import quantity_key
-from ..core.state import STATE_KEYS, StatePoint
-from .fluid import Fluid
+from ..core.state import StatePoint
 
 
-def state_point(fluid: Fluid, key1: str, value1_SI: float, key2: str, value2_SI: float) -> StatePoint:
-    """Evaluate a full state from two quantities, e.g. state_point(f, "p", 1e5, "T", 300)."""
-    fluid.update(quantity_key(key1), value1_SI, quantity_key(key2), value2_SI)
-    return StatePoint(**{k: fluid.get(k) for k in STATE_KEYS})
+def state_point(provider, key1: str, value1_SI: float, key2: str, value2_SI: float) -> StatePoint:
+    """Evaluate a full state from two quantities, e.g. state_point(f, "p", 1e5, "T", 300).
+
+    ``provider`` is a :class:`coolplot.thermo.Fluid` or a
+    :class:`coolplot.thermo.humid_air.HumidAir`.
+    """
+    return provider.state_point(quantity_key(key1), value1_SI, quantity_key(key2), value2_SI)
 
 
-def process_path(fluid: Fluid, start: StatePoint, end: StatePoint, along: Sequence[str] = ("p", "h"),
+def process_path(provider, start: StatePoint, end: StatePoint, along: Sequence[str] = ("p", "h"),
                  steps: int = 20) -> List[StatePoint]:
     """Intermediate states between two states.
 
@@ -45,5 +47,5 @@ def process_path(fluid: Fluid, start: StatePoint, end: StatePoint, along: Sequen
 
     path = []
     for v1, v2 in zip(ramp(key1), ramp(key2)):
-        path.append(state_point(fluid, key1, v1, key2, v2))
+        path.append(state_point(provider, key1, v1, key2, v2))
     return path

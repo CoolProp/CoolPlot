@@ -157,11 +157,12 @@ def plan(spec: DiagramSpec, domain: Domain) -> Tuple[CurveRequest, ...]:
     calc = spec.settings.calc
     requests = []
     for iso_set in spec.isolines:
+        family = spec.diagram.family(iso_set.key)
         default_points = calc.saturation_points if iso_set.key == "Q" else calc.points
         points = iso_set.points or default_points
         for value_SI in isoline_values_SI(spec, iso_set, domain):
-            if iso_set.key == "Q" and not 0.0 <= value_SI <= 1.0:
-                continue   # a quality outside 0 to 1 has no line
+            if not family.has_line(value_SI):
+                continue   # a quality outside 0 to 1, or a relative humidity of 0, has no line
             requests.append(CurveRequest(isoline_id(iso_set.key, value_SI), iso_set.key, float(value_SI),
                                          points, iso_set.labels))
     return tuple(requests)

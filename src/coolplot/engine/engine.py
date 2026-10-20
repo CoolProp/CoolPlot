@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """Computing what a plan asks for, and keeping the results.
 
-The :class:`Engine` owns everything that is expensive to make: CoolProp
-states (one :class:`coolplot.thermo.Fluid` per fluid model), the
+The :class:`Engine` owns everything that is expensive to make: the
+property providers (one :class:`coolplot.thermo.Fluid` per fluid model,
+one :class:`coolplot.thermo.humid_air.HumidAir` per total pressure), the
 calculation domains and the curves. All three are kept, keyed by the
 inputs that determine them, so a new spec only costs the calculations
 that really differ from earlier ones.
@@ -16,13 +17,10 @@ import warnings
 from collections import OrderedDict
 from typing import List, Tuple
 
-from ..core.quantities import QUANTITIES
 from ..spec.diagram import CycleSpec, DiagramSpec
-from ..spec.fluid import FluidSpec
-from ..thermo.fluid import Fluid
 from ..thermo.cycles import cycle_paths, resolve_states
-from ..thermo.isolines import Curve, compute_isoline, compute_quality_line
-from ..thermo.limits import property_range_SI, resolve_tp_box
+from ..thermo.isolines import Curve
+from ..thermo.provider import chart_domain, compute_curve, make_provider
 from .cache import CurveCache
 from .plan import CurveRequest, Domain
 
@@ -35,19 +33,19 @@ class Engine:
     cache : CurveCache, optional
         Store for the curves; pass one to share it between engines.
     max_fluids : int
-        Number of fluid models whose CoolProp states are kept.
+        Number of property providers (fluid models) that are kept.
     """
 
     def __init__(self, cache: CurveCache = None, max_fluids: int = 16):
         self.cache = cache if cache is not None else CurveCache()
         self.max_fluids = max_fluids
-        self._fluids: "OrderedDict[FluidSpec, Fluid]" = OrderedDict()
+        self._fluids: "OrderedDict[object, object]" = OrderedDict()
         self._domains: "OrderedDict[Tuple, Domain]" = OrderedDict()
         self._cycles: "OrderedDict[Tuple, Tuple]" = OrderedDict()
         self._warned = set()
 
-    def fluid(self, spec: FluidSpec) -> Fluid:
-        """The Fluid for a fluid model, created once and reused.
+    def fluid(self, spec):
+        """The property provider for a FluidSpec or HumidAirSpec, created once and reused.
 
         A fluid made under another CoolProp configuration (``set_config_*``)
         is made again. A changed reference state (``set_reference_state``)
@@ -59,7 +57,7 @@ class Engine:
         # Everything computed with the old fluid goes with it
         self._domains = OrderedDict((k, v) for k, v in self._domains.items() if k[0] != spec)
         self._cycles = OrderedDict((k, v) for k, v in self._cycles.items() if k[0] != spec)
-        fluid = Fluid(spec)
+        fluid = make_provider(spec)
         self._fluids[spec] = fluid
         if len(self._fluids) > self.max_fluids:
             self._fluids.popitem(last=False)
@@ -81,15 +79,8 @@ class Engine:
         margin = spec.settings.calc.critical_margin
         key = (spec.fluid, spec.limits, margin)
         if key not in self._domains:
-            fluid = self.fluid(spec.fluid)
-            tp_box = resolve_tp_box(fluid, spec.limits, margin)
-            ranges = []
-            for quantity in QUANTITIES:
-                try:
-                    ranges.append((quantity, property_range_SI(fluid, quantity, tp_box)))
-                except ValueError:
-                    continue   # not defined for this fluid, e.g. u for some backends
-            self._domains[key] = Domain(tuple(tp_box), tuple(ranges))
+            tp_box, ranges = chart_domain(self.fluid(spec.fluid), spec.limits, margin)
+            self._domains[key] = Domain(tp_box, ranges)
             if len(self._domains) > 64:
                 self._domains.popitem(last=False)
         self._domains.move_to_end(key)
@@ -114,12 +105,9 @@ class Engine:
         calc = spec.settings.calc
 
         def compute():
-            fluid = self.fluid(spec.fluid)
-            if request.key == "Q":
-                return compute_quality_line(fluid, spec.diagram, request.value_SI, request.points,
-                                            calc.critical_margin, calc.saturation_spacing)
-            return compute_isoline(fluid, spec.diagram, request.key, request.value_SI, domain.tp_box,
-                                   request.points, calc.solver, calc.critical_margin)
+            return compute_curve(self.fluid(spec.fluid), spec.diagram, request.key, request.value_SI,
+                                 domain.tp_box, request.points, calc.solver, calc.critical_margin,
+                                 calc.saturation_spacing)
 
         return self.cache.get_or_compute(self.cache_key(spec, domain, request), compute)
 

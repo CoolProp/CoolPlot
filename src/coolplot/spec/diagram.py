@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
-"""What a diagram shows, as one immutable value.
+"""What a chart shows, as one immutable value.
 
-:class:`DiagramSpec` holds every choice a user made: fluid, diagram type,
-units, calculation region, settings, isoline families, processes, style
-overrides, zoom window and title. All values are in SI units. It never
-computes anything; the engine and the compose layer turn it into a scene.
+:class:`DiagramSpec` holds every choice a user made: fluid (a CoolProp
+fluid or humid air), diagram type, units, calculation region, settings,
+isoline families, cycles, style overrides, zoom window and title. All
+values are in SI units. It never computes anything; the engine and the
+compose layer turn it into a scene. A property diagram and a
+psychrometric chart are the same kind of value; the diagram type carries
+the chart kind.
 
 Because a spec is immutable, an application can keep old specs for undo,
 compare two of them to see what changed, or send one to a worker thread.
@@ -17,12 +20,12 @@ from typing import Any, Dict, Optional, Tuple
 
 from ..core.cycle import Cycle, StateInput, check_loops, check_paths, default_loops
 from ..core.diagram_type import DiagramType
-from ..core.limits import Relative, TpLimits, get_tp_limits
+from ..core.limits import Region, Relative, TpLimits, get_tp_limits
 from ..core.quantities import quantity_key
 from ..core.state import StatePoint
 from ..core.units import UNIT_SYSTEMS, Unit, UnitSystem, get_unit_system
 from ..style.values import LineStyle, MarkerStyle, style_from_dict, style_to_dict
-from .fluid import FluidSpec
+from .fluid import FluidSpec, HumidAirSpec, fluid_spec_from_dict
 from .settings import Settings, get_settings
 
 Limits = Optional[Tuple[float, float]]
@@ -167,17 +170,21 @@ class CycleSpec:
 
 @dataclass(frozen=True)
 class DiagramSpec:
-    """Everything a property diagram shows, see the module docstring
+    """Everything a chart shows, see the module docstring
 
+    ``fluid`` is a :class:`FluidSpec` for a property diagram or a
+    :class:`HumidAirSpec` for a psychrometric chart, and ``limits`` a
+    :class:`TpLimits` (fluid) or a :class:`Region` with bounds on T and W
+    (humid air); the chart kind of ``diagram`` has to match.
     ``style_overrides`` maps an isoline quantity to LineStyle field changes
     on top of the theme, stored as sorted pairs so the spec stays hashable.
     ``view_SI`` is the zoom window ((x_min, x_max), (y_min, y_max)) in SI
     units, None for the full calculation region.
     """
-    fluid: FluidSpec
+    fluid: Any
     diagram: DiagramType = DiagramType("p", "h")
     units: UnitSystem = field(default_factory=lambda: get_unit_system("EUR"))
-    limits: TpLimits = field(default_factory=lambda: get_tp_limits("DEF"))
+    limits: Any = field(default_factory=lambda: get_tp_limits("DEF"))
     settings: Settings = field(default_factory=Settings)
     isolines: Tuple[IsolineSet, ...] = ()
     processes: Tuple[ProcessSpec, ...] = ()
@@ -187,10 +194,24 @@ class DiagramSpec:
     title: str = ""
 
     def __post_init__(self):
-        object.__setattr__(self, "fluid", FluidSpec.parse(self.fluid))
-        object.__setattr__(self, "diagram", DiagramType.parse(self.diagram))
+        fluid = self.fluid if isinstance(self.fluid, HumidAirSpec) else FluidSpec.parse(self.fluid)
+        diagram = DiagramType.parse(self.diagram)
+        if diagram.kind != fluid.kind:
+            raise ValueError("A {0} diagram cannot show {1}.".format(diagram.name, fluid.name))
+        if diagram.kind == "fluid":
+            if isinstance(self.limits, Region):
+                raise ValueError("A {0} diagram takes TpLimits (bounds on T and p), not a Region.".format(
+                    diagram.name))
+            limits = get_tp_limits(self.limits)
+        else:
+            limits = self.limits
+            if not isinstance(limits, Region) or any(k not in dict(limits.bounds) for k in (diagram.x, diagram.y)):
+                raise ValueError("A {0} chart needs a Region with bounds on '{1}' and '{2}', not {3!r}.".format(
+                    diagram.name, diagram.x, diagram.y, limits))
+        object.__setattr__(self, "fluid", fluid)
+        object.__setattr__(self, "diagram", diagram)
         object.__setattr__(self, "units", get_unit_system(self.units))
-        object.__setattr__(self, "limits", get_tp_limits(self.limits))
+        object.__setattr__(self, "limits", limits)
         object.__setattr__(self, "settings", get_settings(self.settings))
         keys = [s.key for s in self.isolines]
         if len(set(keys)) != len(keys):
@@ -285,7 +306,7 @@ class DiagramSpec:
     def from_dict(cls, data: dict) -> "DiagramSpec":
         overrides = tuple((k, tuple((name, _hashable(v)) for name, v in changes.items()))
                           for k, changes in data.get("style_overrides", {}).items())
-        return cls(fluid=FluidSpec.from_dict(data["fluid"]),
+        return cls(fluid=fluid_spec_from_dict(data["fluid"]),
                    diagram=DiagramType.parse(data.get("diagram", "ph")),
                    units=_units_from_dict(data.get("units", "EUR")),
                    limits=_limits_from_dict(data.get("limits", "DEF")),
@@ -321,15 +342,20 @@ def _units_from_dict(data) -> UnitSystem:
     return UnitSystem(data["name"], {k: Unit(*v) for k, v in data["units"].items()})
 
 
-def _limits_to_dict(limits: TpLimits) -> dict:
+def _limits_to_dict(limits) -> dict:
+    if isinstance(limits, Region):
+        return limits.to_dict()
+
     def bound(value):
         return {"relative": value.factor} if isinstance(value, Relative) else value
     return {name: bound(getattr(limits, name)) for name in ("T_min", "T_max", "p_min", "p_max")}
 
 
-def _limits_from_dict(data) -> TpLimits:
+def _limits_from_dict(data):
     if isinstance(data, str):
         return get_tp_limits(data)
+    if "bounds" in data:
+        return Region.from_dict(data)
 
     def bound(value):
         return Relative(float(value["relative"])) if isinstance(value, dict) else value

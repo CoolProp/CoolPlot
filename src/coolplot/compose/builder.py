@@ -1,11 +1,18 @@
 # -*- coding: utf-8 -*-
 """From computed curves to a scene.
 
-:func:`compose` takes the diagram spec, its calculation domain and the
+:func:`compose` takes the chart spec, its calculation domain and the
 computed curves (all in SI units) and builds the scene items: it converts
 to display units, resolves the theme into concrete styles, writes every
 text and places the labels. It does no property calculations, so
 everything here is cheap and runs on every update.
+
+Property diagrams and psychrometric charts go through the same code. The
+families of the chart kind (:data:`coolplot.core.diagram_type.FAMILIES`)
+say which lines belong to the phase boundary: those take the theme's
+saturation style (quality 0 and 1, relative humidity 100 %) or quality
+style (the other quality lines, the other lines of relative humidity),
+every other family takes the next palette slot.
 """
 from __future__ import annotations
 
@@ -47,8 +54,7 @@ def scaled_theme(theme: Theme, factor: float) -> Theme:
 
 def axis_label(spec: DiagramSpec, key: str) -> str:
     """Axis title with symbol and unit, e.g. "Specific enthalpy h / kJ/kg"."""
-    q = get_quantity(key)
-    return "{0} {1} / {2}".format(q.label, q.symbol, spec.units[key].label)
+    return "{0} {1} / {2}".format(spec.diagram.quantity_label(key), get_quantity(key).symbol, spec.units[key].label)
 
 
 def _include(limits, values, log: bool, pad: float = 0.04):
@@ -94,16 +100,17 @@ def axes_spec(spec: DiagramSpec, domain, theme: Theme, shown=()) -> AxesSpec:
 
 def isoline_look(spec: DiagramSpec, theme: Theme, key: str, value_SI: float):
     """(style, role, legend text, z order) of one isoline, from the theme and overrides."""
-    if key == "Q":
-        if value_SI in (0.0, 1.0):
+    family = spec.diagram.family(key)
+    if family.on_boundary:
+        if value_SI in family.boundary:
             return theme.saturation, "saturation", "Saturation", Z_SATURATION
-        return theme.quality, "quality", "Vapour quality", Z_ISOLINE
-    families = [k for k in spec.diagram.supported_isolines() if k != "Q"]
+        return theme.quality, "quality", spec.diagram.quantity_label(key), Z_ISOLINE
+    families = [f.key for f in spec.diagram.families if not f.on_boundary]
     style = theme.isoline_style(key, families)
     overrides = spec.style_override(key)
     if overrides:
         style = style.with_(**overrides)
-    return style, "isoline", get_quantity(key).label, Z_ISOLINE
+    return style, "isoline", spec.diagram.quantity_label(key), Z_ISOLINE
 
 
 def label_text(spec: DiagramSpec, key: str, value_SI: float) -> str:
@@ -120,14 +127,15 @@ def isoline_items(spec: DiagramSpec, theme: Theme, curves) -> List[Line]:
     """Lines for (request, curve) pairs from the engine.
 
     The first line of each family carries the legend entry for the family;
-    the saturation dome and the quality lines get one entry each.
+    the saturation line and the other lines of a boundary family (quality,
+    relative humidity) get one entry each.
     """
     ux, uy = spec.units[spec.diagram.x], spec.units[spec.diagram.y]
     items = []
     legends_given = set()
     for request, curve in curves:
         style, role, legend, z_order = isoline_look(spec, theme, request.key, request.value_SI)
-        legend_key = role if request.key == "Q" else request.key
+        legend_key = role if role in ("saturation", "quality") else request.key
         if legend_key in legends_given:
             legend = None
         legends_given.add(legend_key)
@@ -141,16 +149,17 @@ def label_requests(spec: DiagramSpec, theme: Theme, curves, lines: Sequence[Line
 
     Quality lines come first (they sit in the dome, where space is
     scarce), then the families in the order of the spec. Saturation lines
-    (quality 0 and 1) are not labelled; ``Settings.labels.every`` thins
-    out dense families.
+    (quality 0 and 1, relative humidity 100 %) are not labelled;
+    ``Settings.labels.every`` thins out dense families.
     """
     every = spec.settings.labels.every
     by_family = {}
     for (request, _), line in zip(curves, lines):
-        if not request.labels or (request.key == "Q" and request.value_SI in (0.0, 1.0)):
+        if not request.labels or request.value_SI in spec.diagram.family(request.key).boundary:
             continue
         by_family.setdefault(request.key, []).append((request, line))
-    order = sorted(by_family, key=lambda k: (k != "Q", [s.key for s in spec.isolines].index(k)))
+    order = sorted(by_family, key=lambda k: (not spec.diagram.family(k).on_boundary,
+                                             [s.key for s in spec.isolines].index(k)))
     requests = []
     for key in order:
         for request, line in by_family[key][::every]:
@@ -200,7 +209,8 @@ def labels_for(spec: DiagramSpec, requests, axes: AxesSpec, keep_out_lines, plot
     frame = Frame(axes.x_limits, axes.y_limits, axes.x_log, axes.y_log, *plot_size_pt)
     if settings.mode == "margin":
         return place_margin_labels(requests, frame, settings.margin_edges)
-    edges = {family: settings.preferred_edges(family) for family in {r.family for r in requests}}
+    edges = {family: settings.preferred_edges(family, spec.diagram.family(family).edges)
+             for family in {r.family for r in requests}}
     return place_edge_labels(requests, frame, keep_out_lines, settings.keep_out_pt, edges, previous,
                              settings.fallback)
 

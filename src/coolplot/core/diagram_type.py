@@ -1,47 +1,137 @@
 # -*- coding: utf-8 -*-
-"""Which quantities go on the axes of a property diagram.
+"""Which quantities go on the axes of a chart, and which lines it offers.
 
 A diagram is named after its axes with the vertical axis first, as is
 customary: "ph" is pressure over specific enthalpy (the log(p)-h chart),
-"Ts" is temperature over specific entropy.
+"Ts" is temperature over specific entropy. The psychrometric chart puts
+humidity ratio over dry-bulb temperature, "WT"; "psychrometric" is
+accepted as its name too.
+
+Every chart has a kind, "fluid" or "humid_air", which says what computes
+its states (a CoolProp AbstractState, or HAPropsSI for humid air). The
+kind decides which quantities can be axes and which families of lines
+can be drawn; see :data:`FAMILIES`.
 
 This module has no CoolProp dependency; it only knows quantity keys.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 from .quantities import get_quantity, quantity_key
 
-# Every isoline is computed by stepping through a series of values of one
-# quantity (the "sweep" quantity) while the isoline quantity is held
-# constant; both axis values are then read from the resulting states. The
-# sweep quantity is always temperature or pressure, because CoolProp's
-# flash routines are fast and reliable for the input pairs this produces
-# (PT, HmassP, PSmass, DmassT). Stepping along a plot axis instead, as older
-# versions did, needs pairs like HmassSmass or HmassT that are slow or
-# unsupported for many fluids.
-_SWEEP = {
-    "T": "p",
-    "p": "T",
-    "h": "p",
-    "s": "p",
-    "rho": "T",
-    "u": "p",
-    "Q": "T",   # lines of constant quality are traced through saturation states
+KINDS = ("fluid", "humid_air")
+
+
+@dataclass(frozen=True)
+class Family:
+    """How one family of lines (lines of constant ``key``) is drawn
+
+    Attributes
+    ----------
+    key : str
+        The quantity held constant along the lines.
+    sweep : str
+        The quantity stepped through to compute a line. For fluids it is
+        always temperature or pressure, because CoolProp's flash routines
+        are fast and reliable for the input pairs this produces (PT,
+        HmassP, PSmass, DmassT). Stepping along a plot axis instead, as
+        older versions did, needs pairs like HmassSmass or HmassT that are
+        slow or unsupported for many fluids. Humid-air lines are stepped
+        in dry-bulb temperature.
+    edges : tuple of str
+        Preferred edges of the frame for the labels of this family, best
+        first; ``Settings.labels.edges`` can override them.
+    default_num : int
+        How many lines a chart gets when the user gives no values.
+    bounds : (low, high) or None
+        Values outside have no line (vapour quality, relative humidity).
+    low_included : bool
+        Whether the low bound itself has a line: quality 0 is the
+        saturated liquid line, relative humidity 0 is the dry-air axis.
+    boundary : tuple of float
+        Values that mark the phase boundary and are drawn in the
+        saturation style: quality 0 and 1, relative humidity 1.
+    """
+    key: str
+    sweep: str
+    edges: Tuple[str, ...]
+    default_num: int = 15
+    bounds: Optional[Tuple[float, float]] = None
+    low_included: bool = True
+    boundary: Tuple[float, ...] = ()
+
+    def has_line(self, value_SI: float) -> bool:
+        """Whether a line of this value exists at all."""
+        if self.bounds is None:
+            return True
+        low, high = self.bounds
+        return (low <= value_SI if self.low_included else low < value_SI) and value_SI <= high
+
+    def check_values(self, values_SI, label: str):
+        """Raise ValueError if one of the values has no line."""
+        bad = [v for v in values_SI if not self.has_line(v)]
+        if bad:
+            low, high = self.bounds
+            span = "between {0:g} and {1:g}" if self.low_included else "above {0:g} and up to {1:g}"
+            raise ValueError("{0} has to lie {1} (as an SI value), not {2}.".format(
+                label, span.format(low, high), bad))
+
+    @property
+    def on_boundary(self) -> bool:
+        """Whether the family includes the phase boundary (quality, relative humidity)."""
+        return bool(self.boundary)
+
+
+#: The line families of every chart kind.
+FAMILIES = {
+    "fluid": (
+        Family("T", "p", ("top", "right")),
+        Family("p", "T", ("right", "left")),
+        Family("h", "p", ("top", "bottom")),
+        Family("s", "p", ("top", "right")),
+        Family("rho", "T", ("right", "top")),
+        Family("u", "p", ("top", "bottom")),
+        # Lines of constant quality are traced through saturation states
+        Family("Q", "T", ("bottom", "top"), default_num=11, bounds=(0.0, 1.0), boundary=(0.0, 1.0)),
+    ),
+    "humid_air": (
+        Family("RH", "T", ("right", "top"), default_num=11, bounds=(0.0, 1.0), low_included=False,
+               boundary=(1.0,)),
+        Family("Twb", "T", ("bottom", "left"), default_num=9),
+        Family("h", "T", ("bottom", "left"), default_num=13),
+        Family("v", "T", ("bottom", "right"), default_num=10),
+    ),
+}
+
+#: Quantities that can be on an axis, per chart kind.
+AXES = {
+    "fluid": ("T", "p", "h", "s", "rho", "u"),
+    "humid_air": ("T", "W"),
+}
+
+#: Chart kinds whose lines are computed for one orientation only: (y, x).
+FIXED_AXES = {
+    "humid_air": ("W", "T"),
+}
+
+#: Axis titles that differ from the quantity's name in one chart kind.
+_AXIS_NAMES = {
+    "humid_air": {"T": "Dry-bulb temperature"},
 }
 
 _NAMES = {
-    "TS": ("T", "s"), "PH": ("p", "h"), "HS": ("h", "s"), "PS": ("p", "s"),
-    "PD": ("p", "rho"), "PRHO": ("p", "rho"), "TD": ("T", "rho"),
-    "TRHO": ("T", "rho"), "PT": ("p", "T"),
+    "TS": ("T", "s", "fluid"), "PH": ("p", "h", "fluid"), "HS": ("h", "s", "fluid"), "PS": ("p", "s", "fluid"),
+    "PD": ("p", "rho", "fluid"), "PRHO": ("p", "rho", "fluid"), "TD": ("T", "rho", "fluid"),
+    "TRHO": ("T", "rho", "fluid"), "PT": ("p", "T", "fluid"),
+    "WT": ("W", "T", "humid_air"), "PSYCHROMETRIC": ("W", "T", "humid_air"),
 }
 
 
 @dataclass(frozen=True)
 class DiagramType:
-    """The pair of quantities on the axes
+    """The pair of quantities on the axes, and the kind of chart
 
     Attributes
     ----------
@@ -49,21 +139,49 @@ class DiagramType:
         Quantity key on the vertical axis.
     x : str
         Quantity key on the horizontal axis.
+    kind : str
+        "fluid" (a CoolProp fluid) or "humid_air".
     """
     y: str
     x: str
+    kind: str = "fluid"
+
+    def __post_init__(self):
+        if self.kind not in KINDS:
+            raise ValueError("Unknown chart kind '{0}', expected one of {1}.".format(self.kind, KINDS))
+        y, x = quantity_key(self.y), quantity_key(self.x)
+        for key in (y, x):
+            if key not in AXES[self.kind]:
+                raise ValueError("'{0}' cannot be an axis of a {1} chart, expected one of {2}.".format(
+                    key, self.kind, AXES[self.kind]))
+        if x == y:
+            raise ValueError("The axes of a diagram have to show different quantities, not '{0}' twice.".format(x))
+        if self.kind in FIXED_AXES and (y, x) != FIXED_AXES[self.kind]:
+            raise ValueError("A {0} chart shows {1} over {2}; '{3}{4}' is not offered.".format(
+                self.kind, FIXED_AXES[self.kind][0], FIXED_AXES[self.kind][1], y, x))
+        object.__setattr__(self, "y", y)
+        object.__setattr__(self, "x", x)
 
     @classmethod
     def parse(cls, name) -> "DiagramType":
-        """Build from a name like "ph", "Ts", "PH" or an existing DiagramType."""
+        """Build from a name like "ph", "Ts", "PH", "WT" or an existing DiagramType."""
         if isinstance(name, DiagramType):
             return name
-        try:
-            y, x = _NAMES[str(name).upper()]
-        except KeyError:
-            raise ValueError("Unknown diagram type '{0}', expected one of {1}.".format(
-                name, sorted(n.lower() for n in _NAMES)))
-        return cls(y=y, x=x)
+        name = str(name)
+        if name.upper() in _NAMES:
+            y, x, kind = _NAMES[name.upper()]
+            return cls(y=y, x=x, kind=kind)
+        # Any other pair of fluid axis quantities, vertical axis first: a
+        # DiagramType("T", "h") is written as "Th" and has to read back.
+        for i in range(1, len(name)):
+            try:
+                candidate = cls(y=name[:i], x=name[i:], kind="fluid")
+            except (KeyError, ValueError):
+                continue
+            if candidate.name == name:
+                return candidate
+        raise ValueError("Unknown diagram type '{0}', expected one of {1} or two fluid axis "
+                         "quantities such as 'Th'.".format(name, sorted(n.lower() for n in _NAMES)))
 
     @property
     def name(self) -> str:
@@ -77,20 +195,33 @@ class DiagramType:
     def y_log(self) -> bool:
         return get_quantity(self.y).log_scale
 
-    def sweep_quantity(self, iso_key: str) -> Optional[str]:
-        """Quantity stepped through to compute an isoline, or None if unsupported.
+    @property
+    def families(self) -> Tuple[Family, ...]:
+        """The line families this chart can draw, in their usual order."""
+        return tuple(f for f in FAMILIES[self.kind] if f.key not in (self.x, self.y))
+
+    def family(self, iso_key: str) -> Optional[Family]:
+        """The family of lines of constant ``iso_key``, or None if unsupported.
 
         A line of constant x or constant y is a straight line parallel to an
         axis and is not offered as an isoline; use the grid for that.
         """
         iso_key = quantity_key(iso_key)
-        if iso_key in (self.x, self.y):
-            return None
-        return _SWEEP.get(iso_key)
+        return next((f for f in self.families if f.key == iso_key), None)
+
+    def sweep_quantity(self, iso_key: str) -> Optional[str]:
+        """Quantity stepped through to compute an isoline, or None if unsupported."""
+        family = self.family(iso_key)
+        return None if family is None else family.sweep
 
     def supports(self, iso_key: str) -> bool:
-        return self.sweep_quantity(iso_key) is not None
+        return self.family(iso_key) is not None
 
     def supported_isolines(self):
         """Quantity keys that can be drawn as isolines in this diagram."""
-        return [k for k in _SWEEP if self.supports(k)]
+        return [f.key for f in self.families]
+
+    def quantity_label(self, key: str) -> str:
+        """The name of a quantity in this kind of chart, e.g. "Dry-bulb temperature"."""
+        key = quantity_key(key)
+        return _AXIS_NAMES.get(self.kind, {}).get(key, get_quantity(key).label)

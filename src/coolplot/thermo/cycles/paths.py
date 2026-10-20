@@ -16,8 +16,10 @@ import numpy as np
 
 from ...core.cycle import StateInput
 from ...core.state import StatePoint
-from ..fluid import Fluid
 from ..process import state_point
+
+# ``fluid`` in the functions below is a property provider: a
+# coolplot.thermo.Fluid or a coolplot.thermo.humid_air.HumidAir.
 
 #: Two states count as having the same property within this relative
 #: tolerance, when the path kind is chosen automatically.
@@ -36,7 +38,7 @@ def predecessors(loops: Sequence[Sequence[int]]) -> Dict[int, int]:
     return before
 
 
-def resolve_state(fluid: Fluid, given: StateInput, previous: StatePoint = None) -> StatePoint:
+def resolve_state(fluid, given: StateInput, previous: StatePoint = None) -> StatePoint:
     """One state from how it was given; ``previous`` is needed for a via."""
     if given.state is not None:
         return given.state
@@ -57,7 +59,7 @@ def resolve_state(fluid: Fluid, given: StateInput, previous: StatePoint = None) 
     return state_point(fluid, "p", value, "h", h)
 
 
-def resolve_states(fluid: Fluid, inputs: Dict[int, StateInput], loops) -> Dict[int, StatePoint]:
+def resolve_states(fluid, inputs: Dict[int, StateInput], loops) -> Dict[int, StatePoint]:
     """All states of a cycle.
 
     States given by two properties are computed first; a state given with
@@ -109,13 +111,15 @@ def _log_or_linear(lo: float, hi: float, n: int) -> np.ndarray:
     return np.linspace(lo, hi, n)
 
 
-def path_states(fluid: Fluid, a: StatePoint, b: StatePoint, kind: str = "auto", steps: int = 20) -> List[StatePoint]:
+def path_states(fluid, a: StatePoint, b: StatePoint, kind: str = "auto", steps: int = 20) -> List[StatePoint]:
     """States along the process from ``a`` to ``b``, both included.
 
-    Points that CoolProp cannot compute are left out; the path then has
-    a longer straight piece there, which is still a faithful line between
-    the computed states.
+    The provider may replace the kind (humid air draws every path
+    straight). Points that CoolProp cannot compute are left out; the path
+    then has a longer straight piece there, which is still a faithful line
+    between the computed states.
     """
+    kind = fluid.path_kind(a, b, kind)
     if kind == "auto":
         kind = auto_kind(a, b)
     if kind == "straight" or steps < 2:
@@ -157,7 +161,7 @@ def path_states(fluid: Fluid, a: StatePoint, b: StatePoint, kind: str = "auto", 
     return out
 
 
-def cycle_paths(fluid: Fluid, states: Dict[int, StatePoint], loops, paths: Dict[Tuple[int, int], str],
+def cycle_paths(fluid, states: Dict[int, StatePoint], loops, paths: Dict[Tuple[int, int], str],
                 steps: int = 20) -> List[List[StatePoint]]:
     """For every chain, the states along all its connections, in order."""
     out = []

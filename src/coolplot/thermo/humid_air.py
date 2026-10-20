@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 """Humid air for psychrometric charts, using CoolProp's HAPropsSI.
 
-A psychrometric chart shows moist air at one total pressure: dry-bulb
+:class:`HumidAir` is the property provider for humid air at one total
+pressure, the counterpart of :class:`coolplot.thermo.Fluid` (see
+:mod:`coolplot.thermo.provider` for what a provider offers). A
+psychrometric chart shows moist air at one total pressure: dry-bulb
 temperature T on the horizontal axis and humidity ratio W (kg of water
 vapour per kg of dry air) on the vertical axis. Lines of constant
 relative humidity RH, wet-bulb temperature Twb, specific enthalpy h and
@@ -16,51 +19,37 @@ m3/kg per kg of dry air.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
 from functools import lru_cache
-from typing import Optional, Sequence, Tuple
+from typing import Optional, Tuple
 
 import numpy as np
+import CoolProp
 from CoolProp.HumidAirProp import HAPropsSI
 
+from ..core.diagram_type import FAMILIES
+from ..core.limits import HUMID_AIR_P_LIMITS_PA as P_LIMITS_PA
+from ..core.limits import HUMID_AIR_T_LIMITS_K as T_LIMITS_K
+from ..core.limits import Region, within
+from ..core.quantities import QUANTITIES, quantity_key
+from ..core.state import AIR_STATE_KEYS, StatePoint
 from .isolines import Curve
 
-#: Quantities of humid air: key -> (HAPropsSI name, description).
-HUMID_AIR = {
-    "T": ("T", "Dry-bulb temperature"),
-    "W": ("W", "Humidity ratio"),
-    "RH": ("R", "Relative humidity"),
-    "Twb": ("B", "Wet-bulb temperature"),
-    "Tdp": ("D", "Dew-point temperature"),
-    "h": ("H", "Specific enthalpy"),
-    "v": ("V", "Specific volume"),
-}
+#: Quantities of humid air that HAPropsSI computes, by CoolPlot key.
+HUMID_AIR = tuple(k for k in AIR_STATE_KEYS if k != "p")
 
 #: Families of lines a psychrometric chart can show.
-LINE_KEYS = ("RH", "Twb", "h", "v")
+LINE_KEYS = tuple(f.key for f in FAMILIES["humid_air"])
 
-
-@dataclass(frozen=True)
-class AirState:
-    """A state of humid air in SI units (per kg of dry air)"""
-    T: float
-    W: float
-    RH: float
-    Twb: float
-    Tdp: float
-    h: float
-    v: float
-    p: float
-
-    def __getitem__(self, key: str) -> float:
-        return getattr(self, key)
 
 
 def _name(key: str) -> str:
     try:
-        return HUMID_AIR[key][0]
+        name = QUANTITIES[quantity_key(key)].humid_air_name
     except KeyError:
+        name = None
+    if name is None:
         raise ValueError("Unknown humid-air quantity '{0}', expected one of {1}.".format(key, sorted(HUMID_AIR)))
+    return name
 
 
 def humid_air(output: str, key1: str, value1: float, key2: str, value2: float, p_Pa: float) -> float:
@@ -68,12 +57,17 @@ def humid_air(output: str, key1: str, value1: float, key2: str, value2: float, p
     return HAPropsSI(_name(output), _name(key1), value1, "P", p_Pa, _name(key2), value2)
 
 
-def air_state(key1: str, value1: float, key2: str, value2: float, p_Pa: float = 101325.0) -> AirState:
-    """The full state of humid air from two properties, e.g. air_state("T", 298.15, "RH", 0.5)."""
+def air_state(key1: str, value1: float, key2: str, value2: float, p_Pa: float = 101325.0) -> StatePoint:
+    """The full state of humid air from two properties, e.g. air_state("T", 298.15, "RH", 0.5).
+
+    The state holds :data:`coolplot.core.state.AIR_STATE_KEYS`, per kg of
+    dry air.
+    """
+    key1, key2 = quantity_key(key1), quantity_key(key2)
     if key1 == key2:
         raise ValueError("Give two different properties, not '{0}' twice.".format(key1))
     values = {k: humid_air(k, key1, value1, key2, value2, p_Pa) for k in HUMID_AIR}
-    return AirState(p=p_Pa, **values)
+    return StatePoint(p=p_Pa, **values)
 
 
 def saturation_W(T_K, p_Pa: float):
@@ -312,46 +306,81 @@ def chart_ranges(p_Pa: float, T_range_K: Tuple[float, float], W_range: Tuple[flo
     return out
 
 
-#: Usual steps between lines (SI units), and how many lines a chart gets.
-DEFAULT_STEPS = {"Twb": 5.0, "h": 10e3, "v": 0.02}
-MIN_LINES, MAX_LINES = 3, 15
+class HumidAir:
+    """The property provider for humid air at one total pressure
 
-
-def _nice_step(step: float, up: bool) -> float:
-    """The next step of the 1, 2, 5, 10 ... series, up or down."""
-    exponent = math.floor(math.log10(step) + 1e-9)
-    mantissa = round(step / 10.0 ** exponent)
-    series = {1: (2, 0.5), 2: (5, 1), 5: (10, 2)}
-    return series.get(mantissa, (2, 0.5))[0 if up else 1] * 10.0 ** exponent
-
-
-def default_values(key: str, ranges: dict) -> Sequence[float]:
-    """Round values for a family over the chart, in SI units.
-
-    Starts from the usual step (Twb every 5 K, h every 10 kJ/kg, v every
-    0.02 m3/kg) and takes a coarser or finer step of the 1, 2, 5 series
-    when that would give more than MAX_LINES or fewer than MIN_LINES lines.
+    Offers what :class:`coolplot.thermo.Fluid` offers to the engine (see
+    :mod:`coolplot.thermo.provider`): states from two properties, lines
+    of one family, the calculation domain of a chart and a fingerprint
+    for the cache. Every call goes to HAPropsSI; there is no state to
+    keep, so the provider can be shared between threads.
     """
-    if key == "RH":
-        return tuple(round(0.1 * i, 10) for i in range(1, 11))
-    if key not in ranges:
-        return ()   # no state of the chart could be computed
-    lo, hi = ranges[key]
-    offset = 273.15 if key == "Twb" else 0.0   # round in deg C
+    kind = "humid_air"
+    #: The quantities a state of humid air holds.
+    quantities = AIR_STATE_KEYS
+    #: The quantities a state may be given by (the pressure is fixed).
+    inputs = HUMID_AIR
+    #: Humid air has no critical point to keep clear of.
+    has_critical_point = False
 
-    def values(step):
-        first = math.ceil((lo - offset) / step - 1e-9)
-        last = math.floor((hi - offset) / step + 1e-9)
-        return tuple(round(offset + k * step, 9) for k in range(first, last + 1))
+    def __init__(self, p_Pa: float = 101325.0):
+        p_Pa = float(p_Pa)
+        if not within(p_Pa, P_LIMITS_PA):
+            raise ValueError("The total pressure has to lie between {0} and {1} Pa for HAPropsSI, not {2} Pa.".format(
+                P_LIMITS_PA[0], P_LIMITS_PA[1], p_Pa))
+        self.p_Pa = p_Pa
 
-    step = DEFAULT_STEPS[key]
-    if len(values(step)) > MAX_LINES:
-        while len(values(step)) > MAX_LINES:   # coarser until few enough
-            step = _nice_step(step, up=True)
-    else:
-        for _ in range(12):   # finer while too few, at most down to step / 10**4
-            finer = _nice_step(step, up=False)
-            if len(values(step)) >= MIN_LINES or len(values(finer)) > MAX_LINES:
-                break
-            step = finer
-    return values(step)
+    def __repr__(self):
+        return "HumidAir({0!r})".format(self.p_Pa)
+
+    @property
+    def name(self) -> str:
+        return "humid air at {0:.6g} Pa".format(self.p_Pa)
+
+    @property
+    def model_key(self) -> Tuple:
+        return ("humid_air", self.p_Pa)
+
+    @property
+    def fingerprint(self) -> Tuple:
+        """What decides the numbers: the CoolProp version and the pressure."""
+        return (CoolProp.__version__, self.p_Pa)
+
+    def configuration_changed(self) -> bool:
+        return False   # HAPropsSI has no global settings that change its results
+
+    def state_point(self, key1: str, value1_SI: float, key2: str, value2_SI: float) -> StatePoint:
+        """The full state from two properties, e.g. state_point("T", 298.15, "RH", 0.5)."""
+        return air_state(key1, value1_SI, key2, value2_SI, self.p_Pa)
+
+    def path_kind(self, a: StatePoint, b: StatePoint, kind: str) -> str:
+        """Air processes are drawn as straight lines between their states."""
+        return "straight"
+
+    def domain(self, limits: Region, margin: float = 0.0):
+        """(tp_box, ranges) of a chart over ``limits`` (bounds on T and W).
+
+        The T-p box is flat in pressure. The ranges hold T, W and p from
+        the limits and the span of RH, Twb, h and v over the visible part
+        of the chart, so that round default values can be chosen.
+        """
+        T_range_K = limits.range_SI("T")
+        W_range = limits.range_SI("W")
+        for T_K in T_range_K:
+            if not within(T_K, T_LIMITS_K):
+                raise ValueError("Temperatures have to lie between {0} and {1} K for HAPropsSI, got {2} K.".format(
+                    T_LIMITS_K[0], T_LIMITS_K[1], T_range_K))
+        if W_range[0] < 0.0:
+            raise ValueError("Humidity ratios have to be at least 0, got {0}.".format(W_range))
+        tp_box = (T_range_K[0], T_range_K[1], self.p_Pa, self.p_Pa)
+        ranges = [("T", T_range_K), ("W", W_range), ("p", (self.p_Pa, self.p_Pa))]
+        spans = chart_ranges(self.p_Pa, T_range_K, W_range)
+        if any(key not in spans for key in LINE_KEYS):
+            raise ValueError("The region T = {0} K, W = {1} lies entirely above saturation (fog) at {2} Pa; "
+                             "there are no humid-air states to draw.".format(T_range_K, W_range, self.p_Pa))
+        ranges.extend(sorted(spans.items()))
+        return tp_box, tuple(ranges)
+
+    def line(self, key: str, value_SI: float, tp_box, points: int) -> Curve:
+        """A line of constant ``key`` over the temperature range of ``tp_box``."""
+        return psychro_line(key, value_SI, self.p_Pa, (tp_box[0], tp_box[1]), points)

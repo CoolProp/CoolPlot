@@ -1,17 +1,22 @@
 # -*- coding: utf-8 -*-
-"""Which fluid a diagram shows, as plain data.
+"""Which fluid a chart shows, as plain data.
 
-A :class:`FluidSpec` describes the fluid model completely: the CoolProp
+A :class:`FluidSpec` describes a CoolProp fluid model completely: the CoolProp
 backend, the components, their fractions and any binary interaction
 parameters a user changed. It is immutable and hashable, so it can serve
 as a cache key, and it can be saved as JSON. It does not import CoolProp;
 the thermo layer turns it into a working CoolProp state.
+:class:`HumidAirSpec` is the counterpart for psychrometric charts: humid
+air at one total pressure. Both carry a ``kind`` that names the property
+provider of the thermo layer.
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
 from typing import Tuple
+
+from ..core.limits import HUMID_AIR_P_LIMITS_PA, HUMID_AIR_T_LIMITS_K, within
 
 BASES = ("mole", "mass", "volu")
 
@@ -44,6 +49,8 @@ class FluidSpec:
     fractions: Tuple[float, ...] = ()
     basis: str = "mole"
     interactions: Tuple[Tuple[int, int, str, float], ...] = ()
+
+    kind = "fluid"
 
     def __post_init__(self):
         components = tuple(str(c).strip() for c in self.components)
@@ -125,3 +132,49 @@ class FluidSpec:
     def from_dict(cls, data: dict) -> "FluidSpec":
         return cls(data.get("backend", "HEOS"), tuple(data["components"]), tuple(data.get("fractions", ())),
                    data.get("basis", "mole"), tuple(tuple(x) for x in data.get("interactions", ())))
+
+
+@dataclass(frozen=True)
+class HumidAirSpec:
+    """Humid air at one total pressure, computed with CoolProp's HAPropsSI
+
+    The states of humid air are per kg of dry air. ``kind`` tells the
+    thermo layer which property provider to build; :class:`FluidSpec`
+    has kind "fluid".
+    """
+    p_Pa: float = 101325.0
+
+    kind = "humid_air"
+    T_LIMITS_K = HUMID_AIR_T_LIMITS_K
+    P_LIMITS_PA = HUMID_AIR_P_LIMITS_PA
+
+    def __post_init__(self):
+        p_Pa = float(self.p_Pa)
+        if not within(p_Pa, self.P_LIMITS_PA):
+            raise ValueError("The total pressure has to lie between {0} and {1} Pa for HAPropsSI, not {2} Pa "
+                             "(bar with units='EUR', Pa with 'SI').".format(self.P_LIMITS_PA[0], self.P_LIMITS_PA[1],
+                                                                             p_Pa))
+        object.__setattr__(self, "p_Pa", p_Pa)
+
+    @property
+    def name(self) -> str:
+        """Short name for titles and messages."""
+        return "humid air at {0:.6g} Pa".format(self.p_Pa)
+
+    def __str__(self):
+        return self.name
+
+    def to_dict(self) -> dict:
+        return {"model": "humid_air", "p_Pa": self.p_Pa}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "HumidAirSpec":
+        return cls(float(data.get("p_Pa", 101325.0)))
+
+
+def fluid_spec_from_dict(data) -> "FluidSpec | HumidAirSpec":
+    """The fluid of a saved spec: a FluidSpec, or a HumidAirSpec when the
+    data says ``"model": "humid_air"``."""
+    if isinstance(data, dict) and data.get("model") == "humid_air":
+        return HumidAirSpec.from_dict(data)
+    return FluidSpec.from_dict(data)
