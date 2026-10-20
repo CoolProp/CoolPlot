@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" data-x-log="0" data-y-log="1" data-x-limits="1.0 4.0" data-y-limits="0.5 50.0">
+<rect class="cp-figure" width="100%" height="100%" fill="#ffffff"/>
+<defs><clipPath id="coolplot-plot-area"><rect x="80" y="40" width="700" height="500"/></clipPath></defs>
+<rect class="cp-background" x="80" y="40" width="700" height="500" fill="#ffffff"/>
+<line class="cp-grid-major" x1="80" y1="40" x2="80" y2="540" fill="none" stroke="#dddddd" stroke-width="0.667" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>
+<line class="cp-grid-major" x1="196.667" y1="40" x2="196.667" y2="540" fill="none" stroke="#dddddd" stroke-width="0.667" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>
+<line class="cp-grid-major" x1="313.333" y1="40" x2="313.333" y2="540" fill="none" stroke="#dddddd" stroke-width="0.667" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>
+<line class="cp-grid-major" x1="430" y1="40" x2="430" y2="540" fill="none" stroke="#dddddd" stroke-width="0.667" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>
+<line class="cp-grid-major" x1="546.667" y1="40" x2="546.667" y2="540" fill="none" stroke="#dddddd" stroke-width="0.667" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>
+<line class="cp-grid-major" x1="663.333" y1="40" x2="663.333" y2="540" fill="none" stroke="#dddddd" stroke-width="0.667" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>
+<line class="cp-grid-major" x1="780" y1="40" x2="780" y2="540" fill="none" stroke="#dddddd" stroke-width="0.667" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>
+<line class="cp-grid-major" x1="80" y1="464.743" x2="780" y2="464.743" fill="none" stroke="#dddddd" stroke-width="0.667" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>
+<line class="cp-grid-major" x1="80" y1="214.743" x2="780" y2="214.743" fill="none" stroke="#dddddd" stroke-width="0.667" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/>
+<g class="cp-items">
+<g data-item="a" class="cp-item" clip-path="url(#coolplot-plot-area)"><path class="cp-stroke" d="M80,540L313.333,290L546.667,40" fill="none" stroke="#000000" stroke-width="1.333" stroke-opacity="1" stroke-linecap="butt" stroke-linejoin="round"/></g>
+<g data-item="b" class="cp-item" clip-path="url(#coolplot-plot-area)" fill="#000000" stroke="#000000" stroke-width="1.333" opacity="1" data-shape="o" data-size-pt="6"></g>
+</g>
+<rect class="cp-frame" x="80" y="40" width="700" height="500" fill="none" stroke="#000000" stroke-width="1.067"/>
+<line class="cp-tick cp-tick-x" x1="80" y1="540" x2="80" y2="544.667" stroke="#000000" stroke-width="1.067"/>
+<text class="cp-tick-label cp-tick-label-x" x="80" y="547.667" text-anchor="middle" dominant-baseline="text-before-edge" data-value="1.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" font-style="normal" fill="#000000" fill-opacity="1">1</text>
+<line class="cp-tick cp-tick-x" x1="196.667" y1="540" x2="196.667" y2="544.667" stroke="#000000" stroke-width="1.067"/>
+<text class="cp-tick-label cp-tick-label-x" x="196.667" y="547.667" text-anchor="middle" dominant-baseline="text-before-edge" data-value="1.5" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" font-style="normal" fill="#000000" fill-opacity="1">1.5</text>
+<line class="cp-tick cp-tick-x" x1="313.333" y1="540" x2="313.333" y2="544.667" stroke="#000000" stroke-width="1.067"/>
+<text class="cp-tick-label cp-tick-label-x" x="313.333" y="547.667" text-anchor="middle" dominant-baseline="text-before-edge" data-value="2.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" font-style="normal" fill="#000000" fill-opacity="1">2</text>
+<line class="cp-tick cp-tick-x" x1="430" y1="540" x2="430" y2="544.667" stroke="#000000" stroke-width="1.067"/>
+<text class="cp-tick-label cp-tick-label-x" x="430" y="547.667" text-anchor="middle" dominant-baseline="text-before-edge" data-value="2.5" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" font-style="normal" fill="#000000" fill-opacity="1">2.5</text>
+<line class="cp-tick cp-tick-x" x1="546.667" y1="540" x2="546.667" y2="544.667" stroke="#000000" stroke-width="1.067"/>
+<text class="cp-tick-label cp-tick-label-x" x="546.667" y="547.667" text-anchor="middle" dominant-baseline="text-before-edge" data-value="3.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" font-style="normal" fill="#000000" fill-opacity="1">3</text>
+<line class="cp-tick cp-tick-x" x1="663.333" y1="540" x2="663.333" y2="544.667" stroke="#000000" stroke-width="1.067"/>
+<text class="cp-tick-label cp-tick-label-x" x="663.333" y="547.667" text-anchor="middle" dominant-baseline="text-before-edge" data-value="3.5" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" font-style="normal" fill="#000000" fill-opacity="1">3.5</text>
+<line class="cp-tick cp-tick-x" x1="780" y1="540" x2="780" y2="544.667" stroke="#000000" stroke-width="1.067"/>
+<text class="cp-tick-label cp-tick-label-x" x="780" y="547.667" text-anchor="middle" dominant-baseline="text-before-edge" data-value="4.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" font-style="normal" fill="#000000" fill-opacity="1">4</text>
+<line class="cp-tick cp-tick-y" x1="80" y1="464.743" x2="75.333" y2="464.743" stroke="#000000" stroke-width="1.067"/>
+<text class="cp-tick-label cp-tick-label-y" x="72.333" y="464.743" text-anchor="end" dominant-baseline="central" data-value="1.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" font-style="normal" fill="#000000" fill-opacity="1">1</text>
+<line class="cp-tick cp-tick-y" x1="80" y1="214.743" x2="75.333" y2="214.743" stroke="#000000" stroke-width="1.067"/>
+<text class="cp-tick-label cp-tick-label-y" x="72.333" y="214.743" text-anchor="end" dominant-baseline="central" data-value="10.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" font-style="normal" fill="#000000" fill-opacity="1">10</text>
+<text class="cp-x-label" x="430" y="592" text-anchor="middle" dominant-baseline="text-after-edge" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="13.333" font-weight="normal" font-style="normal" fill="#000000" fill-opacity="1"></text>
+<text class="cp-y-label" x="18" y="290" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 18 290)" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="13.333" font-weight="normal" font-style="normal" fill="#000000" fill-opacity="1"></text>
+</svg>

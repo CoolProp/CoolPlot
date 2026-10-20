@@ -109,7 +109,7 @@ def test_svg_renderer_regenerates_only_changed_elements():
                   [_line("a"), _line("b", y0=1.0),
                    Markers(id="m", x=[1.0], y=[1.0]),
                    Text(id="t", x=1.0, y=1.0, text="p < 5 & T > 3", direction=(1.0, 1.0))])
-    svg = SvgRenderer()
+    svg = SvgRenderer(native=False)   # the element cache of the Python writer
     svg.sync(scene)
     doc = svg.to_svg()
     assert doc.startswith("<svg") and doc.endswith("</svg>")

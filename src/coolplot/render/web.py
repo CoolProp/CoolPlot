@@ -149,6 +149,62 @@ body {{ margin: 0; }}
 """
 
 
+#: The page of :func:`scene_page`: the scene as JSON and the script that draws it.
+SCENE_PAGE = """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<style>
+body {{ margin: 0; }}
+#coolplot-root svg {{ max-width: 100%; height: auto; }}
+</style>
+</head>
+<body>
+<div id="coolplot-root"></div>
+<script id="coolplot-scene" type="application/json">{scene}</script>
+<script>{library}</script>
+<script>
+document.getElementById("coolplot-root").innerHTML = window.CoolPlotScene.toSvg(
+  JSON.parse(document.getElementById("coolplot-scene").textContent), {options});
+</script>
+</body>
+</html>
+"""
+
+
+def scene_script() -> str:
+    """The JavaScript renderer of scene JSON (static/scene_svg.js), as text.
+
+    It writes the SVG document of a scene record exactly as
+    :class:`coolplot.render.svg.SvgRenderer` does, so a page can draw a
+    chart from scene JSON without a server.
+    """
+    import os
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "scene_svg.js")
+    with open(path, encoding="ascii") as f:
+        return f.read()
+
+
+def scene_page(scene, width: int = 800, height: int = 600, margins=(80, 20, 40, 60), title: str = "CoolPlot") -> str:
+    """A self-contained HTML page that draws ``scene`` in the browser.
+
+    The page holds the scene record (docs/reference/contracts.md) and the
+    JavaScript renderer; nothing is computed on a server, and the page
+    shows the same SVG the SVG backend would write. ASCII only.
+    """
+    # In scene order: the JavaScript writer takes the legend from that order
+    # and sorts by z order for drawing, like the SVG backend
+    record = json.dumps(scene.to_dict(in_draw_order=False), allow_nan=False, separators=(",", ":"))
+    # Inside a script element "</" could end it early and "<!--" could start
+    # a comment; escaping every "<" as a JSON escape avoids both
+    record = record.replace("<", "\\u003c")
+    options = json.dumps({"width": int(width), "height": int(height), "margins": [float(m) for m in margins]})
+    text = SCENE_PAGE.format(title=html.escape(title), scene=record, library=scene_script(), options=options)
+    return text.encode("ascii", "xmlcharrefreplace").decode("ascii")
+
+
 def _nearest(distances, reach: float):
     """The index of the smallest distance if it is within reach, else None."""
     distances = np.asarray(distances, dtype=float)

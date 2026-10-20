@@ -17,8 +17,26 @@ guide in the documentation says what to change in your code.
   `COOLPLOT_NATIVE=0` keeps the Python numerics, which stay the reference
   and do the work for models the port cannot name
   (`coolplot.thermo.native`).
+- coolplot-core (`cpp/`): the composer, the label layout, the styles and
+  themes, the scene and the SVG writer in C++17, plus a PDF writer with
+  TrueType subsets, a C ABI and the nanobind module `coolplot_core`, for
+  programs in other languages. With `COOLPLOT_NATIVE=1` CoolPlot composes
+  and writes SVG there too; scenes and documents are the same as from
+  Python, point for point and byte for byte. Unset, the Python code does
+  it, which from Python is faster (docs/contributing/core.md).
+- `coolplot.render.pdf.PdfRenderer`: PDF without matplotlib, through
+  coolplot-core; it passes the conformance kit's PDF check.
+- `coolplot.render.web.scene_page`: a self-contained page that draws a
+  scene in the browser with a JavaScript port of the SVG writer, no server.
+- `Scene.to_dict(in_draw_order=False)` writes the items in scene order,
+  for writers that take the legend from that order.
 
 #### Fixed
+- A diagram of any pair of fluid axis quantities, such as
+  `DiagramType("T", "h")`, is written as "Th" and now reads back from its
+  spec; it failed to load before.
+- `format_number` of the largest numbers (rounding up overflowed to
+  infinity) raised; it now gives e.g. "2e308".
 - Labels next to the bottom of a log axis that starts close to zero (the
   isotherm labels of R290 with the default limits) got a NaN angle from
   matplotlib and made saving the chart fail; their angle is computed by

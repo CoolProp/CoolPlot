@@ -235,7 +235,8 @@ SVG_DEFECTS = {
 
 
 @pytest.mark.parametrize("defect", sorted(SVG_DEFECTS))
-def test_kit_rejects_svg_defect(defect):
+def test_kit_rejects_svg_defect(defect, monkeypatch):
+    monkeypatch.setenv("COOLPLOT_NATIVE", "0")   # the defects are planted in the Python writer
     assert run_conformance(SVG_DEFECTS[defect]) != []
 
 

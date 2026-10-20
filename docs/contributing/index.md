@@ -32,7 +32,8 @@ and each layer may only import the layers before it:
 | `thermo` | core | CoolProp, the only layer that does |
 | `engine` | core, spec, thermo | |
 | `compose` | core, style, scene, spec, engine | |
-| `render` | core, style, scene | matplotlib (`render.mpl` only), plotly (`render.plotly` only) |
+| `corelib` (the bridge to coolplot-core) | core, style, scene | the `coolplot_core` module, when installed |
+| `render` | core, style, scene, corelib | matplotlib (`render.mpl` only), plotly (`render.plotly` only) |
 | `chart`, `diagram`, `psychrometric`, `export`, `interaction` | everything | |
 | `testing` | everything; no backend may import it when a chart is drawn | |
 
@@ -71,6 +72,7 @@ that almost nothing is computed outside the chart.
 :hidden:
 
 writing_a_backend
+core
 architecture
 v1_plan
 v1_review

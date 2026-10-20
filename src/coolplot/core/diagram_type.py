@@ -180,6 +180,7 @@ class DiagramType:
             return cls(y=y, x=x, kind=kind)
         # Any other pair of fluid axis quantities, vertical axis first: a
         # DiagramType("T", "h") is written as "Th" and has to read back.
+        # coolplot-core (cpp/src/core.cpp) reads names the same way.
         for i in range(1, len(name)):
             try:
                 candidate = cls(y=name[:i], x=name[i:], kind="fluid")
