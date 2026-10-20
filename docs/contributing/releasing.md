@@ -3,7 +3,7 @@
 A release is a version tag. Pushing a tag such as `v1.0.0` starts the
 workflow `.github/workflows/release.yml`, which:
 
-1. runs the whole test workflow (`tests.yml`: four Python versions,
+1. runs the whole test workflow (`tests.yml`: five Python versions,
    coolplot-core, the package build and the documentation);
 2. builds the sdist and the wheel, checks them with `twine check`, and
    stops if the tag does not name the version that was built;

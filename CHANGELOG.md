@@ -38,7 +38,10 @@ guide in the documentation says what to change in your code.
 - A line where no state at all could be computed said nothing: failed
   looks while the stepping scans outside the axes count as outside, so
   the curve had no points, `n_outside` > 0 and an empty `reason`. It now
-  says "none of the N states of the line could be computed".
+  says "none of the N states of the line could be computed". A line
+  whose states were computed but lie outside the axes says so also
+  when some of its evaluations failed (it used to say "only 0 point(s)
+  of the line could be computed").
 - The quality solver of the tracer no longer accepts a residual that is
   not a number (it compared as "same side" and passed the residual
   check, so the saturated liquid was reported as the point).

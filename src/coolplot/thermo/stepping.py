@@ -83,6 +83,7 @@ class Trace:
     n_outside: int = 0
     n_failed: int = 0
     n_ok: int = 0   # evaluations that gave a state (a failed look while scanning outside counts as outside)
+    n_outside_ok: int = 0   # evaluations that gave a state outside the domain
     stopped: str = ""
 
     def add(self, u: float, sample: Optional[Sample]):
@@ -182,6 +183,7 @@ class _Walk:
                 self.trace.n_outside += 1   # a cheap look that found nothing, while the line is outside
         elif not sample.inside:
             self.trace.n_outside += 1
+            self.trace.n_outside_ok += 1
         return sample
 
     def over_budget(self) -> bool:

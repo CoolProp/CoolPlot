@@ -184,6 +184,29 @@ def test_a_line_where_no_state_can_be_computed_says_so(r290):
     assert curve.reason.startswith("none of the")
 
 
+def test_states_computed_outside_the_axes_are_reported_as_such():
+    """A failed evaluation followed by states that lie outside the axes: the
+    reason says where the states are, not that none could be computed."""
+    from types import SimpleNamespace
+    from coolplot.thermo.isolines import _Line
+    from coolplot.thermo.stepping import Metric, Sample, trace
+
+    def evaluate(u, careful):
+        if u == 0.0:
+            return None                          # the first, careful look fails
+        return Sample(u, 2.0, inside=False)      # the rest lie above the chart
+
+    metric = Metric((0.0, 1.0), (0.0, 1.0))
+    found = trace(evaluate, metric, 20)
+    assert found.n_failed >= 1 and found.n_outside_ok >= 1
+    assert not [s for s in found.samples if s is not None]
+
+    solver = SimpleNamespace(n_fallback=0, method="flash")
+    line = _Line(None, PH, "T", 300.0, None, metric, 20, solver)
+    line._count(found)
+    assert "lie in the area the axes show" in line.curve().reason
+
+
 def test_a_quality_residual_that_is_not_a_number_stops_the_solver():
     from coolplot.thermo.tracer import IsoLineTracer
     tracer = object.__new__(IsoLineTracer)        # only the regula falsi is exercised

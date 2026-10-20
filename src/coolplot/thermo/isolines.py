@@ -337,6 +337,7 @@ class _Line:
         self.n_inserted = 0
         self.n_evaluated = self.n_outside = self.n_failed = 0
         self.n_ok = 0   # evaluations that gave a state, see stepping.Trace.n_ok
+        self.n_outside_ok = 0   # of those, the states outside the domain
         self.stopped = ""   # why a part ended before the end of its range, if it did
 
     # Parts -------------------------------------------------------------
@@ -356,6 +357,7 @@ class _Line:
         self.n_outside += found.n_outside
         self.n_failed += found.n_failed
         self.n_ok += found.n_ok
+        self.n_outside_ok += found.n_outside_ok
         if found.stopped and not found.stopped.startswith("the end of the range"):
             self.stopped = found.stopped   # the line was cut short; the curve says so
 
@@ -408,7 +410,9 @@ class _Line:
             self.n_evaluated += 1
             if sample is not None:
                 self.n_ok += 1
-                self.n_outside += 0 if sample.inside else 1
+                if not sample.inside:
+                    self.n_outside += 1
+                    self.n_outside_ok += 1
                 ends.append((sample.extra[0], q, sample))
         if len(ends) < 2:
             ends = self._envelope_ends()
@@ -508,7 +512,9 @@ class _Line:
         if n < 2 and not reason:
             if self.n_evaluated > 0 and self.n_ok == 0:
                 reason = "none of the {0} states of the line could be computed".format(self.n_evaluated)
-            elif self.n_failed == 0 and self.n_outside > 0:
+            elif self.n_outside_ok > 0:
+                # States were computed, but outside the area the axes show (a failed
+                # look while scanning outside also counts in n_outside, so not that)
                 x_lo, x_hi = self.metric.x_range
                 y_lo, y_hi = self.metric.y_range
                 area = "{0} = {1:.6g}..{2:.6g}, {3} = {4:.6g}..{5:.6g} (SI)".format(
