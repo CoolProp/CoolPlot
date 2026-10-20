@@ -102,7 +102,9 @@ class Region:
             bounds.append((quantity_key(key), (low, high)))
         if len({k for k, _ in bounds}) != len(bounds):
             raise ValueError("A quantity is bounded twice in {0}.".format(bounds))
-        object.__setattr__(self, "bounds", tuple(bounds))
+        # Sorted by key: equal regions compare and hash equal (Engine.domain
+        # uses them in its cache key) and survive JSON written with sort_keys
+        object.__setattr__(self, "bounds", tuple(sorted(bounds)))
 
     def range_SI(self, key: str) -> Tuple[float, float]:
         key = quantity_key(key)

@@ -135,3 +135,30 @@ def test_both_chart_kinds_share_the_pipeline():
     assert "iso/RH/0.5" in ids and "cycle/Air conditioning/states" in ids
     state = chart.cycle_states("Air conditioning")[2]
     assert state.RH == pytest.approx(0.95) and "W" in state and "rho" not in state
+
+
+def test_a_diagram_type_without_a_short_name_round_trips():
+    from coolplot import DiagramSpec
+    from coolplot.core.diagram_type import DiagramType
+    from coolplot.spec import FluidSpec
+    spec = DiagramSpec(fluid=FluidSpec.parse("HEOS::R290"), diagram=DiagramType("T", "h"))
+    assert spec.to_dict()["diagram"] == "Th"
+    assert DiagramSpec.from_dict(json.loads(json.dumps(spec.to_dict()))) == spec
+    with pytest.raises(ValueError, match="Unknown diagram type"):
+        DiagramType.parse("Tq")
+
+
+def test_regions_with_the_same_bounds_are_equal():
+    from coolplot.core.limits import Region
+    region = Region((("T", (263.15, 323.15)), ("W", (0.0, 0.03))))
+    changed = region.with_range("T", 273.15, 313.15)
+    same = Region((("W", (0.0, 0.03)), ("T", (273.15, 313.15))))
+    assert changed == same and hash(changed) == hash(same)
+    assert Region.from_dict(json.loads(json.dumps(changed.to_dict(), sort_keys=True))) == changed
+
+
+def test_a_scene_record_with_a_repeated_id_is_refused():
+    data = conformance_scene().to_dict()
+    data["items"].append(dict(data["items"][0]))
+    with pytest.raises(ValueError, match="Duplicate item id"):
+        Scene.from_dict(data)

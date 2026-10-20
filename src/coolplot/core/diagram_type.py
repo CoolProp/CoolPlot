@@ -174,12 +174,21 @@ class DiagramType:
         """Build from a name like "ph", "Ts", "PH", "WT" or an existing DiagramType."""
         if isinstance(name, DiagramType):
             return name
-        try:
-            y, x, kind = _NAMES[str(name).upper()]
-        except KeyError:
-            raise ValueError("Unknown diagram type '{0}', expected one of {1}.".format(
-                name, sorted(n.lower() for n in _NAMES)))
-        return cls(y=y, x=x, kind=kind)
+        name = str(name)
+        if name.upper() in _NAMES:
+            y, x, kind = _NAMES[name.upper()]
+            return cls(y=y, x=x, kind=kind)
+        # Any other pair of fluid axis quantities, vertical axis first: a
+        # DiagramType("T", "h") is written as "Th" and has to read back.
+        for i in range(1, len(name)):
+            try:
+                candidate = cls(y=name[:i], x=name[i:], kind="fluid")
+            except (KeyError, ValueError):
+                continue
+            if candidate.name == name:
+                return candidate
+        raise ValueError("Unknown diagram type '{0}', expected one of {1} or two fluid axis "
+                         "quantities such as 'Th'.".format(name, sorted(n.lower() for n in _NAMES)))
 
     @property
     def name(self) -> str:
