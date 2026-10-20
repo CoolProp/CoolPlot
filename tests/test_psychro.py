@@ -188,6 +188,20 @@ def test_bad_process_input(chart):
         chart.add_cycle("Other pressure", [elsewhere], closed=False)
 
 
+def test_a_via_that_keeps_the_pressure_is_refused_for_humid_air(chart):
+    # CoolProp returns saturated air for T and the total pressure; heating
+    # at the same humidity ratio is given by W instead.
+    with pytest.raises(ValueError, match="total pressure"):
+        air_state("T", 293.15, "p", 101325.0)
+    with pytest.raises(ValueError, match="total pressure"):
+        chart.add_cycle("Winter", [{"T": -5.0, "RH": 80.0}, {"T": 20.0, "via": "isobaric"}], closed=False)
+        chart.cycle_states("Winter")
+    chart.add_cycle("Heating", [{"T": -5.0, "W": 2.0}, {"T": 20.0, "W": 2.0}], closed=False)
+    states = chart.cycle_states("Heating", units="engineering")
+    assert states[2]["W"] == pytest.approx(states[1]["W"])
+    assert states[2]["RH"] < 20.0
+
+
 def test_interaction_zooms_and_drags_air_states(chart):
     pytest.importorskip("matplotlib")
     from coolplot.core.events import DragEnd, ViewChanged
