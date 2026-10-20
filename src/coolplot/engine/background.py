@@ -144,7 +144,28 @@ class BackgroundEngine(Engine):
 
     # Asking for curves ----------------------------------------------------
     def curves(self, spec: DiagramSpec, domain: Domain, requests):
+        """The curves that are ready; the rest is queued once the scene is built.
+
+        Three steps: start a new plan (``_begin_plan``), collect what the
+        cache has through the base class (which calls ``_obtain`` per
+        request and notes what is missing), then queue the missing work
+        (``_queue_plan``). Worker threads hold the GIL while CoolProp
+        computes, so queueing only now keeps this scene quick to build.
+        """
         requests = list(requests)
+        self._begin_plan()
+        try:
+            result = super().curves(spec, domain, requests)
+        except BaseException:
+            with self._lock:
+                self._planning = False
+                if not self._jobs:
+                    self._idle.set()   # wait() must not hang on a failed request
+            raise
+        self._queue_plan(len(requests))
+        return result
+
+    def _begin_plan(self):
         with self._lock:
             if self._closed:
                 raise RuntimeError("This BackgroundEngine was closed.")
@@ -159,16 +180,8 @@ class BackgroundEngine(Engine):
             self._to_submit = []
             self._planning = True
             self._idle.clear()   # until the new plan has been queued
-        try:
-            result = super().curves(spec, domain, requests)
-        except BaseException:
-            with self._lock:
-                self._planning = False
-                if not self._jobs:
-                    self._idle.set()   # wait() must not hang on a failed request
-            raise
-        # Queue the work only now: worker threads hold the GIL while CoolProp
-        # computes, which would slow down building this scene.
+
+    def _queue_plan(self, n_requests: int):
         with self._lock:
             self._submitting = threading.get_ident()
             try:
@@ -182,11 +195,10 @@ class BackgroundEngine(Engine):
                 if key not in self._needed and future.cancel():
                     self._jobs.pop(key, None)
             ready = sum(1 for k in self._needed_final if self._done(k))
-            self._progress = (ready + len(requests) - len(self._needed_final), len(requests))
+            self._progress = (ready + n_requests - len(self._needed_final), n_requests)
             self._planning = False
             if not self._jobs:
                 self._idle.set()
-        return result
 
     def _obtain(self, spec: DiagramSpec, domain: Domain, request: CurveRequest):
         """(curve, final): the final curve if ready, else the preview, else None."""
@@ -248,35 +260,14 @@ class BackgroundEngine(Engine):
 
         ``pool_ref`` is a weak reference to the pool that ran the job.
         """
-        notify = False
         with self._lock:
             if self._jobs.get(key) is future:
                 del self._jobs[key]
+            notify = False
             if not future.cancelled():
                 self.finished_jobs += 1
-                error = future.exception()
-                if error is None:
-                    self.cache.put(key, future.result())
-                    self._failed.pop(key, None)
-                    self._suspects.discard(key)
-                elif isinstance(error, BrokenExecutor) and not alone:
-                    # Some job crashed the shared pool, maybe not this one: no
-                    # attempt is counted, the job is retried alone
-                    self._suspects.add(key)
-                    if pool_ref is not None and pool_ref() is self._pool:
-                        self._broken = True   # replaced on the next request
-                else:
-                    # Not cached: the next request tries again, up to MAX_TRIES
-                    attempts = self._failed.get(key, (0, ""))[0] + 1
-                    if len(self._failed) > 10000:   # a long session with many failing lines, not a leak
-                        self._failed.clear()
-                        self._suspects.clear()
-                    self._failed[key] = (attempts, "{0}: {1}".format(type(error).__name__, error))
-                if key in self._needed_final and self._done(key):
-                    ready, total = self._progress
-                    self._progress = (min(ready + 1, total), total)
-                if key in self._needed and not self._notified:
-                    self._notified = notify = True
+                self._record(key, future, pool_ref, alone)
+                notify = self._count_progress(key)
             if not self._jobs and not self._planning:
                 self._idle.set()
             if self._closed:
@@ -290,6 +281,40 @@ class BackgroundEngine(Engine):
                 threading.Thread(target=self.on_ready, args=(self,), daemon=True).start()
             else:
                 self.on_ready(self)
+
+    def _count_progress(self, key: Tuple) -> bool:
+        """Count a finished job for the latest plan; True if the application is due a notification."""
+        if key in self._needed_final and self._done(key):
+            ready, total = self._progress
+            self._progress = (min(ready + 1, total), total)
+        if key in self._needed and not self._notified:
+            self._notified = True
+            return True
+        return False
+
+    def _record(self, key: Tuple, future: Future, pool_ref, alone: bool):
+        """Keep the outcome of one job: the curve, a crashed pool, or a failure (lock held).
+
+        ``pool_ref`` is a weak reference to the pool that ran the job.
+        """
+        error = future.exception()
+        if error is None:
+            self.cache.put(key, future.result())
+            self._failed.pop(key, None)
+            self._suspects.discard(key)
+        elif isinstance(error, BrokenExecutor) and not alone:
+            # Some job crashed the shared pool, maybe not this one: no
+            # attempt is counted, the job is retried alone
+            self._suspects.add(key)
+            if pool_ref is not None and pool_ref() is self._pool:
+                self._broken = True   # replaced on the next request
+        else:
+            # Not cached: the next request tries again, up to MAX_TRIES
+            attempts = self._failed.get(key, (0, ""))[0] + 1
+            if len(self._failed) > 10000:   # a long session with many failing lines, not a leak
+                self._failed.clear()
+                self._suspects.clear()
+            self._failed[key] = (attempts, "{0}: {1}".format(type(error).__name__, error))
 
     # State ----------------------------------------------------------------
     @property

@@ -102,8 +102,8 @@ def test_eps_embeds_truetype_fonts(tmp_path):
 # ---------------------------------------------------------------------------
 # The conformance check for PDF output, and backends that should fail it
 # ---------------------------------------------------------------------------
-from coolplot.render.pdf_reader import read_pdf  # noqa: E402
-from coolplot.render.testing import check_pdf  # noqa: E402
+from coolplot.testing.pdf_reader import read_pdf  # noqa: E402
+from coolplot.testing import check_pdf  # noqa: E402
 
 
 def _factory(cls=MatplotlibRenderer):
@@ -188,7 +188,7 @@ def test_reader_finds_fonts_texts_colours_and_pages(tmp_path):
 
 
 def test_replace_info_keeps_the_content(tmp_path):
-    from coolplot.render.pdf_reader import replace_info
+    from coolplot.testing.pdf_reader import replace_info
     path = tmp_path / "ph.pdf"
     _diagram().draw(MatplotlibRenderer(use_pyplot=False)).save(str(path))
     before = read_pdf(str(path))
@@ -202,7 +202,7 @@ def test_replace_info_keeps_the_content(tmp_path):
 
 
 def test_stream_data_is_skipped_by_its_length():
-    from coolplot.render.pdf_reader import _Pdf
+    from coolplot.testing.pdf_reader import _Pdf
     payload = b"BT (endobj endstream) Tj ET"
     data = (b"%PDF-1.4\n1 0 obj\n<< /Length " + str(len(payload)).encode() + b" >>\nstream\n" + payload
             + b"\nendstream\nendobj\n2 0 obj\n<< /Type /Catalog >>\nendobj\n")
@@ -343,7 +343,7 @@ def test_reader_is_not_slowed_down_by_many_trailers(tmp_path):
 
 
 def test_replace_info_refuses_other_generations(tmp_path):
-    from coolplot.render.pdf_reader import replace_info
+    from coolplot.testing.pdf_reader import replace_info
     path = tmp_path / "x.pdf"
     path.write_bytes(_minimal_pdf(b"0 0 1 1 re f").replace(b"4 0 obj", b"4 2 obj").replace(b"4 0 R", b"4 2 R"))
     with pytest.raises(ValueError, match="generations"):

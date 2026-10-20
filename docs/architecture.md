@@ -420,7 +420,8 @@ Summary of `docs/backends.md`:
   diffing; a backend never rebuilds the whole plot.
 * Every backend implements read-back (`describe_item`, `describe_axes`)
   that reports what it actually drew, from its own objects.
-* `coolplot.render.testing.run_conformance` draws a reference scene using
+* `coolplot.testing.run_conformance` (the package `coolplot.testing` holds
+  the kit and the PDF reader; nothing a chart draws with imports it) draws a reference scene using
   every style feature and awkward data, reads it back, then changes it
   step by step (restyle, hide, restack, reorder, remove, new axes, legend,
   clear) and checks both the result and that only affected items were
@@ -584,7 +585,7 @@ TrueType fonts, falls back to the next TrueType family for fonts it can
 only find as CFF OpenType (embedding those as TrueType gives damaged
 files), writes the chart title and no dates, and draws text halos as a
 second text artist so labels stay text. `export.save_pdf` puts several
-charts into one file. `render/pdf_reader.py` reads PDF files back without
+charts into one file. `testing/pdf_reader.py` reads PDF files back without
 external tools, for the conformance kit (fonts, texts, painted colours,
 title, reproducibility), and rewrites document information for the plotly
 backend, which prints through kaleido and Chrome.
@@ -608,8 +609,9 @@ Known trade-offs, from the adversarial review of the 0.3 work:
   threads can deadlock. Start the diagram first.
 * Every pan step in `Interaction` redraws the scene with a new label
   layout; there is no throttling.
-* `WebServer` bound to a public address has no authentication, and patch
-  listeners run while the renderer is locked.
+* The development server of `examples/web_app` bound to a public address
+  has no authentication, and patch listeners run while the renderer is
+  locked.
 * Input in the wrong unit (W in kg/kg on an "engineering" chart, a wet-bulb
   temperature in K) is only caught when it is far outside what HAPropsSI
   covers.

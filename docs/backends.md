@@ -15,7 +15,7 @@ Acceptance is mechanical: a backend is accepted when the conformance kit
 reports no failures.
 
 ```python
-from coolplot.render.testing import run_conformance
+from coolplot.testing import run_conformance
 assert run_conformance(MyRenderer) == []
 ```
 
@@ -303,7 +303,7 @@ then MUST:
 * write the chart title as the document title, and no dates or version
   strings, so the same scene gives the same file.
 
-`check_pdf` reads the file back with `coolplot.render.pdf_reader` (no
+`check_pdf` reads the file back with `coolplot.testing.pdf_reader` (no
 external tools) and checks all of this; `run_conformance` calls it for
 backends with the capability. `pdf_reader.replace_info` rewrites the
 document information of a PDF made by another program (the plotly

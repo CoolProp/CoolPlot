@@ -9,7 +9,7 @@ was added, changed, removed or reordered.
 
 To support a new plotting library, subclass :class:`Renderer`, implement
 the methods marked "backend hook" and "read back", and pass the
-conformance kit in :mod:`coolplot.render.testing`. docs/backends.md lists
+conformance kit in :mod:`coolplot.testing`. docs/backends.md lists
 every requirement. Nothing else in CoolPlot needs to change.
 """
 from __future__ import annotations
@@ -81,11 +81,19 @@ class Renderer:
             self._axes = scene.axes
             report.axes_changed = True
 
+        self._sync_items(scene, report)
+        self._sync_order(scene, report)
+        self._sync_legend(scene, report)
+        self._finish(report)
+        self.last_report = report
+        return report
+
+    def _sync_items(self, scene: Scene, report: SyncReport):
+        """Remove, add or update items so that the backend holds exactly the scene's."""
         current_ids = set(scene.ids())
         for item_id in [i for i in self._drawn if i not in current_ids]:
             self._remove(self._drawn.pop(item_id))
             report.removed.append(item_id)
-
         for item in scene:
             old = self._drawn.get(item.id)
             if old is None:
@@ -98,16 +106,20 @@ class Renderer:
                 report.updated.append(item.id)
             self._drawn[item.id] = item
 
+    def _sync_order(self, scene: Scene, report: SyncReport):
         order = scene.draw_order()
-        if order != self._order:
-            # Always restack, because a new item may belong between existing
-            # ones. Report it only if existing items changed their order.
-            kept = [i for i in self._order if i in current_ids]
-            kept_ids = set(kept)
-            report.reordered = [i for i in order if i in kept_ids] != kept
-            self._reorder(order)
-            self._order = order
+        if order == self._order:
+            return
+        # Always restack, because a new item may belong between existing
+        # ones. Report it only if existing items changed their order.
+        current_ids = set(scene.ids())
+        kept = [i for i in self._order if i in current_ids]
+        kept_ids = set(kept)
+        report.reordered = [i for i in order if i in kept_ids] != kept
+        self._reorder(order)
+        self._order = order
 
+    def _sync_legend(self, scene: Scene, report: SyncReport):
         # The legend shows a sample of each entry's style, so its signature
         # includes the styles.
         entries = scene.legend_entries()
@@ -118,10 +130,6 @@ class Renderer:
             self._set_legend(entries, legend_style)
             self._legend = signature
             report.legend_changed = True
-
-        self._finish(report)
-        self.last_report = report
-        return report
 
     def clear(self):
         """Remove everything this renderer has drawn."""
@@ -210,7 +218,7 @@ class Renderer:
     # Read back ---------------------------------------------------------
     # These report what the backend actually drew, read from its own
     # objects (artists, SVG elements, ...) and not copied from the scene,
-    # in the normalised form of coolplot.render.testing. They are what the
+    # in the normalised form of coolplot.testing. They are what the
     # conformance kit checks.
     def describe_item(self, item_id: str) -> dict:
         raise NotImplementedError

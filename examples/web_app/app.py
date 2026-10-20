@@ -5,12 +5,30 @@ Starts a small development server and prints its address. Open it in a
 browser: drag the states of the cycle, drag empty space to pan, use the
 mouse wheel to zoom. Only the changed SVG elements travel to the browser.
 
-Run with:  python examples/web_app.py   (stop with Ctrl+C)
+The server (server.py, next to this file) is a starting point for an
+application of your own; the library only provides the renderer.
+
+Run with:  python examples/web_app/app.py   (stop with Ctrl+C)
 """
+import importlib.util
+import os
+
 from coolplot import PropertyDiagram
 from coolplot.interaction import Interaction
-from coolplot.render.web import WebRenderer, WebServer
+from coolplot.render.web import WebRenderer
 from coolplot.thermo.cycles import simple_compression
+
+
+def load_server_module():
+    """The server next to this file, loaded by path so no other module named 'server' gets in the way."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "server.py")
+    spec = importlib.util.spec_from_file_location("coolplot_web_app_server", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+WebServer = load_server_module().WebServer
 
 diagram = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP")
 diagram.title = "R290 - drag the states"

@@ -119,15 +119,18 @@ def nice_log(lo: float, hi: float, num: int) -> np.ndarray:
     """
     if not (hi > lo > 0.0):
         return nice_linear(lo, hi, num)
+    candidates = [_log_values(mantissas, lo, hi) for mantissas in _LOG_MANTISSAS]
+    candidates = [values for values in candidates if len(values)]
+    if not candidates:
+        return nice_linear(lo, hi, num)   # a range narrower than the finest mantissa step
+    return min(candidates, key=lambda values: abs(len(values) - num))
+
+
+def _log_values(mantissas, lo: float, hi: float) -> np.ndarray:
+    """m * 10^k for the mantissas and every decade from lo to hi, inside the range."""
     k_lo, k_hi = math.floor(math.log10(lo)), math.ceil(math.log10(hi))
-    best = None
-    for mantissas in _LOG_MANTISSAS:
-        values = [float("{0:.6g}".format(m * 10.0 ** k)) for k in range(k_lo, k_hi + 1) for m in mantissas]
-        values = np.array(sorted(v for v in values if lo * (1 - 1e-9) <= v <= hi * (1 + 1e-9)))
-        if len(values) and (best is None or abs(len(values) - num) < abs(len(best) - num)):
-            best = values
-    # A range narrower than the finest mantissa step: round linearly instead
-    return best if best is not None else nice_linear(lo, hi, num)
+    values = [float("{0:.6g}".format(m * 10.0 ** k)) for k in range(k_lo, k_hi + 1) for m in mantissas]
+    return np.array(sorted(v for v in values if lo * (1 - 1e-9) <= v <= hi * (1 + 1e-9)))
 
 
 def isoline_values_SI(spec: DiagramSpec, iso_set: IsolineSet, domain: Domain) -> np.ndarray:
@@ -139,17 +142,21 @@ def isoline_values_SI(spec: DiagramSpec, iso_set: IsolineSet, domain: Domain) ->
         lo, hi = iso_set.range_SI or domain.range_SI(key)
         log = get_quantity(key).log_scale and lo > 0.0
         if iso_set.rounding:
-            # Round in display units, so that labels read 25 deg C, not 298.15 K
-            unit = spec.units[key]
-            lo_d, hi_d = sorted(float(v) for v in unit.from_SI([lo, hi]))
-            values_d = nice_log(lo_d, hi_d, iso_set.num) if log else nice_linear(lo_d, hi_d, iso_set.num)
-            if len(values_d) == 0:   # no round value in a very narrow range
-                values_d = np.array([0.5 * (lo_d + hi_d)])
-            values = unit.to_SI(values_d)
+            values = _round_values(spec.units[key], lo, hi, iso_set.num, log)
         else:
             values = log_grid(lo, hi, iso_set.num) if log else linear_grid(lo, hi, iso_set.num)
     snapped = sorted({snap(float(v)) for v in np.atleast_1d(values) if np.isfinite(v)})
     return np.array(snapped)
+
+
+def _round_values(unit, lo: float, hi: float, num: int, log: bool) -> np.ndarray:
+    """About ``num`` round values between lo and hi (SI), rounded in display
+    units so that labels read 25 deg C, not 298.15 K."""
+    lo_d, hi_d = sorted(float(v) for v in unit.from_SI([lo, hi]))
+    values_d = nice_log(lo_d, hi_d, num) if log else nice_linear(lo_d, hi_d, num)
+    if len(values_d) == 0:   # no round value in a very narrow range
+        values_d = np.array([0.5 * (lo_d + hi_d)])
+    return unit.to_SI(values_d)
 
 
 def plan(spec: DiagramSpec, domain: Domain) -> Tuple[CurveRequest, ...]:

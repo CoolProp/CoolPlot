@@ -127,3 +127,16 @@ def test_diagram_spec_rejects_bad_content():
         DiagramSpec("R290", processes=(ProcessSpec("a"), ProcessSpec("a")))
     with pytest.raises(TypeError):
         ProcessSpec("a", line_states=({"T": 300.0},))
+
+
+# Regression tests from the adversarial review of 0.2 ------------------------
+
+def test_switching_the_calculation_preset_keeps_the_rest():
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    diagram = PropertyDiagram("R290", "ph", theme="dark", settings="print")
+    diagram.settings = diagram.settings.with_(labels={"mode": "margin"})
+    diagram.settings = diagram.settings.with_(calc="interactive")
+    assert diagram.settings.calc.points == 60
+    assert diagram.theme.name == "dark" and diagram.settings.labels.mode == "margin"
+    assert diagram.settings.page.width_pt == 504.0

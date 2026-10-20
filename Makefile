@@ -14,5 +14,8 @@ install:
 test:
 	python -m pytest -v
 
+test-all:   ## also the tests that need a browser and Kaleido
+	python -m pytest -v --run-browser --run-kaleido
+
 build:
 	python -m build

@@ -16,7 +16,7 @@ check are marked "(manual)" there.
 
 Usage in a test suite::
 
-    from coolplot.render.testing import run_conformance
+    from coolplot.testing import run_conformance
     def test_my_backend():
         assert run_conformance(MyRenderer) == []
 """
@@ -678,7 +678,7 @@ def _unligated(text: str) -> str:
 def check_pdf(factory) -> List[str]:
     """Check the PDF of a backend with the "pdf_output" capability.
 
-    The file is read back with :mod:`coolplot.render.pdf_reader`: every
+    The file is read back with :mod:`coolplot.testing.pdf_reader`: every
     font is embedded as TrueType or Type 1 and matches its declared type,
     every text of the scene is in the file as written (no math markup,
     nothing lost), only colours of the scene's styles paint, the title is

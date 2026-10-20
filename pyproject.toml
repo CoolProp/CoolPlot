@@ -41,3 +41,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "browser: drives a real browser through Playwright (run with --run-browser)",
+    "kaleido: writes plotly images or PDF through Kaleido (run with --run-kaleido)",
+]

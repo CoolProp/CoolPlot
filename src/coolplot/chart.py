@@ -99,6 +99,34 @@ def check_fluid(engine: Engine, fluid_spec):
         raise ValueError("CoolProp cannot make the fluid '{0}': {1}".format(fluid_spec, e)) from None
 
 
+def _states_from_arrays(states, arrays: dict):
+    """Rows of two property arrays as a list of dicts, one state each."""
+    if states is not None:
+        raise ValueError("Give the states either as 'states' or as arrays, not both.")
+    if len(arrays) != 2:
+        raise ValueError("Give arrays of exactly two properties, not {0}.".format(sorted(arrays)))
+    columns = {k: list(np.atleast_1d(v)) for k, v in arrays.items()}
+    if len({len(v) for v in columns.values()}) != 1:
+        raise ValueError("The arrays {0} have different lengths.".format(sorted(arrays)))
+    return [dict(zip(columns, row)) for row in zip(*columns.values())]
+
+
+def _default_loops(inputs, closed: bool):
+    """No loops (CycleSpec closes the chain itself), or one open chain through the states in order."""
+    if closed or len(inputs) < 2:
+        return ()
+    return [sorted(n for n, _ in inputs)]
+
+
+def _checked_range(family, label: str, range_SI):
+    """A range for ``num`` lines; it may touch an excluded bound (0 to 100 % RH), the
+    line without a value is simply left out."""
+    if family.bounds is not None and any(not family.bounds[0] <= v <= family.bounds[1] for v in range_SI):
+        raise ValueError("The range of {0} has to lie between {1:g} and {2:g} (as SI values), not {3}.".format(
+            label, family.bounds[0], family.bounds[1], range_SI))
+    return range_SI
+
+
 def check_state(state: StatePoint, provider):
     """Raise ValueError if a complete state does not belong to ``provider``."""
     missing = [k for k in provider.quantities if k not in state]
@@ -338,10 +366,7 @@ class Chart:
             Units of ``values`` and ``range``; default the chart's units.
         """
         key = quantity_key(key)
-        family = self.spec.diagram.family(key)
-        if family is None:
-            raise ValueError("Lines of constant '{0}' cannot be drawn in a {1} diagram.".format(
-                key, self.spec.diagram.name))
+        family = self._family(key)
         defaults = self.spec.diagram.line_defaults
         rounding = defaults["rounding"] if rounding is None else bool(rounding)
         labels = defaults["labels"] if labels is None else bool(labels)
@@ -350,15 +375,20 @@ class Chart:
         values_SI = None if values is None else tuple(float(v) for v in unit.to_SI(values).ravel())
         range_SI = None if range is None else tuple(float(v) for v in unit.to_SI(range))
         family.check_values(values_SI or (), label)
-        if range_SI is not None and family.bounds is not None:
-            # A range may touch an excluded bound (0 to 100 % RH): the line without a value is left out
-            if any(not family.bounds[0] <= v <= family.bounds[1] for v in range_SI):
-                raise ValueError("The range of {0} has to lie between {1:g} and {2:g} (as SI values), not {3}.".format(
-                    label, family.bounds[0], family.bounds[1], range_SI))
+        if range_SI is not None:
+            _checked_range(family, label, range_SI)
         if num is None:
             num = family.default_num
         self.spec = self.spec.with_isolines(IsolineSet(key, values_SI, num, range_SI, rounding, points, labels))
         return key
+
+    def _family(self, key: str):
+        """The line family of a quantity in this chart, or ValueError."""
+        family = self.spec.diagram.family(key)
+        if family is None:
+            raise ValueError("Lines of constant '{0}' cannot be drawn in a {1} diagram.".format(
+                key, self.spec.diagram.name))
+        return family
 
     def set_default_lines(self, num: int = None, **kwargs):
         """Lines of every family that makes sense in this chart.
@@ -449,37 +479,34 @@ class Chart:
         """
         cycle = name if isinstance(name, Cycle) else (states if isinstance(states, Cycle) else None)
         if cycle is not None:
-            if cycle.fluid and self._other_fluid(cycle.fluid):
-                raise ValueError("Cycle '{0}' was computed for {1}, but this chart shows {2}.".format(
-                    cycle.name, cycle.fluid, self.spec.fluid))
-            for _, state in cycle.states:
-                check_state(state, self.fluid)
-            spec = CycleSpec.from_cycle(cycle, name=None if isinstance(name, Cycle) else name, loops=loops,
-                                        paths=paths, numbers=numbers, line_style=line_style,
-                                        marker_style=marker_style, steps=steps)
+            spec = self._spec_from_model(cycle, None if isinstance(name, Cycle) else name, loops, paths, numbers,
+                                         line_style, marker_style, steps)
         else:
             unit_system = self._units(units)
-            if arrays:
-                if states is not None:
-                    raise ValueError("Give the states either as 'states' or as arrays, not both.")
-                if len(arrays) != 2:
-                    raise ValueError("Give arrays of exactly two properties, not {0}.".format(sorted(arrays)))
-                columns = {k: list(np.atleast_1d(v)) for k, v in arrays.items()}
-                lengths = {len(v) for v in columns.values()}
-                if len(lengths) != 1:
-                    raise ValueError("The arrays {0} have different lengths.".format(sorted(arrays)))
-                states = [dict(zip(columns, row)) for row in zip(*columns.values())]
-            if states is None:
-                raise ValueError("Give the states of cycle '{0}'.".format(name))
-            items = states.items() if isinstance(states, dict) else enumerate(states, start=1)
-            provider = self.fluid
-            inputs = tuple((int(n), state_input(entry, unit_system, provider)) for n, entry in items)
-            if not loops and not closed and len(inputs) > 1:
-                loops = [sorted(n for n, _ in inputs)]   # an open chain through the states in order
-            spec = CycleSpec(str(name), inputs, loops or (), paths or (), numbers, line_style, marker_style, steps)
+            inputs = self._state_inputs(_states_from_arrays(states, arrays) if arrays else states, name, unit_system)
+            spec = CycleSpec(str(name), inputs, loops or _default_loops(inputs, closed), paths or (), numbers,
+                             line_style, marker_style, steps)
         self._compute_cycle(spec)   # compute now, so that errors show up here
         self.spec = self.spec.with_cycle(spec)
         return spec.name
+
+    def _spec_from_model(self, cycle: Cycle, name, loops, paths, numbers, line_style, marker_style, steps):
+        """A CycleSpec for a computed Cycle, after checking that it belongs to this chart's fluid."""
+        if cycle.fluid and self._other_fluid(cycle.fluid):
+            raise ValueError("Cycle '{0}' was computed for {1}, but this chart shows {2}.".format(
+                cycle.name, cycle.fluid, self.spec.fluid))
+        for _, state in cycle.states:
+            check_state(state, self.fluid)
+        return CycleSpec.from_cycle(cycle, name=name, loops=loops, paths=paths, numbers=numbers,
+                                    line_style=line_style, marker_style=marker_style, steps=steps)
+
+    def _state_inputs(self, states, name, unit_system):
+        """(number, StateInput) pairs from a list (numbered from 1) or a dict of given states."""
+        if states is None:
+            raise ValueError("Give the states of cycle '{0}'.".format(name))
+        items = states.items() if isinstance(states, dict) else enumerate(states, start=1)
+        provider = self.fluid
+        return tuple((int(n), state_input(entry, unit_system, provider)) for n, entry in items)
 
     def _compute_cycle(self, cycle: CycleSpec):
         try:
@@ -589,24 +616,8 @@ class Chart:
 
         A renderer created here uses the canvas size of ``settings.page``.
         """
-        # Scripts want the complete picture: let background work finish,
-        # previews first, then the final curves they make room for.
         if isinstance(self.engine, BackgroundEngine):
-            last = None
-            for _ in range(10):
-                self.update_scene()
-                ready, needed = self.engine.progress
-                if not self.engine.busy and ready >= needed:   # a failed line may still be due a retry
-                    break
-                if self.engine.finished_jobs == last:   # the last wait finished no job at all
-                    warnings.warn("Background work makes no progress, the drawing may be incomplete.",
-                                  UserWarning, stacklevel=2)
-                    break
-                last = self.engine.finished_jobs
-                self.wait()
-            else:
-                warnings.warn("Background work did not finish, the drawing may be incomplete (is the cache "
-                              "smaller than the number of lines?).", UserWarning, stacklevel=2)
+            self._finish_background_work()
         if renderer is None:
             renderer = self._default_renderer
             if renderer is None:
@@ -621,6 +632,25 @@ class Chart:
                 abs(a - b) > 0.02 * b for a, b in zip(size, self._plot_size_pt)):
             renderer.sync(self.update_scene(size))
         return renderer
+
+    def _finish_background_work(self):
+        """Let background work finish before a script draws: previews first,
+        then the final curves they make room for. Warns, instead of waiting
+        for ever, when nothing finishes any more."""
+        last = None
+        for _ in range(10):
+            self.update_scene()
+            ready, needed = self.engine.progress
+            if not self.engine.busy and ready >= needed:   # a failed line may still be due a retry
+                return
+            if self.engine.finished_jobs == last:   # the last wait finished no job at all
+                warnings.warn("Background work makes no progress, the drawing may be incomplete.",
+                              UserWarning, stacklevel=3)
+                return
+            last = self.engine.finished_jobs
+            self.wait()
+        warnings.warn("Background work did not finish, the drawing may be incomplete (is the cache "
+                      "smaller than the number of lines?).", UserWarning, stacklevel=3)
 
     def show(self):
         self.draw().show()

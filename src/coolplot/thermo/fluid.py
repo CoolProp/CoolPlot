@@ -558,9 +558,10 @@ def _read_only(values) -> np.ndarray:
     return arr
 
 
-def _critical_point(fluid: Fluid) -> dict:
-    """Find the critical point, falling back to all_critical_points for mixtures."""
-    state = fluid.state
+def _critical_values(state: AbstractState):
+    """(T, p, rhomolar) of the critical point: CoolProp's values, or the
+    stable point of highest temperature from all_critical_points for a
+    mixture; NaN where nothing is known."""
     T_crit_K = p_crit_Pa = rho_crit_mol = np.nan
     try:
         T_crit_K = state.T_critical()
@@ -573,6 +574,12 @@ def _critical_point(fluid: Fluid) -> dict:
                     T_crit_K, p_crit_Pa, rho_crit_mol = point.T, point.p, point.rhomolar
         except Exception:
             pass
+    return T_crit_K, p_crit_Pa, rho_crit_mol
+
+
+def _critical_point(fluid: Fluid) -> dict:
+    """Find the critical point, falling back to all_critical_points for mixtures."""
+    T_crit_K, p_crit_Pa, rho_crit_mol = _critical_values(fluid.state)
     if not np.isfinite(T_crit_K):
         raise ValueError("CoolProp could not provide the critical point of {0}.".format(fluid.name))
 

@@ -62,23 +62,12 @@ class StateInput:
             if props or self.via:
                 raise ValueError("Give a state either as a StatePoint or by its properties, not both.")
             return
-        if any(not math.isfinite(v) for _, v in props):
-            raise ValueError("State properties have to be finite numbers, not {0}.".format(dict(props)))
-        if len({k for k, _ in props}) != len(props):
-            raise ValueError("A property is given twice in {0}.".format(dict(props)))
+        _check_props(props)
         if self.via is None:
             if len(props) != 2:
                 raise ValueError("A state needs two properties, or one and 'via', not {0}.".format(dict(props)))
-            return
-        if self.via not in VIA_KINDS:
-            raise ValueError("Unknown via '{0}', expected one of {1}.".format(self.via, VIA_KINDS))
-        if len(props) != 1:
-            raise ValueError("A state with via '{0}' needs exactly one property, not {1}.".format(
-                self.via, dict(props)))
-        if self.via in ("compression", "expansion") and props[0][0] != "p":
-            raise ValueError("A {0} is given by its outlet pressure 'p'.".format(self.via))
-        if not 0.0 < self.eta_is <= 1.0:
-            raise ValueError("eta_is has to be between 0 and 1, not {0}.".format(self.eta_is))
+        else:
+            _check_via(self.via, props, self.eta_is)
 
     def to_dict(self) -> dict:
         if self.state is not None:
@@ -95,6 +84,25 @@ class StateInput:
         if "state" in data:
             return cls(state=StatePoint.from_dict(data["state"]))
         return cls(tuple(tuple(p) for p in data.get("props", ())), data.get("via"), data.get("eta_is", 1.0))
+
+
+def _check_props(props):
+    if any(not math.isfinite(v) for _, v in props):
+        raise ValueError("State properties have to be finite numbers, not {0}.".format(dict(props)))
+    if len({k for k, _ in props}) != len(props):
+        raise ValueError("A property is given twice in {0}.".format(dict(props)))
+
+
+def _check_via(via: str, props, eta_is: float):
+    """A via needs one property, a known kind, the outlet pressure for machines, and a usable eta_is."""
+    if via not in VIA_KINDS:
+        raise ValueError("Unknown via '{0}', expected one of {1}.".format(via, VIA_KINDS))
+    if len(props) != 1:
+        raise ValueError("A state with via '{0}' needs exactly one property, not {1}.".format(via, dict(props)))
+    if via in ("compression", "expansion") and props[0][0] != "p":
+        raise ValueError("A {0} is given by its outlet pressure 'p'.".format(via))
+    if not 0.0 < eta_is <= 1.0:
+        raise ValueError("eta_is has to be between 0 and 1, not {0}.".format(eta_is))
 
 
 def default_loops(numbers: Sequence[int]) -> Tuple[Tuple[int, ...], ...]:

@@ -44,21 +44,22 @@ RULES = {
     # Composing a scene uses no property calculations and no plotting library.
     "coolplot.compose": LIBS | {"coolplot.thermo", "coolplot.engine"} | _after("coolplot.compose"),
     # Backends see only the scene and style values; themes are resolved before.
-    "coolplot.render": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
+    # Nothing a chart draws with may load the test tooling (coolplot.testing).
+    "coolplot.render": LIBS | {"coolplot.testing", "coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
                                "coolplot.diagram", "coolplot.psychrometric", "coolplot.interaction", "coolplot.style.theme",
                                "coolplot.render.mpl", "coolplot.render.svg"},
     "coolplot.render.base": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
                                     "coolplot.diagram", "coolplot.psychrometric", "coolplot.interaction", "coolplot.style.theme"},
     "coolplot.render.svg": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
                                    "coolplot.diagram", "coolplot.psychrometric", "coolplot.interaction", "coolplot.style.theme"},
-    "coolplot.render.testing": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine",
+    "coolplot.testing": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine",
                                        "coolplot.compose", "coolplot.diagram", "coolplot.psychrometric", "coolplot.interaction", "coolplot.style.theme",
                                        "coolplot.render.mpl", "coolplot.render.plotly"},
     # The web backend builds on the SVG backend's elements
     "coolplot.render.web": LIBS | {"coolplot.spec", "coolplot.thermo", "coolplot.engine", "coolplot.compose",
                                    "coolplot.diagram", "coolplot.psychrometric", "coolplot.interaction", "coolplot.style.theme",
                                    "coolplot.render.mpl", "coolplot.render.plotly"},
-    "coolplot.render.plotly": {"CoolProp", "matplotlib", "coolplot.spec", "coolplot.thermo", "coolplot.engine",
+    "coolplot.render.plotly": {"CoolProp", "matplotlib", "coolplot.testing", "coolplot.spec", "coolplot.thermo", "coolplot.engine",
                                "coolplot.compose", "coolplot.diagram", "coolplot.interaction",
                                "coolplot.style.theme", "coolplot.render.mpl", "coolplot.render.svg"},
     "coolplot.render.mpl": {"CoolProp", "plotly", "coolplot.spec", "coolplot.thermo", "coolplot.engine",
@@ -80,7 +81,18 @@ RULES = {
 ALLOWED = {
     ("coolplot.chart", "coolplot.render.mpl"):
         "Chart.draw/show/savefig create a MatplotlibRenderer on demand for scripts",
+    ("coolplot.render.plotly", "coolplot.testing.pdf_reader"):
+        "PlotlyRenderer.save rewrites the PDF information Kaleido wrote, only when a PDF is saved",
 }
+
+
+def test_importing_a_backend_loads_no_test_tooling():
+    pytest.importorskip("plotly")
+    code = ("import sys\n"
+            "import coolplot.render.plotly, coolplot.render.svg, coolplot.render.web\n"
+            "print([m for m in sys.modules if m.startswith('coolplot.testing')])")
+    out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "[]"
 
 
 def _module_name(path):

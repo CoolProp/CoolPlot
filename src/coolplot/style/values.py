@@ -2,7 +2,7 @@
 """Backend-neutral style values: colours, lines, markers, text and axes.
 
 Every backend must render these values the same way; docs/backends.md lists
-the exact rules and coolplot.render.testing checks them. To make that
+the exact rules and coolplot.testing checks them. To make that
 possible, everything is normalised here, once, instead of in each backend:
 
 * Colours are stored as lower-case "#rrggbb" plus a separate alpha. CSS
@@ -173,6 +173,20 @@ DASH_NAMES = {
 Dash = Union[str, Tuple[float, ...]]
 
 
+def _checked_dash(dash: Dash) -> Dash:
+    """A dash name, or a tuple of an even number of finite, non-negative lengths in points."""
+    if isinstance(dash, str):
+        if dash not in DASH_NAMES:
+            raise ValueError("Unknown dash {0!r}, expected one of {1} or a tuple of lengths "
+                             "in points.".format(dash, sorted(DASH_NAMES)))
+        return dash
+    lengths = tuple(float(v) for v in dash)
+    if (len(lengths) % 2 or any(not (v >= 0.0 and math.isfinite(v)) for v in lengths)
+            or (lengths and sum(lengths) <= 0.0)):
+        raise ValueError("A dash tuple needs an even number of finite, non-negative lengths.")
+    return lengths
+
+
 def dash_pattern_pt(dash: Dash, width_pt: float) -> Tuple[float, ...]:
     """Explicit on/off lengths in points; () means a solid line.
 
@@ -209,16 +223,7 @@ class LineStyle(_Normalising):
         _check_length(self.width_pt, "LineStyle", "width_pt")
         _check_length(self.casing_width_pt, "LineStyle", "casing_width_pt")
         object.__setattr__(self, "alpha", _check_alpha(self.alpha, "LineStyle"))
-        if isinstance(self.dash, str):
-            if self.dash not in DASH_NAMES:
-                raise ValueError("Unknown dash {0!r}, expected one of {1} or a tuple of lengths "
-                                 "in points.".format(self.dash, sorted(DASH_NAMES)))
-        else:
-            dash = tuple(float(v) for v in self.dash)
-            if (len(dash) % 2 or any(not (v >= 0.0 and math.isfinite(v)) for v in dash)
-                    or (dash and sum(dash) <= 0.0)):
-                raise ValueError("A dash tuple needs an even number of finite, non-negative lengths.")
-            object.__setattr__(self, "dash", dash)
+        object.__setattr__(self, "dash", _checked_dash(self.dash))
         if self.cap not in ("butt", "round", "square"):
             raise ValueError("Unknown line cap {0!r}.".format(self.cap))
         if self.join not in ("miter", "round", "bevel"):
@@ -436,18 +441,7 @@ def _convert(hint, value):
     origin = typing.get_origin(hint)
     args = typing.get_args(hint)
     if origin is Union:
-        members = [a for a in args if a is not type(None)]
-        if value is None:
-            if len(members) < len(args):
-                return None
-            raise TypeError("A value is required, not null.")
-        errors = []
-        for member in members:
-            try:
-                return _convert(member, value)
-            except (TypeError, ValueError) as e:
-                errors.append(str(e))
-        raise TypeError("{0!r} does not match {1}: {2}".format(value, hint, "; ".join(errors)))
+        return _convert_union(args, hint, value)
     if value is None:
         raise TypeError("A value is required, not null.")
     if hasattr(hint, "__dataclass_fields__"):
@@ -455,31 +449,53 @@ def _convert(hint, value):
             raise TypeError("Expected a dict for {0}, not {1!r}.".format(hint.__name__, value))
         return style_from_dict(hint, value)
     if origin in (tuple, Tuple):
-        if not isinstance(value, (list, tuple)):
-            raise TypeError("Expected a list, not {0!r}.".format(value))
-        item = args[0] if args else None
-        if item is None or item is Ellipsis:
-            return tuple(value)
-        return tuple(_convert(item, v) for v in value)
+        return _convert_tuple(args, value)
     if origin is not None and getattr(origin, "__name__", "") in ("Mapping", "dict"):
-        if not isinstance(value, dict):
-            raise TypeError("Expected a dict, not {0!r}.".format(value))
-        key_hint, value_hint = args if len(args) == 2 else (str, typing.Any)
-        return {_convert(key_hint, k): _convert(value_hint, v) for k, v in value.items()}
-    if hint is bool:
-        if not isinstance(value, bool):
-            raise TypeError("Expected true or false, not {0!r}.".format(value))
+        return _convert_mapping(args, value)
+    return _convert_scalar(hint, value)
+
+
+def _convert_mapping(args, value):
+    import typing
+    if not isinstance(value, dict):
+        raise TypeError("Expected a dict, not {0!r}.".format(value))
+    key_hint, value_hint = args if len(args) == 2 else (str, typing.Any)
+    return {_convert(key_hint, k): _convert(value_hint, v) for k, v in value.items()}
+
+
+def _convert_union(args, hint, value):
+    """The first member of a Union (Optional) that accepts the value."""
+    members = [a for a in args if a is not type(None)]
+    if value is None:
+        if len(members) < len(args):
+            return None
+        raise TypeError("A value is required, not null.")
+    errors = []
+    for member in members:
+        try:
+            return _convert(member, value)
+        except (TypeError, ValueError) as e:
+            errors.append(str(e))
+    raise TypeError("{0!r} does not match {1}: {2}".format(value, hint, "; ".join(errors)))
+
+
+def _convert_tuple(args, value):
+    if not isinstance(value, (list, tuple)):
+        raise TypeError("Expected a list, not {0!r}.".format(value))
+    item = args[0] if args else None
+    if item is None or item is Ellipsis:
+        return tuple(value)
+    return tuple(_convert(item, v) for v in value)
+
+
+def _convert_scalar(hint, value):
+    """bool, float, int and str checked strictly: no "3" for 3, no 1 for True."""
+    expected = {bool: ("true or false", (bool,)), int: ("a whole number", (int,)),
+                float: ("a number", (int, float)), str: ("a string", (str,))}.get(hint)
+    if expected is None:
         return value
-    if hint is float:
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise TypeError("Expected a number, not {0!r}.".format(value))
-        return float(value)
-    if hint is int:
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise TypeError("Expected a whole number, not {0!r}.".format(value))
-        return value
-    if hint is str:
-        if not isinstance(value, str):
-            raise TypeError("Expected a string, not {0!r}.".format(value))
-        return value
-    return value
+    words, types = expected
+    number_but_bool = hint in (int, float) and isinstance(value, bool)
+    if number_but_bool or not isinstance(value, types):
+        raise TypeError("Expected {0}, not {1!r}.".format(words, value))
+    return float(value) if hint is float else value

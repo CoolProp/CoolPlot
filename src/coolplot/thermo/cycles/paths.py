@@ -127,33 +127,8 @@ def path_states(fluid, a: StatePoint, b: StatePoint, kind: str = "auto", steps: 
         kind = auto_kind(a, b)
     if kind == "straight" or steps < 2:
         return [a, b]
-    inner: List[Tuple[str, float, str, float]] = []
-    t = np.linspace(0.0, 1.0, steps + 1)[1:-1]
-    if kind == "isobaric":
-        h_values = list(a.h + t * (b.h - a.h))
-        # Saturation states, so the path bends exactly on the dome
-        for q in (0.0, 1.0):
-            try:
-                h_sat = state_point(fluid, "p", a.p, "Q", q).h
-            except Exception:
-                continue
-            if min(a.h, b.h) < h_sat < max(a.h, b.h):
-                h_values.append(h_sat)
-        h_values.sort(reverse=b.h < a.h)
-        inner = [("p", a.p, "h", h) for h in h_values]
-    elif kind == "isenthalpic":
-        inner = [("p", p, "h", a.h) for p in _log_or_linear(a.p, b.p, steps + 1)[1:-1]]
-    elif kind == "isentropic":
-        inner = [("p", p, "s", a.s) for p in _log_or_linear(a.p, b.p, steps + 1)[1:-1]]
-    elif kind == "isothermal":
-        inner = [("T", a.T, "s", s) for s in a.s + t * (b.s - a.s)]
-    elif kind == "polytropic":
-        p_values = _log_or_linear(a.p, b.p, steps + 1)[1:-1]
-        inner = [("p", p, "s", a.s + ti * (b.s - a.s)) for p, ti in zip(p_values, t)]
-    else:
-        raise ValueError("Unknown path kind '{0}'.".format(kind))
     out = [a]
-    for k1, v1, k2, v2 in inner:
+    for k1, v1, k2, v2 in _inner_inputs(fluid, a, b, kind, steps):
         try:
             state = state_point(fluid, k1, v1, k2, v2)
         except Exception:
@@ -162,6 +137,38 @@ def path_states(fluid, a: StatePoint, b: StatePoint, kind: str = "auto", steps: 
             out.append(state)
     out.append(b)
     return out
+
+
+def _inner_inputs(fluid, a: StatePoint, b: StatePoint, kind: str, steps: int) -> List[Tuple[str, float, str, float]]:
+    """The (key, value, key, value) inputs of the states between a and b along a path kind."""
+    t = np.linspace(0.0, 1.0, steps + 1)[1:-1]
+    if kind == "isobaric":
+        return [("p", a.p, "h", h) for h in _isobar_enthalpies(fluid, a, b, t)]
+    if kind == "isothermal":
+        return [("T", a.T, "s", s) for s in a.s + t * (b.s - a.s)]
+    if kind not in ("isenthalpic", "isentropic", "polytropic"):
+        raise ValueError("Unknown path kind '{0}'.".format(kind))
+    p_values = _log_or_linear(a.p, b.p, steps + 1)[1:-1]
+    if kind == "isenthalpic":
+        return [("p", p, "h", a.h) for p in p_values]
+    # Entropy kept (isentropic), or changed evenly with pressure (polytropic)
+    s_values = [a.s] * len(t) if kind == "isentropic" else a.s + t * (b.s - a.s)
+    return [("p", p, "s", s) for p, s in zip(p_values, s_values)]
+
+
+def _isobar_enthalpies(fluid, a: StatePoint, b: StatePoint, t) -> List[float]:
+    """Enthalpies along an isobar from a to b, with the saturation states
+    added so that the path bends exactly on the dome."""
+    h_values = list(a.h + t * (b.h - a.h))
+    for q in (0.0, 1.0):
+        try:
+            h_sat = state_point(fluid, "p", a.p, "Q", q).h
+        except Exception:
+            continue
+        if min(a.h, b.h) < h_sat < max(a.h, b.h):
+            h_values.append(h_sat)
+    h_values.sort(reverse=b.h < a.h)
+    return h_values
 
 
 def cycle_paths(fluid, states: Dict[int, StatePoint], loops, paths: Dict[Tuple[int, int], str],

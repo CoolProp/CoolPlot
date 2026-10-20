@@ -94,6 +94,17 @@ class CalcSettings:
 LABEL_MODES = ("edge", "margin", "inline")
 EDGES = ("top", "right", "bottom", "left")
 
+
+def _checked_edges(edges, margin_edges):
+    """The per-family edges as (family, edges) pairs and the margin edges, all known edge names."""
+    edges = tuple((str(family), tuple(e)) for family, e in (edges.items() if isinstance(edges, dict) else edges))
+    margin_edges = tuple(margin_edges)
+    for edge in [e for _, es in edges for e in es] + list(margin_edges):
+        if edge not in EDGES:
+            raise ValueError("Unknown edge '{0}', expected one of {1}.".format(edge, EDGES))
+    return edges, margin_edges
+
+
 @dataclass(frozen=True)
 class LabelSettings:
     """What isoline labels say and where they sit
@@ -149,12 +160,7 @@ class LabelSettings:
             raise ValueError("Unknown label mode '{0}', expected one of {1}.".format(self.mode, LABEL_MODES))
         if not float(self.keep_out_pt) >= 0.0:
             raise ValueError("LabelSettings.keep_out_pt has to be zero or positive.")
-        edges = tuple((str(family), tuple(e)) for family, e in (
-            self.edges.items() if isinstance(self.edges, dict) else self.edges))
-        margin_edges = tuple(self.margin_edges)
-        for edge in [e for _, es in edges for e in es] + list(margin_edges):
-            if edge not in EDGES:
-                raise ValueError("Unknown edge '{0}', expected one of {1}.".format(edge, EDGES))
+        edges, margin_edges = _checked_edges(self.edges, self.margin_edges)
         if int(self.every) < 1:
             raise ValueError("LabelSettings.every has to be at least 1.")
         if not 0.0 <= float(self.position) <= 1.0:

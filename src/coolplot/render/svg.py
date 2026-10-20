@@ -233,40 +233,12 @@ class SvgRenderer(Renderer):
         need = [0.0, 0.0, 0.0, 0.0]
         (x0, x1), (y0, y1) = self._limits()
         axes = self._axes or AxesSpec()
-
-        def frac(v, lo, hi, log):
-            if log:
-                return (math.log10(v) - math.log10(lo)) / (math.log10(hi) - math.log10(lo)) if v > 0 else math.nan
-            return (v - lo) / (hi - lo)
-
         for item in self._items.values():
             if not (isinstance(item, Text) and item.visible and not item.clip):
                 continue
-            if not (math.isfinite(item.x) and math.isfinite(item.y)):
-                continue
-            fx, fy = frac(item.x, x0, x1, axes.x_log), frac(item.y, y0, y1, axes.y_log)
-            if not (math.isfinite(fx) and math.isfinite(fy)):
-                continue
-            size_px = item.style.font.size_pt * PX_PER_PT
-            length, height = 0.6 * size_px * len(item.text), 1.25 * size_px
-            vertical = item.direction is not None and abs(item.direction[1]) > abs(item.direction[0])
-            h_align, v_align = item.style.h_align, item.style.v_align
-            along = {"left": (0.0, length), "center": (length / 2, length / 2), "right": (length, 0.0)}[h_align]
-            across = {"bottom": (0.0, height), "center": (height / 2, height / 2), "top": (height, 0.0)}[v_align]
-            # (extent to the left, right, down, up) from the anchor in px
-            if vertical:   # reads upwards: its start is at the bottom
-                left_px, right_px, down_px, up_px = across[1], across[0], along[0], along[1]
-            else:
-                left_px, right_px, down_px, up_px = along[0], along[1], across[0], across[1]
-            dx, dy = item.offset_pt[0] * PX_PER_PT, item.offset_pt[1] * PX_PER_PT
-            if fy >= 1.0 - 1e-9:
-                need[2] = max(need[2], up_px + dy + 4.0)
-            if fy <= 1e-9:
-                need[3] = max(need[3], down_px - dy + 4.0)
-            if fx >= 1.0 - 1e-9:
-                need[1] = max(need[1], right_px + dx + 4.0)
-            if fx <= 1e-9:
-                need[0] = max(need[0], left_px - dx + 4.0)
+            fx, fy = _fraction(item.x, x0, x1, axes.x_log), _fraction(item.y, y0, y1, axes.y_log)
+            if math.isfinite(fx) and math.isfinite(fy):
+                need = [max(n, r) for n, r in zip(need, _margin_reach(item, fx, fy))]
         left, right, top, bottom = self.margins
         # With a title the configured top margin holds the title, so labels
         # above the frame need their whole height on top of it
@@ -290,18 +262,21 @@ class SvgRenderer(Renderer):
         result = []
         for limits, key, log in ((axes.x_limits, "x", axes.x_log), (axes.y_limits, "y", axes.y_log)):
             if limits is None:
-                values = []
-                for item in self._items.values():
-                    if item.visible and isinstance(item, (Line, Markers)):
-                        v = np.asarray(getattr(item, key), dtype=float)
-                        values.append(v[np.isfinite(v) & ((v > 0.0) if log else True)])
-                values = np.concatenate(values) if values else np.array([])
-                if values.size == 0:
-                    limits = (1.0, 10.0) if log else (0.0, 1.0)
-                else:
-                    limits = (float(values.min()), float(values.max()))
+                limits = self._data_limits(key, log)
             result.append(drawable_limits(limits, log))
         return result
+
+    def _data_limits(self, key: str, log: bool):
+        """The span of the visible lines and markers on one axis (autoscale), or a default."""
+        values = []
+        for item in self._items.values():
+            if item.visible and isinstance(item, (Line, Markers)):
+                v = np.asarray(getattr(item, key), dtype=float)
+                values.append(v[np.isfinite(v) & ((v > 0.0) if log else True)])
+        values = np.concatenate(values) if values else np.array([])
+        if values.size == 0:
+            return (1.0, 10.0) if log else (0.0, 1.0)
+        return float(values.min()), float(values.max())
 
     def _mapper(self):
         """f(x, y) -> (px, py) arrays; NaN where a value cannot be shown."""
@@ -329,13 +304,8 @@ class SvgRenderer(Renderer):
         head, items, tail = self._document_parts()
         return "\n".join([head, '<g class="cp-items">'] + [e for _, e in items] + ['</g>', tail])
 
-    def _document_parts(self):
-        """(head, [(item id, element)], tail) of the document, ASCII only.
-
-        The head holds everything below the items (background, grid), the
-        tail everything above them (frame, ticks, labels, legend). Items are
-        listed in drawing order; hidden items are left out.
-        """
+    def _build_elements(self):
+        """Make the SVG element of every item that has none yet (all of them after the axes changed)."""
         to_px, mapping_key = self._mapper()
         if mapping_key != self._mapping_key:
             self._elements.clear()
@@ -344,7 +314,16 @@ class SvgRenderer(Renderer):
             if item_id not in self._elements:
                 self._elements[item_id] = _ascii(self._element(item, to_px))
                 self.elements_built += 1
+        return to_px
 
+    def _document_parts(self):
+        """(head, [(item id, element)], tail) of the document, ASCII only.
+
+        The head holds everything below the items (background, grid), the
+        tail everything above them (frame, ticks, labels, legend). Items are
+        listed in drawing order; hidden items are left out.
+        """
+        to_px = self._build_elements()
         axes = self._axes or AxesSpec()
         st = axes.style
         bx, by, bw, bh = self._box
@@ -448,24 +427,10 @@ class SvgRenderer(Renderer):
         px, py = (float(v) for v in to_px(item.x, item.y))
         if not (math.isfinite(px) and math.isfinite(py)):
             return ""
-        angle = 0.0
         # The angle is measured at the anchor point; the offset moves the
         # text afterwards. Screen y points down, the offset y up.
         offset_x, offset_y = item.offset_pt[0] * PX_PER_PT, -item.offset_pt[1] * PX_PER_PT
-        if item.direction is not None:
-            dx, dy = item.direction
-            step = 1e-3
-            qx, qy = (float(v) for v in to_px(item.x + dx * step, item.y + dy * step))
-            if math.isfinite(qx) and math.isfinite(qy) and (qx, qy) != (px, py):
-                # Screen y points down, so a rising line has a negative SVG angle.
-                angle = math.degrees(math.atan2(qy - py, qx - px))
-                # Upright: the screen angle (counter-clockwise, the negative
-                # of the SVG angle) stays in (-90, 90], so straight down
-                # becomes straight up and the text reads bottom to top.
-                if angle >= 90.0:
-                    angle -= 180.0
-                elif angle < -90.0:
-                    angle += 180.0
+        angle = _svg_angle(item, to_px, px, py)
         s = item.style
         anchor = {"left": "start", "center": "middle", "right": "end"}[s.h_align]
         baseline = {"bottom": "text-after-edge", "center": "central", "top": "text-before-edge"}[s.v_align]
@@ -606,40 +571,12 @@ class SvgRenderer(Renderer):
             return ((px - bx) / bw, 1.0 - (py - by) / bh)
 
         if kind == "line":
-            paths = {p.get("class"): p for p in element.iter(_NS + "path")}
-            main, casing = paths["cp-stroke"], paths.get("cp-casing")
-            vertices = re.findall(r"[ML](-?[0-9.e]+),(-?[0-9.e]+)", main.get("d") or "")
-            out.update(_stroke_description(main), n_points=len(vertices),
-                       drawn_points=[frac(float(x), float(y)) for x, y in vertices])
-            if casing is not None:
-                cased = _stroke_description(casing)
-                out.update(casing_color=cased["color"], casing_width_pt=(cased["width_pt"] - out["width_pt"]) / 2.0,
-                           casing_dash_pt=cased["dash_pt"], casing_alpha=cased["alpha"])
-            else:
-                out.update(casing_color=None, casing_width_pt=0.0)
+            out.update(_describe_line_element(element, frac))
         elif kind == "markers":
-            shapes = list(element)
-            out.update(shape=_shape_from_geometry(shapes[0]) if shapes else None,
-                       size_pt=_shape_width_px(shapes[0]) / PX_PER_PT if shapes else 0.0,
-                       drawn_points=[frac(*_shape_centre(el)) for el in shapes],
-                       connected=any(el.tag in (_NS + "polyline", _NS + "line") for el in shapes)
-                       or any(_shape_width_px(el) > 3.0 * _shape_width_px(shapes[0]) for el in shapes),
-                       face_color=_color(element.get("fill")), edge_color=_color(element.get("stroke")),
-                       edge_width_pt=float(element.get("stroke-width")) / PX_PER_PT,
-                       alpha=float(element.get("opacity")), n_points=len(shapes))
+            out.update(_describe_marker_element(element, frac))
         else:
             text = next(iter(element))
-            angle = float(re.match(r"rotate\(([-0-9.e]+)", text.get("transform")).group(1))
-            out.update(_text_description("", text))
-            halo = text.get("stroke")
-            out.update(text=text.text or "",
-                       h_align={"start": "left", "middle": "center", "end": "right"}[text.get("text-anchor")],
-                       v_align={"text-after-edge": "bottom", "central": "center",
-                                "text-before-edge": "top"}[text.get("dominant-baseline")],
-                       halo_color=_color(halo) if halo else None,
-                       halo_width_pt=float(text.get("stroke-width")) / PX_PER_PT / 2.0 if halo else 0.0,
-                       screen_angle_deg=-angle)   # SVG angles turn clockwise
-            out["alpha"] = float(text.get("fill-opacity"))
+            out.update(_describe_text_element(text))
             # Offset: where the text was drawn, compared with its anchor
             to_px, _ = self._mapper()
             px, py = (float(v) for v in to_px(item.x, item.y))
@@ -663,79 +600,41 @@ class SvgRenderer(Renderer):
 
         frame, background = first("cp-frame"), first("cp-background")
         bw, bh = float(background.get("width")), float(background.get("height"))
+        item_positions = [order[id(g)] for g in root.iter() if g.get("data-item") is not None]
         out = dict(
             x_log=root.get("data-x-log") == "1", y_log=root.get("data-y-log") == "1",
             x_limits=tuple(float(v) for v in root.get("data-x-limits").split()),
             y_limits=tuple(float(v) for v in root.get("data-y-limits").split()),
-            x_label=(first("cp-x-label").text or ""), y_label=(first("cp-y-label").text or ""),
-            title=(first("cp-title").text or "") if first("cp-title") is not None else "",
             background=_color(background.get("fill")), figure_background=_color(first("cp-figure").get("fill")),
-            frame_color=_color(frame.get("stroke")), frame_width_pt=float(frame.get("stroke-width")) / PX_PER_PT,
             plot_size_pt=(bw / PX_PER_PT, bh / PX_PER_PT),
             legend=self._legend_description(by_class),
-            x_tick_labels=[(float(t.get("data-value")), t.text or "") for t in by_class.get("cp-tick-label-x", [])],
-            y_tick_labels=[(float(t.get("data-value")), t.text or "") for t in by_class.get("cp-tick-label-y", [])],
+            x_tick_labels=_tick_label_rows(by_class, "x"), y_tick_labels=_tick_label_rows(by_class, "y"),
         )
-        tick = first("cp-tick-x")
-        if tick is not None:
-            length = float(tick.get("y2")) - float(tick.get("y1"))
-            out.update(tick_direction="out" if length > 0 else "in", tick_color=_color(tick.get("stroke")),
-                       tick_length_pt=abs(length) / PX_PER_PT,
-                       tick_width_pt=float(tick.get("stroke-width")) / PX_PER_PT)
-        tick = first("cp-tick-y")
-        if tick is not None:
-            length = float(tick.get("x1")) - float(tick.get("x2"))   # outward points left
-            out.update(y_tick_direction="out" if length > 0 else "in", y_tick_color=_color(tick.get("stroke")),
-                       y_tick_length_pt=abs(length) / PX_PER_PT,
-                       y_tick_width_pt=float(tick.get("stroke-width")) / PX_PER_PT)
-        # One rectangle draws all four sides of the frame with one style
-        out["frame_sides"] = 4 if frame is not None and frame.get("stroke") not in (None, "none") else 0
-        item_positions = [order[id(g)] for g in root.iter() if g.get("data-item") is not None]
-        out["items_below_frame"] = not item_positions or max(item_positions) < order[id(frame)]
+        out.update(_describe_frame(frame, order, item_positions))
+        out.update(_describe_texts(first, by_class))
+        out.update(_describe_ticks(first("cp-tick-x"), first("cp-tick-y")))
+        out.update(self._describe_legend_box(first, background, order, item_positions))
+        out.update(_describe_grid(by_class, order, item_positions))
+        return out
+
+    def _describe_legend_box(self, first, background, order, item_positions) -> dict:
         legend_box = first("cp-legend-box")
-        if legend_box is not None:
-            legend_text = first("cp-legend-text")
-            out.update(legend_background=_color(legend_box.get("fill")),
-                       items_below_legend=not item_positions or max(item_positions) < order[id(legend_box)])
-            if legend_text is not None:
-                described = _text_description("legend", legend_text)
-                out.update({k: v for k, v in described.items() if not k.endswith(("weight", "style"))})
-        major, minor = by_class.get("cp-grid-major"), by_class.get("cp-grid-minor")
-        out["grid_color"] = _color(major[0].get("stroke")) if major else None
-        out["grid_minor_color"] = _color(minor[0].get("stroke")) if minor else None
-        if major:
-            grid = _stroke_description(major[0])
-            items = [order[id(g)] for g in root.iter() if g.get("data-item") is not None]
-            vertical = [g for g in major if g.get("x1") == g.get("x2")]
-            out.update(x_grid_lines=len(vertical), y_grid_lines=len(major) - len(vertical))
-            out.update(grid_width_pt=grid["width_pt"], grid_dash_pt=grid["dash_pt"], grid_lines=len(major),
-                       grid_below_items=not items or max(order[id(g)] for g in major + (minor or [])) < min(items))
-        box = first("cp-legend-box")
-        if box is not None:
-            out["legend_location"] = self._legend_location(box, background)
-        out.update(_text_description("x_label", first("cp-x-label")))
-        out.update(_text_description("y_label", first("cp-y-label")))
-        if first("cp-title") is not None:
-            out.update(_text_description("title", first("cp-title")))
-        labels = by_class.get("cp-tick-label")
-        if labels:
-            described = _text_description("tick_label", labels[0])
-            out.update({k: v for k, v in described.items() if not k.endswith(("weight", "style"))})
+        if legend_box is None:
+            return {}
+        out = dict(legend_background=_color(legend_box.get("fill")),
+                   items_below_legend=not item_positions or max(item_positions) < order[id(legend_box)],
+                   legend_location=self._legend_location(legend_box, background))
+        legend_text = first("cp-legend-text")
+        if legend_text is not None:
+            out.update(_without_weight_and_style(_text_description("legend", legend_text)))
         return out
 
     @staticmethod
     def _legend_description(by_class):
         rows = []
         for entry in by_class.get("cp-legend-entry", []):
-            colors = set()
-            for el in entry.iter():
-                cls = el.get("class") or ""
-                if el.tag == _NS + "line" and "cp-casing" not in cls:
-                    colors.add(_color(el.get("stroke")))
-                elif "cp-legend-marker" in cls:
-                    colors.add(_color(el.get("stroke")) or _color(el.get("fill")))
             text = next(el for el in entry.iter() if "cp-legend-text" in (el.get("class") or ""))
-            rows.append((text.text or "", tuple(sorted(colors - {None}))))
+            rows.append((text.text or "", tuple(sorted(_sample_colors(entry) - {None}))))
         return rows
 
     @staticmethod
@@ -752,6 +651,171 @@ class SvgRenderer(Renderer):
 
 
 _NS = "{http://www.w3.org/2000/svg}"
+
+
+def _fraction(v: float, lo: float, hi: float, log: bool) -> float:
+    """Where a value lies on an axis, 0 at lo and 1 at hi; NaN where it cannot be shown."""
+    if not math.isfinite(v):
+        return math.nan
+    if log:
+        return (math.log10(v) - math.log10(lo)) / (math.log10(hi) - math.log10(lo)) if v > 0 else math.nan
+    return (v - lo) / (hi - lo)
+
+
+def _text_extent_px(item: Text):
+    """(left, right, down, up) reach of a text from its anchor in px, from its length and alignment."""
+    size_px = item.style.font.size_pt * PX_PER_PT
+    length, height = 0.6 * size_px * len(item.text), 1.25 * size_px
+    vertical = item.direction is not None and abs(item.direction[1]) > abs(item.direction[0])
+    h_align, v_align = item.style.h_align, item.style.v_align
+    along = {"left": (0.0, length), "center": (length / 2, length / 2), "right": (length, 0.0)}[h_align]
+    across = {"bottom": (0.0, height), "center": (height / 2, height / 2), "top": (height, 0.0)}[v_align]
+    if vertical:   # reads upwards: its start is at the bottom
+        return across[1], across[0], along[0], along[1]
+    return along[0], along[1], across[0], across[1]
+
+
+def _margin_reach(item: Text, fx: float, fy: float):
+    """How far (left, right, top, bottom) a text on the frame reaches beyond it, in px, with
+    a little room; zero on the sides the text does not touch."""
+    left_px, right_px, down_px, up_px = _text_extent_px(item)
+    dx, dy = item.offset_pt[0] * PX_PER_PT, item.offset_pt[1] * PX_PER_PT
+    reach = (left_px - dx + 4.0, right_px + dx + 4.0, up_px + dy + 4.0, down_px - dy + 4.0)
+    touches = (fx <= 1e-9, fx >= 1.0 - 1e-9, fy >= 1.0 - 1e-9, fy <= 1e-9)
+    return tuple(r if t else 0.0 for r, t in zip(reach, touches))
+
+
+def _svg_angle(item: Text, to_px, px: float, py: float) -> float:
+    """The SVG rotation of a text that follows its direction, kept upright."""
+    if item.direction is None:
+        return 0.0
+    dx, dy = item.direction
+    step = 1e-3
+    qx, qy = (float(v) for v in to_px(item.x + dx * step, item.y + dy * step))
+    if not (math.isfinite(qx) and math.isfinite(qy)) or (qx, qy) == (px, py):
+        return 0.0
+    # Screen y points down, so a rising line has a negative SVG angle.
+    angle = math.degrees(math.atan2(qy - py, qx - px))
+    # Upright: the screen angle (counter-clockwise, the negative of the SVG
+    # angle) stays in (-90, 90], so straight down becomes straight up and
+    # the text reads bottom to top.
+    if angle >= 90.0:
+        return angle - 180.0
+    if angle < -90.0:
+        return angle + 180.0
+    return angle
+
+
+def _describe_line_element(element, frac) -> dict:
+    paths = {p.get("class"): p for p in element.iter(_NS + "path")}
+    main, casing = paths["cp-stroke"], paths.get("cp-casing")
+    vertices = re.findall(r"[ML](-?[0-9.e]+),(-?[0-9.e]+)", main.get("d") or "")
+    out = dict(_stroke_description(main), n_points=len(vertices),
+               drawn_points=[frac(float(x), float(y)) for x, y in vertices])
+    if casing is not None:
+        cased = _stroke_description(casing)
+        out.update(casing_color=cased["color"], casing_width_pt=(cased["width_pt"] - out["width_pt"]) / 2.0,
+                   casing_dash_pt=cased["dash_pt"], casing_alpha=cased["alpha"])
+    else:
+        out.update(casing_color=None, casing_width_pt=0.0)
+    return out
+
+
+def _describe_marker_element(element, frac) -> dict:
+    shapes = list(element)
+    return dict(shape=_shape_from_geometry(shapes[0]) if shapes else None,
+                size_pt=_shape_width_px(shapes[0]) / PX_PER_PT if shapes else 0.0,
+                drawn_points=[frac(*_shape_centre(el)) for el in shapes],
+                connected=any(el.tag in (_NS + "polyline", _NS + "line") for el in shapes)
+                or any(_shape_width_px(el) > 3.0 * _shape_width_px(shapes[0]) for el in shapes),
+                face_color=_color(element.get("fill")), edge_color=_color(element.get("stroke")),
+                edge_width_pt=float(element.get("stroke-width")) / PX_PER_PT,
+                alpha=float(element.get("opacity")), n_points=len(shapes))
+
+
+def _describe_text_element(text) -> dict:
+    angle = float(re.match(r"rotate\(([-0-9.e]+)", text.get("transform")).group(1))
+    halo = text.get("stroke")
+    out = _text_description("", text)
+    out.update(text=text.text or "",
+               h_align={"start": "left", "middle": "center", "end": "right"}[text.get("text-anchor")],
+               v_align={"text-after-edge": "bottom", "central": "center",
+                        "text-before-edge": "top"}[text.get("dominant-baseline")],
+               halo_color=_color(halo) if halo else None,
+               halo_width_pt=float(text.get("stroke-width")) / PX_PER_PT / 2.0 if halo else 0.0,
+               screen_angle_deg=-angle,   # SVG angles turn clockwise
+               alpha=float(text.get("fill-opacity")))
+    return out
+
+
+def _tick_label_rows(by_class, axis: str):
+    return [(float(t.get("data-value")), t.text or "") for t in by_class.get("cp-tick-label-" + axis, [])]
+
+
+def _describe_frame(frame, order, item_positions) -> dict:
+    # One rectangle draws all four sides of the frame with one style
+    return dict(frame_color=_color(frame.get("stroke")), frame_width_pt=float(frame.get("stroke-width")) / PX_PER_PT,
+                frame_sides=4 if frame.get("stroke") not in (None, "none") else 0,
+                items_below_frame=not item_positions or max(item_positions) < order[id(frame)])
+
+
+def _describe_texts(first, by_class) -> dict:
+    """The axis titles, the title and the tick label font."""
+    out = dict(x_label=(first("cp-x-label").text or ""), y_label=(first("cp-y-label").text or ""),
+               title=(first("cp-title").text or "") if first("cp-title") is not None else "")
+    out.update(_text_description("x_label", first("cp-x-label")))
+    out.update(_text_description("y_label", first("cp-y-label")))
+    if first("cp-title") is not None:
+        out.update(_text_description("title", first("cp-title")))
+    labels = by_class.get("cp-tick-label")
+    if labels:
+        out.update(_without_weight_and_style(_text_description("tick_label", labels[0])))
+    return out
+
+
+def _describe_ticks(x_tick, y_tick) -> dict:
+    out = {}
+    if x_tick is not None:
+        length = float(x_tick.get("y2")) - float(x_tick.get("y1"))
+        out.update(tick_direction="out" if length > 0 else "in", tick_color=_color(x_tick.get("stroke")),
+                   tick_length_pt=abs(length) / PX_PER_PT,
+                   tick_width_pt=float(x_tick.get("stroke-width")) / PX_PER_PT)
+    if y_tick is not None:
+        length = float(y_tick.get("x1")) - float(y_tick.get("x2"))   # outward points left
+        out.update(y_tick_direction="out" if length > 0 else "in", y_tick_color=_color(y_tick.get("stroke")),
+                   y_tick_length_pt=abs(length) / PX_PER_PT,
+                   y_tick_width_pt=float(y_tick.get("stroke-width")) / PX_PER_PT)
+    return out
+
+
+def _describe_grid(by_class, order, item_positions) -> dict:
+    major, minor = by_class.get("cp-grid-major"), by_class.get("cp-grid-minor")
+    out = dict(grid_color=_color(major[0].get("stroke")) if major else None,
+               grid_minor_color=_color(minor[0].get("stroke")) if minor else None)
+    if major:
+        grid = _stroke_description(major[0])
+        vertical = [g for g in major if g.get("x1") == g.get("x2")]
+        out.update(x_grid_lines=len(vertical), y_grid_lines=len(major) - len(vertical),
+                   grid_width_pt=grid["width_pt"], grid_dash_pt=grid["dash_pt"], grid_lines=len(major),
+                   grid_below_items=not item_positions
+                   or max(order[id(g)] for g in major + (minor or [])) < min(item_positions))
+    return out
+
+
+def _without_weight_and_style(described: dict) -> dict:
+    return {k: v for k, v in described.items() if not k.endswith(("weight", "style"))}
+
+
+def _sample_colors(entry) -> set:
+    """The colours of the line and marker samples of one legend entry."""
+    colors = set()
+    for el in entry.iter():
+        cls = el.get("class") or ""
+        if el.tag == _NS + "line" and "cp-casing" not in cls:
+            colors.add(_color(el.get("stroke")))
+        elif "cp-legend-marker" in cls:
+            colors.add(_color(el.get("stroke")) or _color(el.get("fill")))
+    return colors
 
 
 def _stroke_description(el) -> dict:
@@ -798,17 +862,22 @@ def _shape_from_geometry(el) -> Optional[str]:
     d = el.get("d") or ""
     points = _path_points(el)
     if d.rstrip().endswith("Z"):
-        if len(points) == 4:
-            return "D"
-        if len(points) == 3:
-            cx, cy = _shape_centre(el)
-            # One corner above the centre (screen y points down): pointing up
-            above = sum(1 for _, y in points if y < cy)
-            return "^" if above == 1 else "v"
-        return None
+        return _closed_shape(el, points)
     if len(points) == 4 and d.count("M") == 2:
         (x0, y0), (x1, y1) = points[0], points[1]
         return "+" if (x0 == x1 or y0 == y1) else "x"
+    return None
+
+
+def _closed_shape(el, points) -> Optional[str]:
+    """A diamond or a triangle, judged from its corners."""
+    if len(points) == 4:
+        return "D"
+    if len(points) == 3:
+        cx, cy = _shape_centre(el)
+        # One corner above the centre (screen y points down): pointing up
+        above = sum(1 for _, y in points if y < cy)
+        return "^" if above == 1 else "v"
     return None
 
 

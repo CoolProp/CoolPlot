@@ -204,3 +204,28 @@ def test_a_curve_that_cannot_be_computed_names_its_reason():
     import pickle
     curve = Curve([], [], reason="needs CoolProp 8")
     assert pickle.loads(pickle.dumps(curve)).reason == "needs CoolProp 8"
+
+
+# Regression tests from the adversarial review of 0.2 ------------------------
+
+def test_rounded_families_never_vanish():
+    assert len(nice_log(1.1, 1.19, 5)) >= 1 and len(nice_log(31.0, 39.0, 3)) >= 1
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP")
+    diagram.set_lines("rho", range=(31.0, 39.0), rounding=True)
+    assert len(diagram.update_scene().group("iso/rho")) >= 1
+
+
+def test_a_configuration_change_drops_the_cached_cycles():
+    pytest.importorskip("CoolProp")
+    from coolplot.engine import Engine
+    from coolplot.spec import FluidSpec
+    engine = Engine()
+    spec = FluidSpec.parse("HEOS::R290")
+    fluid = engine.fluid(spec)
+    engine._cycles[(spec, "states")] = "old"
+    engine._cycles[(FluidSpec.parse("HEOS::Water"), "states")] = "other fluid"
+    fluid.configuration_changed = lambda: True   # as after CoolProp.set_config_*
+    assert engine.fluid(spec) is not fluid
+    assert list(engine._cycles.values()) == ["other fluid"]

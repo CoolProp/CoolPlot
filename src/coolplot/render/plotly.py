@@ -49,7 +49,6 @@ from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
 from ..core.numbers import format_number
 from ..style.values import AxesStyle, LineStyle, TextStyle, dash_pattern_pt
 from .base import Renderer, SyncReport
-from .pdf_reader import replace_info
 from .ticks import ticks
 
 PX_PER_PT = 4.0 / 3.0
@@ -335,22 +334,7 @@ class PlotlyRenderer(Renderer):
             self.figure.update_layout(showlegend=False)
             return
         for rank, (text, items) in enumerate(entries):
-            lines = [i for i in items if isinstance(i, Line)]
-            markers = [i for i in items if isinstance(i, Markers)]
-            mode = "+".join(m for m, used in (("lines", lines), ("markers", markers)) if used)
-            sample = dict(x=[None], y=[None], mode=mode, name=_escape(text), showlegend=True, hoverinfo="skip",
-                          legendrank=rank + 1, meta=dict(legend=True))
-            if lines:
-                ls = lines[0].style
-                sample["line"] = dict(color=_color(ls.color), width=ls.width_pt * PX_PER_PT, dash=_dash(ls))
-            if markers:
-                ms = markers[0].style
-                symbol = _SYMBOLS[ms.shape]
-                sample["marker"] = dict(symbol=symbol, size=ms.size_pt * PX_PER_PT / SYMBOL_WIDTH[symbol],
-                                        color=TRANSPARENT if ms.face_color is None or ms.shape in ("x", "+")
-                                        else ms.face_color,
-                                        line=dict(color=_color(ms.edge_color), width=ms.edge_width_pt * PX_PER_PT))
-            self.figure.add_trace(go.Scatter(**sample))
+            self.figure.add_trace(go.Scatter(**_legend_sample(rank, text, items)))
             self._samples.append(self.figure.data[-1])
         legend = dict(_LEGEND[style.location], bgcolor=_color(style.background),
                       bordercolor=_color(style.frame_color), borderwidth=1 if style.frame_color else 0,
@@ -374,15 +358,19 @@ class PlotlyRenderer(Renderer):
                 limits = self._autoscale(key, log)
             lo, hi = drawable_limits(limits, log)
             ranges.append((lo, hi))
-            st = axes.style
-            major = ticks(lo, hi, log)
-            self.figure.layout[name].update(
-                range=[math.log10(lo), math.log10(hi)] if log else [lo, hi],
-                tickvals=major, ticktext=[format_number(v, axes.tick_digits) for v in major])
-            if st.grid_minor is not None and st.grid_minor.color is not None:
-                self.figure.layout[name].minor.tickvals = ticks(lo, hi, log, minor=True)
+            self._set_axis_range(name, lo, hi, log, axes)
         self._ranges = tuple(ranges)
         self._annotate()
+
+    def _set_axis_range(self, name: str, lo: float, hi: float, log: bool, axes: AxesSpec):
+        """The range and the tick positions and texts of one axis."""
+        major = ticks(lo, hi, log)
+        self.figure.layout[name].update(
+            range=[math.log10(lo), math.log10(hi)] if log else [lo, hi],
+            tickvals=major, ticktext=[format_number(v, axes.tick_digits) for v in major])
+        st = axes.style
+        if st.grid_minor is not None and st.grid_minor.color is not None:
+            self.figure.layout[name].minor.tickvals = ticks(lo, hi, log, minor=True)
 
     def _autoscale(self, key: str, log: bool):
         values = []
@@ -447,27 +435,24 @@ class PlotlyRenderer(Renderer):
         self._clipped = set()
         for item_id in sorted(self._texts, key=lambda i: self._rank.get(i, 0)):
             item = self._texts[item_id]
-            if not (math.isfinite(item.x) and math.isfinite(item.y)) or (x_log and item.x <= 0) \
-                    or (y_log and item.y <= 0):
+            if not _showable(item, x_log, y_log):
                 continue
             fx, fy = self._fraction(item.x, item.y)
             inside = 0.0 <= fx <= 1.0 and 0.0 <= fy <= 1.0
             if item.visible and item.clip and not inside:
                 self._clipped.add(item_id)
-            s = item.style
-            font = _font(s)
-            if s.halo_color is not None and s.halo_width_pt > 0.0:
-                w = s.halo_width_pt * PX_PER_PT
-                font["shadow"] = ", ".join("{0:.4g}px {1:.4g}px {2:.4g}px {3}".format(dx * w, dy * w, 0, s.halo_color)
-                                           for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
-            annotations.append(dict(
-                x=math.log10(item.x) if x_log else item.x, y=math.log10(item.y) if y_log else item.y,
-                xref="x", yref="y", text=_escape(item.text), showarrow=False,
-                textangle=-self._screen_angle(item), xanchor=_H_ANCHOR[s.h_align], yanchor=_V_ANCHOR[s.v_align],
-                xshift=item.offset_pt[0] * PX_PER_PT, yshift=item.offset_pt[1] * PX_PER_PT, font=font,
-                opacity=s.alpha, visible=item.visible and (inside or not item.clip),
-                name=item_id, captureevents=False))
+            annotations.append(self._annotation_of(item_id, item, x_log, y_log, inside))
         self.figure.layout.annotations = annotations
+
+    def _annotation_of(self, item_id: str, item: Text, x_log: bool, y_log: bool, inside: bool) -> dict:
+        s = item.style
+        return dict(
+            x=math.log10(item.x) if x_log else item.x, y=math.log10(item.y) if y_log else item.y,
+            xref="x", yref="y", text=_escape(item.text), showarrow=False,
+            textangle=-self._screen_angle(item), xanchor=_H_ANCHOR[s.h_align], yanchor=_V_ANCHOR[s.v_align],
+            xshift=item.offset_pt[0] * PX_PER_PT, yshift=item.offset_pt[1] * PX_PER_PT,
+            font=_font_with_halo(s), opacity=s.alpha, visible=item.visible and (inside or not item.clip),
+            name=item_id, captureevents=False)
 
     # Output -------------------------------------------------------------
     def save(self, path: str, include_plotlyjs="cdn"):
@@ -509,6 +494,9 @@ class PlotlyRenderer(Renderer):
                 if attempt == 2:
                     raise RuntimeError("Kaleido could not write {0}: {1}".format(path, e)) from e
         if suffix == ".pdf":
+            # Kaleido writes a creation date and no title; rewrite the
+            # information so that the same chart gives the same file.
+            from ..testing.pdf_reader import replace_info
             title = self._axes.title if self._axes is not None else ""
             replace_info(path, {"Title": title} if title else {})
 
@@ -540,23 +528,9 @@ class PlotlyRenderer(Renderer):
         visible = sorted((t for i, t in self._traces.items() if t.visible is not False), key=lambda t: t.zorder)
         out["draw_rank"] = [t.meta["item"] for t in visible].index(item_id)
         if kind == "line":
-            line = trace.line
-            out.update(color=_color_back(line.color), width_pt=line.width / PX_PER_PT, dash_pt=_dash_back(line.dash))
-            casing = self._casings.get(item_id)
-            if casing is not None:
-                width = casing.line.width / PX_PER_PT
-                out.update(casing_color=_color_back(casing.line.color), casing_width_pt=(width - out["width_pt"]) / 2,
-                           casing_dash_pt=_dash_back(casing.line.dash),
-                           casing_alpha=1.0 if casing.opacity is None else casing.opacity)
-            else:
-                out.update(casing_color=None, casing_width_pt=0.0)
+            out.update(_describe_trace_line(trace, self._casings.get(item_id)))
         else:
-            marker = trace.marker
-            shape = _SHAPES[marker.symbol]
-            out.update(shape=shape, size_pt=marker.size * SYMBOL_WIDTH[marker.symbol] / PX_PER_PT,
-                       face_color=None if shape in ("x", "+") else _color_back(marker.color),
-                       edge_color=_color_back(marker.line.color), edge_width_pt=marker.line.width / PX_PER_PT,
-                       connected="lines" in trace.mode)
+            out.update(_describe_trace_markers(trace))
         return out
 
     def _describe_text(self, item_id: str) -> dict:
@@ -567,10 +541,7 @@ class PlotlyRenderer(Renderer):
         if annotation is None or item_id not in shown:
             return {"visible": False, "kind": "text"}
         texts = [a.name for a in self.figure.layout.annotations if a.name in shown]
-        x_log, y_log = self._log()
-        x = 10.0 ** annotation.x if x_log else annotation.x
-        y = 10.0 ** annotation.y if y_log else annotation.y
-        fx, fy = self._fraction(x, y)
+        fx, fy = self._fraction(*self._annotation_data_position(annotation))
         width, height = self.plot_size_pt()
         dx, dy = annotation.xshift / PX_PER_PT, annotation.yshift / PX_PER_PT
         out = {"visible": True, "kind": "text", "draw_rank": texts.index(item_id),
@@ -581,13 +552,13 @@ class PlotlyRenderer(Renderer):
                "clip": self._drawn[item_id].clip,
                "drawn_points": [(fx + dx / width, fy + dy / height)]}
         out.update(_font_description("", annotation.font))
-        shadow = annotation.font.shadow
-        match = re.match(r"\s*(-?[0-9.]+)px [^,]* (#[0-9a-fA-F]{6})", shadow or "")
-        if match:
-            out.update(halo_color=match.group(2), halo_width_pt=abs(float(match.group(1))) / PX_PER_PT)
-        else:
-            out.update(halo_color=None, halo_width_pt=0.0)
+        out.update(_halo_from_shadow(annotation.font.shadow))
         return out
+
+    def _annotation_data_position(self, annotation):
+        """(x, y) of an annotation in data values (plotly keeps log10 on log axes)."""
+        x_log, y_log = self._log()
+        return (10.0 ** annotation.x if x_log else annotation.x, 10.0 ** annotation.y if y_log else annotation.y)
 
     def describe_axes(self) -> dict:
         layout = self.figure.layout
@@ -595,44 +566,20 @@ class PlotlyRenderer(Renderer):
         (x0, x1), (y0, y1) = self._figure_ranges()
         out = dict(
             x_log=xa.type == "log", y_log=ya.type == "log", x_limits=(x0, x1), y_limits=(y0, y1),
-            x_label=_unescape(xa.title.text or ""), y_label=_unescape(ya.title.text or ""),
-            title=_unescape(layout.title.text or ""),
             background=_color_back(layout.plot_bgcolor), figure_background=_color_back(layout.paper_bgcolor),
-            frame_color=_color_back(xa.linecolor) if xa.showline else None,
-            frame_width_pt=(xa.linewidth or 0.0) / PX_PER_PT,
-            frame_sides=4 if (xa.showline and ya.showline and xa.mirror is True and ya.mirror is True
-                              and xa.linecolor == ya.linecolor and xa.linewidth == ya.linewidth) else 0,
-            items_below_frame=xa.layer == "above traces" and ya.layer == "above traces",
             plot_size_pt=self.plot_size_pt(), legend=self._legend_description(),
             grid_color=xa.gridcolor if xa.showgrid else None,
             grid_minor_color=xa.minor.gridcolor if xa.minor.showgrid else None,
-            x_tick_labels=list(zip((float(v) for v in xa.tickvals or ()), xa.ticktext or ())),
-            y_tick_labels=list(zip((float(v) for v in ya.tickvals or ()), ya.ticktext or ())),
+            x_tick_labels=_tick_label_rows(xa), y_tick_labels=_tick_label_rows(ya),
         )
+        out.update(_describe_layout_frame(xa, ya))
+        out.update(_describe_layout_texts(layout))
         for prefix, axis in (("", xa), ("y_", ya)):
-            out.update({prefix + "tick_direction": "out" if axis.ticks == "outside" else "in",
-                        prefix + "tick_color": _color_back(axis.tickcolor),
-                        prefix + "tick_length_pt": axis.ticklen / PX_PER_PT,
-                        prefix + "tick_width_pt": axis.tickwidth / PX_PER_PT})
+            out.update(_describe_axis_ticks(prefix, axis))
         if xa.showgrid:
-            out.update(grid_width_pt=xa.gridwidth / PX_PER_PT, grid_dash_pt=_dash_back(xa.griddash),
-                       grid_below_items=True,   # plotly always draws the grid below the traces
-                       x_grid_lines=sum(1 for v in xa.tickvals or () if min(x0, x1) <= v <= max(x0, x1)),
-                       y_grid_lines=sum(1 for v in ya.tickvals or () if min(y0, y1) <= v <= max(y0, y1)))
-            out["grid_lines"] = out["x_grid_lines"] + out["y_grid_lines"]
+            out.update(_describe_layout_grid(xa, ya, (x0, x1), (y0, y1)))
         if layout.showlegend and self._samples:
-            legend = layout.legend
-            location = next((name for name, place in _LEGEND.items()
-                             if (legend.x, legend.y, legend.xanchor, legend.yanchor)
-                             == (place["x"], place["y"], place["xanchor"], place["yanchor"])), None)
-            out.update(legend_location=location, legend_background=_color_back(legend.bgcolor),
-                       items_below_legend=True)   # plotly draws the legend above everything
-            out.update(_font_description("legend", legend.font, full=False))
-        out.update(_font_description("x_label", xa.title.font))
-        out.update(_font_description("y_label", ya.title.font))
-        if out["title"]:
-            out.update(_font_description("title", layout.title.font))
-        out.update(_font_description("tick_label", xa.tickfont, full=False))
+            out.update(_describe_layout_legend(layout.legend))
         return out
 
     def _legend_description(self):
@@ -647,6 +594,127 @@ class PlotlyRenderer(Renderer):
                 colors.add(_color_back(sample.marker.line.color) or _color_back(sample.marker.color))
             rows.append((_unescape(sample.name), tuple(sorted(colors - {None}))))
         return rows
+
+
+def _showable(item: Text, x_log: bool, y_log: bool) -> bool:
+    """Whether a text has a place on the axes at all (finite, positive on log axes)."""
+    if not (math.isfinite(item.x) and math.isfinite(item.y)):
+        return False
+    return not ((x_log and item.x <= 0) or (y_log and item.y <= 0))
+
+
+def _legend_sample(rank: int, text: str, items) -> dict:
+    """An invisible trace whose legend entry shows the line and marker styles of the items."""
+    lines = [i for i in items if isinstance(i, Line)]
+    markers = [i for i in items if isinstance(i, Markers)]
+    mode = "+".join(m for m, used in (("lines", lines), ("markers", markers)) if used)
+    sample = dict(x=[None], y=[None], mode=mode, name=_escape(text), showlegend=True, hoverinfo="skip",
+                  legendrank=rank + 1, meta=dict(legend=True))
+    if lines:
+        ls = lines[0].style
+        sample["line"] = dict(color=_color(ls.color), width=ls.width_pt * PX_PER_PT, dash=_dash(ls))
+    if markers:
+        sample["marker"] = _marker_sample(markers[0].style)
+    return sample
+
+
+def _marker_sample(ms) -> dict:
+    symbol = _SYMBOLS[ms.shape]
+    face = TRANSPARENT if ms.face_color is None or ms.shape in ("x", "+") else ms.face_color
+    return dict(symbol=symbol, size=ms.size_pt * PX_PER_PT / SYMBOL_WIDTH[symbol], color=face,
+                line=dict(color=_color(ms.edge_color), width=ms.edge_width_pt * PX_PER_PT))
+
+
+def _font_with_halo(s: TextStyle) -> dict:
+    """The annotation font, with the halo drawn as four text shadows."""
+    font = _font(s)
+    if s.halo_color is not None and s.halo_width_pt > 0.0:
+        w = s.halo_width_pt * PX_PER_PT
+        font["shadow"] = ", ".join("{0:.4g}px {1:.4g}px {2:.4g}px {3}".format(dx * w, dy * w, 0, s.halo_color)
+                                   for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
+    return font
+
+
+def _halo_from_shadow(shadow) -> dict:
+    match = re.match(r"\s*(-?[0-9.]+)px [^,]* (#[0-9a-fA-F]{6})", shadow or "")
+    if match:
+        return dict(halo_color=match.group(2), halo_width_pt=abs(float(match.group(1))) / PX_PER_PT)
+    return dict(halo_color=None, halo_width_pt=0.0)
+
+
+def _describe_trace_line(trace, casing) -> dict:
+    line = trace.line
+    out = dict(color=_color_back(line.color), width_pt=line.width / PX_PER_PT, dash_pt=_dash_back(line.dash))
+    if casing is not None:
+        width = casing.line.width / PX_PER_PT
+        out.update(casing_color=_color_back(casing.line.color), casing_width_pt=(width - out["width_pt"]) / 2,
+                   casing_dash_pt=_dash_back(casing.line.dash),
+                   casing_alpha=1.0 if casing.opacity is None else casing.opacity)
+    else:
+        out.update(casing_color=None, casing_width_pt=0.0)
+    return out
+
+
+def _describe_trace_markers(trace) -> dict:
+    marker = trace.marker
+    shape = _SHAPES[marker.symbol]
+    return dict(shape=shape, size_pt=marker.size * SYMBOL_WIDTH[marker.symbol] / PX_PER_PT,
+                face_color=None if shape in ("x", "+") else _color_back(marker.color),
+                edge_color=_color_back(marker.line.color), edge_width_pt=marker.line.width / PX_PER_PT,
+                connected="lines" in trace.mode)
+
+
+def _tick_label_rows(axis):
+    return list(zip((float(v) for v in axis.tickvals or ()), axis.ticktext or ()))
+
+
+def _describe_layout_frame(xa, ya) -> dict:
+    mirrored = (xa.showline and ya.showline and xa.mirror is True and ya.mirror is True
+                and xa.linecolor == ya.linecolor and xa.linewidth == ya.linewidth)
+    return dict(frame_color=_color_back(xa.linecolor) if xa.showline else None,
+                frame_width_pt=(xa.linewidth or 0.0) / PX_PER_PT, frame_sides=4 if mirrored else 0,
+                items_below_frame=xa.layer == "above traces" and ya.layer == "above traces")
+
+
+def _describe_layout_texts(layout) -> dict:
+    """Axis titles, the title and their fonts, plus the tick label font."""
+    xa, ya = layout.xaxis, layout.yaxis
+    out = dict(x_label=_unescape(xa.title.text or ""), y_label=_unescape(ya.title.text or ""),
+               title=_unescape(layout.title.text or ""))
+    out.update(_font_description("x_label", xa.title.font))
+    out.update(_font_description("y_label", ya.title.font))
+    if out["title"]:
+        out.update(_font_description("title", layout.title.font))
+    out.update(_font_description("tick_label", xa.tickfont, full=False))
+    return out
+
+
+def _describe_axis_ticks(prefix: str, axis) -> dict:
+    return {prefix + "tick_direction": "out" if axis.ticks == "outside" else "in",
+            prefix + "tick_color": _color_back(axis.tickcolor),
+            prefix + "tick_length_pt": axis.ticklen / PX_PER_PT,
+            prefix + "tick_width_pt": axis.tickwidth / PX_PER_PT}
+
+
+def _describe_layout_grid(xa, ya, x_range, y_range) -> dict:
+    x0, x1 = x_range
+    y0, y1 = y_range
+    out = dict(grid_width_pt=xa.gridwidth / PX_PER_PT, grid_dash_pt=_dash_back(xa.griddash),
+               grid_below_items=True,   # plotly always draws the grid below the traces
+               x_grid_lines=sum(1 for v in xa.tickvals or () if min(x0, x1) <= v <= max(x0, x1)),
+               y_grid_lines=sum(1 for v in ya.tickvals or () if min(y0, y1) <= v <= max(y0, y1)))
+    out["grid_lines"] = out["x_grid_lines"] + out["y_grid_lines"]
+    return out
+
+
+def _describe_layout_legend(legend) -> dict:
+    location = next((name for name, place in _LEGEND.items()
+                     if (legend.x, legend.y, legend.xanchor, legend.yanchor)
+                     == (place["x"], place["y"], place["xanchor"], place["yanchor"])), None)
+    out = dict(legend_location=location, legend_background=_color_back(legend.bgcolor),
+               items_below_legend=True)   # plotly draws the legend above everything
+    out.update(_font_description("legend", legend.font, full=False))
+    return out
 
 
 class _PlotlyEncoder(json.JSONEncoder):

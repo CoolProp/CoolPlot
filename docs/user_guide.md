@@ -342,28 +342,29 @@ the same from code. For other behaviour, handle the events yourself:
 `coolplot.render.web.WebRenderer` draws the same SVG as the SVG backend
 but sends only what changed to a small JavaScript client, and turns the
 browser's pointer input into the same events as matplotlib (dragging
-empty space pans, the wheel zooms). `WebServer` serves it without any
-web framework:
+empty space pans, the wheel zooms):
 
 ```python
-from coolplot.render.web import WebRenderer, WebServer
+from coolplot.render.web import WebRenderer
 renderer = WebRenderer(width=1000, height=700)
 Interaction(diagram, renderer)
 renderer.sync(diagram.update_scene(renderer.plot_size_pt()))
-server = WebServer(renderer)
-print("Open", server.url)
-server.serve_forever()
 ```
 
-For your own web application, send the messages from
+For your web application, send the messages from
 `renderer.listen(callback)` to the browser (for example over a
 websocket), feed the client's input to `renderer.receive(message)`, and
 serve `renderer.page(stream=..., input=...)`. `receive` checks every
 message and raises `ValueError` for a malformed one; answer that with an
 error instead of passing it on. `save("chart.html")` writes a static
-page. See `examples/web_app.py`.
+page. `examples/web_app/` does all this with a small development server
+(`server.py`, standard library only) that you can start from:
 
-`WebServer` is meant for development and small tools on your own
+```
+python examples/web_app/app.py
+```
+
+That server is meant for development and small tools on your own
 machine. It binds to 127.0.0.1, only answers requests that name it in
 their `Host` header and only takes input from its own page, so other web
 sites open in the browser cannot drive it. Bound to another address

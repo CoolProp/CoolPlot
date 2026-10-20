@@ -214,25 +214,10 @@ def _clip_segment(x0, y0, x1, y1, width, height):
     edges crossed at either end (None where the end point is inside), or
     None if nothing is visible.
     """
-    t0, t1, edge0, edge1 = 0.0, 1.0, None, None
-    dx, dy = x1 - x0, y1 - y0
-    for p, q, edge in ((-dx, x0, "left"), (dx, width - x0, "right"),
-                       (-dy, y0, "bottom"), (dy, height - y0, "top")):
-        if p == 0.0:
-            if q < 0.0:
-                return None
-            continue
-        t = q / p
-        if p < 0.0:
-            if t > t1:
-                return None
-            if t > t0:
-                t0, edge0 = t, edge
-        else:
-            if t < t0:
-                return None
-            if t < t1:
-                t1, edge1 = t, edge
+    crossings = _frame_crossings(x0, y0, x1 - x0, y1 - y0, width, height)
+    if crossings is None:
+        return None
+    t0, t1, edge0, edge1 = crossings
     # An end point exactly on the frame also counts as crossing it: isolines
     # often end exactly at the axis limits, because the calculation domain
     # and the axis limits are the same.
@@ -241,6 +226,23 @@ def _clip_segment(x0, y0, x1, y1, width, height):
     if edge1 is None:
         edge1 = _on_edge(x1, y1, width, height)
     return t0, t1, edge0, edge1
+
+
+def _frame_crossings(x0, y0, dx, dy, width, height):
+    """(t0, t1, entering edge, leaving edge) of the segment against the four frame edges, or None."""
+    t0, t1, edge0, edge1 = 0.0, 1.0, None, None
+    for p, q, edge in ((-dx, x0, "left"), (dx, width - x0, "right"),
+                       (-dy, y0, "bottom"), (dy, height - y0, "top")):
+        if p == 0.0:   # parallel to this edge: visible only if on the inside
+            if q < 0.0:
+                return None
+            continue
+        t = q / p
+        if p < 0.0 and t > t0:   # entering through this edge
+            t0, edge0 = t, edge
+        elif p > 0.0 and t < t1:   # leaving through this edge
+            t1, edge1 = t, edge
+    return None if t0 > t1 else (t0, t1, edge0, edge1)
 
 
 def _on_edge(x, y, width, height, tol=1e-6):
@@ -324,35 +326,50 @@ def _candidates(pieces: Sequence[Piece], half_w: float, half_h: float, preferred
                 previous: Optional[Tuple[float, float]], fallback: bool = True) -> List[Candidate]:
     """All positions considered for one label, best (lowest score) first."""
     found = []
-    # How far from the frame the edge candidates reach (three slides inward)
-    edge_reach = half_w + PAD_PT + half_h + 4.0 * half_w + 1.0
     if previous is not None:
-        # Keep the old position if the line still passes through it. Without
-        # fallbacks it also has to stay near a frame crossing, so that a
-        # label cannot drift to the middle of the chart.
-        for piece in pieces:
-            s, dist = piece.project(*previous)
-            near_edge = ((piece.start_edge is not None and s <= edge_reach)
-                         or (piece.end_edge is not None and piece.length - s <= edge_reach))
-            if dist <= 3.0 and (fallback or near_edge):
-                c = _candidate(piece, s, half_w, half_h, -10.0)
-                if c is not None:
-                    found.append(c)
+        found.extend(_previous_candidates(pieces, half_w, half_h, previous, fallback))
     for piece in pieces:
-        for edge, forward in ((piece.start_edge, True), (piece.end_edge, False)):
-            if edge is None:
-                continue
-            rank = list(preferred).index(edge) if edge in preferred else len(preferred) + 1
-            for k in range(3):   # slide inward if the spot next to the frame is taken
-                s = half_w + PAD_PT + half_h + k * 2.0 * half_w
-                c = _candidate(piece, s if forward else piece.length - s, half_w, half_h, rank + 0.5 * k)
-                if c is not None:
-                    found.append(c)
+        found.extend(_edge_candidates(piece, half_w, half_h, preferred))
         for fraction in ((0.5, 0.25, 0.75) if fallback else ()):   # fallbacks along the line
             c = _candidate(piece, fraction * piece.length, half_w, half_h, len(EDGES) + 2.0)
             if c is not None:
                 found.append(c)
     found.sort(key=lambda c: c.score)
+    return found
+
+
+def _previous_candidates(pieces, half_w, half_h, previous, fallback) -> List[Candidate]:
+    """The old position, if the line still passes through it.
+
+    Without fallbacks it also has to stay near a frame crossing, so that a
+    label cannot drift to the middle of the chart.
+    """
+    # How far from the frame the edge candidates reach (three slides inward)
+    edge_reach = half_w + PAD_PT + half_h + 4.0 * half_w + 1.0
+    found = []
+    for piece in pieces:
+        s, dist = piece.project(*previous)
+        near_edge = ((piece.start_edge is not None and s <= edge_reach)
+                     or (piece.end_edge is not None and piece.length - s <= edge_reach))
+        if dist <= 3.0 and (fallback or near_edge):
+            c = _candidate(piece, s, half_w, half_h, -10.0)
+            if c is not None:
+                found.append(c)
+    return found
+
+
+def _edge_candidates(piece, half_w, half_h, preferred) -> List[Candidate]:
+    """Spots just inside the frame where the piece crosses it, sliding inward three times."""
+    found = []
+    for edge, forward in ((piece.start_edge, True), (piece.end_edge, False)):
+        if edge is None:
+            continue
+        rank = list(preferred).index(edge) if edge in preferred else len(preferred) + 1
+        for k in range(3):   # slide inward if the spot next to the frame is taken
+            s = half_w + PAD_PT + half_h + k * 2.0 * half_w
+            c = _candidate(piece, s if forward else piece.length - s, half_w, half_h, rank + 0.5 * k)
+            if c is not None:
+                found.append(c)
     return found
 
 
@@ -364,21 +381,27 @@ def keep_out_points(frame: Frame, lines, spacing_pt: float = 2.0) -> Tuple[np.nd
     """
     xs, ys = [], []
     for entry in lines:
-        x, y = entry[0], entry[1]
         joined = entry[2] if len(entry) > 2 else True
-        px, py = frame.to_pt(x, y)
+        px, py = frame.to_pt(entry[0], entry[1])
         for i in range(len(px)):
             if not (math.isfinite(px[i]) and math.isfinite(py[i])):
                 continue
             xs.append(px[i])
             ys.append(py[i])
-            if joined and i + 1 < len(px) and math.isfinite(px[i + 1]) and math.isfinite(py[i + 1]):
-                n = int(math.hypot(px[i + 1] - px[i], py[i + 1] - py[i]) // spacing_pt)
-                for k in range(1, n + 1):
-                    t = k / (n + 1.0)
-                    xs.append(px[i] + t * (px[i + 1] - px[i]))
-                    ys.append(py[i] + t * (py[i + 1] - py[i]))
+            if joined and i + 1 < len(px):
+                between_x, between_y = _between(px[i], py[i], px[i + 1], py[i + 1], spacing_pt)
+                xs.extend(between_x)
+                ys.extend(between_y)
     return np.array(xs), np.array(ys)
+
+
+def _between(x0, y0, x1, y1, spacing_pt: float):
+    """Points every ``spacing_pt`` strictly between two finite points (none if the second is not finite)."""
+    if not (math.isfinite(x1) and math.isfinite(y1)):
+        return [], []
+    n = int(math.hypot(x1 - x0, y1 - y0) // spacing_pt)
+    ts = [k / (n + 1.0) for k in range(1, n + 1)]
+    return [x0 + t * (x1 - x0) for t in ts], [y0 + t * (y1 - y0) for t in ts]
 
 
 def place_edge_labels(requests: Sequence[LabelRequest], frame: Frame, keep_out_lines, keep_out_pt: float,
@@ -406,27 +429,42 @@ def place_edge_labels(requests: Sequence[LabelRequest], frame: Frame, keep_out_l
         px, py = frame.to_pt(request.x, request.y)
         pieces = visible_pieces(px, py, frame.width_pt, frame.height_pt)
         old = previous.get(request.id)
-        old_pt = None
-        if old is not None:
-            ox, oy = frame.to_pt([old.x], [old.y])
-            if math.isfinite(ox[0]) and math.isfinite(oy[0]):
-                old_pt = (float(ox[0]), float(oy[0]))
+        old_pt = _old_position(frame, old)
         preferred = preferred_edges.get(request.family, EDGES)
         for c in _candidates(pieces, half_w, half_h, preferred, old_pt, fallback):
-            box = c.box
-            if not box.inside(frame.width_pt, frame.height_pt, PAD_PT):
+            if not _free(c.box, frame, kx, ky, keep_out_pt, placed):
                 continue
-            if box.near_points(kx, ky, keep_out_pt):
-                continue
-            if any(box.overlaps(other, PAD_PT) for other in placed):
-                continue
-            placed.append(box)
-            new = _text(request, frame, box, c.direction)
-            unchanged = (old is not None and old_pt is not None and old.text == new.text
-                         and old.style == new.style and math.hypot(box.cx - old_pt[0], box.cy - old_pt[1]) < 0.5)
-            labels.append(old if unchanged else new)
+            placed.append(c.box)
+            new = _text(request, frame, c.box, c.direction)
+            labels.append(old if _same_label(old, old_pt, new, c.box) else new)
             break
     return labels
+
+
+def _same_label(old: Optional[Text], old_pt, new: Text, box: Box) -> bool:
+    """Whether the new label is the old one in the same place, so the old item can be kept."""
+    if old is None or old_pt is None:
+        return False
+    return old.text == new.text and old.style == new.style and math.hypot(box.cx - old_pt[0], box.cy - old_pt[1]) < 0.5
+
+
+def _old_position(frame: Frame, old: Optional[Text]):
+    """Where a label of the previous layout sits, in pt, or None."""
+    if old is None:
+        return None
+    ox, oy = frame.to_pt([old.x], [old.y])
+    if not (math.isfinite(ox[0]) and math.isfinite(oy[0])):
+        return None
+    return float(ox[0]), float(oy[0])
+
+
+def _free(box: Box, frame: Frame, kx, ky, keep_out_pt: float, placed: List[Box]) -> bool:
+    """Whether a label box lies inside the frame, clear of the keep-out points and of the labels placed."""
+    if not box.inside(frame.width_pt, frame.height_pt, PAD_PT):
+        return False
+    if box.near_points(kx, ky, keep_out_pt):
+        return False
+    return not any(box.overlaps(other, PAD_PT) for other in placed)
 
 
 def _text(request: LabelRequest, frame: Frame, box: Box, direction_pt) -> Text:
@@ -461,24 +499,34 @@ def place_margin_labels(requests: Sequence[LabelRequest], frame: Frame, edges: S
     labels = []
     for request in requests:
         width, height = text_size_pt(request.text, request.style)
+        half = 0.5 * height + PAD_PT   # vertical at top and bottom, horizontal at the sides
         px, py = frame.to_pt(request.x, request.y)
         for piece in visible_pieces(px, py, frame.width_pt, frame.height_pt):
-            ends = [(piece.start_edge, piece.px[0], piece.py[0]), (piece.end_edge, piece.px[-1], piece.py[-1])]
-            spot = next(((e, x, y) for e, x, y in ends if e in taken), None)
+            spot = _margin_spot(piece, taken)
             if spot is None:
                 continue
             edge, x, y = spot
             along = x if edge in ("top", "bottom") else y
-            half = 0.5 * height + PAD_PT   # vertical at top and bottom, horizontal at the sides
-            limit = frame.width_pt if edge in ("top", "bottom") else frame.height_pt
-            if along - half < -PAD_PT or along + half > limit + PAD_PT:
-                continue
-            if any(abs(along - a) < half + h for a, h in taken[edge]):
+            if not _margin_free(along, half, edge, frame, taken):
                 continue
             taken[edge].append((along, half))
             labels.append(_margin_text(request, frame, edge, x, y, gap_pt))
             break
     return labels
+
+
+def _margin_spot(piece, taken):
+    """(edge, x, y) where the piece leaves the frame through a labelled edge, or None."""
+    ends = [(piece.start_edge, piece.px[0], piece.py[0]), (piece.end_edge, piece.px[-1], piece.py[-1])]
+    return next(((e, x, y) for e, x, y in ends if e in taken), None)
+
+
+def _margin_free(along: float, half: float, edge: str, frame: Frame, taken) -> bool:
+    """Whether a margin label fits on the edge without leaving the canvas or touching another."""
+    limit = frame.width_pt if edge in ("top", "bottom") else frame.height_pt
+    if along - half < -PAD_PT or along + half > limit + PAD_PT:
+        return False
+    return not any(abs(along - a) < half + h for a, h in taken[edge])
 
 
 def _margin_text(request: LabelRequest, frame: Frame, edge: str, x: float, y: float, gap_pt: float) -> Text:

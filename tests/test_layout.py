@@ -5,7 +5,7 @@ import math
 import numpy as np
 import pytest
 
-from coolplot.compose.layout import (Box, Frame, LabelRequest, place_edge_labels, place_margin_labels,
+from coolplot.compose.layout import (Box, Frame, LabelRequest, keep_out_points, place_edge_labels, place_margin_labels,
                                      text_size_pt, visible_pieces)
 from coolplot.core.numbers import format_number
 from coolplot.style.values import Font, TextStyle
@@ -133,3 +133,27 @@ def test_unusable_frame_gives_no_labels():
                                          (-20.0, "-20"), (100000.0, "100000"), (0.0, "0")])
 def test_central_number_format(value, text):
     assert format_number(value) == text
+
+
+# Regression tests from the adversarial review of 0.2 ------------------------
+
+
+def test_labels_survive_a_log_view_from_zero():
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP")
+    diagram.set_lines("T", num=8, rounding=True, labels=True)
+    diagram.set_view(None, (0.0, 10.0))
+    scene = diagram.update_scene()
+    assert scene.axes.y_limits == pytest.approx((0.01, 10.0))
+    assert any(i.role == "isoline_label" for i in scene)
+    with pytest.raises(ValueError):
+        diagram.set_view((float("nan"), 300.0))
+
+
+def test_markers_are_kept_out_as_points():
+    frame = Frame((0.0, 1.0), (0.0, 1.0), False, False, 100.0, 100.0)
+    px, _ = keep_out_points(frame, [([0.1, 0.9], [0.1, 0.9], False)])
+    assert len(px) == 2
+    px, _ = keep_out_points(frame, [([0.1, 0.9], [0.1, 0.9])])
+    assert len(px) > 2

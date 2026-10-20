@@ -105,6 +105,20 @@ class ProcessSpec:
                    None if data.get("marker_style") is None else style_from_dict(MarkerStyle, data["marker_style"]))
 
 
+def _checked_states(name: str, states) -> Tuple[Tuple[int, StateInput], ...]:
+    """(number, StateInput) pairs sorted by number; numbers unique, at least one state."""
+    items = states.items() if isinstance(states, dict) else states
+    checked = tuple(sorted((int(n), s) for n, s in items))
+    if not checked:
+        raise ValueError("Cycle '{0}' has no states.".format(name))
+    if len({n for n, _ in checked}) != len(checked):
+        raise ValueError("Cycle '{0}': a state number is used twice.".format(name))
+    for number, given in checked:
+        if not isinstance(given, StateInput):
+            raise TypeError("Cycle '{0}', state {1}: expected a StateInput.".format(name, number))
+    return checked
+
+
 @dataclass(frozen=True)
 class CycleSpec:
     """A cycle to draw: numbered states, the chains through them and how paths are drawn
@@ -125,15 +139,7 @@ class CycleSpec:
     steps: int = 20
 
     def __post_init__(self):
-        items = self.states.items() if isinstance(self.states, dict) else self.states
-        states = tuple(sorted((int(n), s) for n, s in items))
-        if not states:
-            raise ValueError("Cycle '{0}' has no states.".format(self.name))
-        if len({n for n, _ in states}) != len(states):
-            raise ValueError("Cycle '{0}': a state number is used twice.".format(self.name))
-        for number, given in states:
-            if not isinstance(given, StateInput):
-                raise TypeError("Cycle '{0}', state {1}: expected a StateInput.".format(self.name, number))
+        states = _checked_states(self.name, self.states)
         numbers = [n for n, _ in states]
         object.__setattr__(self, "states", states)
         object.__setattr__(self, "loops", check_loops(numbers, self.loops) if self.loops else default_loops(numbers))
@@ -198,39 +204,21 @@ class DiagramSpec:
         diagram = DiagramType.parse(self.diagram)
         if diagram.kind != fluid.kind:
             raise ValueError("A {0} diagram cannot show {1}.".format(diagram.name, fluid.name))
-        if diagram.kind == "fluid":
-            if isinstance(self.limits, Region):
-                raise ValueError("A {0} diagram takes TpLimits (bounds on T and p), not a Region.".format(
-                    diagram.name))
-            limits = get_tp_limits(self.limits)
-        else:
-            limits = self.limits
-            if not isinstance(limits, Region) or any(k not in dict(limits.bounds) for k in (diagram.x, diagram.y)):
-                raise ValueError("A {0} chart needs a Region with bounds on '{1}' and '{2}', not {3!r}.".format(
-                    diagram.name, diagram.x, diagram.y, limits))
+        limits = _checked_limits(diagram, self.limits)
         object.__setattr__(self, "fluid", fluid)
         object.__setattr__(self, "diagram", diagram)
         object.__setattr__(self, "units", get_unit_system(self.units))
         object.__setattr__(self, "limits", limits)
         object.__setattr__(self, "settings", get_settings(self.settings))
-        keys = [s.key for s in self.isolines]
-        if len(set(keys)) != len(keys):
-            raise ValueError("Each isoline quantity may appear only once, got {0}.".format(keys))
+        _unique([s.key for s in self.isolines], "Each isoline quantity may appear only once")
         for iso_set in self.isolines:
-            if not self.diagram.supports(iso_set.key):
+            if not diagram.supports(iso_set.key):
                 raise ValueError("Lines of constant '{0}' cannot be drawn in a {1} diagram.".format(
-                    iso_set.key, self.diagram.name))
-        names = [p.name for p in self.processes]
-        if len(set(names)) != len(names):
-            raise ValueError("Process names have to be unique, got {0}.".format(names))
-        names = [c.name for c in self.cycles]
-        if len(set(names)) != len(names):
-            raise ValueError("Cycle names have to be unique, got {0}.".format(names))
+                    iso_set.key, diagram.name))
+        _unique([p.name for p in self.processes], "Process names have to be unique")
+        _unique([c.name for c in self.cycles], "Cycle names have to be unique")
         object.__setattr__(self, "cycles", tuple(self.cycles))
-        view = tuple(None if lim is None else tuple(float(v) for v in lim) for lim in self.view_SI)
-        if len(view) != 2 or any(lim is not None and len(lim) != 2 for lim in view):
-            raise ValueError("view_SI has to be (x_limits, y_limits), each None or (min, max).")
-        object.__setattr__(self, "view_SI", view)
+        object.__setattr__(self, "view_SI", _checked_view(self.view_SI))
         object.__setattr__(self, "isolines", tuple(self.isolines))
         object.__setattr__(self, "processes", tuple(self.processes))
         object.__setattr__(self, "style_overrides", tuple(sorted(
@@ -317,6 +305,31 @@ class DiagramSpec:
                    style_overrides=overrides,
                    view_SI=tuple(None if lim is None else tuple(lim) for lim in data.get("view_SI", (None, None))),
                    title=data.get("title", ""))
+
+
+# Validation helpers ----------------------------------------------------------
+def _checked_limits(diagram: DiagramType, limits):
+    """The limits value of a spec: TpLimits for a fluid, a Region on the axes for humid air."""
+    if diagram.kind == "fluid":
+        if isinstance(limits, Region):
+            raise ValueError("A {0} diagram takes TpLimits (bounds on T and p), not a Region.".format(diagram.name))
+        return get_tp_limits(limits)
+    if not isinstance(limits, Region) or any(k not in dict(limits.bounds) for k in (diagram.x, diagram.y)):
+        raise ValueError("A {0} chart needs a Region with bounds on '{1}' and '{2}', not {3!r}.".format(
+            diagram.name, diagram.x, diagram.y, limits))
+    return limits
+
+
+def _unique(names, message: str):
+    if len(set(names)) != len(names):
+        raise ValueError("{0}, got {1}.".format(message, names))
+
+
+def _checked_view(view_SI):
+    view = tuple(None if lim is None else tuple(float(v) for v in lim) for lim in view_SI)
+    if len(view) != 2 or any(lim is not None and len(lim) != 2 for lim in view):
+        raise ValueError("view_SI has to be (x_limits, y_limits), each None or (min, max).")
+    return view
 
 
 # JSON helpers ----------------------------------------------------------------

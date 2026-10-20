@@ -233,7 +233,7 @@ def test_a_unit_system_keeps_its_own_copy_of_the_units():
 
 
 def test_the_kit_treats_a_grid_without_colour_as_no_grid():
-    from coolplot.render.testing import expected_axes
+    from coolplot.testing.kit import expected_axes
     from coolplot.scene import AxesSpec, Scene
     from coolplot.style.values import AxesStyle, LineStyle
     scene = Scene(AxesSpec(x_label="x", y_label="y", style=AxesStyle(grid_major=LineStyle(color=None))), [])
