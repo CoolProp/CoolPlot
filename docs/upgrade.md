@@ -21,9 +21,9 @@ none left, 1.0 changes nothing for you.
 
 * CoolProp 8.0 or later is required.
 * Lines have a different number of points: the resolution
-  (`Settings.calc.points`) is about the number of points of a line that
-  crosses the whole chart, bends get more and straight parts fewer. Code
-  that relied on 250 points per line reads `len(curve.x)` instead.
+  (`Settings.calc.points`) sets the point spacing: a straight line that
+  crosses the whole chart gets about `points / 2` points, bends get more.
+  Code that relied on 250 points per line reads `len(curve.x)` instead.
 * Lines are cut at the edges of the axes instead of continuing outside;
   a line whose value sits at the very edge of its range is left out.
 * Fluid states carry `v` (specific volume); `STATE_KEYS` has eight
