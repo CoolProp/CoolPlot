@@ -125,8 +125,8 @@ def trace(evaluate: Callable, metric: Metric, points: int, u_lo: float = 0.0, u_
           skip_failures: bool = False) -> Trace:
     """Walk the parameter from ``u_lo`` to ``u_hi``, see the module docstring.
 
-    ``points`` sets the resolution: the number of points a straight line
-    across the whole chart gets, before bends add more. ``start`` and
+    ``points`` sets the resolution: a straight line across the whole chart
+    gets about ``points / 2`` points, bends add more. ``start`` and
     ``end`` are the samples at the two ends when the caller knows them
     (saturation states, for example); they are used instead of evaluating
     there. A point that cannot be computed normally ends the piece with a

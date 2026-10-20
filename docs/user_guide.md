@@ -139,8 +139,8 @@ for a blend the temperature glide.
 Lines are stepped with the step chosen from their shape on the page:
 straight parts get few points, bends more, and nothing is computed
 outside the area the axes show. `Settings.calc.points` (250) is the
-resolution, about the number of points a line gets that crosses the
-whole chart; a line with bends gets more. The lines of a refrigerant
+resolution: a straight line that crosses the whole chart gets about
+`points / 2` points; a line with bends gets more. The lines of a refrigerant
 blend are traced point by point from the previous one, which is what
 makes a blend chart take seconds rather than minutes (section 9).
 
