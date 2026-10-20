@@ -576,7 +576,10 @@ class Chart:
             raise KeyError("No cycle named {0!r}.".format(name))
         states = self._compute_cycle(cycle)[0]
         if units is not None:
-            return {n: states[n].in_units(units) for n in sorted(states)}
+            # Resolved once through _units, so that a warning about the name
+            # of the unit system points at the caller's line
+            unit_system = self._units(units)
+            return {n: states[n].in_units(unit_system) for n in sorted(states)}
         return {n: states[n] for n in sorted(states)}
 
     # ------------------------------------------------------------------
