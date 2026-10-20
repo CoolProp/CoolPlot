@@ -714,6 +714,9 @@ class IsoLineTracer(object):
             if not np.isfinite(quality) or not lo < quality < hi:
                 quality = 0.5 * (lo + hi)
             fq = self._quality_residual(quality, bracket)
+            # NaN would compare as "same side" below and pass the residual gate
+            if not np.isfinite(fq):
+                raise ValueError("The quality solver met a residual that is not a number.")
             if fq * fb < 0.0:
                 a, fa = b, fb
             else:
@@ -726,7 +729,7 @@ class IsoLineTracer(object):
         # A bracket built on a bad saturation state can be wide enough to
         # appear to contain a target the two-phase region never reaches, and
         # then the iteration runs out of interval with the residual intact.
-        if abs(fb) > self.QUALITY_RTOL * width:
+        if not abs(fb) <= self.QUALITY_RTOL * width:
             raise ValueError("The quality solver ran out of bracket with the "
                              "residual unresolved.")
         return b

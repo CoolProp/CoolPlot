@@ -173,3 +173,20 @@ def test_a_straight_line_across_the_chart_gets_about_half_the_resolution():
         line = trace(lambda u, careful: Sample(u, 0.5), metric, points)
         n = len([s for s in line.samples if s is not None])
         assert abs(n - points / 2) <= 0.1 * points / 2
+
+
+def test_a_line_where_no_state_can_be_computed_says_so(r290):
+    """A failed look while scanning outside counts as outside, so the reason
+    has to come from the evaluations that worked: here none did."""
+    box = resolve_tp_box(r290, get_tp_limits("ACHP"))
+    curve = compute_isoline(r290, PH, "T", -50.0, box, points=20)
+    assert np.count_nonzero(np.isfinite(curve.x)) == 0
+    assert curve.reason.startswith("none of the")
+
+
+def test_a_quality_residual_that_is_not_a_number_stops_the_solver():
+    from coolplot.thermo.tracer import IsoLineTracer
+    tracer = object.__new__(IsoLineTracer)        # only the regula falsi is exercised
+    tracer._quality_residual = lambda quality, bracket: float("nan")
+    with pytest.raises(ValueError, match="not a number"):
+        tracer._bracketed_quality({}, -1.0, 1.0, 2.0)

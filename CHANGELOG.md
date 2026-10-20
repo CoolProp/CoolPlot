@@ -34,6 +34,17 @@ guide in the documentation says what to change in your code.
   composer (plan, 1.0: they go only when the C++ passes the full suite as
   the default).
 
+#### Fixed
+- A line where no state at all could be computed said nothing: failed
+  looks while the stepping scans outside the axes count as outside, so
+  the curve had no points, `n_outside` > 0 and an empty `reason`. It now
+  says "none of the N states of the line could be computed".
+- The quality solver of the tracer no longer accepts a residual that is
+  not a number (it compared as "same side" and passed the residual
+  check, so the saturated liquid was reported as the point).
+- Both found in the review of CoolProp's port of these numerics; the
+  port has the same fixes.
+
 ### 0.9.0
 
 #### Added

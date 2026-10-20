@@ -82,6 +82,7 @@ class Trace:
     n_evaluated: int = 0
     n_outside: int = 0
     n_failed: int = 0
+    n_ok: int = 0   # evaluations that gave a state (a failed look while scanning outside counts as outside)
     stopped: str = ""
 
     def add(self, u: float, sample: Optional[Sample]):
@@ -172,6 +173,8 @@ class _Walk:
             return self.end
         self.trace.n_evaluated += 1
         sample = self.evaluate(u, careful)
+        if sample is not None:
+            self.trace.n_ok += 1
         if sample is None:
             if careful:
                 self.trace.n_failed += 1
