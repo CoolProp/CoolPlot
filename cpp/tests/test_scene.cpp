@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <fstream>
+#include <limits>
 
 #include "coolplot/scene.h"
 
@@ -54,7 +55,7 @@ TEST_CASE("NaN becomes null and back, items compare by value", "[scene]") {
     Item line;
     line.id = "a";
     line.x = {0.0, std::nan(""), 2.0};
-    line.y = {1.0, 1.0 / 0.0, 3.0};
+    line.y = {1.0, std::numeric_limits<double>::infinity(), 3.0};
     json record = line.to_json();
     CHECK(record.at("x").at(1).is_null());
     CHECK(record.at("y").at(1).is_null());

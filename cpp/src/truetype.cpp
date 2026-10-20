@@ -1,12 +1,13 @@
 #include "coolplot/truetype.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
-
-#include <dirent.h>
-#include <sys/stat.h>
+#include <system_error>
 
 namespace coolplot {
 
@@ -205,9 +206,15 @@ void TrueTypeFont::read_cmap() {
     }
     if (!chosen_rank) return;
     unsigned long format = u16(data_, chosen);
+    // Every read stays inside the chosen subtable (its declared length) and
+    // the cmap table: a damaged font must not map characters to glyphs read
+    // from the next table
+    size_t cmap_end = std::min<size_t>(found->second.offset + found->second.length, data_.size());
     if (format == 4) {
+        size_t sub_end = std::min<size_t>(chosen + u16(data_, chosen + 2), cmap_end);
         unsigned long seg_count = u16(data_, chosen + 6) / 2;
         size_t ends = chosen + 14, starts = ends + 2 * seg_count + 2, deltas = starts + 2 * seg_count, ranges = deltas + 2 * seg_count;
+        if (ranges + 2 * seg_count > sub_end) return;
         for (unsigned long s = 0; s < seg_count; ++s) {
             unsigned long end = u16(data_, ends + 2 * s), start = u16(data_, starts + 2 * s);
             unsigned long delta = u16(data_, deltas + 2 * s), range_offset = u16(data_, ranges + 2 * s);
@@ -218,7 +225,7 @@ void TrueTypeFont::read_cmap() {
                     glyph = (c + delta) & 0xFFFF;
                 } else {
                     size_t address = ranges + 2 * s + range_offset + 2 * (c - start);
-                    if (address + 2 > data_.size()) continue;
+                    if (address + 2 > sub_end) continue;
                     glyph = u16(data_, address);
                     if (glyph) glyph = (glyph + delta) & 0xFFFF;
                 }
@@ -226,7 +233,9 @@ void TrueTypeFont::read_cmap() {
             }
         }
     } else if (format == 12) {
+        size_t sub_end = std::min<size_t>(chosen + u32(data_, chosen + 4), cmap_end);
         unsigned long groups = u32(data_, chosen + 12);
+        if (chosen + 16 + 12 * static_cast<size_t>(groups) > sub_end) return;
         for (unsigned long g = 0; g < groups; ++g) {
             size_t rec = chosen + 16 + 12 * g;
             unsigned long start = u32(data_, rec), end = u32(data_, rec + 4), glyph = u32(data_, rec + 8);
@@ -392,22 +401,19 @@ void FontIndex::add_file(const std::string& path) {
 
 void FontIndex::scan(const std::string& dir, int depth) {
     if (depth > 4) return;
-    DIR* handle = opendir(dir.c_str());
-    if (!handle) return;
+    // std::filesystem (C++17) works on every platform; an error_code instead
+    // of exceptions, so a directory that cannot be read is skipped quietly
+    namespace fs = std::filesystem;
+    std::error_code error;
     std::vector<std::string> names;
-    while (dirent* entry = readdir(handle)) {
-        std::string name = entry->d_name;
-        if (name != "." && name != "..") names.push_back(name);
-    }
-    closedir(handle);
+    for (fs::directory_iterator it(dir, error), end; !error && it != end; it.increment(error))
+        names.push_back(it->path().filename().string());
     std::sort(names.begin(), names.end());  // a fixed order, so the same font wins every time
     for (const std::string& name : names) {
         std::string path = dir + "/" + name;
-        struct stat info;
-        if (stat(path.c_str(), &info) != 0) continue;
-        if (S_ISDIR(info.st_mode)) {
+        if (fs::is_directory(path, error)) {
             scan(path, depth + 1);
-        } else {
+        } else if (fs::is_regular_file(path, error)) {
             std::string ext = lower(name.size() > 4 ? name.substr(name.size() - 4) : "");
             if (ext == ".ttf") add_file(path);
         }
