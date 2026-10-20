@@ -19,6 +19,7 @@ PACKAGE_NAMES = {
     "TpLimits", "Relative", "Region", "StatePoint", "state_point", "process_path", "PropertyError",
     "Theme", "get_theme", "LineStyle", "MarkerStyle", "TextStyle", "Font", "AxesStyle", "LegendStyle",
     "Scene", "UnitSystem", "Unit", "SI", "KSI", "ENGINEERING", "IP", "EUR",
+    "native_mode", "set_native_mode",
 }
 
 #: The verbs and properties of every chart.
@@ -211,6 +212,26 @@ def test_set_lines_defaults_and_units_per_call():
     chart = PsychrometricChart(T_range=(0, 40), W_range=(0, 20))
     chart.set_lines("RH")
     assert chart.line_sets()["RH"].labels is True and chart.line_sets()["RH"].rounding is True
+
+
+def test_every_old_name_is_in_the_upgrade_guide():
+    """0.9 is the deprecation release: whatever warns is listed with its replacement."""
+    import importlib
+    import inspect
+    import os
+    guide = open(os.path.join(os.path.dirname(__file__), "..", "docs", "upgrade.md"), encoding="utf-8").read()
+    found = set()
+    for module_name in ("coolplot.chart", "coolplot.diagram", "coolplot.psychrometric"):
+        module = importlib.import_module(module_name)
+        for _, cls in inspect.getmembers(module, inspect.isclass):
+            for name, member in vars(cls).items():
+                if getattr(member, "deprecated", False):
+                    found.add(name)
+    assert found >= OLD_NAMES | OLD_DIAGRAM_NAMES | OLD_PSYCHRO_NAMES
+    import re
+    # The whole name in code quotes, "`name`" or "`name(", not a longer name starting with it
+    missing = sorted(name for name in found if not re.search(r"`{0}[`(]".format(re.escape(name)), guide))
+    assert not missing, missing
 
 
 def test_the_old_unit_name_warns_at_the_callers_line():

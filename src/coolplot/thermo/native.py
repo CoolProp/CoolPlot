@@ -9,8 +9,9 @@ old plotting code, not this). When the installed CoolProp has it, the engine com
 its isolines there: the same algorithm, point for point, with the GIL
 released while it runs (the time of a chart is mostly CoolProp's own
 solvers, so the gain is the Python overhead: half of a pure-fluid chart,
-a tenth of a blend's). Without it, or with the environment variable
-``COOLPLOT_NATIVE=0``, the Python modules do the work. Both give the same
+a tenth of a blend's). Without it, or with the native mode "off"
+(:func:`coolplot.core.implementation.set_native_mode`, or the environment variable
+``COOLPLOT_NATIVE=0``), the Python modules do the work. Both give the same
 curves up to the noise of CoolProp's solvers; the Python copy stays the
 reference the tests check.
 
@@ -23,21 +24,21 @@ know. The lines of constant quality of a tabular backend (BICUBIC, TTSE)
 are drawn with the equation of state the tables came from, as in
 :mod:`coolplot.thermo.isolines`.
 
-The switch is read when a line is computed. The engine's curve cache does
-not keep curves of the two implementations apart beyond that flag, so
-toggle ``COOLPLOT_NATIVE`` before building a chart, not while one is being
-computed. CoolProp's released wheels up to 8.0.0 have no port, so the
-tests that need it skip there and in CI.
+The mode is read when a line is computed, and the engine's curve cache
+keys curves by it, so the two implementations never share an entry.
+Change the mode before building a chart, not while one is being computed.
+CoolProp's released wheels up to 8.0.0 have no port, so the tests that
+need it skip there and in CI.
 """
 from __future__ import annotations
 
-import os
 import threading
 from collections import OrderedDict
 from typing import Optional
 
 import numpy as np
 
+from ..core.implementation import native_mode
 from .isolines import Curve, _base_backend_fluid
 
 try:
@@ -59,8 +60,11 @@ def available() -> bool:
 
 
 def enabled() -> bool:
-    """Whether the engine uses the port: it is available and ``COOLPLOT_NATIVE`` is not "0"."""
-    return available() and os.environ.get("COOLPLOT_NATIVE", "1").strip().lower() not in ("0", "false", "no", "off")
+    """Whether the engine uses the port: it is available and the native mode is not "off".
+
+    See :func:`coolplot.core.implementation.set_native_mode`.
+    """
+    return available() and native_mode() != "off"
 
 
 _DEFAULT_INTERACTIONS = {}

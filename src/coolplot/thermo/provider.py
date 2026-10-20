@@ -24,7 +24,7 @@ the calculation domain is found and how one line is computed.
 """
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Optional, Tuple
 
 from ..core.quantities import quantity_key
 from .fluid import Fluid
@@ -58,7 +58,7 @@ def chart_domain(provider, limits, margin: float) -> Tuple[Tuple[float, float, f
 
 
 def compute_curve(provider, diagram, key: str, value_SI: float, tp_box, points: int, solver: str,
-                  margin: float, spacing: str, ranges=None) -> Curve:
+                  margin: float, spacing: str, ranges=None, use_native: Optional[bool] = None) -> Curve:
     """One line of constant ``key`` for any provider.
 
     Lines of constant quality are traced through saturation states with
@@ -69,11 +69,16 @@ def compute_curve(provider, diagram, key: str, value_SI: float, tp_box, points: 
 
     Fluid lines are computed by CoolProp's C++ port of the numerics when
     the installed CoolProp has it, see :mod:`coolplot.thermo.native`.
+    ``use_native`` decides that explicitly (the engine passes the flag of
+    its cache key); None asks :func:`coolplot.thermo.native.enabled`. The
+    port is used only when it is installed, whatever ``use_native`` says.
     """
     key = quantity_key(key)
     if provider.kind == "humid_air":
         return provider.line(key, value_SI, tp_box, points)
-    if native.enabled():
+    if use_native is None:
+        use_native = native.enabled()
+    if use_native and native.available():
         curve = native.compute_curve(provider, diagram, key, value_SI, tp_box, points, solver, margin, spacing)
         if curve is not None:
             return curve

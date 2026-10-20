@@ -4,9 +4,10 @@
 ``cpp/`` holds coolplot-core, a C++ port of :mod:`coolplot.compose`,
 :mod:`coolplot.scene`, :mod:`coolplot.style` and the SVG writer, built as
 the nanobind module ``coolplot_core``. When that module can be imported and
-the environment variable ``COOLPLOT_NATIVE`` is set (and not "0"), the chart
-composes its scene there (:func:`coolplot.compose.compose`) and the SVG
-renderer writes its document there. This module sits below both layers. The scene
+the native mode is "on" (:func:`coolplot.core.implementation.set_native_mode`, or the
+environment variable ``COOLPLOT_NATIVE=1``), the chart composes its
+scene there (:func:`coolplot.compose.compose`) and the SVG renderer
+writes its document there. This module sits below both layers. The scene
 and the document are the same as from the Python code, point for point
 and byte for byte (cpp/tests compares them); the Python modules stay the
 reference and do the work when the module is absent.
@@ -17,10 +18,10 @@ the spec, the curve records and the scene, as JSON text.
 from __future__ import annotations
 
 import json
-import os
 import re
 from typing import Optional
 
+from .core.implementation import native_mode
 from .scene import AxesSpec, axes_from_dict, axes_to_dict, item_from_dict, item_to_dict
 
 try:
@@ -54,15 +55,15 @@ def has_pdf() -> bool:
 def enabled() -> bool:
     """Whether charts are composed and SVG is written by coolplot-core.
 
-    Only when the module is available and ``COOLPLOT_NATIVE`` is set to
-    anything but "0". Unset, the Python code does it: from Python it is
-    the faster path, because the records cross the boundary as JSON (for
-    a p-h chart with labels about 12 ms in C++ against 25 ms in Python,
-    plus 38 ms for the crossing). The numerics port
-    (:mod:`coolplot.thermo.native`) is used unless the variable is "0".
+    Only when the module is available and the native mode is "on"
+    (:func:`coolplot.core.implementation.set_native_mode`, or ``COOLPLOT_NATIVE=1``). In the
+    default mode "auto" the Python code does it: from Python it is the
+    faster path, because the records cross the boundary as JSON (for a
+    p-h chart with labels about 12 ms in C++ against 25 ms in Python, plus
+    38 ms for the crossing). The numerics port (:mod:`coolplot.thermo.native`)
+    is used unless the mode is "off".
     """
-    value = os.environ.get("COOLPLOT_NATIVE", "").strip().lower()
-    return available() and value != "" and value not in ("0", "false", "no", "off")
+    return available() and native_mode() == "on"
 
 
 _LONE_SURROGATES = re.compile("[\ud800-\udfff]")

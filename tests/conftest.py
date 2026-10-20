@@ -67,3 +67,12 @@ def browser():
         b = p.chromium.launch(executable_path=exe)
         yield b
         b.close()
+
+
+@pytest.fixture(autouse=True)
+def _native_mode_follows_the_environment():
+    """A test that calls coolplot.set_native_mode cannot leak its mode into the next one."""
+    from coolplot.core import implementation
+    saved = implementation._mode
+    yield
+    implementation._mode = saved

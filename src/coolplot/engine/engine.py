@@ -87,6 +87,17 @@ class Engine:
         self._domains.move_to_end(key)
         return self._domains[key]
 
+    # Position of the "computed by CoolProp's port" flag in a cache key. The
+    # flag is decided once, when the key is made, and handed to the code that
+    # computes the curve, so a curve is always computed the way its key says,
+    # also in worker processes and when the mode changes meanwhile.
+    _NATIVE_INDEX = 6
+
+    @classmethod
+    def key_uses_native(cls, key: Tuple) -> bool:
+        """Whether the curve of a cache key is computed by CoolProp's port (see thermo.native)."""
+        return bool(key[cls._NATIVE_INDEX])
+
     def cache_key(self, spec: DiagramSpec, domain: Domain, request: CurveRequest) -> Tuple:
         """Everything that determines one curve.
 
@@ -104,13 +115,14 @@ class Engine:
     def curve(self, spec: DiagramSpec, domain: Domain, request: CurveRequest) -> Curve:
         """One curve, from the cache or freshly computed."""
         calc = spec.settings.calc
+        key = self.cache_key(spec, domain, request)
 
         def compute():
             return compute_curve(self.fluid(spec.fluid), spec.diagram, request.key, request.value_SI,
                                  domain.tp_box, request.points, calc.solver, calc.critical_margin,
-                                 calc.saturation_spacing, domain.ranges_SI)
+                                 calc.saturation_spacing, domain.ranges_SI, use_native=self.key_uses_native(key))
 
-        return self.cache.get_or_compute(self.cache_key(spec, domain, request), compute)
+        return self.cache.get_or_compute(key, compute)
 
     def _obtain(self, spec: DiagramSpec, domain: Domain, request: CurveRequest):
         """(curve, final) for a request. This engine computes it right away;
