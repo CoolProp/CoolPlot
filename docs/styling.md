@@ -23,7 +23,7 @@ a changed copy with `.with_(...)`.
 |-------|--------|
 | `LineStyle` | `color`, `width_pt`, `dash`, `alpha`, `cap` (butt, round, square), `join` (miter, round, bevel), `casing_color`, `casing_width_pt` |
 | `MarkerStyle` | `shape` (o, s, ^, v, D, x, +), `size_pt`, `face_color` (None = hollow), `edge_color`, `edge_width_pt`, `alpha` |
-| `Font` | `family` (list, first available wins), `size_pt`, `weight` (normal, bold), `style` (normal, italic) |
+| `Font` | `family` (list, first available wins), `size_pt`, `weight` (normal, bold), `style` (normal, italic), `files` (font files to load first) |
 | `TextStyle` | `font`, `color`, `alpha`, `h_align`, `v_align`, `halo_color`, `halo_width_pt` |
 | `AxesStyle` | `background`, `figure_background`, `frame_color`, `frame_width_pt`, tick colour, length, width and direction, fonts for `tick_label`, `axis_label` and `title`, `grid_major`, `grid_minor`, `legend` |
 | `LegendStyle` | `visible`, `location` (upper/lower left/right, outside right), `background`, `frame_color`, `text` |
@@ -53,6 +53,13 @@ Rules that hold everywhere:
 * **Halo** is the same idea for text: an outline in `halo_color` behind
   the glyphs keeps labels readable where they sit on lines, without
   hiding the lines behind a box.
+* **Fonts** are lists: the first family that is installed wins, so end a
+  list with "sans-serif", "serif" or "monospace". `files` names font
+  files (.ttf preferred) that backends able to load fonts (matplotlib)
+  register first, e.g. a company font that is not installed everywhere:
+  `Font(family=("Brand Sans", "Arial", "sans-serif"), files=("fonts/BrandSans-Regular.ttf",
+  "fonts/BrandSans-Bold.ttf"))`. Texts are always plain text: dollar
+  signs and backslashes are shown as written, never read as math.
 
 
 ## 2. Presets

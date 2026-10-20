@@ -19,6 +19,7 @@ This module imports neither CoolProp nor a plotting library.
 from __future__ import annotations
 
 import math
+import os
 import re
 from dataclasses import dataclass, field, fields, replace
 from typing import Optional, Tuple, Union
@@ -281,17 +282,26 @@ class Font:
 
     family lists font names in order of preference and should end with
     one of the generic families "sans-serif", "serif" or "monospace".
+    files names font files (.ttf, .otf) that backends able to load fonts
+    register before they look for the family, e.g. a company font that is
+    not installed on every machine. A missing file is reported, and the
+    next family in the list is used.
     """
     family: Tuple[str, ...] = ("DejaVu Sans", "Helvetica", "Arial", "sans-serif")
     size_pt: float = 9.0
     weight: str = "normal"       # "normal" or "bold"
     style: str = "normal"        # "normal" or "italic"
+    files: Tuple[str, ...] = ()
 
     def __post_init__(self):
         family = (self.family,) if isinstance(self.family, str) else tuple(self.family)
         if not family:
             raise ValueError("Font: give at least one family.")
         object.__setattr__(self, "family", family)
+        files = self.files
+        if isinstance(files, (str, bytes)) or hasattr(files, "__fspath__"):
+            files = (files,)   # one file, also as a pathlib.Path
+        object.__setattr__(self, "files", tuple(os.fsdecode(os.fspath(f)) for f in files))
         _check_length(self.size_pt, "Font", "size_pt")
         if self.weight not in ("normal", "bold"):
             raise ValueError("Font weight has to be 'normal' or 'bold'.")

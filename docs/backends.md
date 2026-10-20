@@ -242,6 +242,36 @@ Reading private attributes of a library is acceptable here if there is no
 public accessor; mark such places in a comment.
 
 
+## 6b. Events [events]
+
+A backend that can report user input declares the capability `"events"`
+and calls `self._emit(event)` with the events of `coolplot.core.events`,
+in display units (the units of the axes):
+
+* `Hover(x, y, item_id, index)` when the pointer moves without a button,
+  with the topmost visible line or marker item under it (within about
+  5 pt) and the index of its point, or None;
+* `Click(x, y, item_id, index, button)` for a press and release without
+  movement;
+* `DragStart`, `Drag`, `DragEnd(item_id, index, x, y)` when the left
+  button is pressed on a point of a marker item and the pointer moves;
+  no `Hover` while a button is held. A release outside the plot area,
+  or one the library never reports (the next move holds no button),
+  still ends the drag, with finite coordinates;
+* `ViewChanged(x_limits, y_limits)` once per change of the view by the
+  library's own tools (matplotlib reports it when the canvas is drawn,
+  so a zoom is one event, not one per axis), never for limits set by
+  `sync()`;
+* `Resized(width_pt, height_pt)` when the plot area changes size.
+
+The base class keeps the callbacks (`connect`, `disconnect`); the hook
+`_start_events()` is called on the first `connect` to start listening.
+`sync()` sets `self._syncing` while it runs. For the kit, the backend
+provides `simulate_pointer(kind, x, y)` ("move", "press", "release") and
+`simulate_view(x_limits, y_limits)`, which feed input through the same
+path as real input; `check_events` then checks the events.
+
+
 ## 7. Output [file output], [deterministic output]
 
 A backend that writes files declares `"file_output"`, implements
@@ -253,6 +283,55 @@ A backend that writes files declares `"file_output"`, implements
   several outputs can share one web page.
 * Text output MUST be ASCII; escape everything else (XML character
   references in SVG).
+* `save(path)` MUST refuse a file name whose extension promises a format
+  the backend does not write (ValueError), instead of writing its own
+  format under that name.
+
+### PDF [pdf]
+
+A backend that writes PDF for a ".pdf" path declares `"pdf_output"` and
+then MUST:
+
+* embed every font, as TrueType or Type 1 (no Type 3, which print checks
+  refuse), with the font program matching its declared type;
+* keep texts as text, word for word: no math markup ("$5 or $6" stays as
+  written), no text drawn as outlines (a halo must not turn the label
+  into shapes);
+* paint only colours of the scene's styles, as RGB or grey: no CMYK, no
+  images, shadings, patterns or other colour spaces, whose colours the
+  check cannot read;
+* write the chart title as the document title, and no dates or version
+  strings, so the same scene gives the same file.
+
+`check_pdf` reads the file back with `coolplot.render.pdf_reader` (no
+external tools) and checks all of this; `run_conformance` calls it for
+backends with the capability. `pdf_reader.replace_info` rewrites the
+document information of a PDF made by another program (the plotly
+backend uses it on kaleido's output).
+
+
+## 7b. Limitations [limitations]
+
+Some libraries offer no way to follow a requirement. A backend lists
+such cases in `Renderer.limitations`; only the names below are accepted,
+the kit then skips exactly those checks, and the backend documents them
+in its module docstring:
+
+| Name | Meaning |
+|------|---------|
+| `line_caps` | line caps and joins are the library's own; `cap` and `join` are not checked |
+| `text_order` | texts are always drawn above lines and markers; texts and other items are each checked for their order among themselves |
+
+The plotly backend declares both. The web backend (`render/web.py`) builds on the SVG
+backend and is checked twice: the kit runs with every patch applied in
+headless Chromium and the document read back from the browser, and a
+separate test replays long sequences of incremental changes (the kit's
+steps mostly change the legend or the axes, which sends the whole
+document) and compares the browser's document with the local one after
+each step. Anything not in this list has to be
+implemented, if necessary by emulation (plotly does not clip
+annotations, so its backend hides texts whose anchor leaves the plot
+area).
 
 
 ## 8. Capabilities
@@ -265,6 +344,8 @@ Declare optional abilities in the class attribute `capabilities`:
 | `file_output` | `save(path)` writes a file |
 | `interactive` | draws into a live window or widget |
 | `css_classes` | exposes item roles and groups as CSS classes |
+| `events` | reports pointer input and view changes, see section 6b |
+| `pdf_output` | `save("x.pdf")` writes print-ready PDF, see section 7 |
 
 
 ## 9. Packaging

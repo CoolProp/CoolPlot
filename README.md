@@ -14,10 +14,15 @@ for engineering thermodynamics applications using [CoolProp].
 
 It focusses on refrigeration, heat pumping and power cycles: log(p)-h,
 T-s, h-s, p-s, p-rho, T-rho and p-T diagrams for pure fluids and blends,
-with cycles drawn on top. Property calculations, the description of the
-plot and the plotting library are kept apart, so matplotlib is one
-backend among several (an SVG backend without dependencies is included)
-and interactive applications only redraw what changed.
+with cycles drawn on top, and psychrometric charts for humid air.
+Property calculations, the description of the plot and the plotting
+library are kept apart, so matplotlib is one backend among several (SVG
+without dependencies, plotly, and a browser backend with a small
+development server) and interactive applications only redraw what
+changed. Lines can be calculated in the background, and zoom, hover and
+dragging cycle states work in matplotlib and in the browser. PDF output
+is print-ready: fonts embedded as TrueType, texts kept as text, the
+theme colours exactly, and several charts per file with `save_pdf`.
 
 The code was forked from the main [CoolProp repository] at v6.3.0 with its
 history preserved, hence the old commits. Expect some breaking changes
@@ -63,7 +68,8 @@ renderer.sync(diagram.update_scene())    # existing lines are updated in place
 * [docs/backends.md](docs/backends.md): writing a plotting backend
 * [docs/architecture.md](docs/architecture.md): the design
 * [examples/](examples): quick start, two-stage cycles, a refrigerant
-  blend, an interactive chart with sliders
+  blend, an interactive chart with sliders and dragging, a browser app,
+  a psychrometric chart
 
 Version 0.2 replaces the legacy API (`from CoolPlot.Plot import PropertyPlot`).
 If you depend on it, stay on the last legacy release with

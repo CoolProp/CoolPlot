@@ -26,6 +26,7 @@ import math
 import os
 import re
 import tempfile
+import time
 from dataclasses import replace
 from typing import Callable, List
 
@@ -34,7 +35,7 @@ import numpy as np
 from ..core.numbers import format_number
 from ..scene import AxesSpec, Line, Markers, Scene, Text, drawable_limits
 from ..style.values import (AxesStyle, Font, GENERIC_FONTS, LegendStyle, LineStyle, MarkerStyle, MARKER_SHAPES,
-                     TextStyle, dash_pattern_pt)
+                     TextStyle, dash_pattern_pt, style_to_dict)
 
 #: Tolerances for read-back numbers. Lengths may be rounded in the output
 #: (an SVG keeps three decimals of a pixel), but by no more than 0.005 pt,
@@ -46,6 +47,16 @@ ANGLE_TOL = 1.0
 #: Drawn positions, as fractions of the plot area: 1e-3 is about half a
 #: point on a typical plot.
 POSITION_TOL = 1e-3
+
+#: Requirements a backend may declare it cannot follow, in
+#: ``Renderer.limitations``, because its library offers no way to. The kit
+#: then skips exactly those checks; docs/backends.md lists them and every
+#: backend documents its own.
+ALLOWED_LIMITATIONS = {
+    "line_caps": "line caps and joins are the library's own (cap and join are not checked)",
+    "text_order": "texts are always drawn above lines and markers (texts and other items are "
+                  "each checked for their order among themselves)",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +86,7 @@ def conformance_scene() -> Scene:
     x = np.linspace(0.5, 9.5, 20)
     items = [
         Line(id="line/solid", role="isoline", group="lines", x=x, y=np.geomspace(0.2, 50.0, 20),
-             legend="Solid", style=LineStyle(color="#2a78d6", width_pt=0.75)),
+             legend="Solid <$1>", style=LineStyle(color="#2a78d6", width_pt=0.75)),
         Line(id="line/dashed", role="isoline", group="lines", x=x, y=np.geomspace(0.3, 60.0, 20),
              legend="Dashed", style=LineStyle(color="#eb6834", width_pt=1.5, dash="dashed")),
         Line(id="line/dotted", role="isoline", group="lines", x=x, y=np.geomspace(0.4, 70.0, 20),
@@ -102,7 +113,7 @@ def conformance_scene() -> Scene:
             style=MarkerStyle(shape=shape, size_pt=6.0 + i, face_color=None if hollow else "#0b0b0b",
                               edge_color="#4a3aa7", edge_width_pt=1.0 + 0.25 * i, alpha=0.9)))
     items += [
-        Text(id="text/plain", role="annotation", x=5.0, y=1.0, text="plain <&> 'text'",
+        Text(id="text/plain", role="annotation", x=5.0, y=1.0, text="plain <&> 'text' \"quoted\" $5 or $6",
              z_order=4.0, style=TextStyle(font=Font(size_pt=9.0), color="#0b0b0b")),
         Text(id="text/styled", role="isoline_label", x=3.0, y=3.0, text="T=25 deg C", z_order=4.0,
              direction=(1.0, 1.0),
@@ -356,7 +367,14 @@ def _check_scene(renderer, scene: Scene, failures: List[str], label: str):
                         label, name, text, value, want))
                     break
 
+    limitations = set(getattr(renderer, "limitations", ()))
+    unknown = limitations - set(ALLOWED_LIMITATIONS)
+    if unknown:
+        failures.append("{0}: unknown limitations {1} [limitations]".format(label, sorted(unknown)))
     visible_order = [i for i in scene.draw_order() if expected_item(scene[i], scene.axes)["visible"]]
+    if "text_order" in limitations:
+        texts = [i for i in visible_order if isinstance(scene[i], Text)]
+        others = [i for i in visible_order if not isinstance(scene[i], Text)]
     for item in scene:
         where = "{0}: {1}".format(label, item.id)
         try:
@@ -369,10 +387,16 @@ def _check_scene(renderer, scene: Scene, failures: List[str], label: str):
             if actual.get("visible"):
                 failures.append("{0}: should not be visible [visibility]".format(where))
             continue
+        if "line_caps" in limitations:
+            want.pop("cap", None)
+            want.pop("join", None)
         _compare(where, want, actual, failures)
-        if actual.get("draw_rank") != visible_order.index(item.id):
+        order = visible_order
+        if "text_order" in limitations:
+            order = texts if isinstance(item, Text) else others
+        if actual.get("draw_rank") != order.index(item.id):
             failures.append("{0}: drawn at rank {1}, expected {2} [order]".format(
-                where, actual.get("draw_rank"), visible_order.index(item.id)))
+                where, actual.get("draw_rank"), order.index(item.id)))
         if "plot_size_pt" not in axes_actual:
             continue
         limits = (axes_actual.get("x_limits"), axes_actual.get("y_limits"))
@@ -521,9 +545,17 @@ def run_conformance(factory: Callable[[], object]) -> List[str]:
     except Exception as e:
         failures.append("awkward axes raised {0!r} [robustness]".format(e))
 
-    # 11. File output: valid, ASCII, no NaN, deterministic
+    # 11. Events, for backends that produce them
+    if "events" in getattr(renderer, "capabilities", ()):
+        failures.extend(check_events(factory))
+
+    # 12. File output: valid, ASCII, no NaN, deterministic
     if "file_output" in getattr(renderer, "capabilities", ()):
         failures.extend(_check_file_output(factory))
+
+    # 13. PDF: fonts, texts, colours, title, reproducible
+    if "pdf_output" in getattr(renderer, "capabilities", ()):
+        failures.extend(check_pdf(factory))
     return failures
 
 
@@ -592,4 +624,202 @@ def _check_file_output(factory) -> List[str]:
             return failures + ["text output is not ASCII [file output]"]
         if re.search(r"(?<![A-Za-z_/-])nan(?![A-Za-z])", text, re.IGNORECASE):
             failures.append("text output contains 'nan' [robustness]")
+    return failures
+
+
+def _scene_colors(scene: Scene) -> set:
+    """Every "#rrggbb" colour the styles of a scene name (visible items, axes, legend)."""
+    found = set()
+
+    def walk(value):
+        if isinstance(value, dict):
+            for v in value.values():
+                walk(v)
+        elif isinstance(value, (list, tuple)):
+            for v in value:
+                walk(v)
+        elif isinstance(value, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", value):
+            found.add(value.lower())
+    styles = [item.style for item in scene if item.visible and getattr(item, "style", None) is not None]
+    for style in styles + [scene.axes.style]:
+        walk(style_to_dict(style))
+    return found
+
+
+def _close_color(color: str, palette: set) -> bool:
+    """True if a colour is in the palette, within rounding to 1/255 per channel."""
+    rgb = [int(color[i:i + 2], 16) for i in (1, 3, 5)]
+    return any(all(abs(a - int(p[i:i + 2], 16)) <= 1 for a, i in zip(rgb, (1, 3, 5))) for p in palette)
+
+
+def _scene_texts(scene: Scene) -> set:
+    """Texts a PDF of the scene has to contain, word for word."""
+    texts = {item.text for item in scene if isinstance(item, Text) and item.visible
+             and math.isfinite(item.x) and math.isfinite(item.y) and item.text.strip()}
+    axes = scene.axes
+    texts |= {t for t in (axes.title, axes.x_label, axes.y_label) if t}
+    if axes.style.legend.visible:
+        texts |= {item.legend for item in scene if item.visible and item.legend}
+    return texts
+
+
+#: Ligatures that PDF writers may use for letter pairs ("fi" as one glyph).
+_LIGATURES = {"\ufb00": "ff", "\ufb01": "fi", "\ufb02": "fl", "\ufb03": "ffi", "\ufb04": "ffl",
+              "\ufb05": "st", "\ufb06": "st"}
+
+
+def _unligated(text: str) -> str:
+    """A text with ligatures spelled out and white space collapsed (nothing else is changed)."""
+    for ligature, letters in _LIGATURES.items():
+        text = text.replace(ligature, letters)
+    return " ".join(text.split())
+
+
+def check_pdf(factory) -> List[str]:
+    """Check the PDF of a backend with the "pdf_output" capability.
+
+    The file is read back with :mod:`coolplot.render.pdf_reader`: every
+    font is embedded as TrueType or Type 1 and matches its declared type,
+    every text of the scene is in the file as written (no math markup,
+    nothing lost), only colours of the scene's styles paint, the title is
+    the document title, and the same scene gives the same file.
+    """
+    from .pdf_reader import read_pdf
+    failures = []
+    scene = conformance_scene()
+    folder = tempfile.mkdtemp()
+    try:
+        outputs = []
+        for name in ("a.pdf", "b.pdf"):
+            if outputs:
+                time.sleep(1.1)   # a date with one-second resolution has to change between the two files
+            renderer = factory()
+            renderer.sync(scene)
+            path = os.path.join(folder, name)
+            try:
+                renderer.save(path)
+            except Exception as e:
+                return ["save() of a PDF raised {0!r} [pdf]".format(e)]
+            with open(path, "rb") as f:
+                outputs.append(f.read())
+        try:
+            content = read_pdf(os.path.join(folder, "a.pdf"))
+        except Exception as e:
+            return ["the PDF could not be read back: {0!r} [pdf]".format(e)]
+    finally:
+        for name in os.listdir(folder):
+            os.remove(os.path.join(folder, name))
+        os.rmdir(folder)
+    if outputs[0] != outputs[1]:
+        failures.append("the same scene gave different PDF files [pdf]")
+    if content.pages != 1:
+        failures.append("the PDF has {0} pages, expected 1 [pdf]".format(content.pages))
+    if not content.fonts:
+        failures.append("the PDF has no fonts, so its texts are not text [pdf]")
+    for font in content.fonts:
+        for problem in font.problems:
+            failures.append("PDF font {0}: {1} [pdf]".format(font.name, problem))
+    for what in content.unchecked:
+        failures.append("PDF paints with {0}, whose colours cannot be checked [pdf]".format(what))
+    if content.cmyk:
+        failures.append("PDF uses CMYK colours; the scene's colours are sRGB [pdf]")
+    found = {_unligated(t) for t in content.texts}
+    for text in sorted(_scene_texts(scene)):
+        if _unligated(text) not in found:
+            failures.append("PDF lacks the text {0!r} as written [pdf]".format(text))
+    palette = _scene_colors(scene)
+    for color in sorted(content.colors):
+        if not _close_color(color, palette):
+            failures.append("PDF paints with {0}, a colour no style asked for [pdf]".format(color))
+    if scene.axes.title and content.info.get("Title") != scene.axes.title:
+        failures.append("PDF title is {0!r}, expected {1!r} [pdf]".format(content.info.get("Title"),
+                                                                          scene.axes.title))
+    return failures
+
+
+def _events_scene() -> Scene:
+    return Scene(AxesSpec(x_limits=(0.0, 10.0), y_limits=(0.0, 10.0)), [
+        Line(id="line", x=[0.0, 10.0], y=[5.0, 5.0], z_order=1.0),
+        Markers(id="states", x=[2.0, 8.0], y=[5.0, 5.0], z_order=6.0),
+    ])
+
+
+def check_events(factory) -> List[str]:
+    """Events in display units, from simulated input [events].
+
+    A backend with the "events" capability provides
+    ``simulate_pointer(kind, x, y)`` ("move", "press", "release") and
+    ``simulate_view(x_limits, y_limits)``, which feed input through the same
+    path as real input.
+    """
+    from ..core.events import Click, Drag, DragEnd, DragStart, Hover, ViewChanged
+    failures: List[str] = []
+    renderer = factory()
+    for name in ("simulate_pointer", "simulate_view"):
+        if not callable(getattr(renderer, name, None)):
+            return ["a backend with events has to provide {0}() [events]".format(name)]
+    scene = _events_scene()
+    renderer.sync(scene)
+    events = []
+    token = renderer.connect(events.append)
+    tol = 0.02   # in data units on a 0 to 10 axis: about a pixel
+
+    def close(event, x, y):
+        return abs(event.x - x) <= tol * 10 and abs(event.y - y) <= tol * 10
+
+    def take():
+        out = list(events)
+        events.clear()
+        return out
+
+    renderer.simulate_pointer("move", 8.0, 5.0)
+    got = take()
+    if not (len(got) == 1 and isinstance(got[0], Hover) and got[0].item_id == "states" and got[0].index == 1
+            and close(got[0], 8.0, 5.0)):
+        failures.append("hover on the second marker (above a line) gave {0} [events]".format(got))
+    renderer.simulate_pointer("move", 5.0, 5.0)
+    got = take()
+    if not (len(got) == 1 and isinstance(got[0], Hover) and got[0].item_id == "line"):
+        failures.append("hover on the line gave {0} [events]".format(got))
+    renderer.simulate_pointer("move", 5.0, 9.0)
+    got = take()
+    if not (len(got) == 1 and isinstance(got[0], Hover) and got[0].item_id is None and close(got[0], 5.0, 9.0)):
+        failures.append("hover on empty space gave {0} [events]".format(got))
+
+    renderer.simulate_pointer("press", 2.0, 5.0)
+    renderer.simulate_pointer("move", 3.0, 6.0)
+    renderer.simulate_pointer("move", 4.0, 7.0)
+    renderer.simulate_pointer("release", 4.0, 7.0)
+    got = take()
+    kinds = [type(e).__name__ for e in got]
+    if not (kinds and kinds[0] == "DragStart" and kinds[-1] == "DragEnd" and "Drag" in kinds
+            and all(getattr(e, "item_id", None) == "states" and e.index == 0 for e in got)
+            and close(got[-1], 4.0, 7.0)):
+        failures.append("dragging the first marker gave {0} [events]".format(got))
+    elif not isinstance(got[0], DragStart) or not any(isinstance(e, Drag) for e in got) \
+            or not isinstance(got[-1], DragEnd):
+        failures.append("drag events of the wrong types: {0} [events]".format(kinds))
+
+    renderer.simulate_pointer("press", 5.0, 9.0)
+    renderer.simulate_pointer("release", 5.0, 9.0)
+    got = take()
+    if not (len(got) == 1 and isinstance(got[0], Click) and got[0].item_id is None and close(got[0], 5.0, 9.0)):
+        failures.append("a click on empty space gave {0} [events]".format(got))
+
+    renderer.simulate_view((1.0, 9.0), (2.0, 8.0))
+    got = [e for e in take() if isinstance(e, ViewChanged)]
+    if not got or not (_same(got[-1].x_limits, (1.0, 9.0)) and _same(got[-1].y_limits, (2.0, 8.0))):
+        failures.append("zooming gave {0} [events]".format(got))
+
+    # Limits set by sync are the application's own, not a user event
+    scene.set_axes(replace(scene.axes, x_limits=(0.0, 20.0)))
+    renderer.sync(scene)
+    got = [e for e in take() if isinstance(e, ViewChanged)]
+    if got:
+        failures.append("sync with new limits reported {0} as a user event [events]".format(got))
+
+    renderer.disconnect(token)
+    renderer.simulate_pointer("move", 5.0, 9.0)
+    if events:
+        failures.append("events arrived after disconnect [events]")
     return failures

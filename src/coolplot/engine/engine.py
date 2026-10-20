@@ -123,6 +123,12 @@ class Engine:
 
         return self.cache.get_or_compute(self.cache_key(spec, domain, request), compute)
 
+    def _obtain(self, spec: DiagramSpec, domain: Domain, request: CurveRequest):
+        """(curve, final) for a request. This engine computes it right away;
+        :class:`coolplot.engine.background.BackgroundEngine` returns what is
+        ready (a coarse preview has final=False) or (None, False)."""
+        return self.curve(spec, domain, request), True
+
     def curves(self, spec: DiagramSpec, domain: Domain, requests) -> List[Tuple[CurveRequest, Curve]]:
         """The curves of all requests that have at least two valid points.
 
@@ -134,8 +140,15 @@ class Engine:
         result = []
         tolerance = spec.settings.calc.warn_failed_fraction
         for request in requests:
-            curve = self.curve(spec, domain, request)
+            curve, final = self._obtain(spec, domain, request)
+            if curve is None:
+                continue   # not ready yet (background engine)
             total = len(curve.x)
+            if not final:
+                # A coarse preview: draw it if it has a line, judge only the final curve
+                if curve.n_valid >= 2:
+                    result.append((request, curve))
+                continue
             if curve.n_valid < 2:
                 why = curve.reason or "CoolProp failed for {0} of {1} points".format(curve.n_failed, total)
                 self._warn(spec, domain, request, "Skipping the line {0}={1:.6g} in {2}: {3}.".format(

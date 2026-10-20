@@ -12,9 +12,13 @@ Points to note for maintainers
   ``lines.scale_dashes`` is on. CoolPlot dash patterns are already final
   lengths in points, so they are divided by the width before they are
   handed over (see :func:`_mpl_dashes`).
-* Casings and text halos are path effects: a wider stroke in the casing or
-  halo colour drawn underneath the normal rendering. The stroke inherits
-  the dash pattern and alpha of the line, as docs/backends.md requires.
+* Casings are path effects: a wider stroke in the casing colour drawn
+  underneath the normal rendering. The stroke inherits the dash pattern
+  and alpha of the line, as docs/backends.md requires.
+* A text halo is a second text artist just below the text, drawn with a
+  stroke in the halo colour. Matplotlib draws any text with path effects
+  as glyph outlines, so a halo on the text itself would turn every label
+  into shapes in PDF and SVG files: not selectable, not searchable.
 * Stacking: the axes with their grid and ticks sit at z order 0.5
   (``set_axisbelow``), items at 1 + z_order plus a tiny fraction per
   position, so the scene order breaks ties, and the frame and legend above
@@ -23,10 +27,27 @@ Points to note for maintainers
   size by matplotlib; it is scaled down so its bounding box is size_pt.
 * Read-back uses a few private attributes where matplotlib has no public
   getter; each one is marked "private:".
+* Texts are plain text: matplotlib would otherwise read "$...$" as math
+  (and with the rcParam text.usetex, all text as LaTeX), changing both the
+  words and the font.
+* Fonts named by file in ``Font.files`` are registered with matplotlib's
+  font manager before the family is looked up. ``strict_fonts=True``
+  raises instead of falling back when the first family is not available.
+* PDF, PS and EPS embed their fonts as TrueType (fonttype 42), which print
+  checks accept and which keeps text editable; matplotlib's default,
+  Type 3, is refused by many journals. Matplotlib can only embed fonts
+  with TrueType outlines that way: a font installed as CFF OpenType
+  (.otf starting with "OTTO") would give a damaged file. Such a text uses
+  the next TrueType family of its list in the file, with a warning, see
+  :meth:`MatplotlibRenderer._truetype_fonts`.
 """
 from __future__ import annotations
 
+import contextlib
 import math
+import os
+import re
+import warnings
 
 import numpy as np
 import matplotlib
@@ -35,6 +56,7 @@ from matplotlib.colors import to_hex
 from matplotlib.font_manager import FontProperties
 from matplotlib.markers import MarkerStyle as _MplMarker
 
+from ..core.events import Click, Drag, DragEnd, DragStart, Hover, Resized, ViewChanged
 from ..core.numbers import format_number
 from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
 from ..style.values import dash_pattern_pt
@@ -48,6 +70,12 @@ _DECORATION_Z = 1e5   # the frame above all items
 _LEGEND_Z = 1e6
 _GENERIC = {"sans-serif", "serif", "monospace", "cursive", "fantasy"}
 _installed = None
+_registered = set()   # font files given in Font.files, registered once per process
+_outlines = {}        # font file -> True if it has TrueType outlines
+#: File formats with embedded fonts, and the rcParam saying how they are embedded.
+_FONTTYPE_RC = {"pdf": "pdf.fonttype", "ps": "ps.fonttype", "eps": "ps.fonttype"}
+#: Fonts that ship with matplotlib as TrueType: the last resort for embedding.
+_LAST_RESORT = "DejaVu Sans"
 
 
 def _mpl_dashes(dash, width_pt):
@@ -86,23 +114,68 @@ def _families(family):
     return kept or ["sans-serif"]
 
 
-def _font(font) -> FontProperties:
-    return FontProperties(family=_families(font.family), size=font.size_pt, weight=font.weight,
+def _register_files(files):
+    """Make the font files of a Font known to matplotlib (each file once, with one warning if unusable)."""
+    global _installed
+    for name in files:
+        path = os.path.abspath(name)
+        if path in _registered:
+            continue
+        _registered.add(path)
+        if not os.path.isfile(path):
+            warnings.warn("Font file {0!r} does not exist; the next family is used.".format(name), UserWarning,
+                          stacklevel=4)
+            continue
+        from matplotlib.font_manager import fontManager
+        try:
+            fontManager.addfont(path)
+        except Exception as e:
+            warnings.warn("Font file {0!r} could not be loaded ({1}); the next family is used.".format(name, e),
+                          UserWarning, stacklevel=4)
+            continue
+        _installed = None   # look again which families exist
+
+
+def _resolve(font, strict: bool = False):
+    """The families of a Font that matplotlib can use, in order."""
+    _register_files(font.files)
+    families = _families(font.family)
+    wanted = font.family[0]
+    if strict and wanted.lower() not in _GENERIC and families[0].lower() != wanted.lower():
+        raise ValueError("Font {0!r} is not available and strict_fonts is on. Install it, or name its file "
+                         "in Font(files=...).".format(wanted))
+    return families
+
+
+def _plain_text(text):
+    """Draw the characters as given: no "$...$" math, no LaTeX."""
+    text.set_parse_math(False)
+    text.set_usetex(False)
+
+
+def _font(font, strict: bool = False) -> FontProperties:
+    return FontProperties(family=_resolve(font, strict), size=font.size_pt, weight=font.weight,
                           style=font.style)
 
 
-def _apply_text_style(text, style):
-    text.set_fontfamily(_families(style.font.family))
+def _apply_text_style(text, style, strict: bool = False, halo: bool = True):
+    """Font, colour and (with ``halo``) a halo as a path effect on ``text``."""
+    _plain_text(text)
+    text.set_fontfamily(_resolve(style.font, strict))
     text.set_fontsize(style.font.size_pt)
     text.set_fontweight(style.font.weight)
     text.set_fontstyle(style.font.style)
     text.set_color(style.color or "none")
     text.set_alpha(style.alpha)
-    if style.halo_color is not None and style.halo_width_pt > 0.0:
+    if halo and _has_halo(style):
         text.set_path_effects([patheffects.withStroke(linewidth=2.0 * style.halo_width_pt,
                                                       foreground=style.halo_color)])
     else:
         text.set_path_effects([])
+
+
+def _has_halo(style) -> bool:
+    return style.halo_color is not None and style.halo_width_pt > 0.0
 
 
 def _marker_scale(shape: str) -> float:
@@ -122,6 +195,65 @@ def _draws_itself(artist) -> bool:
     """True if the artist's own stroke is drawn (no path effects, or one of them is Normal)."""
     effects = artist.get_path_effects()
     return not effects or any(isinstance(e, (patheffects.Normal, patheffects.withStroke)) for e in effects)
+
+
+def _font_file_family(text):
+    """(family name, file) of the font matplotlib uses for a text."""
+    from matplotlib.font_manager import fontManager, get_font
+    path = str(os.fspath(fontManager.findfont(text.get_fontproperties())))   # newer versions return a FontPath
+    return get_font(path).family_name, path
+
+
+def _font_file(family: str, weight, style):
+    """(file, face index) matplotlib takes for one family, or None if it is not installed."""
+    from matplotlib.font_manager import fontManager
+    try:
+        found = fontManager.findfont(FontProperties(family=[family], weight=weight, style=style),
+                                     fallback_to_default=False)
+    except ValueError:
+        return None
+    return str(os.fspath(found)), int(getattr(found, "face_index", 0) or 0)
+
+
+def _has_truetype_outlines(path: str, face: int = 0) -> bool:
+    """True for TrueType fonts, also inside collections (.ttc); False for CFF OpenType ("OTTO")."""
+    key = (path, face)
+    if key not in _outlines:
+        with open(path, "rb") as f:
+            head = f.read(4)
+            if head == b"ttcf":
+                # A collection: a table of offsets to its fonts follows the 12-byte header
+                f.seek(12 + 4 * face)
+                f.seek(int.from_bytes(f.read(4), "big"))
+                head = f.read(4)
+        _outlines[key] = head in (b"\x00\x01\x00\x00", b"true")
+    return _outlines[key]
+
+
+def _embeddable(families, weight, style):
+    """(families to embed, families left out): only fonts with TrueType outlines.
+
+    Matplotlib falls back through the whole family list glyph by glyph, so
+    every family of the list counts, not just the first one.
+    """
+    keep, dropped = [], []
+    for name in families:
+        found = _font_file(name, weight, style)
+        if found is not None:
+            (keep if _has_truetype_outlines(*found) else dropped).append(name)
+    return (keep or [_LAST_RESORT]), dropped
+
+
+def _family_name(families, weight, style) -> str:
+    """The family name of the font a family list resolves to."""
+    from matplotlib.font_manager import fontManager, get_font
+    path = fontManager.findfont(FontProperties(family=list(families), weight=weight, style=style))
+    return get_font(str(os.fspath(path))).family_name
+
+
+def _visible_texts(figure):
+    from matplotlib.text import Text as _MplText
+    return [t for t in figure.findobj(_MplText) if t.get_visible() and t.get_text().strip()]
 
 
 def _font_description(prefix, text, full=True) -> dict:
@@ -151,14 +283,21 @@ class MatplotlibRenderer(Renderer):
         False in servers and GUIs, where pyplot's global state is unwanted.
     figsize : tuple
         Size of a newly created figure in inches.
+    strict_fonts : bool
+        Raise ValueError when the first family of a font is not available,
+        instead of using the next one. Useful for print work, where a
+        silently replaced font would go unnoticed.
     """
 
-    capabilities = frozenset({"in_place_updates", "file_output", "interactive"})
+    capabilities = frozenset({"in_place_updates", "file_output", "interactive", "events", "pdf_output"})
     default_suffix = ".png"
     text_output = False
 
-    def __init__(self, ax=None, use_pyplot: bool = True, figsize=(8.0, 6.0)):
+    def __init__(self, ax=None, use_pyplot: bool = True, figsize=(8.0, 6.0), strict_fonts: bool = False):
         super().__init__()
+        self.strict_fonts = bool(strict_fonts)
+        self._tick_families = ["sans-serif"]   # set with the axes
+        self._font_warnings = set()            # font messages already given when saving
         self.owns_canvas = ax is None
         if ax is None:
             if use_pyplot:
@@ -171,6 +310,7 @@ class MatplotlibRenderer(Renderer):
         self.ax = ax
         self.figure = ax.figure
         self._artists = {}
+        self._halos = {}   # item id -> the text artist drawing its halo
         self._rank = {}
         # The frame goes above all items. Matplotlib draws grid lines as part
         # of the axis artists, so the axes (with their ticks) stay below the
@@ -182,6 +322,7 @@ class MatplotlibRenderer(Renderer):
     # Backend hooks -----------------------------------------------------
     def _set_axes(self, axes: AxesSpec):
         ax, st = self.ax, axes.style
+        self._tick_families = _resolve(st.tick_label.font, self.strict_fonts)
         # nonpositive="mask" turns values that a log axis cannot show into
         # gaps, like NaN; matplotlib's default would drop the line to the
         # bottom edge instead.
@@ -194,7 +335,7 @@ class MatplotlibRenderer(Renderer):
                                    (ax.yaxis.label, axes.y_label, st.axis_label),
                                    (ax.title, axes.title, st.title)):
             label.set_text(text)
-            _apply_text_style(label, style)
+            _apply_text_style(label, style, self.strict_fonts)
         for limits, setter, log, axis in ((axes.x_limits, ax.set_xlim, axes.x_log, "x"),
                                           (axes.y_limits, ax.set_ylim, axes.y_log, "y")):
             if limits is None:
@@ -214,7 +355,7 @@ class MatplotlibRenderer(Renderer):
         ax.tick_params(axis="both", which="both", color=st.tick_color or "none",
                        direction=st.tick_direction, width=st.tick_width_pt,
                        labelcolor=st.tick_label.color or "none", labelsize=st.tick_label.font.size_pt,
-                       labelfontfamily=_families(st.tick_label.font.family))
+                       labelfontfamily=self._tick_families)
         ax.tick_params(axis="both", which="major", length=st.tick_length_pt)
         ax.tick_params(axis="both", which="minor", length=0.6 * st.tick_length_pt)
         for which, grid in (("major", st.grid_major), ("minor", st.grid_minor)):
@@ -257,6 +398,9 @@ class MatplotlibRenderer(Renderer):
         self._rank.pop(item.id, None)
         if artist is not None:
             artist.remove()
+        halo = self._halos.pop(item.id, None)
+        if halo is not None:
+            halo.remove()
 
     def _reorder(self, order):
         # matplotlib z orders come from the position in the drawing order,
@@ -265,6 +409,8 @@ class MatplotlibRenderer(Renderer):
         self._rank = {item_id: i for i, item_id in enumerate(order)}
         for item_id, artist in self._artists.items():
             artist.set_zorder(_ITEM_BASE + self._rank[item_id] * _RANK_STEP)
+        for item_id, halo in self._halos.items():
+            halo.set_zorder(self._artists[item_id].get_zorder() - 0.5 * _RANK_STEP)   # just below its text
 
     def _set_legend(self, entries, style):
         old = self.ax.get_legend()
@@ -279,12 +425,14 @@ class MatplotlibRenderer(Renderer):
         kwargs = dict(loc=style.location)
         if style.location == "outside right":
             kwargs = dict(loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.0)
-        legend = self.ax.legend(handles, labels, prop=_font(style.text.font),
+        legend = self.ax.legend(handles, labels, prop=_font(style.text.font, self.strict_fonts),
                                 labelcolor=style.text.color or "none",
                                 frameon=style.background is not None or style.frame_color is not None,
                                 facecolor=style.background or "none",
                                 edgecolor=style.frame_color or "none", framealpha=1.0, **kwargs)
         legend.set_zorder(_LEGEND_Z)
+        for text in legend.get_texts():
+            _plain_text(text)
 
     def _finish(self, report: SyncReport):
         if not report.changed:
@@ -343,7 +491,7 @@ class MatplotlibRenderer(Renderer):
             artist.set_clip_on(item.clip)
             if item.clip:
                 artist.set_clip_path(self.ax.patch)
-            _apply_text_style(artist, s)
+            _apply_text_style(artist, s, self.strict_fonts, halo=False)
             artist.set_horizontalalignment(s.h_align)
             artist.set_verticalalignment(s.v_align)
             # With transform_rotates_text, matplotlib interprets the rotation
@@ -358,6 +506,183 @@ class MatplotlibRenderer(Renderer):
                 dx, dy = item.direction
                 artist.set_rotation(_upright(math.degrees(math.atan2(dy, dx))))
             artist.set_visible(item.visible and math.isfinite(item.x) and math.isfinite(item.y))
+            self._apply_halo(item, artist)
+
+    def _apply_halo(self, item: Text, artist):
+        """Create, update or remove the halo artist of a text item."""
+        s = item.style
+        halo = self._halos.get(item.id)
+        if not _has_halo(s):
+            if halo is not None:
+                halo.remove()
+                del self._halos[item.id]
+            return
+        if halo is None:
+            halo = self._halos[item.id] = self.ax.text(0.0, 0.0, "", rotation_mode="anchor",
+                                                       transform_rotates_text=True)
+        _plain_text(halo)
+        halo.set_text(artist.get_text())
+        halo.set_position(artist.get_position())
+        halo.set_transform(artist.get_transform())
+        halo.set_clip_on(artist.get_clip_on())
+        halo.set_clip_path(artist.get_clip_path())
+        halo.set_fontproperties(artist.get_fontproperties())
+        halo.set_horizontalalignment(artist.get_horizontalalignment())
+        halo.set_verticalalignment(artist.get_verticalalignment())
+        halo.set_rotation(artist._rotation)   # private: the angle as set, before transform_rotates_text
+        halo.set_color(s.halo_color)
+        halo.set_alpha(s.alpha)
+        halo.set_path_effects([patheffects.Stroke(linewidth=2.0 * s.halo_width_pt, foreground=s.halo_color)])
+        halo.set_visible(artist.get_visible())
+        halo.set_zorder(artist.get_zorder() - 0.5 * _RANK_STEP)
+
+    # Events ------------------------------------------------------------
+    #: Points within this distance (in points) of a marker or line hit it.
+    PICK_RADIUS_PT = 5.0
+
+    #: A press that moves less than this (logical pixels) is still a click.
+    CLICK_SLOP_PX = 4.0
+
+    def _start_events(self):
+        if getattr(self, "_event_ids", None) is not None:
+            return
+        canvas = self.figure.canvas
+        self._press = None      # dict describing the pressed button, see _on_press
+        self._buttons_reported = False
+        self._last_view = self._view()
+        # The view is reported when the figure is drawn, not on every limit
+        # change: a zoom changes x and y one after the other, and reporting
+        # both changes would redraw the diagram twice, once half zoomed.
+        self._event_ids = [canvas.mpl_connect(name, handler) for name, handler in (
+            ("motion_notify_event", self._on_motion), ("button_press_event", self._on_press),
+            ("button_release_event", self._on_release), ("resize_event", self._on_resize),
+            ("draw_event", self._on_draw))]
+
+    def _toolbar_busy(self) -> bool:
+        """True while the zoom or pan tool of the window is active."""
+        toolbar = getattr(self.figure.canvas, "toolbar", None)
+        return bool(toolbar is not None and getattr(toolbar, "mode", ""))
+
+    def _hit(self, mouse_event):
+        """(item_id, index) of the topmost visible marker or line under the pointer."""
+        candidates = []
+        for item_id, artist in self._artists.items():
+            item = self._drawn.get(item_id)
+            if not artist.get_visible() or isinstance(item, Text):
+                continue
+            artist.set_pickradius(self.PICK_RADIUS_PT)
+            hit, details = artist.contains(mouse_event)
+            if hit:
+                indices = list(details.get("ind", []))
+                candidates.append((artist.get_zorder(), item_id, int(indices[0]) if indices else None))
+        if not candidates:
+            return None, None
+        _, item_id, index = max(candidates)
+        return item_id, index
+
+    def _data(self, mouse_event):
+        """The pointer in data units; finite anywhere on the canvas, also outside the axes."""
+        x, y = self.ax.transData.inverted().transform((mouse_event.x, mouse_event.y))
+        return float(x), float(y)
+
+    def _on_motion(self, event):
+        press = self._press
+        buttons = getattr(event, "buttons", None) or frozenset()
+        if buttons:
+            self._buttons_reported = True
+        if press is not None and self._buttons_reported and not buttons:
+            # No button is held any more, but the release was lost (outside
+            # the window): end the press here. Only for canvases that report
+            # held buttons at all; others send an empty set every time.
+            self._end_press(*press["last"])
+            press = None
+        if press is None:
+            if buttons and self._toolbar_busy():
+                return   # panning or zooming with the toolbar
+            if event.inaxes is self.ax:
+                x, y = self._data(event)
+                item_id, index = self._hit(event)
+                self._emit(Hover(x, y, item_id, index))
+            return
+        x, y = self._data(event)
+        press["last"] = (x, y)
+        ratio = getattr(self.figure.canvas, "device_pixel_ratio", 1.0) or 1.0   # event pixels are physical
+        slop = self.CLICK_SLOP_PX * ratio
+        if not press["moved"] and math.hypot(event.x - press["x_px"], event.y - press["y_px"]) < slop:
+            return   # jitter of a click
+        press["moved"] = True
+        if press["draggable"]:
+            if not press["dragging"]:
+                press["dragging"] = True
+                self._emit(DragStart(press["item_id"], press["index"], x, y))
+            self._emit(Drag(press["item_id"], press["index"], x, y))
+
+    def _on_press(self, event):
+        if event.inaxes is not self.ax or self._toolbar_busy():
+            return
+        item_id, index = self._hit(event)
+        button = int(event.button or 1)
+        # Only markers can be dragged, with the left button: their points are
+        # the states of a process
+        draggable = isinstance(self._drawn.get(item_id), Markers) and index is not None and button == 1
+        self._press = dict(item_id=item_id, index=index, button=button, draggable=draggable,
+                           x_px=event.x, y_px=event.y, last=self._data(event), moved=False, dragging=False)
+
+    def _on_release(self, event):
+        if self._press is not None:
+            self._end_press(*self._data(event))
+
+    def _end_press(self, x, y):
+        press, self._press = self._press, None
+        if press["dragging"]:
+            self._emit(DragEnd(press["item_id"], press["index"], x, y))
+        elif not press["moved"]:
+            self._emit(Click(x, y, press["item_id"], press["index"], press["button"]))
+
+    def _on_resize(self, event):
+        size = self.plot_size_pt()
+        self._emit(Resized(*size))
+
+    def _view(self):
+        return tuple(float(v) for v in self.ax.get_xlim()), tuple(float(v) for v in self.ax.get_ylim())
+
+    def _on_draw(self, _event=None):
+        if self._syncing:
+            return
+        view = self._view()
+        if view != self._last_view:
+            self._last_view = view
+            self._emit(ViewChanged(*view))
+
+    def sync(self, scene):
+        report = super().sync(scene)
+        if report.axes_changed and getattr(self, "_event_ids", None) is not None:
+            self._last_view = self._view()   # the view sync set is not the user's
+        return report
+
+    # Simulated input, for tests and the conformance kit
+    def simulate_pointer(self, kind: str, x: float, y: float, button: int = 1):
+        """Feed a pointer event at (x, y) in data units: "move", "press" or "release"."""
+        from matplotlib.backend_bases import MouseEvent
+        self._start_events()
+        if self.figure.stale:
+            self.figure.draw_without_rendering()
+        x_px, y_px = self.ax.transData.transform((x, y))
+        name = {"move": "motion_notify_event", "press": "button_press_event",
+                "release": "button_release_event"}[kind]
+        if kind == "move":
+            held = [self._press["button"]] if self._press is not None else None
+            event = MouseEvent(name, self.figure.canvas, x_px, y_px, buttons=held)
+        else:
+            event = MouseEvent(name, self.figure.canvas, x_px, y_px, button=button)
+        self.figure.canvas.callbacks.process(name, event)
+
+    def simulate_view(self, x_limits, y_limits):
+        """Change the visible limits as the zoom or pan tool would."""
+        self._start_events()
+        self.ax.set_xlim(*x_limits)
+        self.ax.set_ylim(*y_limits)
+        self._on_draw()   # the toolbar redraws the canvas after a change
 
     # Read back ---------------------------------------------------------
     def backend_object(self, item_id):
@@ -397,7 +722,14 @@ class MatplotlibRenderer(Renderer):
                        n_points=self._n_drawable(artist), drawn_points=self._drawn_points(artist),
                        connected=artist.get_linestyle() not in ("None", "none", "", " "))
         elif isinstance(item, Text):
-            stroke = _stroke_effect(artist)
+            halo = self._halos.get(item_id)
+            # The halo counts only where it really sits under this label: same text, place, angle and font
+            matches = halo is not None and halo.get_visible() and (
+                halo.get_text() == artist.get_text() and halo.get_position() == artist.get_position()
+                and halo.get_rotation() == artist.get_rotation()
+                and halo.get_fontproperties() == artist.get_fontproperties()
+                and artist.get_zorder() - _RANK_STEP < halo.get_zorder() < artist.get_zorder())
+            stroke = _stroke_effect(halo) if matches else None
             weight = artist.get_fontweight()
             if not isinstance(weight, str):
                 weight = "bold" if weight >= 600 else "normal"
@@ -406,6 +738,7 @@ class MatplotlibRenderer(Renderer):
             angle = artist.get_rotation() if out["visible"] else 0.0
             angle = (angle + 180.0) % 360.0 - 180.0
             out.update(kind="text", text=artist.get_text(), font_family=tuple(artist.get_fontfamily()),
+                       font_used=_font_file_family(artist)[0],
                        font_size_pt=artist.get_fontsize(), font_weight=weight,
                        font_style=artist.get_fontstyle(), color=_hex_or_none(artist.get_color()),
                        alpha=alpha, h_align=artist.get_horizontalalignment(),
@@ -576,6 +909,29 @@ class MatplotlibRenderer(Renderer):
         return [ours[id(a)] for a in drawn].index(item_id)
 
     # Output ------------------------------------------------------------
+    def fonts_used(self, pdf: bool = False) -> dict:
+        """Font file -> family name of the font of every visible text.
+
+        These are the fonts matplotlib really draws with, after going
+        through each family list: the place to check that a print font is
+        there. With ``pdf=True``: the fonts a PDF, PS or EPS file gets, after
+        fonts that cannot be embedded as TrueType are left out (see
+        :meth:`save`). Fonts that only supply single missing characters are
+        not listed.
+        """
+        from matplotlib.font_manager import fontManager, get_font
+        if self.figure.stale:
+            self.figure.draw_without_rendering()
+        out = {}
+        for text in _visible_texts(self.figure):
+            families = text.get_fontfamily()
+            if pdf:
+                families = _embeddable(families, text.get_fontweight(), text.get_fontstyle())[0]
+            path = str(os.fspath(fontManager.findfont(FontProperties(
+                family=list(families), weight=text.get_fontweight(), style=text.get_fontstyle()))))
+            out[path] = get_font(path).family_name
+        return out
+
     def plot_size_pt(self):
         """Size of the plot area; lays out the figure first if it changed."""
         if self.figure.stale:
@@ -584,14 +940,134 @@ class MatplotlibRenderer(Renderer):
         dpi = self.figure.dpi
         return self.ax.bbox.width * 72.0 / dpi, self.ax.bbox.height * 72.0 / dpi
 
-    def save(self, path, **kwargs):
-        if str(path).endswith(".png"):
-            kwargs.setdefault("metadata", {"Software": None})   # no version string, deterministic
-        self.figure.savefig(path, **kwargs)
+    def save(self, path, pdf_fonts: str = "truetype", **kwargs):
+        """Write the figure to a file; the format follows the file name.
+
+        PDF, PS and EPS embed their fonts. ``pdf_fonts="truetype"`` (the
+        default) embeds TrueType fonts, as print checks and journals expect;
+        a text whose font is only installed as CFF OpenType then uses the
+        next TrueType family of its list, with a warning. ``"type3"`` keeps
+        every font but embeds it as Type 3. PDF, SVG and PNG files carry no
+        date or version, so the same scene gives the same file, and a PDF
+        gets the chart title as its title. Further keyword arguments go to
+        matplotlib's savefig.
+        """
+        fmt = (kwargs.get("format") or os.path.splitext(str(path))[1].lstrip(".") or "png").lower()
+        metadata = dict(kwargs.pop("metadata", None) or {})
+        rc = {}
+        if fmt == "png":
+            metadata.setdefault("Software", None)
+        elif fmt == "pdf":
+            for key in ("Creator", "Producer", "CreationDate"):
+                metadata.setdefault(key, None)
+            if self._axes is not None and self._axes.title:
+                metadata.setdefault("Title", self._axes.title)
+        elif fmt == "svg":
+            metadata.setdefault("Date", None)
+            rc["svg.hashsalt"] = "coolplot"   # fixed ids instead of random ones
+        elif fmt in ("ps", "eps"):
+            metadata.setdefault("Creator", "CoolPlot")   # no version string
+        if metadata:
+            kwargs["metadata"] = metadata
+        if fmt in _FONTTYPE_RC:
+            rc[_FONTTYPE_RC[fmt]] = _fonttype(pdf_fonts)
+        with matplotlib.rc_context(rc), self._truetype_fonts(fmt in _FONTTYPE_RC and pdf_fonts == "truetype"):
+            self.figure.savefig(path, **kwargs)
+        if fmt in ("ps", "eps") and isinstance(path, (str, os.PathLike)):
+            # PostScript takes its date from the clock (or SOURCE_DATE_EPOCH, for the whole
+            # process); the comment line is optional, so it is left out of the file
+            with open(path, "rb") as f:
+                data = f.read()
+            with open(path, "wb") as f:
+                f.write(re.sub(rb"%%CreationDate:[^\r\n]*\r?\n", b"", data, count=1))
+
+    @staticmethod
+    def save_pages(path, renderers, pdf_fonts: str = "truetype", metadata: dict = None):
+        """Write the figures of several renderers into one PDF, one per page.
+
+        Fonts and metadata as for :meth:`save`; the title is that of the
+        first page with a title, unless ``metadata`` gives one.
+        """
+        from matplotlib.backends.backend_pdf import PdfPages
+        metadata = dict(metadata or {})
+        for key in ("Creator", "Producer", "CreationDate"):
+            metadata.setdefault(key, None)
+        titles = [r._axes.title for r in renderers if r._axes is not None and r._axes.title]
+        if titles:
+            metadata.setdefault("Title", titles[0])
+        # The font type has to hold until the file is closed: fonts are written last
+        with matplotlib.rc_context({"pdf.fonttype": _fonttype(pdf_fonts)}):
+            with PdfPages(path, metadata=metadata) as pages:
+                for renderer in renderers:
+                    with renderer._truetype_fonts(pdf_fonts == "truetype"):
+                        pages.savefig(renderer.figure)
+
+    @contextlib.contextmanager
+    def _truetype_fonts(self, active: bool = True):
+        """Inside: every visible text uses only fonts with TrueType outlines.
+
+        A context manager (a ``with`` block): texts get family lists without
+        CFF OpenType fonts on entry and their own lists back on exit, also
+        when saving fails, so the figure on screen is unchanged. With
+        ``strict_fonts`` a needed change raises ValueError instead.
+        """
+        if not active:
+            yield
+            return
+        changed = []
+        tick_families = None
+        try:
+            self.figure.draw_without_rendering()   # creates the tick labels
+            ticks = {id(label) for axis in (self.ax.xaxis, self.ax.yaxis)
+                     for tick in axis.get_major_ticks() + axis.get_minor_ticks() for label in (tick.label1, tick.label2)}
+            for text in _visible_texts(self.figure):
+                families = list(text.get_fontfamily())
+                weight, style = text.get_fontweight(), text.get_fontstyle()
+                keep, dropped = _embeddable(families, weight, style)
+                if not dropped:
+                    continue
+                self._report_cff(families, keep, dropped, weight, style)
+                changed.append((text, families))
+                text.set_fontfamily(keep)
+                if id(text) in ticks:
+                    tick_families = keep
+            if tick_families is not None:
+                # Ticks are created again while drawing: they take the family from tick_params
+                self.ax.tick_params(axis="both", which="both", labelfontfamily=tick_families)
+            yield
+        finally:
+            for text, families in changed:
+                text.set_fontfamily(families)
+            if tick_families is not None:
+                self.ax.tick_params(axis="both", which="both", labelfontfamily=self._tick_families)
+
+    def _report_cff(self, families, keep, dropped, weight, style):
+        """Warn (or with strict_fonts, raise) about fonts left out of an embedded file."""
+        before = _family_name(families, weight, style)
+        after = _family_name(keep, weight, style)
+        if before != after:
+            message = ("{0} is installed here only as CFF OpenType, which matplotlib cannot embed as TrueType "
+                       "(the file would be damaged); the file uses {1} instead. Install the TrueType (.ttf) "
+                       "files of {0}, or save with pdf_fonts='type3'.".format(before, after))
+        else:
+            message = ("{0} (CFF OpenType) cannot be embedded as TrueType and is left out of the file; "
+                       "characters only it has are missing there. Install the TrueType (.ttf) files, or save "
+                       "with pdf_fonts='type3'.".format(", ".join(dropped)))
+        if self.strict_fonts:
+            raise ValueError("strict_fonts: " + message)
+        if message not in self._font_warnings:
+            warnings.warn(message, UserWarning, stacklevel=5)
+            self._font_warnings.add(message)   # once per renderer, after the warning really went out
 
     def show(self):
         import matplotlib.pyplot as plt
         plt.show()
+
+
+def _fonttype(pdf_fonts: str) -> int:
+    if pdf_fonts not in ("truetype", "type3"):
+        raise ValueError("pdf_fonts is 'truetype' or 'type3', not {0!r}.".format(pdf_fonts))
+    return 42 if pdf_fonts == "truetype" else 3
 
 
 def _safe_limits(limits, log):

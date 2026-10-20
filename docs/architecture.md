@@ -154,11 +154,11 @@ caches its results (curves) or compares them with the previous ones
 |-------|--------|--------|
 | Settings | `spec/` (`DiagramSpec`, `Settings`), held by `PropertyDiagram` in `diagram.py` | done |
 | Plan | `engine/plan.py` (`plan(spec, domain)`), pure | done |
-| Engine | `engine/engine.py` (`Engine`), `engine/cache.py` (`CurveCache`), `thermo/` for the calculations; synchronous | done |
+| Engine | `engine/engine.py` (`Engine`), `engine/background.py` (`BackgroundEngine`, 0.3), `engine/cache.py` (`CurveCache`), `thermo/` for the calculations | done |
 | Compose | `compose/builder.py`: display units, theme styles, texts | done |
 | Layout | `compose/layout.py`: labels for the reported plot size, keep-out zones | done |
 | Sync | `render/base.py` and the backends | done |
-| Events | backend-neutral events back into the diagram | planned |
+| Events | `core/events.py`, `Renderer.connect`, `interaction.py` | done |
 
 
 ## 4. Package layout for 0.2
@@ -472,12 +472,74 @@ units, styles, one added line, cycles, zoom and themes.
 | 5 | Cycles on diagrams (section 7): `add_cycle` with states, `via`, automatic paths, loops for split and two-stage cycles, state numbers; models for simple compression, two-stage (flash tank, economizer) and Rankine | done |
 | 6 | Close the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising); examples and user documentation | done |
 
-### 0.3 and later
+### 0.3: background, events, more backends, psychrometric charts
 
-Background calculation (threads or processes, cancellation,
-coarse-then-fine), events back from the backends (zoom, hover, pick,
-drag), plotly and web backends, psychrometric charts.
+| Step | Content | Status |
+|------|---------|--------|
+| 1 | Background calculation: curves computed in worker threads or processes, coarse first and then fine, outdated work cancelled; the diagram stays responsive and reports progress | done |
+| 2 | Events back from the backends (hover, click, drag, view changes, resize) as plain data; an `Interaction` helper that turns them into diagram changes (zoom and pan re-layout labels, hover reads the state, dragging a cycle state moves it) | done |
+| 3 | plotly backend, passing the conformance kit, with documented limitations where plotly cannot follow a requirement | done |
+| 4 | Web backend: the SVG elements of the SVG backend streamed as patches to a small JavaScript client, events back from the browser, a dependency-free development server; conformance checked in a real browser (headless Chromium) | done |
+| 5 | Psychrometric charts for humid air (CoolProp HAPropsSI): dry-bulb temperature over humidity ratio, lines of relative humidity, wet-bulb temperature, enthalpy and specific volume, air processes on top | done |
+| 6 | Examples, user documentation, adversarial review of the 0.3 work | done |
+| 7 | PDF as a first-class output: TrueType fonts, texts stay text, theme colours, title, reproducible files, several charts per file, a PDF check in the kit | done |
 
+#### Background calculation (step 1)
+
+* `PropertyDiagram(..., background="threads" | "processes" | None)`.
+  `update_scene()` never waits for a curve: it returns the scene from the
+  curves that are ready and queues the missing ones. When queued work
+  finishes, `on_ready(diagram)` is called (from a worker thread; GUI
+  applications pass it on to their event loop) and the application calls
+  `update_scene()` again.
+* Coarse then fine: a missing curve is first computed with
+  `Settings.calc.preview_points` and then with full resolution; the
+  preview is drawn in the meantime and replaced in place (same item id).
+* Every `update_scene()` starts a new generation. Queued work that the
+  latest plan no longer needs is cancelled; work already running finishes
+  and stays in the cache.
+* Threads share the process; each worker uses its own copy of the fluid
+  (CoolProp states are not thread safe). CoolProp keeps the interpreter
+  lock during every call, so there is one worker thread by default:
+  more threads cannot compute in parallel and only slow down the
+  application. For blends, whose calls are long, use processes. Processes compute in parallel;
+  workers receive only plain data (`FluidSpec`, request, region,
+  calculation settings) and return `Curve` values.
+* `diagram.progress` gives (ready, total) for the current plan.
+
+#### Psychrometric charts (step 5)
+
+Humid air follows the same layers with modules of its own:
+`thermo/humid_air.py` (states and lines with HAPropsSI; lines are cut at
+saturation, where fog would begin, and start exactly on it),
+`spec/psychro.py` (`PsychroSpec`, display units for W, RH and Twb),
+`compose/psychro.py` (styles, texts and the shared label layout) and the
+facade `psychrometric.py` (`PsychrometricChart`). Lines are cached by
+pressure, region, family, value and point count.
+
+Lines are sampled in dry-bulb temperature. Wet-bulb lines are found
+with a regula falsi search on HAPropsSI(Twb; T, W), which is fast and
+smooth, because asking HAPropsSI for W from Twb directly is slow (it
+iterates inside) and has gaps near 0 deg C in CoolProp 8. Falling lines
+(Twb, h, v) end exactly at W = 0; above the boiling point at the chart
+pressure there is no saturation limit, and lines of relative humidity
+end where the vapour would exceed the total pressure. Near 0 deg C
+HAPropsSI switches between an ice and a water wet bulb, so wet-bulb
+lines just above 0 deg C all end at the same dry-air temperature. The
+view (`set_view`, used by `Interaction` for zoom and pan) only changes
+the axes; lines are computed over the full temperature range once.
+
+#### Events (step 2)
+
+Events are plain data in display units, defined in `core/events.py`, so
+an application handles them the same way for every backend: `Hover(x,
+y)`, `Click(x, y, item_id)`, `DragStart`/`Drag`/`DragEnd(item_id, index,
+x, y)`, `ViewChanged(x_limits, y_limits)`, `Resized(width_pt,
+height_pt)`. Backends that can produce them declare the capability
+"events" and deliver them to callbacks registered with
+`renderer.connect(callback)`. `coolplot.interaction.Interaction(diagram,
+renderer)` handles the common cases; dragging a state of a cycle replaces
+that state by the two axis properties at the new position.
 ### Open findings from the reviews
 
 * Fixed in step 2: stale curves after a caller changed a passed-in
@@ -490,6 +552,63 @@ drag), plotly and web backends, psychrometric charts.
   (the dome is drawn with the underlying equation of state), and the
   polygonal dome of mixtures (it comes from the refined phase envelope).
 * Fixed in step 6: the findings of the second review of the conformance kit (drawn positions, honest read-back of caps, marker shapes and connecting lines, strict theme loading, XML sanitising, vertical text, stacking, wrongly rejected valid axes).
+
+* Fixed in 0.3 step 6, from the adversarial review of the 0.3 work: the
+  web development server (snapshot race, Host and Origin checks, input
+  limits and validation, bounded queues, stop without start), web zoom
+  and pan on log axes, plotly quotes and honest axis read-back, the
+  background engine (close, failures retried then reported, one engine
+  per diagram, on_ready threading, LRU order), matplotlib pointer events
+  (finite coordinates, left-button drags, lost releases, one ViewChanged
+  per zoom), and psychrometric lines (above boiling, the CoolProp 8 gap
+  in wet-bulb lines, exact W = 0 ends, bounded default line counts,
+  failure warnings, pressure and temperature checks, zoom and dragging).
+  A second review of these fixes found more, also fixed: a crashing
+  worker process made every line in flight count a failed attempt (jobs
+  lost with a crashed pool now run again each in a process of its own),
+  charts with a foggy edge lost default lines, wait() could still return
+  while a plan was being worked out, on_ready ran after close(), a sync
+  before the repaint swallowed a matplotlib zoom, dropped browsers waited
+  30 s to reconnect, huge JSON numbers raised OverflowError, -100 deg C
+  was refused by rounding, and a garbage collected diagram kept its
+  background engine claimed.
+
+#### PDF output (0.3 step 7)
+
+PDF is a checked capability ("pdf_output"). The matplotlib backend embeds
+TrueType fonts, falls back to the next TrueType family for fonts it can
+only find as CFF OpenType (embedding those as TrueType gives damaged
+files), writes the chart title and no dates, and draws text halos as a
+second text artist so labels stay text. `export.save_pdf` puts several
+charts into one file. `render/pdf_reader.py` reads PDF files back without
+external tools, for the conformance kit (fonts, texts, painted colours,
+title, reproducibility), and rewrites document information for the plotly
+backend, which prints through kaleido and Chrome.
+
+Known limits of PDF output, from its adversarial review: the reader is
+meant for files of plotting libraries, not for every PDF (it refuses
+object streams, encryption and unreadable content, and reports images,
+shadings, patterns and other colour spaces as unchecked); `replace_info`
+keeps only the catalogue and the information in the trailer and refuses
+objects of other generations than 0; EPS and PS written to a file object
+(not a file name) keep matplotlib's date line; fonts that only supply
+single missing characters are not listed by `fonts_used`.
+
+Known trade-offs, from the adversarial review of the 0.3 work:
+
+* Conformance limitations are declared by the backend itself. With
+  `text_order`, ranks are compared among texts and among other items
+  separately, so the kit does not check that texts are drawn above lines.
+* Process workers are started with the platform default (fork on Linux
+  before Python 3.14); forking a GUI application that already runs other
+  threads can deadlock. Start the diagram first.
+* Every pan step in `Interaction` redraws the scene with a new label
+  layout; there is no throttling.
+* `WebServer` bound to a public address has no authentication, and patch
+  listeners run while the renderer is locked.
+* Input in the wrong unit (W in kg/kg on an "EUR" chart, a wet-bulb
+  temperature in K) is only caught when it is far outside what HAPropsSI
+  covers.
 
 Known trade-offs, from the adversarial review of the 0.2 work:
 

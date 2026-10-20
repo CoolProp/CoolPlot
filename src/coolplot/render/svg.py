@@ -26,6 +26,7 @@ import numpy as np
 
 from ..core.numbers import format_number
 from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
+from .ticks import ticks as _ticks
 from ..style.values import AxesStyle, TextStyle, dash_pattern_pt
 from .base import Renderer, SyncReport
 
@@ -48,6 +49,20 @@ def _num(value: float) -> str:
 # Characters XML 1.0 does not allow anywhere: control characters, lone
 # surrogates (invalid Unicode) and the two non-characters U+FFFE and U+FFFF.
 _CONTROL = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+
+
+def check_suffix(path, suffixes, renderer: str, what: str):
+    """Refuse a file name whose extension promises another format than ``what``."""
+    import os
+    suffix = os.path.splitext(os.fspath(path))[1].lower()
+    if suffix not in suffixes:
+        raise ValueError("{0} writes {1} files ({2}), not {3!r}; MatplotlibRenderer writes PDF, PNG and "
+                         "EPS.".format(renderer, what, ", ".join(suffixes), suffix or "a name without extension"))
+
+
+def _ascii(text: str) -> str:
+    """Non-ASCII characters as XML character references."""
+    return text.encode("ascii", "xmlcharrefreplace").decode("ascii")
 
 
 def _clean(text: str) -> str:
@@ -311,13 +326,23 @@ class SvgRenderer(Renderer):
     # Output ------------------------------------------------------------
     def to_svg(self) -> str:
         """The complete SVG document for the last synchronised scene, ASCII only."""
+        head, items, tail = self._document_parts()
+        return "\n".join([head, '<g class="cp-items">'] + [e for _, e in items] + ['</g>', tail])
+
+    def _document_parts(self):
+        """(head, [(item id, element)], tail) of the document, ASCII only.
+
+        The head holds everything below the items (background, grid), the
+        tail everything above them (frame, ticks, labels, legend). Items are
+        listed in drawing order; hidden items are left out.
+        """
         to_px, mapping_key = self._mapper()
         if mapping_key != self._mapping_key:
             self._elements.clear()
             self._mapping_key = mapping_key
         for item_id, item in self._items.items():
             if item_id not in self._elements:
-                self._elements[item_id] = self._element(item, to_px)
+                self._elements[item_id] = _ascii(self._element(item, to_px))
                 self.elements_built += 1
 
         axes = self._axes or AxesSpec()
@@ -325,7 +350,7 @@ class SvgRenderer(Renderer):
         bx, by, bw, bh = self._box
         (x0, x1), (y0, y1) = self._limits()
         clip = self.id_prefix + "-plot-area"
-        out: List[str] = [
+        head: List[str] = [
             '<svg xmlns="http://www.w3.org/2000/svg" width="{0}" height="{1}" viewBox="0 0 {0} {1}" '
             'data-x-log="{2}" data-y-log="{3}" data-x-limits="{4} {5}" data-y-limits="{6} {7}">'.format(
                 self.width, self.height, int(axes.x_log), int(axes.y_log),
@@ -337,23 +362,26 @@ class SvgRenderer(Renderer):
             '<rect class="cp-background" x="{0}" y="{1}" width="{2}" height="{3}" fill="{4}"/>'.format(
                 _num(bx), _num(by), _num(bw), _num(bh), st.background or "none"),
         ]
-        out.extend(self._grid(to_px, axes))
+        head.extend(self._grid(to_px, axes))
         # Every item clips itself (see _open), so that unclipped text keeps
         # its place in the drawing order.
-        out.extend(self._elements[i] for i in self._order if i in self._elements and self._elements[i])
-        out.append('<rect class="cp-frame" x="{0}" y="{1}" width="{2}" height="{3}" fill="none" '
-                   'stroke="{4}" stroke-width="{5}"/>'.format(_num(bx), _num(by), _num(bw), _num(bh),
-                                                            st.frame_color or "none", _px(st.frame_width_pt)))
-        out.extend(self._ticks_and_labels(to_px, axes))
-        out.extend(self._legend_elements())
-        out.append('</svg>')
-        return "\n".join(out).encode("ascii", "xmlcharrefreplace").decode("ascii")
+        items = [(i, self._elements[i]) for i in self._order if i in self._elements and self._elements[i]]
+        tail: List[str] = [
+            '<rect class="cp-frame" x="{0}" y="{1}" width="{2}" height="{3}" fill="none" '
+            'stroke="{4}" stroke-width="{5}"/>'.format(_num(bx), _num(by), _num(bw), _num(bh),
+                                                     st.frame_color or "none", _px(st.frame_width_pt))]
+        tail.extend(self._ticks_and_labels(to_px, axes))
+        tail.extend(self._legend_elements())
+        tail.append('</svg>')
+        return _ascii("\n".join(head)), items, _ascii("\n".join(tail))
 
     def plot_size_pt(self):
         bx, by, bw, bh = self._box
         return bw / PX_PER_PT, bh / PX_PER_PT
 
     def save(self, path):
+        """Write the SVG document; the file name has to end in ".svg"."""
+        check_suffix(path, (".svg",), type(self).__name__, "SVG")
         with open(path, "w", encoding="ascii", newline="\n") as f:
             f.write(self.to_svg())
 
@@ -796,32 +824,6 @@ def _shape_width_px(el) -> float:
 
 def _color(value: Optional[str]) -> Optional[str]:
     return None if value in (None, "none") else value
-
-
-def _ticks(lo: float, hi: float, log: bool, minor: bool = False) -> List[float]:
-    """Round tick positions between lo and hi (major, or minor between them)."""
-    lo, hi = min(lo, hi), max(lo, hi)
-    if log and lo > 0.0:
-        first, last = math.floor(math.log10(lo)), math.ceil(math.log10(hi))
-        if minor:
-            mantissas = tuple(float(m) for m in range(2, 10))
-        else:
-            mantissas = (1.0,) if last - first > 2 else (1.0, 2.0, 5.0)
-        ticks = [m * 10.0 ** e for e in range(first, last + 1) for m in mantissas]
-        ticks = [t for t in ticks if lo <= t <= hi]
-        if len(ticks) >= 2 or minor:
-            return ticks
-        # A range inside one decade, e.g. 1.5 to 1.9 bar: round linear steps
-    span = hi - lo
-    if not span > 0.0:
-        return [lo]
-    raw_step = span / 6.0
-    magnitude = 10.0 ** math.floor(math.log10(raw_step))
-    step = min(m * magnitude for m in (1.0, 2.0, 5.0, 10.0) if m * magnitude >= raw_step)
-    if minor:
-        step /= 5.0
-    start = math.ceil(lo / step) * step
-    return [start + i * step for i in range(int((hi - start) / step + 1e-9) + 1)]
 
 
 def _fmt(value: float) -> str:

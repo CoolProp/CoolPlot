@@ -51,6 +51,11 @@ class Curve:
             arr.flags.writeable = False
             object.__setattr__(self, name, arr)
 
+    def __reduce__(self):
+        # Rebuild through the constructor, so that a curve coming back from
+        # a worker process has read-only arrays again.
+        return (Curve, (self.x, self.y, self.n_failed, self.n_fallback, self.n_inserted, self.method, self.reason))
+
     @property
     def n_valid(self) -> int:
         return int(np.sum(np.isfinite(self.x) & np.isfinite(self.y)))

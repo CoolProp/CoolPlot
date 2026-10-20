@@ -35,13 +35,21 @@ diagram.draw(SvgRenderer()).save("R290_ph.svg")
 `diagram.draw()` without a renderer uses matplotlib; `diagram.show()` and
 `diagram.savefig("R290_ph.png")` are shortcuts for scripts.
 
+Three backends come with CoolPlot and draw the same scene:
+`coolplot.render.svg.SvgRenderer` (no dependencies),
+`coolplot.render.mpl.MatplotlibRenderer` (`pip install
+"coolplot[matplotlib]"`) and `coolplot.render.plotly.PlotlyRenderer`
+(`pip install "coolplot[plotly]"`; `renderer.figure` is the plotly
+figure, `save("chart.html")` writes a page). plotly cannot set line caps
+and always draws texts above lines; everything else looks the same.
+
 ### Fluids
 
 Any CoolProp fluid string works: `"R290"`, `"HEOS::R290"`,
 `"HEOS::R32[0.7]&R125[0.3]"` (mole fractions), `"REFPROP::R32"`, and
 incompressibles such as `"INCOMP::MEG[0.3]"` (mass fractions, as CoolProp
 reads them), which have no saturation curve and therefore need absolute
-limits: `tp_limits=[260, 370, 1e5, 1e6]` (K and Pa), see section 8.
+limits: `tp_limits=[260, 370, 1e5, 1e6]` (K and Pa), see section 9.
 A `CoolProp.AbstractState` is accepted as well; CoolPlot copies its fluid,
 fractions and binary interaction parameters, so later changes to your
 state do not affect the diagram.
@@ -231,6 +239,49 @@ text = json.dumps(diagram.spec.to_dict())
 diagram.spec = DiagramSpec.from_dict(json.loads(text))
 ```
 
+### PDF for papers, reports and print
+
+```python
+diagram.settings = diagram.settings.with_(page={"width_pt": 252, "height_pt": 190})   # one journal column
+diagram.savefig("R290_ph.pdf")                        # vector PDF, fonts embedded as TrueType
+
+from coolplot import save_pdf
+save_pdf("report.pdf", [diagram, other_diagram, chart], metadata={"Author": "Heat pump team"})
+```
+
+PDF is a first-class output of the matplotlib backend:
+
+* The page has the size of `settings.page`, and font sizes are in points,
+  so a figure placed at 100 % in a document has exactly the type sizes
+  of the theme. Set the page to the column or text width of the document
+  instead of scaling the figure there.
+* Fonts are embedded as TrueType (or `savefig(..., pdf_fonts="type3")`),
+  as journals and print shops expect. Texts stay text: they can be
+  selected, searched and edited, labels with a halo included.
+* Matplotlib cannot embed fonts installed as CFF OpenType (many .otf
+  files, often Inter) as TrueType. Such fonts are left out of the family
+  lists in the PDF (matplotlib falls back character by character through
+  the whole list), so a text whose first font is CFF uses the next
+  TrueType font of its list there, with a warning naming both; the
+  window keeps the original. Install the .ttf files of the font, or name
+  them with `Font(files=...)`, to keep it. Font collections (.ttc, as on
+  macOS) are checked face by face and embed fine.
+* `MatplotlibRenderer(strict_fonts=True)` raises instead of falling back
+  when a font is missing, also when saving would have to replace a CFF
+  font. `renderer.fonts_used()` lists the fonts on screen and
+  `renderer.fonts_used(pdf=True)` those a PDF gets: for print work, where a
+  replaced font must not slip through.
+* Colours are exactly those of the theme, as sRGB. There is no CMYK and
+  no colour profile; print shops convert sRGB, or convert the PDF
+  yourself (for example with Ghostscript) if a CMYK file is required.
+* The same chart gives the same file (no date, no version strings), and
+  the chart title becomes the PDF title. `save_pdf` writes one chart per
+  page, each at its own page size.
+* EPS and PS embed TrueType fonts the same way, and carry no date when
+  saved to a file name. `PlotlyRenderer` writes
+  PDF too when kaleido is installed (`pip install "coolplot[images]"`,
+  plus Chrome); SVG and web renderers write only their own formats.
+
 ## 7. Interactive applications
 
 A diagram only computes what changed and a renderer only redraws what
@@ -248,10 +299,117 @@ Moving a cycle recalculates no isoline and redraws only the cycle (and
 labels it pushes away). Changing units or the theme recalculates nothing.
 `diagram.state_at(x, y)` gives the full state under the mouse. Several
 diagrams of the same fluid can share their caches:
-`PropertyDiagram(..., engine=other.engine)`. `examples/interactive_cycle.py`
+`PropertyDiagram(..., engine=other.engine)`, or with background
+calculation `PropertyDiagram(..., background="threads", cache=other.cache)`
+(a background engine serves one diagram). `examples/interactive_cycle.py`
 shows a complete matplotlib application with sliders.
 
-## 8. Refrigerant blends and other mixtures
+### Zoom, hover and drag
+
+Backends with events (matplotlib, and the web backend) report what the
+user does. `Interaction` handles the usual cases:
+
+```python
+from coolplot.interaction import Interaction
+Interaction(diagram, renderer, on_hover=lambda state, event: print(state))
+```
+
+Zooming and panning with the toolbar lay out the labels for the new
+window, and dragging a state marker of a cycle moves that state (it is
+then given by the two axis quantities; states that follow it with
+`"via"` move along). `diagram.move_cycle_state(name, number, x, y)` does
+the same from code. For other behaviour, handle the events yourself:
+`renderer.connect(callback)` delivers `Hover`, `Click`, `DragStart`,
+`Drag`, `DragEnd`, `ViewChanged` and `Resized` from
+`coolplot.core.events`, in the units of the axes.
+
+### In the browser
+
+`coolplot.render.web.WebRenderer` draws the same SVG as the SVG backend
+but sends only what changed to a small JavaScript client, and turns the
+browser's pointer input into the same events as matplotlib (dragging
+empty space pans, the wheel zooms). `WebServer` serves it without any
+web framework:
+
+```python
+from coolplot.render.web import WebRenderer, WebServer
+renderer = WebRenderer(width=1000, height=700)
+Interaction(diagram, renderer)
+renderer.sync(diagram.update_scene(renderer.plot_size_pt()))
+server = WebServer(renderer)
+print("Open", server.url)
+server.serve_forever()
+```
+
+For your own web application, send the messages from
+`renderer.listen(callback)` to the browser (for example over a
+websocket), feed the client's input to `renderer.receive(message)`, and
+serve `renderer.page(stream=..., input=...)`. `receive` checks every
+message and raises `ValueError` for a malformed one; answer that with an
+error instead of passing it on. `save("chart.html")` writes a static
+page. See `examples/web_app.py`.
+
+`WebServer` is meant for development and small tools on your own
+machine. It binds to 127.0.0.1, only answers requests that name it in
+their `Host` header and only takes input from its own page, so other web
+sites open in the browser cannot drive it. Bound to another address
+(`host="0.0.0.0"`) it serves anyone who can reach it, without
+authentication; put a real web server in front of it for that.
+
+### Calculating in the background
+
+```python
+diagram = PropertyDiagram("HEOS::R32[0.7]&R125[0.3]", "ph", background="processes",
+                          on_ready=lambda d: app.call_soon(redraw))   # your GUI's way to run on its thread
+renderer.sync(diagram.update_scene())   # returns at once: previews first, then the final lines
+diagram.progress                         # (ready, needed)
+```
+
+With `background="threads"` or `"processes"`, `update_scene()` never
+waits for a line. Missing lines are queued, first coarse
+(`Settings.calc.preview_points`) and then at full resolution, and
+`on_ready(diagram)` is called from a worker when more is ready; call
+`update_scene()` again then. Work the latest scene no longer needs is
+cancelled. Threads keep pure-fluid charts responsive; for blends use
+processes, which compute in parallel and never block the application.
+`diagram.wait()` blocks until all work is done, `diagram.close()` stops
+the workers (the diagram then takes no more updates), and `draw()`,
+`show()` and `savefig()` wait for the complete picture. A line whose
+calculation fails is tried once more and then skipped with a warning
+naming the error. On Linux, worker processes are started by forking the
+application; start the diagram before your GUI starts other threads.
+
+## 8. Psychrometric charts
+
+```python
+from coolplot import PsychrometricChart
+
+chart = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25))   # deg C and g/kg, sea level
+chart.set_default_lines()            # RH every 10 %, Twb every 5 deg C, h every 10 kJ/kg, v every 0.02 m3/kg
+chart.add_process("Air conditioning", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}, {"T": 20, "W": 8.9}])
+chart.process_states("Air conditioning")[1].h    # J/kg dry air
+chart.savefig("psychro.png")                     # or chart.draw(any renderer)
+```
+
+A psychrometric chart shows humid air at one total pressure (`p=` in
+bar, default sea level), with dry-bulb temperature over humidity ratio
+and lines of relative humidity (`"RH"`, in %), wet-bulb temperature
+(`"Twb"`), specific enthalpy (`"h"`) and specific volume (`"v"`), both
+per kg of dry air. `set_lines(key, values)` chooses the values. Air
+states are given by any two of `T`, `W`, `RH`, `Twb`, `Tdp`, `h`, `v`
+and joined by straight lines (`closed=True` closes the loop). Labels,
+themes, settings and every backend work as for property diagrams; the
+properties come from CoolProp's `HAPropsSI`, which covers about -100 to
+350 deg C and 0.1 to 100 bar. Without values, `set_lines` picks round
+values (3 to 15 lines per family).
+
+`chart.set_view(x_limits, y_limits)` zooms without new calculations, and
+`Interaction(chart, renderer)` gives zoom, hover (`chart.state_at`) and
+dragging of process states (`chart.move_process_state`), as for property
+diagrams. `chart.spec.to_dict()` saves a chart and
+`PsychrometricChart.from_spec(PsychroSpec.from_dict(data))` restores it.
+
+## 9. Refrigerant blends and other mixtures
 
 For mixtures CoolPlot traces isolines point by point, starting each point
 from the previous one (`Settings.calc.solver = "auto"`). That needs
@@ -285,7 +443,7 @@ the enthalpy and entropy offsets it started with. Curves are cached with
 a fingerprint of CoolProp's version, configuration and reference state,
 so a curve made under other settings is never served.
 
-## 9. When something goes wrong
+## 10. When something goes wrong
 
 * A warning "Skipping the line ..." or "... has gaps" names the line and
   how many points CoolProp could not compute. Each line warns once.

@@ -24,6 +24,8 @@ in the current unit system of the diagram and converted on entry.
 from __future__ import annotations
 
 import warnings
+import weakref
+from dataclasses import replace
 from typing import Sequence
 
 import numpy as np
@@ -36,7 +38,7 @@ from .core.limits import get_tp_limits
 from .core.quantities import quantity_key
 from .core.state import StatePoint
 from .core.units import get_unit_system
-from .engine import CurveCache, Engine, plan
+from .engine import BackgroundEngine, CurveCache, Engine, plan
 from .scene import Scene
 from .spec import CycleSpec, DiagramSpec, FluidSpec, IsolineSet, ProcessSpec, get_settings
 from .style.theme import Theme, get_theme
@@ -101,6 +103,15 @@ class PropertyDiagram:
         Share one engine (and its caches) between several diagrams.
     cache : CurveCache, optional
         Curve store for a new engine; ignored when ``engine`` is given.
+    background : str, optional
+        "threads" or "processes": compute curves in the background, see
+        :mod:`coolplot.engine.background`. :meth:`update_scene` then never
+        waits; it draws what is ready (coarse previews first) and
+        ``on_ready(diagram)`` is called when more is ready.
+    on_ready : callable, optional
+        With ``background``: called from a worker when curves are ready.
+    workers : int, optional
+        With ``background``: number of workers.
 
     Examples
     --------
@@ -116,17 +127,42 @@ class PropertyDiagram:
     """
 
     def __init__(self, fluid, diagram_type="ph", units="EUR", tp_limits="DEF", theme=None,
-                 settings=None, engine: Engine = None, cache: CurveCache = None):
+                 settings=None, engine: Engine = None, cache: CurveCache = None, background: str = None,
+                 on_ready=None, workers: int = None):
         settings = get_settings(settings)
         if theme is not None:
             settings = settings.with_(look=theme)
         self.spec = DiagramSpec(fluid=fluid_spec(fluid), diagram=DiagramType.parse(diagram_type),
                                 units=get_unit_system(units), limits=get_tp_limits(tp_limits),
                                 settings=settings)
-        self.engine = engine if engine is not None else Engine(cache)
+        if engine is not None:
+            if isinstance(engine, BackgroundEngine) and engine.claimed:
+                raise ValueError("A BackgroundEngine works for one diagram, it keeps only the latest plan. "
+                                 "To share curves, share the cache: PropertyDiagram(..., background=..., "
+                                 "cache=other.cache).")
+            self.engine = engine
+        elif background is not None:
+            callback = None
+            if on_ready is not None:
+                # A weak reference: the engine (kept by the finalizer below)
+                # must not keep this diagram alive through its callback
+                diagram_ref = weakref.ref(self)
+
+                def callback(_engine):
+                    diagram = diagram_ref()
+                    if diagram is not None:
+                        on_ready(diagram)
+            self.engine = BackgroundEngine(background, workers, callback, cache)
+        else:
+            self.engine = Engine(cache)
         self.scene = Scene()
         self._default_renderer = None
         self._plot_size_pt = None
+        if isinstance(self.engine, BackgroundEngine):
+            # Claimed last, so a failing constructor leaves the engine free,
+            # and released when this diagram is garbage collected
+            self.engine.claimed = True
+            weakref.finalize(self, setattr, self.engine, "claimed", False)
 
     # ------------------------------------------------------------------
     # Settings. Setters only replace the spec; update_scene does the work.
@@ -135,6 +171,22 @@ class PropertyDiagram:
     def cache(self) -> CurveCache:
         return self.engine.cache
 
+    # Background work -------------------------------------------------------
+    @property
+    def progress(self):
+        """(curves ready, curves needed) after the last update_scene; always
+        complete without a background engine."""
+        if isinstance(self.engine, BackgroundEngine):
+            return self.engine.progress
+        n = sum(len(s.values_SI or ()) or s.num for s in self.spec.isolines)
+        return n, n
+
+    def wait(self, timeout: float = None) -> bool:
+        """Block until background work is done (True), or until the timeout (False)."""
+        if isinstance(self.engine, BackgroundEngine):
+            return self.engine.wait(timeout)
+        return True
+
     def refresh(self):
         """Make the engine forget its CoolProp states, after a change CoolProp does not report.
 
@@ -142,6 +194,11 @@ class PropertyDiagram:
         with ``set_config_*`` are noticed by themselves. The next update
         computes every line again."""
         self.engine.refresh()
+
+    def close(self):
+        """Stop background workers, if any."""
+        if isinstance(self.engine, BackgroundEngine):
+            self.engine.close()
 
     @property
     def fluid(self) -> Fluid:
@@ -380,6 +437,31 @@ class PropertyDiagram:
         self.spec = self.spec.with_cycle(spec)
         return spec.name
 
+    def move_cycle_state(self, name: str, number: int, x: float, y: float):
+        """Put state ``number`` of a cycle at (x, y) in display units.
+
+        The state is then given by the two axis quantities, for example
+        h and p in a ph chart; states that follow it with "via" move along.
+        A state that was itself given with "via" (say a compression with
+        eta_is) becomes a fixed point and loses that relation. This is what
+        dragging a state marker does. Raises ValueError, and leaves the
+        cycle unchanged, if the cycle cannot be computed there.
+        """
+        if isinstance(number, bool) or int(number) != number:
+            raise ValueError("State numbers are whole numbers, not {0!r}.".format(number))
+        cycle = next((c for c in self.spec.cycles if c.name == name), None)
+        if cycle is None:
+            raise KeyError("No cycle named {0!r}.".format(name))
+        diagram, units = self.spec.diagram, self.spec.units
+        moved = StateInput(((diagram.x, float(units[diagram.x].to_SI(x))),
+                            (diagram.y, float(units[diagram.y].to_SI(y)))))
+        states = tuple((n, moved if n == int(number) else given) for n, given in cycle.states)
+        if all(n != int(number) for n, _ in cycle.states):
+            raise KeyError("Cycle {0!r} has no state {1}.".format(name, number))
+        new = replace(cycle, states=states)
+        self.engine.cycle(self.spec, new)   # raises if it cannot be computed; spec unchanged
+        self.spec = self.spec.with_cycle(new)
+
     def remove_cycle(self, name: str):
         self.spec = self.spec.without_cycle(name)
 
@@ -434,6 +516,24 @@ class PropertyDiagram:
 
         A renderer created here uses the canvas size of ``settings.page``.
         """
+        # Scripts want the complete picture: let background work finish,
+        # previews first, then the final curves they make room for.
+        if isinstance(self.engine, BackgroundEngine):
+            last = None
+            for _ in range(10):
+                self.update_scene()
+                ready, needed = self.engine.progress
+                if not self.engine.busy and ready >= needed:   # a failed line may still be due a retry
+                    break
+                if self.engine.finished_jobs == last:   # the last wait finished no job at all
+                    warnings.warn("Background work makes no progress, the drawing may be incomplete.",
+                                  UserWarning, stacklevel=2)
+                    break
+                last = self.engine.finished_jobs
+                self.wait()
+            else:
+                warnings.warn("Background work did not finish, the drawing may be incomplete (is the cache "
+                              "smaller than the number of lines?).", UserWarning, stacklevel=2)
         if renderer is None:
             renderer = self._default_renderer
             if renderer is None:
