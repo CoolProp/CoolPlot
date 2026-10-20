@@ -75,6 +75,30 @@ def test_the_switch(monkeypatch):
     assert native.enabled() == native.available()
 
 
+def test_each_thread_gets_its_own_plot(monkeypatch):
+    """A PropertyPlot computes with one CoolProp state and the port releases
+    the interpreter lock, so threads must not share one."""
+    import threading
+    from types import SimpleNamespace
+
+    class StandInPlot:
+        def __init__(self, *args):
+            self.args = args
+
+    monkeypatch.setattr(native, "_Plot", SimpleNamespace(PropertyPlot=StandInPlot))
+    monkeypatch.setattr(native, "_KEYS", {"p": 1, "h": 2})
+    monkeypatch.setattr(native, "_LOCAL", threading.local())
+    diagram = SimpleNamespace(x="h", y="p")
+    box = (200.0, 300.0, 1e5, 1e6)
+    mine = native._plot("R290", None, diagram, box)
+    assert native._plot("R290", None, diagram, box) is mine     # kept for the lines of one chart
+    other = []
+    worker = threading.Thread(target=lambda: other.append(native._plot("R290", None, diagram, box)))
+    worker.start()
+    worker.join()
+    assert other[0] is not mine
+
+
 def test_the_provider_asks_the_port_first(r290, monkeypatch):
     """With a stand-in for the port: the provider returns what the port
     computes, leaves it alone when the switch is off, and falls back to the

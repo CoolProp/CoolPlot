@@ -41,8 +41,17 @@ def pytest_collection_modifyitems(config, items):
 
 
 def chromium_path():
-    """Playwright's Chromium, or skip the test."""
+    """Playwright's Chromium, or skip the test.
+
+    First where Playwright itself installed it; then the newest one under
+    /opt/pw-browsers, for a Playwright package of another version than the
+    browsers installed there."""
     pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        exe = p.chromium.executable_path
+    if exe and os.path.isfile(exe):
+        return exe
     found = sorted(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome"))
     if not found:
         pytest.skip("no Chromium for Playwright")

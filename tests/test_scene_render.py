@@ -230,6 +230,11 @@ def test_svg_margin_labels_stay_on_the_canvas():
         size_px = float(text.get("font-size"))
         # Vertical text reading upwards from its anchor: its far end
         assert float(text.get("y")) - 0.6 * size_px * len(text.text) >= 0.0
+    # The title (its bottom edge at y) sits above the far ends of the labels
+    title = next(t for t in root.iter(ns + "text") if t.get("class") == "cp-title")
+    far_ends = [float(t.get("y")) - 0.6 * float(t.get("font-size")) * len(t.text)
+                for g in labels for t in g.iter(ns + "text")]
+    assert float(title.get("y")) <= min(far_ends)
 
 
 def test_svg_ticks_on_a_narrow_log_range():
@@ -249,3 +254,30 @@ def test_labels_next_to_the_bottom_of_a_log_axis_can_be_drawn(tmp_path):
     renderer = chart.draw()
     angles = [t.get_rotation() for t in renderer.ax.texts if t.get_visible()]
     assert angles and all(math.isfinite(a) for a in angles)
+    # The angles computed by CoolPlot follow a zoom (and a resize) like the others
+    from coolplot.render.mpl import _screen_angle
+    assert renderer._screen_angle_texts
+    for item_id in renderer._screen_angle_texts:   # stale angles, as if from another view
+        renderer.backend_object(item_id).set_rotation(45.0)
+    renderer.simulate_view((renderer.ax.get_xlim()[0], 0.5 * sum(renderer.ax.get_xlim())), renderer.ax.get_ylim())
+    for item_id, (x, y, dx, dy) in renderer._screen_angle_texts.items():
+        artist = renderer.backend_object(item_id)
+        expected = _screen_angle(artist.get_transform(), x, y, dx, dy) % 360.0   # matplotlib keeps 0..360
+        assert artist.get_rotation() == pytest.approx(expected)
+        halo = renderer._halos.get(item_id)
+        if halo is not None:
+            assert halo.get_rotation() == pytest.approx(expected)
+
+
+def test_the_screen_angle_next_to_zero():
+    """A coordinate of zero sets no step limit: the label next to the bottom
+    of a log axis keeps its slope when x is 0."""
+    pytest.importorskip("matplotlib")
+    from matplotlib.figure import Figure
+    from coolplot.render.mpl import _screen_angle
+    ax = Figure().add_subplot()
+    ax.set_yscale("log", nonpositive="mask")   # as the renderer sets it
+    ax.set_xlim(-1.0, 1.0)
+    ax.set_ylim(1e-9, 1.0)
+    angle = _screen_angle(ax.transData, 0.0, 2e-8, 1.0, -1.0)
+    assert angle < -1.0     # sloped down, not the horizontal fallback

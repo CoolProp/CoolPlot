@@ -266,3 +266,15 @@ def test_nothing_is_deprecated_right_after_1_0():
         for _, cls in inspect.getmembers(module, inspect.isclass):
             found |= {name for name, member in vars(cls).items() if getattr(member, "deprecated", False)}
     assert found == set()
+
+
+def test_the_old_unit_name_is_refused_with_its_new_name():
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP")
+    diagram.add_cycle("hp", [{"p": 3.0, "T": 0.0}, {"p": 15.0, "via": "compression", "eta_is": 0.7},
+                             {"p": 15.0, "Q": 0.0}, {"p": 3.0, "via": "isenthalpic"}])
+    # cycle_states resolves units= like every other call (#12): the removed
+    # name gives the same message there
+    with pytest.raises(ValueError, match="renamed 'engineering'"):
+        diagram.cycle_states("hp", units="EUR")

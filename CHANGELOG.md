@@ -77,6 +77,20 @@ guide in the documentation says what to change in your code.
   composer (plan, 1.0: they go only when the C++ passes the full suite as
   the default).
 
+#### Fixed
+- A line where no state at all could be computed said nothing: failed
+  looks while the stepping scans outside the axes count as outside, so
+  the curve had no points, `n_outside` > 0 and an empty `reason`. It now
+  says "none of the N states of the line could be computed". A line
+  whose states were computed but lie outside the axes says so also
+  when some of its evaluations failed (it used to say "only 0 point(s)
+  of the line could be computed").
+- The quality solver of the tracer no longer accepts a residual that is
+  not a number (it compared as "same side" and passed the residual
+  check, so the saturated liquid was reported as the point).
+- Both found in the review of CoolProp's port of these numerics; the
+  port has the same fixes.
+
 ### 0.9.0
 
 #### Added
@@ -124,8 +138,8 @@ guide in the documentation says what to change in your code.
   infinity) raised; it now gives e.g. "2e308".
 - Labels next to the bottom of a log axis that starts close to zero (the
   isotherm labels of R290 with the default limits) got a NaN angle from
-  matplotlib and made saving the chart fail; they get their angle computed
-  once instead.
+  matplotlib and made saving the chart fail; their angle is computed by
+  CoolPlot instead, again after every zoom, pan or resize.
 
 ### 0.8.0: documentation
 
@@ -144,6 +158,13 @@ guide in the documentation says what to change in your code.
 - `coolplot.engine.plan` is the function; the module is
   `coolplot.engine.planning`.
 - The changelog is in Keep-a-Changelog form.
+- `save()` writes SVG and HTML at the size of `settings.page`, as it
+  does for matplotlib; `width` and `height` still override it.
+
+#### Fixed
+- Humid air refuses the total pressure as one of its two properties
+  (CoolProp returned saturated air for it), so a `"via": "isobaric"`
+  on a psychrometric chart raises instead of drawing a wrong state.
 
 ### 0.7.0: numerics
 

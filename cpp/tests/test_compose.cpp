@@ -95,6 +95,10 @@ TEST_CASE("Label texts and axis titles", "[compose]") {
     CHECK(label_text(spec, "Q", 0.4) == "x=0.4");
     CHECK(label_text(spec, "s", 1500.0) == "s=1.5 kJ/kg/K");
     CHECK_THROWS_AS(compose_json("{not json"), Error);
+    CHECK_THROWS_AS(compose_json("{}"), Error);   // valid JSON, no spec
+    CHECK_THROWS_AS(compose_json(R"({"spec": {"diagram": "ph"}, "domain": {"ranges_SI": {}},
+                                     "cycles": [{"states": {"one": {}}}]})"), Error);   // state number not a number
+    CHECK_THROWS_AS(compose(json{{"spec", {{"diagram", "ph"}}}, {"domain", {{"ranges_SI", json::object()}}}}), Error);
 }
 
 TEST_CASE("Labels of lines placed by saturation states, as in Python", "[compose]") {
@@ -120,5 +124,4 @@ TEST_CASE("Labels of lines placed by saturation states, as in Python", "[compose
     CHECK(label_text(spec, "rho", 10.0, true, 2e5) == "p_sat,liq=29.01");
     data["isolines"][0]["anchor"]["label"] = "both";
     CHECK_THROWS_AS(DiagramSpec::from_json(data), Error);
-    CHECK_THROWS_AS(compose(json{{"spec", {{"diagram", "ph"}}}, {"domain", {{"ranges_SI", json::object()}}}}), Error);
 }

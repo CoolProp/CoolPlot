@@ -201,3 +201,31 @@ def test_bubble_line_closes_at_the_neighbouring_dew_point():
     ph = DiagramType.parse("ph")
     bubble, dew = compute_quality_line(fluid, ph, 0.0), compute_quality_line(fluid, ph, 1.0)
     assert (bubble.x[0], bubble.y[0]) == (dew.x[-1], dew.y[-1])
+
+
+class _FailingState:
+    """Stands in for a working state that cannot solve any input."""
+    def update(self, *args):
+        raise ValueError("no solution")
+
+
+def test_a_rescued_single_phase_state_is_returned_as_requested():
+    if int(CoolProp.__version__.split(".")[0]) < 8:
+        pytest.skip("CoolProp before 8 does not solve this state on the guide state either")
+    blend = Fluid(BLEND)
+    blend.update("p", 10e5, "Q", 0.0)
+    T_bubble_K = blend.get("T")
+    assert blend.critical["T"] > T_bubble_K   # computed now, before the working state is replaced
+    blend._state = _FailingState()   # every state now comes from the guide state
+    # Subcooled liquid below the critical temperature: the consistency check
+    # looks up the saturation states at its temperature on the guide state
+    state = blend.update_pair(CoolProp.PT_INPUTS, 10e5, T_bubble_K - 10.0)
+    assert state.T() == pytest.approx(T_bubble_K - 10.0) and state.p() == pytest.approx(10e5)
+    assert blend.get("T") == pytest.approx(T_bubble_K - 10.0)
+
+
+def test_a_clone_builds_its_own_phase_envelope():
+    blend = Fluid(BLEND)
+    assert blend.phase_envelope() is not None
+    twin = blend.clone()
+    assert twin.phase_envelope() is not None and twin.phase_envelope() is not blend.phase_envelope()

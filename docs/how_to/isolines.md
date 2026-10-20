@@ -73,9 +73,9 @@ units) without any new calculation; `set_view()` resets.
 
 ## Resolution
 
-`Settings.calc.points` (250) sets the resolution of a line: about the
-number of points a line gets that runs across the whole chart; bends get
-more points and straight parts fewer, see {doc}`../explanation/numerics`.
+`Settings.calc.points` (250) sets the resolution of a line: a straight
+line that crosses the whole chart gets about `points / 2` points, bends
+get more, see {doc}`../explanation/numerics`.
 `set_lines(..., points=...)` sets it for one family. For a chart that is
 dragged interactively use the `"interactive"` settings preset (60 points)
 and switch back for the final picture.

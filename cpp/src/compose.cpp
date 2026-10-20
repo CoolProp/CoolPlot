@@ -528,8 +528,20 @@ std::string compose_json(const std::string& input_text) {
     }
     // In scene order, not drawing order: the order the composer made the
     // items in carries more (the legend follows it), and sorting by z order
-    // gives the drawing order back
-    return compose(input).to_json(false).dump();
+    // gives the drawing order back. A field that is missing or has the wrong
+    // type throws a json::exception, a state number that is not a number an
+    // exception of std::stoi; all of them leave here as Error, as documented.
+    try {
+        return compose(input).to_json(false).dump();
+    } catch (const Error&) {
+        throw;
+    } catch (const json::exception& e) {
+        throw Error(std::string("The compose record is not valid: ") + e.what());
+    } catch (const std::invalid_argument& e) {
+        throw Error(std::string("The compose record is not valid: ") + e.what());
+    } catch (const std::out_of_range& e) {
+        throw Error(std::string("The compose record is not valid: ") + e.what());
+    }
 }
 
 }  // namespace coolplot

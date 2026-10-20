@@ -290,8 +290,8 @@ def compute_isoline(fluid: Fluid, diagram: DiagramType, iso_key: str, value_SI: 
     pressure (see :meth:`DiagramType.sweep_quantity`) is stepped through
     its range in ``tp_box`` = (T_min_K, T_max_K, p_min_Pa, p_max_Pa), see
     the module docstring. Both axis values are read from each resulting
-    state. ``points`` sets the resolution: about the number of points a
-    line across the whole chart gets, before its bends add more.
+    state. ``points`` sets the resolution: a straight line across the
+    whole chart gets about ``points / 2`` points, bends add more.
 
     ``solver`` is "flash" (one CoolProp flash per point), "tracer" (walk
     along the line, see :mod:`coolplot.thermo.tracer`, with a flash for
@@ -336,6 +336,8 @@ class _Line:
         self.samples: List[Optional[Sample]] = []   # None marks a gap
         self.n_inserted = 0
         self.n_evaluated = self.n_outside = self.n_failed = 0
+        self.n_ok = 0   # evaluations that gave a state, see stepping.Trace.n_ok
+        self.n_outside_ok = 0   # of those, the states outside the domain
         self.stopped = ""   # why a part ended before the end of its range, if it did
 
     # Parts -------------------------------------------------------------
@@ -354,6 +356,8 @@ class _Line:
         self.n_evaluated += found.n_evaluated
         self.n_outside += found.n_outside
         self.n_failed += found.n_failed
+        self.n_ok += found.n_ok
+        self.n_outside_ok += found.n_outside_ok
         if found.stopped and not found.stopped.startswith("the end of the range"):
             self.stopped = found.stopped   # the line was cut short; the curve says so
 
@@ -405,7 +409,10 @@ class _Line:
                                         self.sweep.key)
             self.n_evaluated += 1
             if sample is not None:
-                self.n_outside += 0 if sample.inside else 1
+                self.n_ok += 1
+                if not sample.inside:
+                    self.n_outside += 1
+                    self.n_outside_ok += 1
                 ends.append((sample.extra[0], q, sample))
         if len(ends) < 2:
             ends = self._envelope_ends()
@@ -501,12 +508,20 @@ class _Line:
         x = np.array([np.nan if s is None else s.x for s in self.samples], dtype=float)
         y = np.array([np.nan if s is None else s.y for s in self.samples], dtype=float)
         reason = self.stopped
-        if len(self.samples) < 2 and self.n_failed == 0 and self.n_outside > 0:
-            x_lo, x_hi = self.metric.x_range
-            y_lo, y_hi = self.metric.y_range
-            area = "{0} = {1:.6g}..{2:.6g}, {3} = {4:.6g}..{5:.6g} (SI)".format(
-                self.diagram.x, x_lo, x_hi, self.diagram.y, y_lo, y_hi)
-            reason = "{0} point(s) of the line lie in the area the axes show, {1}".format(len(self.samples), area)
+        n = len(self.samples)
+        if n < 2 and not reason:
+            if self.n_evaluated > 0 and self.n_ok == 0:
+                reason = "none of the {0} states of the line could be computed".format(self.n_evaluated)
+            elif self.n_outside_ok > 0:
+                # States were computed, but outside the area the axes show (a failed
+                # look while scanning outside also counts in n_outside, so not that)
+                x_lo, x_hi = self.metric.x_range
+                y_lo, y_hi = self.metric.y_range
+                area = "{0} = {1:.6g}..{2:.6g}, {3} = {4:.6g}..{5:.6g} (SI)".format(
+                    self.diagram.x, x_lo, x_hi, self.diagram.y, y_lo, y_hi)
+                reason = "{0} point(s) of the line lie in the area the axes show, {1}".format(n, area)
+            else:
+                reason = "only {0} point(s) of the line could be computed".format(n)
         return Curve(x, y, self.n_failed, self.solver.n_fallback, self.n_inserted, self.solver.method, reason,
                      self.n_evaluated, self.n_outside)
 

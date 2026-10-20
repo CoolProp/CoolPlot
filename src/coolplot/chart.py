@@ -191,7 +191,16 @@ class Chart:
                                  "cache=other.cache).")
             self.engine = engine
         elif background is not None:
-            callback = (lambda _engine: on_ready(self)) if on_ready is not None else None
+            callback = None
+            if on_ready is not None:
+                # A weak reference: the engine (kept by the finalizer below)
+                # must not keep this chart alive through its callback
+                chart_ref = weakref.ref(self)
+
+                def callback(_engine):
+                    chart = chart_ref()
+                    if chart is not None:
+                        on_ready(chart)
             self.engine = BackgroundEngine(background, workers, callback, cache)
         else:
             self.engine = Engine(cache)
@@ -632,7 +641,10 @@ class Chart:
             raise KeyError("No cycle named {0!r}.".format(name))
         states = self._compute_cycle(cycle)[0]
         if units is not None:
-            return {n: states[n].in_units(units) for n in sorted(states)}
+            # Resolved once through _units, so that a warning about the name
+            # of the unit system points at the caller's line
+            unit_system = self._units(units)
+            return {n: states[n].in_units(unit_system) for n in sorted(states)}
         return {n: states[n] for n in sorted(states)}
 
     # ------------------------------------------------------------------
@@ -730,9 +742,16 @@ class Chart:
         ``.svg`` is written by the SVG writer and ``.html`` by the web
         renderer (a static page), neither of which needs matplotlib;
         every other extension (PNG, PDF, EPS, ...) goes through matplotlib,
-        with ``kwargs`` such as ``dpi`` or ``pdf_fonts`` passed on.
+        with ``kwargs`` such as ``dpi`` or ``pdf_fonts`` passed on. The
+        canvas has the size of ``settings.page`` for every writer, unless
+        ``width`` and ``height`` (pixels) are given for SVG or HTML.
         """
         extension = str(path).rsplit(".", 1)[-1].lower() if "." in str(path) else ""
+        if extension in ("svg", "html", "htm"):
+            from .render.svg import PX_PER_PT
+            page = self.spec.settings.page
+            kwargs.setdefault("width", round(page.width_pt * PX_PER_PT))
+            kwargs.setdefault("height", round(page.height_pt * PX_PER_PT))
         if extension == "svg":
             from .render.svg import SvgRenderer
             self.draw(SvgRenderer(**kwargs)).save(path)

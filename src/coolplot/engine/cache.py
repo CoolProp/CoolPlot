@@ -7,6 +7,7 @@ the thermo layer only knows how to compute a single curve.
 from __future__ import annotations
 
 import os
+import threading
 from collections import OrderedDict
 from typing import Any, Callable, Hashable, Optional, Union
 
@@ -38,6 +39,10 @@ class CurveCache:
         empty value mean none), so a script that draws one chart writes
         nothing.
 
+    One cache may serve several diagrams and their worker threads at once,
+    so every access to the curves in memory holds a lock; a curve is
+    computed, read from disk or written to disk outside of it.
+
     ``hits`` counts curves served from memory or disk, ``disk_hits`` those
     read from disk, and ``misses`` the curves that had to be computed.
 
@@ -50,6 +55,7 @@ class CurveCache:
 
     def __init__(self, max_size: int = 2000, directory: Union[str, bool, None] = None):
         self._store: "OrderedDict[Hashable, Any]" = OrderedDict()
+        self._lock = threading.RLock()
         self.max_size = max_size
         self.hits = 0
         self.misses = 0
@@ -70,13 +76,13 @@ class CurveCache:
         """The value stored under ``key``, or the result of ``compute()``, which is stored first."""
         curve = self._find(key)
         if curve is not None:
-            self.hits += 1
+            with self._lock:
+                self.hits += 1
             return curve
-        self.misses += 1
+        with self._lock:
+            self.misses += 1
         curve = compute()
-        self._remember(key, curve)
-        if self.disk is not None:
-            self.disk.save(key, curve)
+        self.put(key, curve)
         return curve
 
     def peek(self, key: Hashable):
@@ -90,27 +96,31 @@ class CurveCache:
         """Store a curve computed elsewhere (for example in a worker); ``disk=False`` keeps it in memory only."""
         self._remember(key, curve)
         if disk and self.disk is not None:
-            self.disk.save(key, curve)
+            self.disk.save(key, curve)   # the store has its own lock and writes whole files
 
     def clear(self):
         """Forget every curve kept in memory; the files on disk stay."""
-        self._store.clear()
+        with self._lock:
+            self._store.clear()
 
     # Internals ------------------------------------------------------------
     def _find(self, key: Hashable):
-        curve = self._store.get(key)
-        if curve is not None:
-            self._store.move_to_end(key)
-            return curve
+        with self._lock:
+            curve = self._store.get(key)
+            if curve is not None:
+                self._store.move_to_end(key)
+                return curve
         if self.disk is not None:
             curve = self.disk.load(key)
             if curve is not None:
-                self.disk_hits += 1
+                with self._lock:
+                    self.disk_hits += 1
                 self._remember(key, curve)
         return curve
 
     def _remember(self, key: Hashable, curve: Any):
-        self._store[key] = curve
-        self._store.move_to_end(key)
-        if len(self._store) > self.max_size:
-            self._store.popitem(last=False)
+        with self._lock:
+            self._store[key] = curve
+            self._store.move_to_end(key)
+            if len(self._store) > self.max_size:
+                self._store.popitem(last=False)

@@ -82,6 +82,8 @@ class Trace:
     n_evaluated: int = 0
     n_outside: int = 0
     n_failed: int = 0
+    n_ok: int = 0   # evaluations that gave a state (a failed look while scanning outside counts as outside)
+    n_outside_ok: int = 0   # evaluations that gave a state outside the domain
     stopped: str = ""
 
     def add(self, u: float, sample: Optional[Sample]):
@@ -126,8 +128,8 @@ def trace(evaluate: Callable, metric: Metric, points: int, u_lo: float = 0.0, u_
           skip_failures: bool = False) -> Trace:
     """Walk the parameter from ``u_lo`` to ``u_hi``, see the module docstring.
 
-    ``points`` sets the resolution: the number of points a straight line
-    across the whole chart gets, before bends add more. ``start`` and
+    ``points`` sets the resolution: a straight line across the whole chart
+    gets about ``points / 2`` points, bends add more. ``start`` and
     ``end`` are the samples at the two ends when the caller knows them
     (saturation states, for example); they are used instead of evaluating
     there. A point that cannot be computed normally ends the piece with a
@@ -172,6 +174,8 @@ class _Walk:
             return self.end
         self.trace.n_evaluated += 1
         sample = self.evaluate(u, careful)
+        if sample is not None:
+            self.trace.n_ok += 1
         if sample is None:
             if careful:
                 self.trace.n_failed += 1
@@ -179,6 +183,7 @@ class _Walk:
                 self.trace.n_outside += 1   # a cheap look that found nothing, while the line is outside
         elif not sample.inside:
             self.trace.n_outside += 1
+            self.trace.n_outside_ok += 1
         return sample
 
     def over_budget(self) -> bool:
