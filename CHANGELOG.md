@@ -81,8 +81,8 @@ guide in the documentation says what to change in your code.
   infinity) raised; it now gives e.g. "2e308".
 - Labels next to the bottom of a log axis that starts close to zero (the
   isotherm labels of R290 with the default limits) got a NaN angle from
-  matplotlib and made saving the chart fail; they get their angle computed
-  once instead.
+  matplotlib and made saving the chart fail; their angle is computed by
+  CoolPlot instead, again after every zoom, pan or resize.
 
 ### 0.8.0: documentation
 
