@@ -375,7 +375,14 @@ class Scene:
     @classmethod
     def from_dict(cls, data: dict) -> "Scene":
         """A scene from :meth:`to_dict` data. The items keep their order."""
-        return cls(axes_from_dict(data.get("axes", {})), [item_from_dict(d) for d in data.get("items", ())])
+        items = [item_from_dict(d) for d in data.get("items", ())]
+        seen = set()
+        for item in items:
+            # The scene keeps one item per id: a second one would silently replace the first
+            if item.id in seen:
+                raise ValueError("Duplicate item id '{0}' in scene.".format(item.id))
+            seen.add(item.id)
+        return cls(axes_from_dict(data.get("axes", {})), items)
 
 
 # ---------------------------------------------------------------------------

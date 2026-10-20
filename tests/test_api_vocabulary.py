@@ -211,3 +211,15 @@ def test_set_lines_defaults_and_units_per_call():
     chart = PsychrometricChart(T_range=(0, 40), W_range=(0, 20))
     chart.set_lines("RH")
     assert chart.line_sets()["RH"].labels is True and chart.line_sets()["RH"].rounding is True
+
+
+def test_the_old_unit_name_warns_at_the_callers_line():
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP")
+    diagram.add_cycle("hp", [{"p": 3.0, "T": 0.0}, {"p": 15.0, "via": "compression", "eta_is": 0.7},
+                             {"p": 15.0, "Q": 0.0}, {"p": 3.0, "via": "isenthalpic"}])
+    with pytest.warns(DeprecationWarning, match="'EUR' is called 'engineering'") as caught:
+        diagram.cycle_states("hp", units="EUR")
+    # Attributed to this file, as Python shows a DeprecationWarning only for the calling code
+    assert all(w.filename == __file__ for w in caught)

@@ -32,7 +32,7 @@ on and what "done" means for each release, is in [v1_plan.md](v1_plan.md).
   library (a PDF parser, an HTTP server with inline JavaScript), 57 blanket
   `except Exception`, and a documentation set with no reference, no
   pictures and several wrong statements.
-* The C++ question is about reach, not speed: CoolProp has 19 wrappers
+* The C++ question is about reach, not speed: CoolProp has 18 wrappers
   besides Python and none of them can use a Python package. CoolProp's C++ library
   already contains `CoolProp::Plot` (a port of the old Python
   `PropertyPlot`), but it reaches no wrapper and uses the algorithm
@@ -565,12 +565,12 @@ interactive use up to about 100 labels; vectorise `Piece.project` and
 | Release | Scope | Removes |
 |---|---|---|
 | 0.4 | one `Chart` over a quantity table and property providers; psychrometry as configuration; one compose module; `Interaction` generic; the curve record and the scene JSON schema written down | `compose/psychro.py`, `spec/psychro.py`, the second unit table |
-| 0.5 | frozen vocabulary and units model (4.2, 4.3); `PropertyError`; constructor validation; unit-aware state printing; IP units | old method names (with warnings) |
+| 0.5 | frozen vocabulary and units model (4.2, 4.3); `PropertyError`; constructor validation; unit-aware state printing; IP units | nothing: the old method names warn and still work |
 | 0.6 | scope split: `coolplot.testing` (kit, PDF check), web server to an example or its own package, PDF parser test-only; background engine and `compute_isoline` as state machines | `testing/pdf_reader.py` from the runtime |
 | 0.7 | numerics (section 7) in the Python tracer, and the same algorithm proposed upstream for `CoolProp::Plot` with the Python tests as acceptance tests | |
 | 0.8 | documentation set (section 5), gallery, API reference, changelog with upgrade guide | |
 | 0.9 | CoolPlot runs on `CoolProp.Plot` where available, `coolplot-core` feeds the renderers; deprecation period: warnings on, nothing removed | |
-| 1.0 | removals, stable API, release; the Python tracer and composer retired when the C++ passes the full suite | `thermo/tracer.py`, `compose/` (kept only as fallback if the C++ is not released in time) |
+| 1.0 | removals, stable API, release; the Python tracer and composer retired when the C++ passes the full suite | the old method names, `thermo/tracer.py`, `compose/` (kept only as fallback if the C++ is not released in time) |
 
 Each release keeps the conformance kit green on all backends and the
 test suite under five minutes. The upstream pull request for
