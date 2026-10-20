@@ -32,6 +32,7 @@ tests that need it skip there and in CI.
 from __future__ import annotations
 
 import os
+import threading
 from collections import OrderedDict
 from typing import Optional
 
@@ -110,20 +111,28 @@ def fluid_string(model) -> Optional[str]:
 # box. A PropertyPlot holds the fluid's phase envelope and critical point,
 # which take as long to compute as a line of a mixture; the lines of one
 # chart share them. The engine computes lines in worker processes when it
-# runs in the background, so each process keeps its own.
-_PLOTS = OrderedDict()
+# runs in the background, so each process keeps its own. Each thread keeps
+# its own as well: a PropertyPlot computes its lines with one CoolProp
+# state, and the port releases the interpreter lock, so two threads (a
+# background engine with several thread workers, or a script drawing
+# while the background computes) would change that state under each other.
+_LOCAL = threading.local()
 _PLOTS_KEPT = 8
 
 
 def _plot(name: str, fingerprint, diagram, tp_box):
+    """The PropertyPlot of a chart for this thread, made once and kept for its lines."""
+    plots = getattr(_LOCAL, "plots", None)
+    if plots is None:
+        plots = _LOCAL.plots = OrderedDict()
     key = (name, fingerprint, diagram.y, diagram.x, tuple(float(v) for v in tp_box))
-    plot = _PLOTS.get(key)
+    plot = plots.get(key)
     if plot is None:
         T_min_K, T_max_K, p_min_Pa, p_max_Pa = key[4]
         plot = _Plot.PropertyPlot(name, _KEYS[diagram.y], _KEYS[diagram.x], T_min_K, T_max_K, p_min_Pa, p_max_Pa)
-        _PLOTS[key] = plot
-        while len(_PLOTS) > _PLOTS_KEPT:
-            _PLOTS.popitem(last=False)
+        plots[key] = plot
+        while len(plots) > _PLOTS_KEPT:
+            plots.popitem(last=False)
     return plot
 
 
