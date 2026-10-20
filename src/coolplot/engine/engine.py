@@ -20,6 +20,7 @@ from typing import List, Tuple
 from ..spec.diagram import CycleSpec, DiagramSpec
 from ..thermo.cycles import cycle_paths, resolve_states
 from ..thermo.isolines import Curve
+from ..thermo import native
 from ..thermo.provider import chart_domain, compute_curve, make_provider
 from .cache import CurveCache
 from .planning import CurveRequest, Domain
@@ -94,7 +95,7 @@ class Engine:
         """
         calc = spec.settings.calc
         base = (spec.fluid, self.fluid(spec.fluid).fingerprint, spec.diagram, request.key, request.value_SI,
-                request.points)
+                request.points, native.enabled())   # the implementation that computes the line, see thermo.native
         if request.key == "Q":
             return base + (calc.critical_margin, calc.saturation_spacing)
         # The margin decides where saturation states are inserted

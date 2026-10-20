@@ -76,9 +76,15 @@ def test_tracer_agrees_with_flash_and_is_faster(blend):
     # of computing a point at the same pressures: inside and outside the dome
     tracer = _LineSolver(blend, "h", 4e5, "p", TS, None, "tracer")
     flash = _LineSolver(blend, "h", 4e5, "p", TS, None, "flash")
+    compared = 0
     for p_Pa in np.geomspace(1e5, 3e6, 7):
         a, b = tracer.sample(p_Pa), flash.sample(p_Pa)
+        assert a is not None and a.extra[-1] == "tracer"
+        if b is None:
+            continue   # CoolProp's H-p flash of a mixture refuses some two-phase states (CoolProp master)
+        compared += 1
         assert (a.x, a.y) == pytest.approx((b.x, b.y), rel=1e-8)
+    assert compared >= 5
 
 
 def test_auto_solver_traces_mixtures_only(r290, blend):

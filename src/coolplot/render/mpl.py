@@ -393,6 +393,12 @@ class MatplotlibRenderer(Renderer):
         self._artists = {}
         self._halos = {}   # item id -> the text artist drawing its halo
         self._text_angles = {}   # item id -> the data angle its text was given
+        # item id -> (x, y, dx, dy) of the labels whose screen angle is
+        # computed here instead of by matplotlib (see _apply_text); a zoom,
+        # pan or resize changes that angle, so it is computed again then.
+        self._screen_angle_texts = {}
+        ax.callbacks.connect("xlim_changed", self._refresh_screen_angles)
+        ax.callbacks.connect("ylim_changed", self._refresh_screen_angles)
         self._rank = {}
         # The frame goes above all items. Matplotlib draws grid lines as part
         # of the axis artists, so the axes (with their ticks) stay below the
@@ -490,6 +496,7 @@ class MatplotlibRenderer(Renderer):
         if halo is not None:
             halo.remove()
         self._text_angles.pop(item.id, None)
+        self._screen_angle_texts.pop(item.id, None)
 
     def _reorder(self, order):
         # matplotlib z orders come from the position in the drawing order,
@@ -566,10 +573,23 @@ class MatplotlibRenderer(Renderer):
         # +-90 degrees keeps the screen angle upright as well, because
         # the axes are never inverted.
         angle = 0.0
+        artist.set_transform_rotates_text(True)
+        self._screen_angle_texts.pop(item.id, None)
         if item.direction is not None:
             dx, dy = item.direction
             angle = _upright(math.degrees(math.atan2(dy, dx)))
         artist.set_rotation(angle)
+        if item.direction is not None and not math.isfinite(artist.get_rotation()):
+            # matplotlib finds the screen angle by moving the anchor a fixed
+            # 1e-5 in data units, which lands below zero next to the bottom
+            # of a log axis that starts close to it (an isotherm label at
+            # 2e-8 bar on a p axis from 1.7e-9 bar, R290 with the default
+            # limits) and gives NaN, which breaks the drawing. Such a label
+            # gets its screen angle computed here, once, instead.
+            angle = _screen_angle(transform, item.x, item.y, dx, dy)
+            artist.set_transform_rotates_text(False)
+            artist.set_rotation(angle)
+            self._screen_angle_texts[item.id] = (item.x, item.y, dx, dy)
         self._text_angles[item.id] = angle
         artist.set_visible(item.visible and math.isfinite(item.x) and math.isfinite(item.y))
         self._apply_halo(item, artist)
@@ -595,6 +615,7 @@ class MatplotlibRenderer(Renderer):
         halo.set_fontproperties(artist.get_fontproperties())
         halo.set_horizontalalignment(artist.get_horizontalalignment())
         halo.set_verticalalignment(artist.get_verticalalignment())
+        halo.set_transform_rotates_text(artist.get_transform_rotates_text())
         halo.set_rotation(self._text_angles.get(item.id, 0.0))   # the angle as set, before transform_rotates_text
         halo.set_color(s.halo_color)
         halo.set_alpha(s.alpha)
@@ -605,6 +626,24 @@ class MatplotlibRenderer(Renderer):
     # Events ------------------------------------------------------------
     #: Points within this distance (in points) of a marker or line hit it.
     PICK_RADIUS_PT = 5.0
+
+    def _refresh_screen_angles(self, *_):
+        """Compute again the screen angles that _apply_text computed itself.
+
+        Called when the limits change (zoom, pan, a new scene) and when the
+        window is resized: the angle on screen of a direction in data units
+        depends on both, and these labels do not follow it by themselves.
+        """
+        for item_id, (x, y, dx, dy) in self._screen_angle_texts.items():
+            artist = self._artists.get(item_id)
+            if artist is None:
+                continue
+            angle = _screen_angle(artist.get_transform(), x, y, dx, dy)
+            artist.set_rotation(angle)
+            self._text_angles[item_id] = angle
+            halo = self._halos.get(item_id)
+            if halo is not None:
+                halo.set_rotation(angle)
 
     #: A press that moves less than this (logical pixels) is still a click.
     CLICK_SLOP_PX = 4.0
@@ -710,6 +749,7 @@ class MatplotlibRenderer(Renderer):
             self._emit(Click(x, y, press["item_id"], press["index"], press["button"]))
 
     def _on_resize(self, event):
+        self._refresh_screen_angles()
         size = self.plot_size_pt()
         self._emit(Resized(*size))
 
@@ -1171,6 +1211,26 @@ def _fonttype(pdf_fonts: str) -> int:
 def _safe_limits(limits, log):
     """Limits matplotlib can draw; the common rule of :func:`coolplot.scene.drawable_limits`."""
     return drawable_limits(limits, log)
+
+
+def _screen_angle(transform, x: float, y: float, dx: float, dy: float) -> float:
+    """The angle on screen, in degrees, of the data direction (dx, dy) at (x, y).
+
+    The direction is followed for a thousandth of the coordinates, a step
+    that stays inside a log axis for any positive value; a direction that
+    cannot be transformed gives 0.
+    """
+    # A coordinate of zero sets no limit (it is on a linear axis, a log
+    # axis has none); the other coordinate then sets the step.
+    limits = [abs(c / d) for c, d in ((x, dx), (y, dy)) if d and c]
+    step = 1e-3 * min(limits) if limits else 1e-3
+    if not math.isfinite(step) or step == 0.0:
+        step = 1e-3
+    x0, y0 = transform.transform((x, y))
+    x1, y1 = transform.transform((x + dx * step, y + dy * step))
+    if not all(math.isfinite(v) for v in (x0, y0, x1, y1)):
+        return 0.0
+    return _upright(math.degrees(math.atan2(y1 - y0, x1 - x0)))
 
 
 def _upright(angle_deg: float) -> float:
