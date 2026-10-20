@@ -510,7 +510,12 @@ class Writer
             bool touches[4] = {fx <= 1e-9, fx >= 1.0 - 1e-9, fy >= 1.0 - 1e-9, fy <= 1e-9};
             for (int k = 0; k < 4; ++k) need[k] = std::max(need[k], touches[k] ? reach[k] : 0.0);
         }
-        for (int k = 0; k < 4; ++k) need[k] = std::max(0.0, need[k] - options_.margins_pt[k]);
+        for (int k = 0; k < 4; ++k) {
+            // With a title the configured top margin holds the title, so labels
+            // above the frame need their whole height on top of it (as in the SVG writer)
+            if (k == 2 && !scene_.axes.title.empty()) continue;
+            need[k] = std::max(0.0, need[k] - options_.margins_pt[k]);
+        }
         return need;
     }
 
