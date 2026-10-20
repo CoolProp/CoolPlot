@@ -183,7 +183,7 @@ class DiagramSpec:
     """
     fluid: Any
     diagram: DiagramType = DiagramType("p", "h")
-    units: UnitSystem = field(default_factory=lambda: get_unit_system("EUR"))
+    units: UnitSystem = field(default_factory=lambda: get_unit_system("engineering"))
     limits: Any = field(default_factory=lambda: get_tp_limits("DEF"))
     settings: Settings = field(default_factory=Settings)
     isolines: Tuple[IsolineSet, ...] = ()
@@ -308,7 +308,7 @@ class DiagramSpec:
                           for k, changes in data.get("style_overrides", {}).items())
         return cls(fluid=fluid_spec_from_dict(data["fluid"]),
                    diagram=DiagramType.parse(data.get("diagram", "ph")),
-                   units=_units_from_dict(data.get("units", "EUR")),
+                   units=_units_from_dict(data.get("units", "engineering")),
                    limits=_limits_from_dict(data.get("limits", "DEF")),
                    settings=Settings.from_dict(data.get("settings", {})),
                    isolines=tuple(IsolineSet.from_dict(s) for s in data.get("isolines", ())),
@@ -330,7 +330,7 @@ def _hashable(value):
 
 
 def _units_to_dict(units: UnitSystem):
-    if UNIT_SYSTEMS.get(units.name) == units:
+    if UNIT_SYSTEMS.get(units.name.upper()) == units:
         return units.name
     return {"name": units.name,
             "units": {k: [u.label, u.scale, u.offset] for k, u in units.units.items()}}

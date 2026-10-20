@@ -23,7 +23,15 @@ isotherms reuses every curve and only restyles the isotherms. Moving one
 state of a cycle only touches the items of that cycle.
 
 All values are stored in SI units. Values passed to the public methods are
-in the current unit system of the chart and converted on entry.
+in the current unit system of the chart, or in the system named by
+``units=``, and converted on entry. Errors about states that cannot be
+computed (:class:`coolplot.core.errors.PropertyError`) are written in
+the chart's units too.
+
+The verbs of a chart are ``set_lines``, ``remove_lines``,
+``set_line_style``, ``add_cycle``, ``remove_cycle``, ``set_view``,
+``update_scene``, ``draw`` and ``save``; the older names still work and
+warn (see the CHANGELOG for 0.5).
 """
 from __future__ import annotations
 
@@ -35,6 +43,7 @@ import numpy as np
 
 from .compose import compose
 from .core.cycle import Cycle, StateInput
+from .core.errors import PropertyError, deprecated
 from .core.quantities import quantity_key
 from .core.state import StatePoint
 from .core.units import get_unit_system
@@ -81,11 +90,24 @@ def state_input(entry, units, provider) -> StateInput:
     return StateInput(props, via, eta_is)
 
 
+def check_fluid(engine: Engine, fluid_spec):
+    """Build the property provider of ``fluid_spec`` on ``engine`` now, so
+    that a fluid CoolProp does not know fails with a clear message."""
+    try:
+        return engine.fluid(fluid_spec)
+    except ValueError as e:
+        raise ValueError("CoolProp cannot make the fluid '{0}': {1}".format(fluid_spec, e)) from None
+
+
 def check_state(state: StatePoint, provider):
-    """Raise ValueError if a complete state lacks quantities of ``provider``."""
+    """Raise ValueError if a complete state does not belong to ``provider``."""
     missing = [k for k in provider.quantities if k not in state]
     if missing:
         raise ValueError("The state {0} is not a state of {1}: it lacks {2}.".format(state, provider.name, missing))
+    p_Pa = getattr(provider, "p_Pa", None)   # humid air lives at one total pressure
+    if p_Pa is not None and abs(state.p - p_Pa) > 1e-6 * p_Pa:
+        raise ValueError("The state {0} is at {1:.6g} Pa, but the chart shows {2}.".format(
+            state, state.p, provider.name))
 
 
 class Chart:
@@ -113,6 +135,7 @@ class Chart:
     def __init__(self, spec: DiagramSpec, engine: Engine = None, cache: CurveCache = None, background: str = None,
                  on_ready=None, workers: int = None):
         self.spec = spec
+        owned = engine is None
         if engine is not None:
             if isinstance(engine, BackgroundEngine) and engine.claimed:
                 raise ValueError("A BackgroundEngine works for one chart, it keeps only the latest plan. "
@@ -136,6 +159,12 @@ class Chart:
         self.scene = Scene()
         self._default_renderer = None
         self._plot_size_pt = None
+        try:
+            check_fluid(self.engine, spec.fluid)   # a misspelt fluid fails here, not at the first draw
+        except ValueError:
+            if owned:
+                self.close()
+            raise
         if isinstance(self.engine, BackgroundEngine):
             # Claimed last, so a failing constructor leaves the engine free,
             # and released when this chart is garbage collected
@@ -207,7 +236,7 @@ class Chart:
 
     @units.setter
     def units(self, value):
-        self.spec = self.spec.with_(units=get_unit_system(value))
+        self.spec = self.spec.with_(units=get_unit_system(value, stacklevel=3))
 
     @property
     def settings(self):
@@ -233,10 +262,10 @@ class Chart:
     def title(self, value: str):
         self.spec = self.spec.with_(title=str(value))
 
-    def set_isoline_style(self, key: str, **changes):
-        """Override the theme for one isoline family in this chart.
+    def set_line_style(self, key: str, **changes):
+        """Override the theme for one family of lines in this chart.
 
-        Accepts any LineStyle field, e.g. set_isoline_style("T",
+        Accepts any LineStyle field, e.g. set_line_style("T",
         color="blue", width_pt=1.0). Call without changes to go back to
         the theme. Only the affected lines are restyled; nothing is
         recalculated.
@@ -245,28 +274,39 @@ class Chart:
             LineStyle().with_(**changes)   # validate now, not at the next update
         self.spec = self.spec.with_style_override(key, **changes)
 
-    def set_view(self, x_limits=None, y_limits=None):
-        """Show only part of the chart (zoom), in display units. None resets.
+    def set_view(self, x_limits=None, y_limits=None, units=None):
+        """Show only part of the chart (zoom). None resets.
 
-        This does not change the calculation domain and needs no property
+        Limits are in the chart's units, or in ``units`` if given. This
+        does not change the calculation domain and needs no property
         calculations.
         """
+        unit_system = self._units(units)
+
         def to_SI(key, limits):
             if limits is None:
                 return None
-            values = [float(v) for v in self.spec.units[key].to_SI(limits).ravel()]
+            values = [float(v) for v in unit_system[key].to_SI(limits).ravel()]
             if len(values) != 2 or not all(np.isfinite(values)):
                 raise ValueError("A view needs two finite limits for '{0}', not {1}.".format(key, limits))
             return tuple(sorted(values))
         self.spec = self.spec.with_(view_SI=(to_SI(self.spec.diagram.x, x_limits),
                                              to_SI(self.spec.diagram.y, y_limits)))
 
+    def _units(self, units):
+        """The unit system of a call: the chart's, or the one named by ``units``."""
+        return self.spec.units if units is None else get_unit_system(units, stacklevel=4)
+
+    def _in_units(self, error: PropertyError):
+        """A PropertyError of the thermo layer, written in the chart's units."""
+        return error.with_units(self.spec.units)
+
     # ------------------------------------------------------------------
     # Content
     # ------------------------------------------------------------------
-    def set_isolines(self, key: str, values=None, num: int = None, range=None,
-                     rounding: bool = False, points: int = None, labels: bool = False):
-        """Add or replace the family of isolines of one quantity.
+    def set_lines(self, key: str, values=None, num: int = None, range=None, rounding: bool = None,
+                  labels: bool = None, points: int = None, units=None):
+        """Add or replace the family of lines of constant ``key``.
 
         Parameters
         ----------
@@ -275,29 +315,37 @@ class Chart:
             in a property diagram; "RH", "Twb", "h" or "v" in a
             psychrometric chart.
         values : sequence, optional
-            Explicit constant values in display units.
+            Explicit constant values, in the chart's units or in ``units``.
         num : int, optional
             Number of lines if no values are given. Default: the family's
             usual number (11 for quality and relative humidity, 15 for the
             other families of a property diagram).
         range : (min, max), optional
-            Span for the ``num`` lines in display units. Default: the whole
-            plotting region.
-        rounding : bool
+            Span for the ``num`` lines, in the same units as ``values``.
+            Default: the whole plotting region.
+        rounding : bool, optional
             Use round values (such as 0, 10, 20 deg C or 1, 2, 5, 10 bar)
             instead of exactly ``num`` evenly spaced ones. The number of
             lines then comes as close to ``num`` as round values allow.
+            Default: off in a property diagram, on in a psychrometric
+            chart.
+        labels : bool, optional
+            Put a value label on each line. Default: off in a property
+            diagram, on in a psychrometric chart.
         points : int, optional
             Points per line; default from ``settings.calc``.
-        labels : bool
-            Put a value label on each line.
+        units : str or UnitSystem, optional
+            Units of ``values`` and ``range``; default the chart's units.
         """
         key = quantity_key(key)
         family = self.spec.diagram.family(key)
         if family is None:
             raise ValueError("Lines of constant '{0}' cannot be drawn in a {1} diagram.".format(
                 key, self.spec.diagram.name))
-        unit = self.spec.units[key]
+        defaults = self.spec.diagram.line_defaults
+        rounding = defaults["rounding"] if rounding is None else bool(rounding)
+        labels = defaults["labels"] if labels is None else bool(labels)
+        unit = self._units(units)[key]
         label = self.spec.diagram.quantity_label(key)
         values_SI = None if values is None else tuple(float(v) for v in unit.to_SI(values).ravel())
         range_SI = None if range is None else tuple(float(v) for v in unit.to_SI(range))
@@ -312,14 +360,48 @@ class Chart:
         self.spec = self.spec.with_isolines(IsolineSet(key, values_SI, num, range_SI, rounding, points, labels))
         return key
 
-    def remove_isolines(self, key: str):
+    def set_default_lines(self, num: int = None, **kwargs):
+        """Lines of every family that makes sense in this chart.
+
+        In a property diagram the internal energy is left out to keep the
+        chart readable; add it with set_lines("u") if needed. ``kwargs``
+        go to :meth:`set_lines`.
+        """
+        for key in self.spec.diagram.supported_isolines():
+            if key != "u":
+                self.set_lines(key, num=num, **kwargs)
+
+    def remove_lines(self, key: str):
         self.spec = self.spec.without_isolines(key)
 
-    def isoline_sets(self):
+    def line_sets(self):
+        """The families of lines by quantity key, as :class:`coolplot.spec.IsolineSet` values."""
         return {s.key: s for s in self.spec.isolines}
 
+    # Old names (0.4 and before); they warn and will go in 1.0 ---------------
+    @deprecated("use set_lines")
+    def set_isolines(self, key, values=None, num=None, range=None, rounding=False, points=None, labels=False):
+        return self.set_lines(key, values, num, range, rounding, labels, points)
+
+    @deprecated("use set_default_lines")
+    def set_default_isolines(self, num=None, **kwargs):
+        return self.set_default_lines(num, **kwargs)
+
+    @deprecated("use remove_lines")
+    def remove_isolines(self, key):
+        return self.remove_lines(key)
+
+    @deprecated("use line_sets")
+    def isoline_sets(self):
+        return self.line_sets()
+
+    @deprecated("use set_line_style")
+    def set_isoline_style(self, key, **changes):
+        return self.set_line_style(key, **changes)
+
     def add_cycle(self, name, states=None, loops=None, paths=None, numbers: bool = True, units=None,
-                  line_style: LineStyle = None, marker_style: MarkerStyle = None, steps: int = 20, **arrays):
+                  line_style: LineStyle = None, marker_style: MarkerStyle = None, steps: int = 20,
+                  closed: bool = True, **arrays):
         """Add or replace a cycle, drawn on top of the chart.
 
         Parameters
@@ -340,7 +422,9 @@ class Chart:
         loops : list of lists, optional
             Chains of state numbers, each drawn as one connected line, e.g.
             ``[[1, 2, 7, 8, 1], [3, 4, 5, 6, 3]]`` for two closed loops.
-            Default: one closed loop through all states in order.
+            Default: one loop through all states in order, closed unless
+            ``closed=False`` (an open process such as heating, cooling and
+            reheating of air).
         paths : dict, optional
             ``{(from, to): kind}`` for connections that should not be drawn
             with "auto" (see :data:`coolplot.core.cycle.PATH_KINDS`). Humid
@@ -353,12 +437,15 @@ class Chart:
             Override the theme for this cycle.
         steps : int
             Segments per drawn path.
+        closed : bool
+            Whether the default loop returns to the first state.
         **arrays
             Instead of ``states``: arrays of two properties, e.g.
             ``add_cycle("measured", p=[...], h=[...])``.
 
         Only this cycle is recalculated and redrawn when it changes.
-        Returns the name.
+        Raises :class:`coolplot.core.errors.PropertyError`, in the chart's
+        units, if a state cannot be computed. Returns the name.
         """
         cycle = name if isinstance(name, Cycle) else (states if isinstance(states, Cycle) else None)
         if cycle is not None:
@@ -371,7 +458,7 @@ class Chart:
                                         paths=paths, numbers=numbers, line_style=line_style,
                                         marker_style=marker_style, steps=steps)
         else:
-            unit_system = self.spec.units if units is None else get_unit_system(units)
+            unit_system = self._units(units)
             if arrays:
                 if states is not None:
                     raise ValueError("Give the states either as 'states' or as arrays, not both.")
@@ -387,10 +474,19 @@ class Chart:
             items = states.items() if isinstance(states, dict) else enumerate(states, start=1)
             provider = self.fluid
             inputs = tuple((int(n), state_input(entry, unit_system, provider)) for n, entry in items)
+            if not loops and not closed and len(inputs) > 1:
+                loops = [sorted(n for n, _ in inputs)]   # an open chain through the states in order
             spec = CycleSpec(str(name), inputs, loops or (), paths or (), numbers, line_style, marker_style, steps)
-        self.engine.cycle(self.spec, spec)   # compute now, so that errors show up here
+        self._compute_cycle(spec)   # compute now, so that errors show up here
         self.spec = self.spec.with_cycle(spec)
         return spec.name
+
+    def _compute_cycle(self, cycle: CycleSpec):
+        try:
+            return self.engine.cycle(self.spec, cycle)
+        except PropertyError as e:
+            where = "{0} '{1}'".format(e.where, cycle.name) if e.where else "Cycle '{0}'".format(cycle.name)
+            raise self._in_units(e).with_where(where) from None
 
     def _other_fluid(self, fluid_name: str) -> bool:
         """Whether a cycle computed for ``fluid_name`` belongs to another fluid."""
@@ -399,8 +495,8 @@ class Chart:
             return True
         return Fluid(fluid_name).model_key != self.fluid.model_key
 
-    def move_cycle_state(self, name: str, number: int, x: float, y: float):
-        """Put state ``number`` of a cycle at (x, y) in display units.
+    def move_cycle_state(self, name: str, number: int, x: float, y: float, units=None):
+        """Put state ``number`` of a cycle at (x, y), in the chart's units or in ``units``.
 
         The state is then given by the two axis quantities, for example
         h and p in a ph chart; states that follow it with "via" move along.
@@ -414,36 +510,50 @@ class Chart:
         cycle = next((c for c in self.spec.cycles if c.name == name), None)
         if cycle is None:
             raise KeyError("No cycle named {0!r}.".format(name))
-        diagram, units = self.spec.diagram, self.spec.units
+        diagram, units = self.spec.diagram, self._units(units)
         moved = StateInput(((diagram.x, float(units[diagram.x].to_SI(x))),
                             (diagram.y, float(units[diagram.y].to_SI(y)))))
         states = tuple((n, moved if n == int(number) else given) for n, given in cycle.states)
         if all(n != int(number) for n, _ in cycle.states):
             raise KeyError("Cycle {0!r} has no state {1}.".format(name, number))
         new = replace(cycle, states=states)
-        self.engine.cycle(self.spec, new)   # raises if it cannot be computed; spec unchanged
+        self._compute_cycle(new)   # raises if it cannot be computed; spec unchanged
         self.spec = self.spec.with_cycle(new)
 
     def remove_cycle(self, name: str):
         self.spec = self.spec.without_cycle(name)
 
-    def cycle_states(self, name: str):
-        """The states of a cycle in SI units, by state number in ascending order."""
+    def cycle_states(self, name: str, units=None):
+        """The states of a cycle by state number in ascending order.
+
+        StatePoints in SI units, or with ``units`` dicts of values in that
+        unit system (``cycle_states("hp", units="engineering")[2]["T"]``
+        is in deg C).
+        """
         cycle = next((c for c in self.spec.cycles if c.name == name), None)
         if cycle is None:
             raise KeyError("No cycle named {0!r}.".format(name))
-        states = self.engine.cycle(self.spec, cycle)[0]
+        states = self._compute_cycle(cycle)[0]
+        if units is not None:
+            # Resolved once through _units, so that a warning about the name
+            # of the unit system points at the caller's line
+            unit_system = self._units(units)
+            return {n: states[n].in_units(unit_system) for n in sorted(states)}
         return {n: states[n] for n in sorted(states)}
 
     # ------------------------------------------------------------------
     # Interaction helpers
     # ------------------------------------------------------------------
-    def state_at(self, x: float, y: float) -> StatePoint:
-        """The full state at a point given in display units, e.g. under the mouse."""
-        diagram, units = self.spec.diagram, self.spec.units
-        x_SI = float(units[diagram.x].to_SI(x))
-        y_SI = float(units[diagram.y].to_SI(y))
-        return self.fluid.state_point(diagram.x, x_SI, diagram.y, y_SI)
+    def state_at(self, x: float, y: float, units=None) -> StatePoint:
+        """The full state (SI units) at a point given in the chart's units or
+        in ``units``, e.g. under the mouse."""
+        diagram, unit_system = self.spec.diagram, self._units(units)
+        x_SI = float(unit_system[diagram.x].to_SI(x))
+        y_SI = float(unit_system[diagram.y].to_SI(y))
+        try:
+            return self.fluid.state_point(diagram.x, x_SI, diagram.y, y_SI)
+        except PropertyError as e:
+            raise self._in_units(e) from None
 
     def to_display(self, key: str, value_SI):
         return self.spec.units[key].from_SI(value_SI)
@@ -515,5 +625,10 @@ class Chart:
     def show(self):
         self.draw().show()
 
-    def savefig(self, path, **kwargs):
+    def save(self, path, **kwargs):
+        """Draw and write the chart to a file (PNG, PDF, SVG, ... by extension)."""
         self.draw().save(path, **kwargs)
+
+    @deprecated("use save")
+    def savefig(self, path, **kwargs):
+        self.save(path, **kwargs)

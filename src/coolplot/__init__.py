@@ -64,7 +64,10 @@ _LAZY = {
     "Unit": ".core.units",
     "SI": ".core.units",
     "KSI": ".core.units",
+    "ENGINEERING": ".core.units",
+    "IP": ".core.units",
     "EUR": ".core.units",
+    "PropertyError": ".core.errors",
 }
 
 __all__ = ["__version__"] + sorted(_LAZY)

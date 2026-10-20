@@ -8,11 +8,11 @@ from coolplot import PropertyDiagram
 from coolplot.render.svg import SvgRenderer
 from coolplot.thermo.cycles import simple_compression
 
-diagram = PropertyDiagram("HEOS::R290", "ph", units="EUR", tp_limits="ACHP")
+diagram = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP")
 diagram.title = "R290 heat pump"
-diagram.set_isolines("Q", num=11, labels=True)
-diagram.set_isolines("T", num=12, rounding=True, labels=True)
-diagram.set_isolines("s", num=10, rounding=True, labels=True)
+diagram.set_lines("Q", num=11, labels=True)
+diagram.set_lines("T", num=12, rounding=True, labels=True)
+diagram.set_lines("s", num=10, rounding=True, labels=True)
 
 cycle = simple_compression(diagram.fluid, T_evap_C=-5.0, T_cond_C=45.0, dT_sh_K=5.0, dT_sc_K=2.0, eta_is=0.7)
 diagram.add_cycle(cycle)

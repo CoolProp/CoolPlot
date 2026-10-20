@@ -18,8 +18,8 @@ from coolplot.thermo.isolines import Curve  # noqa: E402
 
 def _diagram(**kwargs):
     d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP", **kwargs)
-    d.set_isolines("Q", num=3)
-    d.set_isolines("T", values=[-20.0, 0.0, 20.0], points=80)
+    d.set_lines("Q", num=3)
+    d.set_lines("T", values=[-20.0, 0.0, 20.0], points=80)
     return d
 
 
@@ -92,7 +92,7 @@ def test_outdated_work_is_cancelled():
     try:
         d.update_scene()
         first = set(d.engine._jobs)
-        d.set_isolines("T", values=[50.0, 60.0], points=80)
+        d.set_lines("T", values=[50.0, 60.0], points=80)
         d.update_scene()
         second = set(d.engine._jobs)
         # The queued work for the old isotherms is gone, the new one queued
@@ -170,7 +170,7 @@ def test_failures_are_retried_then_reported(monkeypatch):
     monkeypatch.setattr(background, "compute_curve", flaky)
     d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP", background="threads",
                         settings=None)
-    d.set_isolines("T", values=[0.0], points=40)
+    d.set_lines("T", values=[0.0], points=40)
     d.spec = d.spec.with_(settings=d.spec.settings.with_(calc=replace(d.spec.settings.calc, preview_points=0)))
     try:
         # The first attempt fails, the next request tries again; after the
@@ -189,7 +189,7 @@ def test_failures_are_retried_then_reported(monkeypatch):
     # A single failure is retried and the line arrives
     calls["n"] = 1
     d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP", background="threads")
-    d.set_isolines("T", values=[0.0], points=40)
+    d.set_lines("T", values=[0.0], points=40)
     d.spec = d.spec.with_(settings=d.spec.settings.with_(calc=replace(d.spec.settings.calc, preview_points=0)))
     try:
         scene = _settle(d)
@@ -257,7 +257,7 @@ def test_a_crashing_line_costs_only_itself(monkeypatch):
     from concurrent.futures.process import _ExecutorManagerThread
     before = set(threading.enumerate())
     d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP", background="processes", workers=2)
-    d.set_isolines("T", values=[-20.0, 0.0, 20.0, 40.0, 60.0], points=40)
+    d.set_lines("T", values=[-20.0, 0.0, 20.0, 40.0, 60.0], points=40)
     try:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")

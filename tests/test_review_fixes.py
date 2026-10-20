@@ -67,13 +67,13 @@ def test_models_reject_impossible_inputs():
 def test_rounded_families_never_vanish():
     assert len(nice_log(1.1, 1.19, 5)) >= 1 and len(nice_log(31.0, 39.0, 3)) >= 1
     diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP")
-    diagram.set_isolines("rho", range=(31.0, 39.0), rounding=True)
+    diagram.set_lines("rho", range=(31.0, 39.0), rounding=True)
     assert len(diagram.update_scene().group("iso/rho")) >= 1
 
 
 def test_labels_survive_a_log_view_from_zero():
     diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP")
-    diagram.set_isolines("T", num=8, rounding=True, labels=True)
+    diagram.set_lines("T", num=8, rounding=True, labels=True)
     diagram.set_view(None, (0.0, 10.0))
     scene = diagram.update_scene()
     assert scene.axes.y_limits == pytest.approx((0.01, 10.0))
@@ -95,7 +95,7 @@ def test_svg_margin_labels_stay_on_the_canvas():
     diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP")
     diagram.title = "Margin labels"
     diagram.settings = diagram.settings.with_(labels={"mode": "margin"})
-    diagram.set_isolines("T", num=8, rounding=True, labels=True)
+    diagram.set_lines("T", num=8, rounding=True, labels=True)
     renderer = diagram.draw(SvgRenderer())
     root = ET.fromstring(renderer.to_svg())
     ns = "{http://www.w3.org/2000/svg}"
@@ -127,7 +127,7 @@ def test_markers_are_kept_out_as_points():
 
 def test_no_warnings_from_a_plain_chart():
     diagram = PropertyDiagram("R290", "Ts", tp_limits="ACHP")
-    diagram.set_default_isolines(num=6, rounding=True, labels=True)
+    diagram.set_default_lines(num=6, rounding=True, labels=True)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         diagram.draw(SvgRenderer())

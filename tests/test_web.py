@@ -197,7 +197,7 @@ def test_development_server_end_to_end(browser):
     from coolplot import PropertyDiagram
     from coolplot.interaction import Interaction
     diagram = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP")
-    diagram.set_isolines("Q", num=3)
+    diagram.set_lines("Q", num=3)
     diagram.add_cycle("Heat pump", [{"p": 3.0, "T": 0.0}, {"p": 15.0, "via": "compression", "eta_is": 0.7},
                                     {"p": 15.0, "Q": 0.0}, {"p": 3.0, "via": "isenthalpic"}])
     renderer = WebRenderer()

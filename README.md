@@ -32,11 +32,11 @@ until v1.0.0.
 from coolplot import PropertyDiagram
 from coolplot.thermo.cycles import simple_compression
 
-diagram = PropertyDiagram("HEOS::R290", "ph", units="EUR", tp_limits="ACHP")
-diagram.set_isolines("Q", num=11, labels=True)
-diagram.set_isolines("T", num=12, rounding=True, labels=True)
+diagram = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP")
+diagram.set_lines("Q", num=11, labels=True)
+diagram.set_lines("T", num=12, rounding=True, labels=True)
 diagram.add_cycle(simple_compression("R290", T_evap_C=-5, T_cond_C=45))
-diagram.savefig("R290_ph.png")           # matplotlib; SvgRenderer needs nothing extra
+diagram.save("R290_ph.png")           # matplotlib; SvgRenderer needs nothing extra
 ```
 
 Cycles can also be given state by state in the diagram's units,

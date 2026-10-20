@@ -57,8 +57,8 @@ def default_values(key, T_range, W_range, units="SI"):
 
 def test_default_values_are_round():
     assert default_values("RH", T_RANGE, (0.0, 0.025)) == pytest.approx([0.1 * i for i in range(1, 11)])
-    twb_C = np.array(default_values("Twb", (-10.0, 45.0), (0.0, 25.0), "EUR")) - 273.15
-    h = np.array(default_values("h", (-10.0, 45.0), (0.0, 25.0), "EUR"))
+    twb_C = np.array(default_values("Twb", (-10.0, 45.0), (0.0, 25.0), "engineering")) - 273.15
+    h = np.array(default_values("h", (-10.0, 45.0), (0.0, 25.0), "engineering"))
     assert len(twb_C) >= 5 and len(h) >= 5   # allclose on an empty array would pass anything
     assert np.allclose(np.round(twb_C / 5.0) * 5.0, twb_C, atol=1e-6)
     assert np.allclose(np.round(h / 10e3) * 10e3, h, atol=1e-3)
@@ -91,7 +91,7 @@ def test_lines_reach_their_ends():
 def chart():
     c = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25))
     c.set_default_lines()
-    c.add_process("Air conditioning", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}, {"T": 20, "W": 8.9}])
+    c.add_cycle("Air conditioning", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}, {"T": 20, "W": 8.9}], closed=False)
     return c
 
 
@@ -105,16 +105,16 @@ def test_chart_scene(chart):
     assert scene.axes.x_limits == (-10.0, 45.0)
     labels = [i for i in scene if i.role == "isoline_label"]
     assert len(labels) > 10 and any(t.text == "RH=50 %" for t in labels)
-    states = chart.process_states("Air conditioning")
+    states = list(chart.cycle_states("Air conditioning").values())
     assert states[2].W == pytest.approx(8.9e-3) and states[1].RH == pytest.approx(0.95)
 
 
 def test_processes_fail_early_and_leave_the_chart_unchanged(chart):
     before = chart.spec
     with pytest.raises(ValueError, match="State 1"):
-        chart.add_process("bad", [{"T": 20, "RH": 150}, {"T": 25, "RH": 50}])
+        chart.add_cycle("bad", [{"T": 20, "RH": 150}, {"T": 25, "RH": 50}], closed=False)
     with pytest.raises(ValueError):
-        chart.add_process("bad", [{"T": 20}])
+        chart.add_cycle("bad", [{"T": 20}], closed=False)
     assert chart.spec == before
 
 
@@ -122,7 +122,7 @@ def test_lines_are_computed_once(chart):
     chart.update_scene()
     misses = chart.cache.misses
     chart.theme = "dark"
-    chart.add_process("Heating", [{"T": 5, "RH": 80}, {"T": 25, "W": 4.3}])
+    chart.add_cycle("Heating", [{"T": 5, "RH": 80}, {"T": 25, "W": 4.3}], closed=False)
     chart.update_scene()
     assert chart.cache.misses == misses
 
@@ -130,7 +130,7 @@ def test_lines_are_computed_once(chart):
 def test_spec_round_trips_through_json(chart):
     from coolplot.style.values import LineStyle, MarkerStyle
     chart.set_lines("h", [20.0, 40.0], labels=False)
-    chart.add_process("Styled", [{"T": 20, "RH": 50}, {"T": 30, "W": 8}], closed=True,
+    chart.add_cycle("Styled", [{"T": 20, "RH": 50}, {"T": 30, "W": 8}], closed=True,
                       line_style=LineStyle(color="#ff0000", width_pt=2.0), marker_style=MarkerStyle(shape="s"))
     chart.set_view((0, 30), (0, 15))
     chart.points = 60
@@ -182,10 +182,10 @@ def test_other_pressures_and_units():
 
 def test_bad_process_input(chart):
     with pytest.raises(ValueError, match="unknown properties"):
-        chart.add_process("Not of air", [{"T": 20, "rho": 1.2}])
+        chart.add_cycle("Not of air", [{"T": 20, "rho": 1.2}], closed=False)
     elsewhere = air_state("T", 298.15, "RH", 0.5, 0.8e5)
     with pytest.raises(ValueError, match="Pa"):
-        chart.add_process("Other pressure", [elsewhere])
+        chart.add_cycle("Other pressure", [elsewhere], closed=False)
 
 
 def test_interaction_zooms_and_drags_air_states(chart):
@@ -202,10 +202,10 @@ def test_interaction_zooms_and_drags_air_states(chart):
     assert chart.cache.misses == misses   # zooming computes nothing new
     assert interaction.cycle_state("cycle/Air conditioning/states", 1) == ("Air conditioning", 2)
     interaction.handle(DragEnd("cycle/Air conditioning/states", 1, 15.0, 8.0))
-    moved = chart.process_states("Air conditioning")[1]
+    moved = list(chart.cycle_states("Air conditioning").values())[1]
     assert moved.T == pytest.approx(288.15) and moved.W == pytest.approx(0.008)
     interaction.handle(DragEnd("cycle/Air conditioning/states", 1, 15.0, 80.0))   # in the fog: refused
-    assert chart.process_states("Air conditioning")[1].W == pytest.approx(0.008)
+    assert list(chart.cycle_states("Air conditioning").values())[1].W == pytest.approx(0.008)
 
 
 def test_charts_with_a_foggy_edge_get_all_visible_lines():
@@ -213,9 +213,9 @@ def test_charts_with_a_foggy_edge_get_all_visible_lines():
     # region starts on saturation at about 14 deg C
     ranges = dict(chart_ranges(P, (273.15, 323.15), (0.010, 0.030)))
     assert ranges["Twb"][0] - 273.15 <= 15.0 + 1e-6 and ranges["h"][0] <= 40e3 + 1e-6
-    twb_C = np.array(default_values("Twb", (0.0, 50.0), (10.0, 30.0), "EUR")) - 273.15
+    twb_C = np.array(default_values("Twb", (0.0, 50.0), (10.0, 30.0), "engineering")) - 273.15
     assert twb_C.min() <= 15.0 + 1e-6
-    assert min(default_values("h", (0.0, 50.0), (10.0, 30.0), "EUR")) <= 40e3 + 1e-6
+    assert min(default_values("h", (0.0, 50.0), (10.0, 30.0), "engineering")) <= 40e3 + 1e-6
 
 
 def test_the_limits_of_hapropssi_are_allowed():

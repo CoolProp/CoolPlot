@@ -84,6 +84,18 @@ class StatePoint:
     def to_dict(self) -> Dict[str, float]:
         return dict(self._values)
 
+    def in_units(self, units) -> Dict[str, float]:
+        """The values converted to a unit system, e.g. state.in_units("engineering")["T"]."""
+        from .units import get_unit_system
+        units = get_unit_system(units)
+        return {k: float(units[k].from_SI(v)) for k, v in self._values}
+
+    def describe(self, units="SI", digits: int = 4) -> str:
+        """The state as text in a unit system, e.g. "T = 25 deg C, p = 3.5 bar, ..."."""
+        from .units import get_unit_system
+        units = get_unit_system(units)
+        return ", ".join("{0} = {1}".format(k, units.describe(k, v, digits)) for k, v in self._values)
+
     @classmethod
     def from_dict(cls, data: dict) -> "StatePoint":
         return cls(**{k: float(v) for k, v in data.items()})

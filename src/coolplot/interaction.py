@@ -81,8 +81,8 @@ class Interaction:
     def _state_at(self, x: float, y: float):
         try:
             return self.diagram.state_at(x, y)
-        except Exception:
-            return None   # outside the range of the equation of state
+        except (ValueError, KeyError):
+            return None   # outside the range of the equation of state (a PropertyError is a ValueError)
 
     def _drag(self, event):
         target = self.cycle_state(event.item_id, event.index)

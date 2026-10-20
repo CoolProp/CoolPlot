@@ -105,6 +105,13 @@ FAMILIES = {
     ),
 }
 
+#: What set_lines does when not told: a property diagram draws evenly
+#: spaced unlabelled lines, a psychrometric chart round labelled ones.
+LINE_DEFAULTS = {
+    "fluid": {"rounding": False, "labels": False},
+    "humid_air": {"rounding": True, "labels": True},
+}
+
 #: Quantities that can be on an axis, per chart kind.
 AXES = {
     "fluid": ("T", "p", "h", "s", "rho", "u"),
@@ -220,6 +227,11 @@ class DiagramType:
     def supported_isolines(self):
         """Quantity keys that can be drawn as isolines in this diagram."""
         return [f.key for f in self.families]
+
+    @property
+    def line_defaults(self) -> dict:
+        """Default ``rounding`` and ``labels`` of set_lines for this kind of chart."""
+        return LINE_DEFAULTS[self.kind]
 
     def quantity_label(self, key: str) -> str:
         """The name of a quantity in this kind of chart, e.g. "Dry-bulb temperature"."""

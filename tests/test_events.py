@@ -24,8 +24,8 @@ HEAT_PUMP = [{"p": 3.0, "T": 0.0}, {"p": 15.0, "via": "compression", "eta_is": 0
 @pytest.fixture
 def app():
     diagram = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP")
-    diagram.set_isolines("Q", num=3)
-    diagram.set_isolines("T", values=[-20.0, 0.0, 20.0, 40.0], labels=True)
+    diagram.set_lines("Q", num=3)
+    diagram.set_lines("T", values=[-20.0, 0.0, 20.0, 40.0], labels=True)
     diagram.add_cycle("Heat pump", HEAT_PUMP)
     renderer = _mpl()
     hovered = []

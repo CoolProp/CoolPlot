@@ -14,8 +14,9 @@ from typing import Sequence
 
 from CoolProp import AbstractState
 
-from .chart import Chart
+from .chart import Chart, check_fluid
 from .core.diagram_type import DiagramType
+from .core.errors import deprecated
 from .core.limits import get_tp_limits
 from .core.state import StatePoint
 from .core.units import get_unit_system
@@ -52,7 +53,8 @@ class PropertyDiagram(Chart):
     diagram_type : str
         Vertical axis first: "ph", "Ts", "hs", "ps", "prho", "Trho", "pT".
     units : str or UnitSystem
-        "SI", "KSI", "EUR" or a custom UnitSystem.
+        "SI", "KSI", "engineering" (deg C, bar, kJ), "IP" or a custom
+        UnitSystem.
     tp_limits : str, TpLimits or sequence
         The temperature and pressure region to cover, see
         :mod:`coolplot.core.limits`.
@@ -69,9 +71,9 @@ class PropertyDiagram(Chart):
     --------
     >>> from coolplot import PropertyDiagram
     >>> from coolplot.render.mpl import MatplotlibRenderer
-    >>> diagram = PropertyDiagram("HEOS::R290", "ph", units="EUR")
-    >>> diagram.set_isolines("Q", num=11)
-    >>> diagram.set_isolines("T", num=12)
+    >>> diagram = PropertyDiagram("HEOS::R290", "ph", units="engineering")
+    >>> diagram.set_lines("Q", num=11)
+    >>> diagram.set_lines("T", num=12)
     >>> renderer = MatplotlibRenderer()
     >>> renderer.sync(diagram.update_scene())   # first draw
     >>> diagram.units = "KSI"
@@ -80,14 +82,15 @@ class PropertyDiagram(Chart):
 
     kind = "fluid"
 
-    def __init__(self, fluid, diagram_type="ph", units="EUR", tp_limits="DEF", theme=None,
+    def __init__(self, fluid, diagram_type="ph", units="engineering", tp_limits="DEF", theme=None,
                  settings=None, engine: Engine = None, cache: CurveCache = None, background: str = None,
                  on_ready=None, workers: int = None):
         settings = get_settings(settings)
         if theme is not None:
             settings = settings.with_(look=theme)
         spec = DiagramSpec(fluid=fluid_spec(fluid), diagram=DiagramType.parse(diagram_type),
-                           units=get_unit_system(units), limits=get_tp_limits(tp_limits), settings=settings)
+                           units=get_unit_system(units, stacklevel=3), limits=get_tp_limits(tp_limits),
+                           settings=settings)
         Chart.__init__(self, spec, engine, cache, background, on_ready, workers)
 
     # ------------------------------------------------------------------
@@ -101,6 +104,7 @@ class PropertyDiagram(Chart):
     @fluid.setter
     def fluid(self, value):
         new = fluid_spec(value)
+        check_fluid(self.engine, new)   # before anything changes: a bad name leaves the diagram as it was
         fixed = [c.name for c in self.spec.cycles if any(given.state is not None for _, given in c.states)]
         if fixed and new != self.spec.fluid:
             warnings.warn("Cycles {0} hold complete states of the previous fluid; they are drawn unchanged. "
@@ -126,16 +130,8 @@ class PropertyDiagram(Chart):
     def tp_limits(self, value):
         self.spec = self.spec.with_(limits=get_tp_limits(value))
 
-    def set_default_isolines(self, num: int = None, **kwargs):
-        """Isolines of every common quantity that makes sense in this diagram.
-
-        Internal energy is left out to keep the chart readable; add it with
-        set_isolines("u") if needed.
-        """
-        for key in self.spec.diagram.supported_isolines():
-            if key != "u":
-                self.set_isolines(key, num=num, **kwargs)
-
+    # Old names (0.4 and before); they warn and will go in 1.0 ---------------
+    @deprecated("use add_cycle, which computes the paths between the states itself")
     def set_process(self, name: str, line_states: Sequence[StatePoint],
                     marker_states: Sequence[StatePoint] = (),
                     line_style: LineStyle = None, marker_style: MarkerStyle = None):
@@ -143,12 +139,11 @@ class PropertyDiagram(Chart):
 
         ``line_states`` are connected by a line, ``marker_states`` get a
         marker. Use :func:`coolplot.thermo.process_path` to fill in the
-        states along a compression or heat exchange. :meth:`add_cycle`
-        does the same from two properties per state and computes the
-        paths itself.
+        states along a compression or heat exchange.
         """
         self.spec = self.spec.with_process(ProcessSpec(name, tuple(line_states), tuple(marker_states),
                                                        line_style, marker_style))
 
+    @deprecated("use remove_cycle")
     def remove_process(self, name: str):
         self.spec = self.spec.without_process(name)

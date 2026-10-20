@@ -157,7 +157,7 @@ def test_building_and_rendering_svg_does_not_load_matplotlib():
             "from coolplot import PropertyDiagram\n"
             "from coolplot.render.svg import SvgRenderer\n"
             "d = PropertyDiagram('R290', 'ph', tp_limits='ACHP')\n"
-            "d.set_isolines('Q', num=3)\n"
+            "d.set_lines('Q', num=3)\n"
             "r = SvgRenderer(); r.sync(d.update_scene()); r.to_svg()\n"
             "print('matplotlib' in sys.modules)")
     out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, check=True)

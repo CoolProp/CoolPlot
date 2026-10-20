@@ -63,7 +63,7 @@ def test_two_stage_economizer_balances(r290):
 
 
 def test_rankine():
-    c = rankine("Water", 40e5, 0.1e5, 400.0, eta_turbine=1.0, eta_pump=1.0)
+    c = rankine("Water", 40e5, 0.1e5, 400.0, eta_is_turbine=1.0, eta_is_pump=1.0)
     assert c.state(4).s == pytest.approx(c.state(3).s) and c.state(2).s == pytest.approx(c.state(1).s)
     assert 0.3 < c.result["eta_th"] < 0.4
     real = rankine("Water", 40e5, 0.1e5, 400.0)
@@ -118,9 +118,9 @@ def test_auto_kinds(r290):
 # ---------------------------------------------------------------------------
 @pytest.fixture
 def diagram():
-    d = PropertyDiagram("HEOS::R290", "ph", units="EUR", tp_limits="ACHP")
-    d.set_isolines("Q", num=3)
-    d.set_isolines("T", values=[-20.0, 0.0, 20.0, 40.0], points=60, labels=True)
+    d = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP")
+    d.set_lines("Q", num=3)
+    d.set_lines("T", values=[-20.0, 0.0, 20.0, 40.0], points=60, labels=True)
     return d
 
 

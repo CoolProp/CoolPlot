@@ -517,7 +517,7 @@ HAPropsSI; lines are cut at saturation, where fog would begin, and start
 exactly on it) instead of a `Fluid`; `compose` styles the lines by their
 family (`core/diagram_type.py`); air processes are cycles with straight
 paths. `psychrometric.py` only holds the constructor and the air
-vocabulary (`set_lines`, `add_process`) over `Chart`. Lines are cached
+constructor over `Chart`. Lines are cached
 like every other curve, by provider fingerprint, region, family, value
 and point count. docs/contracts.md describes the records.
 
@@ -610,7 +610,7 @@ Known trade-offs, from the adversarial review of the 0.3 work:
   layout; there is no throttling.
 * `WebServer` bound to a public address has no authentication, and patch
   listeners run while the renderer is locked.
-* Input in the wrong unit (W in kg/kg on an "EUR" chart, a wet-bulb
+* Input in the wrong unit (W in kg/kg on an "engineering" chart, a wet-bulb
   temperature in K) is only caught when it is far outside what HAPropsSI
   covers.
 

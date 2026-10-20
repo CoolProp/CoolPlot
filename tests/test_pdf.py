@@ -16,8 +16,8 @@ from coolplot.style.values import Font, TextStyle  # noqa: E402
 
 def _diagram(title="R290, costs $5"):
     d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP")
-    d.set_isolines("Q", num=5, labels=True)
-    d.set_isolines("T", values=[0.0, 50.0], labels=True)
+    d.set_lines("Q", num=5, labels=True)
+    d.set_lines("T", values=[0.0, 50.0], labels=True)
     d.title = title
     return d
 
