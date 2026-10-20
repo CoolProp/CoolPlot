@@ -72,7 +72,8 @@ user's units, constructor validation of fluids, unit-aware printing of
 `StatePoint` and `AirState`, the `with_` overloads tidied, the
 `object.__setattr__` idiom replaced by explicit constructors.
 Done when: the old names warn and still work; `grep` finds no `EUR` in
-examples and docs except the alias note; the ten error messages the docs
+the examples and the user documentation except the alias note (the review
+and this plan name it on purpose); the ten error messages the docs
 review listed read in the user's units; `tests/test_api_vocabulary.py`
 checks the public names against a frozen list.
 

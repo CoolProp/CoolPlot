@@ -89,10 +89,7 @@ def test_server_accepts_only_its_own_page():
     try:
         assert _post(server, move, {"Origin": "http://127.0.0.1:{0}".format(port)}) == 204
         assert _post(server, move) == 204   # no Origin: not from a browser page
-        deadline = time.monotonic() + 5.0   # the server answers before it handles the input
-        while len(events) < 2 and time.monotonic() < deadline:
-            time.sleep(0.01)
-        assert len(events) == 2
+        assert len(events) == 2   # handled before the server answered
         assert _post(server, move, {"Origin": "http://evil.example"}) == 403
         assert _post(server, move, {"Host": "evil.example"}) == 403   # DNS rebinding
         assert _post(server, move, {"Content-Type": "text/plain"}) == 415   # a "simple" cross-site request
@@ -182,5 +179,25 @@ def test_a_dropped_stream_closes_its_connection():
             pass   # until the server closes the socket
         assert time.monotonic() - start < 5.0   # not the 30 s socket timeout
         connection.close()
+    finally:
+        server.stop()
+
+
+def test_the_server_answers_after_it_handled_the_input():
+    renderer = WebRenderer()
+    renderer.sync(Scene(AxesSpec(x_limits=(0.0, 10.0), y_limits=(0.0, 10.0)), []))
+    events = []
+
+    def slow_handler(event):
+        time.sleep(0.3)   # an application that redraws the chart
+        events.append(event)
+
+    renderer.connect(slow_handler)
+    server = WebServer(renderer).start()
+    try:
+        assert _post(server, json.dumps({"type": "move", "px": 100.0, "py": 100.0})) == 204
+        # The page sends its next input only after this answer, so the inputs
+        # of a click are handled in order
+        assert len(events) == 1
     finally:
         server.stop()
