@@ -182,3 +182,16 @@ def test_a_sync_before_the_repaint_keeps_the_zoom(app):
     renderer.sync(diagram.scene)   # e.g. a background curve arrives, axes unchanged
     renderer.figure.draw_without_rendering()
     assert [type(e).__name__ for e in seen] == ["ViewChanged"]
+
+
+def test_the_library_events_are_started_on_the_first_connect_only():
+    class Counting(SvgRenderer):
+        started = 0
+
+        def _start_events(self):
+            self.started += 1
+
+    renderer = Counting()
+    renderer.connect(lambda event: None)
+    renderer.connect(lambda event: None)
+    assert renderer.started == 1

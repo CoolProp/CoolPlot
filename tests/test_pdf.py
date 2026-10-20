@@ -367,3 +367,23 @@ def test_kaleido_is_not_promised_without_a_browser(monkeypatch):
     from coolplot.render import plotly as plotly_backend
     monkeypatch.setenv("BROWSER_PATH", "/no/such/chrome")
     assert plotly_backend.kaleido_available() is False
+
+
+def test_kaleido_finds_a_browser_with_an_older_choreographer(monkeypatch, tmp_path):
+    pytest.importorskip("plotly")
+    pytest.importorskip("kaleido")
+    chromium = pytest.importorskip("choreographer.browsers.chromium")
+    from coolplot.render import plotly as plotly_backend
+    monkeypatch.delenv("BROWSER_PATH", raising=False)
+    if hasattr(chromium.Chromium, "find_browser"):
+        monkeypatch.delattr(chromium.Chromium, "find_browser")   # as in choreographer 1.0.5
+    # A Chromium on the PATH is found
+    program = tmp_path / "bin" / "chromium"
+    program.parent.mkdir()
+    program.write_text("#!/bin/sh\n")
+    program.chmod(0o755)
+    monkeypatch.setenv("PATH", str(program.parent))
+    assert plotly_backend.kaleido_available() is True
+    # No browser at all: nothing is promised
+    monkeypatch.setenv("PATH", str(tmp_path))
+    assert plotly_backend.kaleido_available() is False
