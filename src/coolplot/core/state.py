@@ -75,6 +75,7 @@ class StatePoint:
             return False
 
     def keys(self) -> Tuple[str, ...]:
+        """The quantity keys of the state, in their canonical order."""
         return tuple(k for k, _ in self._values)
 
     def __iter__(self):
@@ -84,6 +85,7 @@ class StatePoint:
         return len(self._values)
 
     def to_dict(self) -> Dict[str, float]:
+        """The state as a dict of SI values."""
         return dict(self._values)
 
     def in_units(self, units) -> Dict[str, float]:
@@ -100,6 +102,7 @@ class StatePoint:
 
     @classmethod
     def from_dict(cls, data: dict) -> "StatePoint":
+        """A state from a dict of SI values."""
         return cls(**{k: float(v) for k, v in data.items()})
 
     # Value semantics -----------------------------------------------------

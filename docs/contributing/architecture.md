@@ -10,8 +10,8 @@ describes the architecture that replaces it. The goals are:
    new isoline, a unit switch) only recomputes and redraws what it
    affects.
 
-Related documents: `docs/styling.md` (themes and styles for users) and
-`docs/backends.md` (requirements for new backends).
+Related documents: the how-to on themes (themes and styles for users) and
+contributing/writing_a_backend.md (requirements for new backends).
 
 The legacy code (`CoolPlot/Plot`, `CoolPlot/Util`) was released one last
 time as 0.1.7 and removed from the 0.2 code base; file references in
@@ -153,7 +153,7 @@ caches its results (curves) or compares them with the previous ones
 | Stage | Module | Status |
 |-------|--------|--------|
 | Settings | `spec/` (`DiagramSpec`, `Settings`), held by `PropertyDiagram` in `diagram.py` | done |
-| Plan | `engine/plan.py` (`plan(spec, domain)`), pure | done |
+| Plan | `engine/planning.py` (`plan(spec, domain)`), pure | done |
 | Engine | `engine/engine.py` (`Engine`), `engine/background.py` (`BackgroundEngine`, 0.3), `engine/cache.py` (`CurveCache`), `thermo/` for the calculations | done |
 | Compose | `compose/builder.py`: display units, theme styles, texts | done |
 | Layout | `compose/layout.py`: labels for the reported plot size, keep-out zones | done |
@@ -394,7 +394,7 @@ diagram.
 
 ## 8. Styling
 
-Summary of `docs/styling.md`:
+Summary of the how-to on themes:
 
 * Style values (`LineStyle`, `MarkerStyle`, `Font`, `TextStyle`,
   `AxesStyle`, `LegendStyle`) are immutable and normalised when created:
@@ -414,7 +414,7 @@ Summary of `docs/styling.md`:
 
 ## 9. Backends and the conformance kit
 
-Summary of `docs/backends.md`:
+Summary of contributing/writing_a_backend.md:
 
 * A backend subclasses `Renderer` and implements hooks for axes, add,
   update, remove, reorder, legend and finish. The base class does the
@@ -521,7 +521,7 @@ family (`core/diagram_type.py`); air processes are cycles with straight
 paths. `psychrometric.py` only holds the constructor and the air
 constructor over `Chart`. Lines are cached
 like every other curve, by provider fingerprint, region, family, value
-and point count. docs/contracts.md describes the records.
+and point count. reference/contracts.md describes the records.
 
 Lines are sampled in dry-bulb temperature. Wet-bulb lines are found
 with a regula falsi search on HAPropsSI(Twb; T, W), which is fast and
@@ -653,7 +653,7 @@ some of its saturation calls abort the Python process there.
 How one isoline is computed, in `thermo/isolines.py`,
 `thermo/stepping.py` and `thermo/tracer.py`. Nothing here knows about
 units, styles or plotting libraries; the result is a `Curve` in SI units
-(docs/contracts.md, section 2).
+(reference/contracts.md, section 2).
 
 **Stepping.** A line of constant property is parametrised by the
 quantity that is stepped along it (temperature or pressure, chosen per
@@ -721,7 +721,7 @@ closed envelope (the critical point, appended as its last point), and
 the saturation solver's occasional failures in the last kelvins are
 left out rather than left as gaps.
 
-**Acceptance (docs/v1_plan.md, 0.7)**, measured on this machine: every
+**Acceptance (contributing/v1_plan.md, 0.7)**, measured on this machine: every
 pure-fluid line of R290 and CO2 round-trips through CoolProp's inverse
 flash to 1e-8 and every traced point of R410A and R32/R125 is confirmed
 by an independent p,T or p,Q flash to 1e-6 (`tests/numerics`); no line

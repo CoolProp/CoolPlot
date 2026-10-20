@@ -9,38 +9,26 @@
 CoolPlot
 ========
 
-This repository contain code for a Python module to create property plots
-for engineering thermodynamics applications using [CoolProp].
+Property diagrams and psychrometric charts for engineering
+thermodynamics, with [CoolProp] as the source of every property:
+log(p)-h, T-s, h-s, p-s, p-rho, T-rho and p-T diagrams for pure fluids
+and refrigerant blends, cycles drawn on top of them, and psychrometric
+charts for humid air.
 
-It focusses on refrigeration, heat pumping and power cycles: log(p)-h,
-T-s, h-s, p-s, p-rho, T-rho and p-T diagrams for pure fluids and blends,
-with cycles drawn on top, and psychrometric charts for humid air.
-Property calculations, the description of the plot and the plotting
-library are kept apart, so matplotlib is one backend among several (SVG
-without dependencies, plotly, and a browser backend with a small
-development server) and interactive applications only redraw what
-changed. Lines can be calculated in the background, and zoom, hover and
-dragging cycle states work in matplotlib and in the browser. PDF output
-is print-ready: fonts embedded as TrueType, texts kept as text, the
-theme colours exactly, and several charts per file with `save_pdf`.
-
-The code was forked from the main [CoolProp repository] at v6.3.0 with its
-history preserved, hence the old commits. Expect some breaking changes
-until v1.0.0.
+![A log(p)-h chart of propane with a heat pump cycle](docs/_static/R290_ph.png)
 
 ```python
 from coolplot import PropertyDiagram
 from coolplot.thermo.cycles import simple_compression
 
-diagram = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP")
-diagram.set_lines("Q", num=11, labels=True)
-diagram.set_lines("T", num=12, rounding=True, labels=True)
-diagram.add_cycle(simple_compression("R290", T_evap_C=-5, T_cond_C=45))
-diagram.save("R290_ph.png")           # matplotlib; SvgRenderer needs nothing extra
+diagram = PropertyDiagram("R290", "ph", units="engineering", tp_limits="ACHP")
+diagram.set_default_lines(labels=True)
+diagram.add_cycle(simple_compression("R290", T_evap_C=-5, T_cond_C=45, dT_sh_K=5))
+diagram.save("R290_ph.png")           # or .pdf, .svg; show() opens a window
 ```
 
-Cycles can also be given state by state in the diagram's units,
-including split and two-stage cycles:
+Cycles can be given state by state in the chart's units, by two
+properties or by the process that leads to a state:
 
 ```python
 diagram.add_cycle("Heat pump", [
@@ -51,29 +39,30 @@ diagram.add_cycle("Heat pump", [
 ])
 ```
 
-Isoline labels sit at the edges of the chart and keep clear of the
-cycles. In an interactive application, changing units, the theme or a
-cycle recalculates and redraws only what changed:
+What else it does:
 
-```python
-from coolplot.render.mpl import MatplotlibRenderer
-renderer = MatplotlibRenderer()
-renderer.sync(diagram.update_scene(renderer.plot_size_pt()))
-diagram.units = "SI"                     # no new property calculations
-renderer.sync(diagram.update_scene())    # existing lines are updated in place
-```
+* Isoline labels sit at the edges of the chart, as on printed charts,
+  and keep clear of the cycles.
+* Blends: the dome from CoolProp's phase envelope, the temperature glide
+  inside it, a chart in seconds.
+* Units: SI, kPa and kJ, deg C and bar, or inch-pound; a change of units
+  costs no new calculation.
+* Output: PNG and PDF through matplotlib (fonts embedded, texts kept as
+  text, several charts per file), SVG with no dependencies, plotly
+  figures and HTML pages, live charts in a web page.
+* Interactive: zoom, hover and dragging of cycle states in matplotlib
+  and in a web page; only what changed is recomputed and redrawn;
+  lines can be computed in the background.
 
-* [docs/user_guide.md](docs/user_guide.md): how to use CoolPlot
-* [docs/styling.md](docs/styling.md): themes and styles
-* [docs/backends.md](docs/backends.md): writing a plotting backend
-* [docs/architecture.md](docs/architecture.md): the design
-* [examples/](examples): quick start, two-stage cycles, a refrigerant
-  blend, an interactive chart with sliders and dragging, a browser app,
-  a psychrometric chart
+The documentation (getting started, tutorials, how-to pages, the API
+reference and a gallery of the examples) is built from `docs/` and
+published on Read the Docs; `make docs` builds it locally.
 
-Version 0.2 replaces the legacy API (`from CoolPlot.Plot import PropertyPlot`).
-If you depend on it, stay on the last legacy release with
-`pip install "coolplot<0.2"`.
+The code was forked from the main [CoolProp repository] at v6.3.0 with
+its history preserved, hence the old commits. Version 0.2 replaced the
+legacy API (`from CoolPlot.Plot import PropertyPlot`); the upgrade guide
+in the documentation gives the equivalents, and `pip install "coolplot<0.2"`
+keeps the last legacy release. Expect some breaking changes until 1.0.
 
 Pull requests are encouraged!
 

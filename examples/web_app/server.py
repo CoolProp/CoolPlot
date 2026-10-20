@@ -6,7 +6,7 @@ is the page, ``/stream`` the server-sent event stream of patches (a new
 client first gets the whole chart), ``/input`` receives pointer input.
 It lives with the examples because it is a starting point for an
 application, not part of the library: a real application embeds the
-renderer in its own web framework (docs/user_guide.md, "In the browser").
+renderer in its own web framework (how-to "In the browser" in the documentation).
 
 Some care is taken because a web page in any browser tab can reach a
 local server: requests must name this server in their ``Host`` header

@@ -2,7 +2,7 @@
 """CoolPlot: thermodynamic property diagrams with CoolProp as data source.
 
 The package is organised in layers; each may only use the layers listed
-before it (see docs/architecture.md, section 4):
+before it (see docs/contributing/architecture.md, section 4):
 
 * ``core``: quantities and units, plain data.
 * ``style``: style values and themes.
@@ -18,7 +18,7 @@ before it (see docs/architecture.md, section 4):
   :class:`PropertyDiagram` and :class:`PsychrometricChart` are its two
   constructors.
 
-See docs/styling.md for themes and docs/backends.md for writing a new
+See docs/how_to/themes.md for themes and docs/contributing/writing_a_backend.md for writing a new
 backend.
 """
 from .__version__ import __version__  # noqa: F401

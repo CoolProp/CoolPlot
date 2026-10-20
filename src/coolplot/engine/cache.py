@@ -37,6 +37,7 @@ class CurveCache:
         return len(self._store)
 
     def get_or_compute(self, key: Hashable, compute: Callable[[], Any]) -> Any:
+        """The value stored under ``key``, or the result of ``compute()``, which is stored first."""
         with self._lock:
             if key in self._store:
                 self._store.move_to_end(key)
@@ -67,5 +68,6 @@ class CurveCache:
                 self._store.popitem(last=False)
 
     def clear(self):
+        """Forget every stored value."""
         with self._lock:
             self._store.clear()

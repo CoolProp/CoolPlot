@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""A psychrometric chart with an air-conditioning process.
+"""
+A psychrometric chart with an air-conditioning process
+======================================================
+
 
 Outdoor air at 32 deg C and 50 % is cooled and dehumidified on a cooling
 coil to 13 deg C and 95 %, then reheated to 20 deg C at the same humidity

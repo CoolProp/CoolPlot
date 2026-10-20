@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Guard the layering described in docs/architecture.md.
+"""Guard the layering described in docs/contributing/architecture.md.
 
 The imports of every module are read statically with ``ast``, including
 imports inside functions, so a lazy import cannot slip past the rules. A
@@ -17,7 +17,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SRC = os.path.join(ROOT, "src")
 PACKAGE = os.path.join(SRC, "coolplot")
 
-# Layers in order (docs/architecture.md, section 4). A module may import
+# Layers in order (docs/contributing/architecture.md, section 4). A module may import
 # layers listed before its own, never the ones after it.
 LIBS = {"CoolProp", "matplotlib", "plotly"}
 ALL_LAYERS = ["coolplot.core", "coolplot.style", "coolplot.scene", "coolplot.spec", "coolplot.thermo",
@@ -80,7 +80,11 @@ RULES = {
 # Deliberate, documented exceptions: (module, imported name, reason)
 ALLOWED = {
     ("coolplot.chart", "coolplot.render.mpl"):
-        "Chart.draw/show/savefig create a MatplotlibRenderer on demand for scripts",
+        "Chart.draw/show/save create a MatplotlibRenderer on demand for scripts",
+    ("coolplot.chart", "coolplot.render.svg"):
+        "Chart.save writes an .svg file with the SVG writer on demand, without matplotlib",
+    ("coolplot.chart", "coolplot.render.web"):
+        "Chart.save writes an .html file with the web renderer on demand, without matplotlib",
     ("coolplot.render.plotly", "coolplot.testing.pdf_reader"):
         "PlotlyRenderer.save rewrites the PDF information Kaleido wrote, only when a PDF is saved",
 }

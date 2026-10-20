@@ -135,9 +135,11 @@ class Theme:
         return self.isoline.with_(color=color, dash=dash)
 
     def process_style(self, index: int) -> LineStyle:
+        """The line style of the ``index``-th process or cycle, cycling through the theme's colours."""
         return self.processes[index % len(self.processes)]
 
     def state_point_style(self, index: int) -> MarkerStyle:
+        """The marker style of the ``index``-th process or cycle."""
         return self.state_points[index % len(self.state_points)]
 
     # Derivation and storage -----------------------------------------------
@@ -157,6 +159,7 @@ class Theme:
 
     @classmethod
     def from_dict(cls, data: dict) -> "Theme":
+        """A theme from its record (docs/how_to/themes.md)."""
         return style_from_dict(cls, data)
 
 

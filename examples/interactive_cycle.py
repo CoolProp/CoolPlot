@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Interactive log(p)-h chart with a refrigeration cycle.
+"""
+Interactive log(p)-h chart with a refrigeration cycle
+=====================================================
+
 
 Drag the sliders to change the evaporating and condensing temperatures,
 or drag a state of the cycle with the mouse. Only the cycle is

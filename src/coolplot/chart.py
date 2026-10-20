@@ -222,6 +222,7 @@ class Chart:
     # ------------------------------------------------------------------
     @property
     def cache(self) -> CurveCache:
+        """The curve cache of the engine, shared by charts that share the engine."""
         return self.engine.cache
 
     # Background work -------------------------------------------------------
@@ -262,10 +263,12 @@ class Chart:
 
     @property
     def diagram_type(self):
+        """The :class:`~coolplot.core.diagram_type.DiagramType` of the chart (its two axes)."""
         return self.spec.diagram
 
     @property
     def units(self):
+        """The unit system of the chart: a name ("SI", "KSI", "engineering", "IP") or a UnitSystem."""
         return self.spec.units
 
     @units.setter
@@ -274,6 +277,7 @@ class Chart:
 
     @property
     def settings(self):
+        """The :class:`~coolplot.spec.settings.Settings` of the chart, or a preset name to assign."""
         return self.spec.settings
 
     @settings.setter
@@ -282,6 +286,7 @@ class Chart:
 
     @property
     def theme(self) -> Theme:
+        """The :class:`~coolplot.style.theme.Theme` of the chart, or a theme name to assign."""
         return self.spec.settings.look
 
     @theme.setter
@@ -290,6 +295,7 @@ class Chart:
 
     @property
     def title(self) -> str:
+        """The title shown above the chart."""
         return self.spec.title
 
     @title.setter
@@ -408,6 +414,7 @@ class Chart:
                 self.set_lines(key, num=num, **kwargs)
 
     def remove_lines(self, key: str):
+        """Remove the family of lines of constant ``key``; nothing happens if there is none."""
         self.spec = self.spec.without_isolines(key)
 
     def line_sets(self):
@@ -554,6 +561,7 @@ class Chart:
         self.spec = self.spec.with_cycle(new)
 
     def remove_cycle(self, name: str):
+        """Remove the cycle called ``name``; nothing happens if there is none."""
         self.spec = self.spec.without_cycle(name)
 
     def cycle_states(self, name: str, units=None):
@@ -589,6 +597,7 @@ class Chart:
             raise self._in_units(e) from None
 
     def to_display(self, key: str, value_SI):
+        """Convert an SI value of quantity ``key`` to the chart's units."""
         return self.spec.units[key].from_SI(value_SI)
 
     # ------------------------------------------------------------------
@@ -659,11 +668,33 @@ class Chart:
                       "smaller than the number of lines?).", UserWarning, stacklevel=3)
 
     def show(self):
+        """Draw the chart with matplotlib and show the window."""
         self.draw().show()
 
     def save(self, path, **kwargs):
-        """Draw and write the chart to a file (PNG, PDF, SVG, ... by extension)."""
-        self.draw().save(path, **kwargs)
+        """Draw and write the chart to a file, choosing the writer by the extension.
+
+        ``.svg`` is written by the SVG writer and ``.html`` by the web
+        renderer (a static page), neither of which needs matplotlib;
+        every other extension (PNG, PDF, EPS, ...) goes through matplotlib,
+        with ``kwargs`` such as ``dpi`` or ``pdf_fonts`` passed on. The
+        canvas has the size of ``settings.page`` for every writer, unless
+        ``width`` and ``height`` (pixels) are given for SVG or HTML.
+        """
+        extension = str(path).rsplit(".", 1)[-1].lower() if "." in str(path) else ""
+        if extension in ("svg", "html", "htm"):
+            from .render.svg import PX_PER_PT
+            page = self.spec.settings.page
+            kwargs.setdefault("width", round(page.width_pt * PX_PER_PT))
+            kwargs.setdefault("height", round(page.height_pt * PX_PER_PT))
+        if extension == "svg":
+            from .render.svg import SvgRenderer
+            self.draw(SvgRenderer(**kwargs)).save(path)
+        elif extension in ("html", "htm"):
+            from .render.web import WebRenderer
+            self.draw(WebRenderer(**kwargs)).save(path)
+        else:
+            self.draw().save(path, **kwargs)
 
     @deprecated("use save")
     def savefig(self, path, **kwargs):

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""The records of docs/contracts.md round-trip through JSON unchanged.
+"""The records of docs/reference/contracts.md round-trip through JSON unchanged.
 
 The spec, the curve record and the scene of a property diagram with
 cycles and labels, of a psychrometric chart with an air process, and of

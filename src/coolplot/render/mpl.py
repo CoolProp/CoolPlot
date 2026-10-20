@@ -14,7 +14,7 @@ Points to note for maintainers
   handed over (see :func:`_mpl_dashes`).
 * Casings are path effects: a wider stroke in the casing colour drawn
   underneath the normal rendering. The stroke inherits the dash pattern
-  and alpha of the line, as docs/backends.md requires.
+  and alpha of the line, as docs/contributing/writing_a_backend.md requires.
 * A text halo is a second text artist just below the text, drawn with a
   stroke in the halo colour. Matplotlib draws any text with path effects
   as glyph outlines, so a halo on the text itself would turn every label
@@ -725,6 +725,7 @@ class MatplotlibRenderer(Renderer):
             self._emit(ViewChanged(*view))
 
     def sync(self, scene):
+        """Make the axes match ``scene``, touching only what changed; see :meth:`Renderer.sync`."""
         report = super().sync(scene)
         if report.axes_changed and getattr(self, "_event_ids", None) is not None:
             self._last_view = self._view()   # the view sync set is not the user's
@@ -756,9 +757,11 @@ class MatplotlibRenderer(Renderer):
 
     # Read back ---------------------------------------------------------
     def backend_object(self, item_id):
+        """The matplotlib artist(s) drawn for an item id, for applications that need them."""
         return self._artists[item_id]
 
     def describe_item(self, item_id: str) -> dict:
+        """Read back the item as drawn, from its artists."""
         artist = self._artists[item_id]   # KeyError for unknown ids, as required
         item = self._drawn[item_id]
         out = {"visible": bool(artist.get_visible()), "clip": bool(artist.get_clip_on())}
@@ -847,6 +850,7 @@ class MatplotlibRenderer(Renderer):
         return halo if matches else None
 
     def describe_axes(self) -> dict:
+        """Read back the axes as drawn."""
         ax = self.ax
         spine = ax.spines["left"]
         tick = ax.xaxis.get_major_ticks()[0]
@@ -1153,6 +1157,7 @@ class MatplotlibRenderer(Renderer):
             self._font_warnings.add(message)   # once per renderer, after the warning really went out
 
     def show(self):
+        """Show the figure window (``matplotlib.pyplot.show``)."""
         import matplotlib.pyplot as plt
         plt.show()
 

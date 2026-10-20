@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""A log(p)-h chart of propane with a heat pump cycle, drawn by two backends.
+"""
+A log(p)-h chart of propane with a heat pump cycle, drawn by two backends
+=========================================================================
+
 
 Run with:  python examples/quickstart.py
 Writes R290_ph.svg (no dependencies) and R290_ph.png (needs matplotlib).

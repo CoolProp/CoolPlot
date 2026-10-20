@@ -96,15 +96,18 @@ class Frame:
         return 10.0 ** out if log else out
 
     def to_pt(self, x, y):
+        """Data coordinates (display units) to points from the lower left corner of the plot area."""
         return (self._axis(x, self.x_limits, self.x_log, self.width_pt),
                 self._axis(y, self.y_limits, self.y_log, self.height_pt))
 
     def to_data(self, px, py):
+        """Points from the lower left corner of the plot area to data coordinates."""
         return (self._inverse(px, self.x_limits, self.x_log, self.width_pt),
                 self._inverse(py, self.y_limits, self.y_log, self.height_pt))
 
     @property
     def usable(self) -> bool:
+        """Whether the frame has a size and finite limits, so that labels can be placed."""
         (x0, x1), (y0, y1) = self.x_limits, self.y_limits
         ok = x1 > x0 and y1 > y0 and self.width_pt > 0.0 and self.height_pt > 0.0
         if self.x_log:
@@ -133,16 +136,19 @@ class Box:
     half_h: float
 
     def axes(self):
+        """The unit vectors along and across the box, in points."""
         c, s = math.cos(self.angle), math.sin(self.angle)
         return (c, s), (-s, c)
 
     def corners(self):
+        """The four corners of the box, in points."""
         (ux, uy), (vx, vy) = self.axes()
         return [(self.cx + a * self.half_w * ux + b * self.half_h * vx,
                  self.cy + a * self.half_w * uy + b * self.half_h * vy)
                 for a, b in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
 
     def inside(self, width: float, height: float, inset: float) -> bool:
+        """Whether the box lies inside the plot area, ``inset`` points away from its edges."""
         return all(inset <= x <= width - inset and inset <= y <= height - inset for x, y in self.corners())
 
     def near_points(self, px: np.ndarray, py: np.ndarray, margin: float) -> bool:
@@ -188,9 +194,11 @@ class Piece:
 
     @property
     def length(self) -> float:
+        """The length of the piece in points."""
         return float(self.arc[-1])
 
     def at(self, s: float) -> Tuple[float, float]:
+        """The point at arc length ``s`` along the piece."""
         return float(np.interp(s, self.arc, self.px)), float(np.interp(s, self.arc, self.py))
 
     def project(self, qx: float, qy: float) -> Tuple[float, float]:

@@ -177,6 +177,7 @@ class Fluid:
     # Identity --------------------------------------------------------------
     @property
     def name(self) -> str:
+        """The fluid as given, e.g. "HEOS::R290"."""
         return self._name
 
     @property
@@ -423,26 +424,32 @@ class Fluid:
 
     @property
     def T_triple_K(self) -> Optional[float]:
+        """The triple-point temperature in K, or None (for a mixture the highest one of its components)."""
         return self._lowest_temperature(CoolProp.iT_triple)
 
     @property
     def T_min_K(self) -> Optional[float]:
+        """The lowest temperature of the equation of state in K, or None."""
         return self._lowest_temperature(CoolProp.iT_min)
 
     @property
     def T_max_K(self) -> Optional[float]:
+        """The highest temperature of the equation of state in K, or None."""
         return self._trivial(CoolProp.iT_max)
 
     @property
     def p_min_Pa(self) -> Optional[float]:
+        """The lowest pressure of the equation of state in Pa, or None."""
         return self._trivial(CoolProp.iP_min)
 
     @property
     def p_max_Pa(self) -> Optional[float]:
+        """The highest pressure of the equation of state in Pa, or None."""
         return self._trivial(CoolProp.iP_max)
 
     @property
     def is_pure(self) -> bool:
+        """Whether the fluid has one component."""
         return len(self._model[1]) == 1
 
     @property

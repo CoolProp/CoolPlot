@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Two-stage cycles: one split cycle, two closed loops, and an economizer.
+"""
+Two-stage cycles: one split cycle, two closed loops, and an economizer
+======================================================================
+
 
 The same two-stage flash tank cycle is drawn as one split cycle and as two
 closed loops, next to a cycle with an economizer (vapour injection).

@@ -235,6 +235,7 @@ class WebRenderer(SvgRenderer):
         return callback
 
     def unlisten(self, callback):
+        """Stop sending messages to ``callback``."""
         with self._lock:
             if callback in self._listeners:
                 self._listeners.remove(callback)
@@ -245,6 +246,7 @@ class WebRenderer(SvgRenderer):
             return json.dumps({"op": "reset", "svg": self.to_svg()})
 
     def to_svg(self) -> str:
+        """The SVG document of the current scene, as the page shows it."""
         with self._lock:   # another thread may be in sync
             return super().to_svg()
 
@@ -255,6 +257,7 @@ class WebRenderer(SvgRenderer):
             callback(text)
 
     def sync(self, scene):
+        """Make the page match ``scene`` and send the patches; see :meth:`Renderer.sync`."""
         with self._lock:
             return super().sync(scene)
 
@@ -531,9 +534,11 @@ class WebRenderer(SvgRenderer):
 
     # For tests and the conformance kit: the same path as browser input
     def simulate_pointer(self, kind: str, x: float, y: float, button: int = 1):
+        """Feed a pointer event ("press", "move", "release") at data coordinates, as tests do."""
         to_px, _ = self._mapper()
         px, py = (float(v) for v in to_px(x, y))
         self.receive({"type": kind, "px": px, "py": py, "button": button})
 
     def simulate_view(self, x_limits, y_limits):
+        """Set the view as a user zoom would, as tests do."""
         self.receive({"type": "view", "x_limits": list(x_limits), "y_limits": list(y_limits)})

@@ -93,3 +93,14 @@ ENV/
 .ropeproject
 *.npy
 *.pkl
+
+# Output of the examples (the gallery runs them in examples/)
+examples/*.svg
+examples/*.png
+examples/*.pdf
+examples/*.html
+docs/_build/
+docs/gallery/
+docs/reference/generated/
+docs/sg_execution_times.rst
+docs/reference/tables.md

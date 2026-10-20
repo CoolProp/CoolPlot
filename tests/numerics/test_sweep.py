@@ -15,7 +15,7 @@ from CoolProp.CoolProp import PropsSI  # noqa: E402
 from coolplot.core.diagram_type import DiagramType  # noqa: E402
 from coolplot.core.limits import get_tp_limits  # noqa: E402
 from coolplot.core.quantities import get_quantity  # noqa: E402
-from coolplot.engine.plan import nice_linear, nice_log  # noqa: E402
+from coolplot.engine.planning import nice_linear, nice_log  # noqa: E402
 from coolplot.thermo.fluid import Fluid, build_state  # noqa: E402
 from coolplot.thermo.isolines import _build_line, _metric, compute_quality_line  # noqa: E402
 from coolplot.thermo.limits import property_range_SI, resolve_tp_box  # noqa: E402

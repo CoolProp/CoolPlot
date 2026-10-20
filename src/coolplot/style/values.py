@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Backend-neutral style values: colours, lines, markers, text and axes.
 
-Every backend must render these values the same way; docs/backends.md lists
+Every backend must render these values the same way; docs/contributing/writing_a_backend.md lists
 the exact rules and coolplot.testing checks them. To make that
 possible, everything is normalised here, once, instead of in each backend:
 
@@ -231,6 +231,7 @@ class LineStyle(_Normalising):
 
     @property
     def dash_pt(self) -> Tuple[float, ...]:
+        """The dash pattern in points, from the named ``dash``."""
         return dash_pattern_pt(self.dash, self.width_pt)
 
 
@@ -314,6 +315,7 @@ class Font:
             raise ValueError("Font style has to be 'normal' or 'italic'.")
 
     def with_(self, **changes):
+        """A copy with the given fields replaced."""
         return replace(self, **changes)
 
 

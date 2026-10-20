@@ -11,7 +11,7 @@ pytest.importorskip("CoolProp")
 
 from coolplot import PropertyDiagram  # noqa: E402
 from coolplot.engine import BackgroundEngine  # noqa: E402
-from coolplot.engine.plan import plan  # noqa: E402
+from coolplot.engine.planning import plan  # noqa: E402
 from coolplot.render.svg import SvgRenderer  # noqa: E402
 from coolplot.thermo.isolines import Curve  # noqa: E402
 
