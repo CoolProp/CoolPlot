@@ -362,6 +362,9 @@
       for (var k = 0; k < 4; k++) { need[k] = Math.max(need[k], touches[k] ? reach[k] : 0); }
     });
     var extra = need.map(function (n, k) { return Math.max(0, n - margins[k]); });
+    // With a title the configured top margin holds the title, so labels
+    // above the frame need their whole height on top of it
+    if (axes.title) { extra[2] = need[2]; }
 
     // The plot area
     var left = margins[0] + extra[0], right = margins[1] + extra[1], top = margins[2] + extra[2], bottom = margins[3] + extra[3];

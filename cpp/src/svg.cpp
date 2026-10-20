@@ -396,6 +396,9 @@ class Writer
         std::array<double, 4> need = unclipped_margins_array();
         std::array<double, 4> out;
         for (int k = 0; k < 4; ++k) out[k] = std::max(0.0, need[k] - options_.margins[k]);
+        // With a title the configured top margin holds the title, so labels
+        // above the frame need their whole height on top of it
+        if (!scene_.axes.title.empty()) out[2] = need[2];
         return out;
     }
 
