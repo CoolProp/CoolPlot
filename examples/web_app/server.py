@@ -115,8 +115,13 @@ class WebServer:
                 except ValueError:
                     self._reply(400)
                     return
-                self._reply(204)
-                server.renderer.receive(message)
+                try:
+                    server.renderer.receive(message)
+                finally:
+                    # Answered after the input is handled: the page sends its
+                    # next input only then, so a quick click cannot arrive as
+                    # a release before its press on another server thread
+                    self._reply(204)
 
             def _stream(self):
                 self.close_connection = True   # a stream has no length: never reuse the socket
