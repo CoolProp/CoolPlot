@@ -142,7 +142,16 @@ class PropertyDiagram:
                                  "cache=other.cache).")
             self.engine = engine
         elif background is not None:
-            callback = (lambda _engine: on_ready(self)) if on_ready is not None else None
+            callback = None
+            if on_ready is not None:
+                # A weak reference: the engine (kept by the finalizer below)
+                # must not keep this diagram alive through its callback
+                diagram_ref = weakref.ref(self)
+
+                def callback(_engine):
+                    diagram = diagram_ref()
+                    if diagram is not None:
+                        on_ready(diagram)
             self.engine = BackgroundEngine(background, workers, callback, cache)
         else:
             self.engine = Engine(cache)

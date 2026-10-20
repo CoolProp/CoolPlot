@@ -295,3 +295,55 @@ def test_the_engine_is_free_again_after_its_diagram_is_gone():
     gc.collect()
     PropertyDiagram("HEOS::R290", "ph", engine=engine)   # no error
     engine.close()
+
+
+def test_a_diagram_with_on_ready_is_freed_when_dropped():
+    import gc
+    d = PropertyDiagram("HEOS::R290", "ph", background="threads", on_ready=lambda diagram: None)
+    engine = d.engine
+    del d
+    gc.collect()
+    # The finalizer of the diagram ran: its callback did not keep it alive
+    assert engine.claimed is False
+    engine.close()
+
+
+def test_a_shared_cache_survives_threads_that_fill_it():
+    import sys
+    import time
+    from coolplot.engine import CurveCache
+    cache = CurveCache(max_size=4)   # tiny: almost every store drops another curve
+    errors = []
+    stop = threading.Event()
+
+    def writer():
+        i = 0
+        try:
+            while not stop.is_set():
+                cache.put(i % 5, i)
+                i += 1
+        except Exception as error:
+            errors.append(error)
+
+    def reader():
+        try:
+            while not stop.is_set():
+                for key in range(5):
+                    cache.peek(key)
+                    cache.get_or_compute(key, lambda: 0)
+        except Exception as error:
+            errors.append(error)
+
+    interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)   # switch threads as often as possible
+    try:
+        threads = [threading.Thread(target=f) for f in (writer, writer, reader, reader)]
+        for t in threads:
+            t.start()
+        time.sleep(1.0)
+        stop.set()
+        for t in threads:
+            t.join()
+    finally:
+        sys.setswitchinterval(interval)
+    assert errors == []

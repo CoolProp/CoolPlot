@@ -39,6 +39,7 @@ import json
 import math
 import os
 import re
+import shutil
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -76,6 +77,9 @@ _LEGEND = {"upper left": dict(x=0.01, y=0.99, xanchor="left", yanchor="top"),
 
 
 
+#: Program names of a Chrome or Chromium that kaleido can use.
+BROWSER_NAMES = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "msedge")
+
 #: File formats drawn by kaleido.
 IMAGE_SUFFIXES = (".pdf", ".png", ".svg", ".jpg", ".jpeg", ".webp")
 
@@ -88,9 +92,16 @@ def kaleido_available() -> bool:
         return os.path.isfile(os.environ["BROWSER_PATH"])
     try:
         from choreographer.browsers.chromium import Chromium   # kaleido's own browser lookup
-        return Chromium.find_browser(skip_local=False) is not None
     except Exception:
         return False   # cannot tell: do not promise PDF (saving still tries)
+    if hasattr(Chromium, "find_browser"):
+        try:
+            return Chromium.find_browser(skip_local=False) is not None
+        except Exception:
+            return False
+    # Older choreographer versions (allowed by kaleido 1.0) have no
+    # find_browser: look for a Chrome or Chromium on the PATH instead
+    return any(shutil.which(name) for name in BROWSER_NAMES)
 
 def _escape(text: str) -> str:
     """Text for plotly, which reads a few HTML tags: escape <, > and &, but
