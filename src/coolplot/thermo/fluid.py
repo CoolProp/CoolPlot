@@ -207,7 +207,8 @@ class Fluid:
         twin._state = build_state(self._model)
         twin._reset_caches()
         twin._critical = self._critical
-        twin._envelope = self._envelope   # read-only arrays, safe to share
+        # The phase envelope is not shared: it keeps a CoolProp state of its
+        # own for its lookups, so each clone (a worker thread) builds its own
         twin._name = self._name
         return twin
 
@@ -302,6 +303,10 @@ class Fluid:
         problem = self.inconsistency(self._current)
         if problem is not None:
             raise ValueError("CoolProp returned an inconsistent state for {0}: {1}".format(self.name, problem))
+        if self._current is not self._state:
+            # The check used the guide state for its saturation lookups; put
+            # the requested state back on it
+            self._current.update(pair, value1, value2)
         return self._current
 
     def inconsistency(self, state: AbstractState) -> Optional[str]:

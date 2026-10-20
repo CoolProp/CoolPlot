@@ -177,7 +177,16 @@ class Chart:
                                  "cache=other.cache).")
             self.engine = engine
         elif background is not None:
-            callback = (lambda _engine: on_ready(self)) if on_ready is not None else None
+            callback = None
+            if on_ready is not None:
+                # A weak reference: the engine (kept by the finalizer below)
+                # must not keep this chart alive through its callback
+                chart_ref = weakref.ref(self)
+
+                def callback(_engine):
+                    chart = chart_ref()
+                    if chart is not None:
+                        on_ready(chart)
             self.engine = BackgroundEngine(background, workers, callback, cache)
         else:
             self.engine = Engine(cache)

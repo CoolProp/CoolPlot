@@ -54,7 +54,9 @@ class Engine:
             self._fluids.move_to_end(spec)
             return self._fluids[spec]
         self._fluids.pop(spec, None)
+        # Everything computed with the old fluid goes with it
         self._domains = OrderedDict((k, v) for k, v in self._domains.items() if k[0] != spec)
+        self._cycles = OrderedDict((k, v) for k, v in self._cycles.items() if k[0] != spec)
         fluid = make_provider(spec)
         self._fluids[spec] = fluid
         if len(self._fluids) > self.max_fluids:
