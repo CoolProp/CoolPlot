@@ -213,3 +213,70 @@ def test_a_quality_residual_that_is_not_a_number_stops_the_solver():
     tracer._quality_residual = lambda quality, bracket: float("nan")
     with pytest.raises(ValueError, match="not a number"):
         tracer._bracketed_quality({}, -1.0, 1.0, 2.0)
+
+
+def test_a_saturation_density_that_is_not_a_number_leaves_the_root_undecided():
+    """A NaN vapour density made the inside-the-dome test false, so a root
+    inside the dome was taken as outside it."""
+    from coolplot.thermo.tracer import IsoLineTracer
+
+    class NanVapour:
+        quality = 0.0
+        def update(self, pair, quality, T):
+            self.quality = quality
+        def rhomolar(self):
+            return 10000.0 if self.quality == 0.0 else float("nan")
+        def p(self):
+            return 1e6
+
+    tracer = object.__new__(IsoLineTracer)        # only the dome check is exercised
+    tracer._dome_T_limit = None
+    tracer._sat = NanVapour()
+    tracer._is_plausible_saturation = lambda T, p: True
+    tracer._far_from_the_dome = lambda T, rhomolar: False
+    with pytest.raises(ValueError, match="not a number"):
+        tracer._check_outside_the_dome(300.0, 5000.0)
+
+
+def test_a_crossing_that_does_not_converge_is_no_crossing(r290, monkeypatch):
+    """Saturation states that come back NaN inside the bracket never converge;
+    the solver used to return its last iterate (at a NaN sweep value) as the crossing."""
+    import coolplot.thermo.isolines as isolines
+    ends = {300.0: (-1.0, 0.0, 0.0, 300.0, 1e6, 1.0), 310.0: (1.0, 0.0, 0.0, 310.0, 1e6, 1.0)}
+    nan_state = (float("nan"),) * 6
+    monkeypatch.setattr(isolines, "_saturation_state",
+                        lambda fluid, key, value, quality, diagram, iso_key: ends.get(value, nan_state))
+    assert isolines._solve_crossing(r290, PH, "h", 0.0, "T", 300.0, 310.0, 0.0, None) is None
+
+
+def test_dome_ends_with_the_same_sweep_value_are_ordered_by_quality():
+    from coolplot.thermo.isolines import _same_sweep_value
+    assert _same_sweep_value(300.0, 300.0 * (1.0 + 1e-15))
+    assert not _same_sweep_value(300.0, 300.001)
+
+
+def test_a_state_whose_saturated_outputs_fail_is_not_two_phases():
+    from coolplot.thermo.tracer import _phases_are_distinct
+
+    class Failing:
+        def saturated_liquid_keyed_output(self, key):
+            raise ValueError("no saturated states")
+        saturated_vapor_keyed_output = saturated_liquid_keyed_output
+    assert not _phases_are_distinct(Failing())
+
+
+def test_a_limit_that_is_not_a_number_is_refused(r290):
+    from coolplot.core.limits import TpLimits
+    with pytest.raises(ValueError, match="not a number"):
+        resolve_tp_box(r290, TpLimits(float("nan"), 400.0, 1e5, 1e7))
+
+
+def test_a_quality_line_without_states_says_why(r290, monkeypatch):
+    import coolplot.thermo.isolines as isolines
+
+    def no_states(fluid, diagram, quality, T_K):
+        nan = np.full_like(T_K, np.nan)
+        return nan, nan.copy(), len(T_K)
+    monkeypatch.setattr(isolines, "_saturation_states", no_states)
+    curve = compute_quality_line(r290, PH, 0.5, points=10)
+    assert curve.reason == "none of the 10 states of the line could be computed"

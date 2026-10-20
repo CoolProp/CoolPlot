@@ -57,7 +57,11 @@ def _phases_are_distinct(state):
         rho_liq = state.saturated_liquid_keyed_output(CoolProp.iDmolar)
         rho_vap = state.saturated_vapor_keyed_output(CoolProp.iDmolar)
     except Exception:
-        return True         # nothing to check against; the caller's other tests apply
+        # Every mixture backend (HEOS and the cubics, REFPROP, tabular) gives
+        # these outputs, so a failure is a failed state: count it as not
+        # distinct.  That costs the caller a fallback flash or a gap, never a
+        # collapsed state taken as a point.
+        return False
     if not (np.isfinite(rho_liq) and np.isfinite(rho_vap)) or rho_liq <= 0.0 or rho_vap <= 0.0:
         return False
     return (rho_liq - rho_vap) > _TRIVIAL_SOLUTION_RTOL * max(rho_liq, rho_vap)
@@ -945,6 +949,10 @@ class IsoLineTracer(object):
             rho_vap, p_vap = self._sat.rhomolar(), self._sat.p()
         except Exception:
             undecided = "the saturation solver did not converge"
+        # A NaN would slip through both checks below: max() drops a NaN p_vap,
+        # and a NaN density makes the inside-the-dome test false
+        if undecided is None and not all(np.isfinite([p_liq, p_vap, rho_liq, rho_vap])):
+            undecided = "the saturation solver returned a value that is not a number"
         if undecided is None and not self._is_plausible_saturation(T, max(p_liq, p_vap)):
             undecided = "the saturation solver left the dome behind"
         if undecided is None and not _phases_are_distinct(self._sat):

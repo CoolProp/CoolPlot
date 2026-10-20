@@ -418,8 +418,15 @@ class _Line:
             ends = self._envelope_ends()
         if len(ends) != 2:
             return None
-        ends.sort(key=lambda end: (end[0], end[1] if self.sweep.key == "T" else -end[1]))
-        return ends[0], ends[1]
+        # The bubble and dew states of a pure fluid have the same sweep value,
+        # but computed apart they can differ in the last bits; a plain sort
+        # would then order them by that noise.  Equal up to rounding, the
+        # quality decides.
+        first, second = sorted(ends, key=lambda end: end[0])
+        if _same_sweep_value(first[0], second[0]):
+            liquid_first = self.sweep.key == "T"
+            first, second = sorted(ends, key=lambda end: end[1] if liquid_first else -end[1])
+        return first, second
 
     def _envelope_ends(self):
         """Bubble and dew states of a mixture isotherm or isobar, interpolated on the phase envelope."""
@@ -548,6 +555,11 @@ def _saturation_state(fluid: Fluid, sat_key: str, sat_value: float, quality: flo
     return result if all(np.isfinite(result)) else None
 
 
+def _same_sweep_value(a: float, b: float) -> bool:
+    """Whether two sweep values are the same up to rounding (relative 1e-9)."""
+    return abs(a - b) <= 1e-9 * max(abs(a), abs(b))
+
+
 def _solve_crossing(fluid, diagram, iso_key, value_SI, sweep_key, a, b, quality, metric):
     """Sweep value in [a, b] where the saturation state has iso_key == value_SI.
 
@@ -569,24 +581,25 @@ def _solve_crossing(fluid, diagram, iso_key, value_SI, sweep_key, a, b, quality,
         return result(b, ends[1])
     if fa * fb > 0.0:
         return None
-    found = None
     for _ in range(60):
         c = b - fb * (b - a) / (fb - fa)
         state = _saturation_state(fluid, sweep_key, c, quality, diagram, iso_key)
         if state is None:
             return None
         fc = state[0] - value_SI
-        found = result(c, state)
         if fc == 0.0 or abs(b - a) <= 1e-12 * abs(c):
-            break
+            return result(c, state)
         if fc * fb < 0.0:
             a, fa = b, fb
         else:
             fa *= 0.5
         b, fb = c, fc
         if abs(fc) <= 1e-10 * max(abs(value_SI), 1.0):
-            break
-    return found
+            return result(c, state)
+    # Not converged in 60 steps: the last iterate is not a crossing to put on
+    # the line.  A mixture line then takes the phase-envelope crossing; a pure
+    # fluid's line goes on without a point at the dome.
+    return None
 
 
 def _envelope_crossings(envelope, diagram, iso_key, value_SI, sweep_key, metric, sweep_range=None):
@@ -674,13 +687,24 @@ def compute_quality_line(fluid: Fluid, diagram: DiagramType, quality: float, poi
     T_lo_K, T_hi_K = fluid.saturation_range("T", margin)
     T_K = T_lo_K + (T_hi_K - T_lo_K) * _saturation_grid(points, spacing)
     x, y, n_failed = _saturation_states(fluid, diagram, quality, T_K)
+    # Judged before the critical point is appended: a line of that one point says nothing
+    reason = _short_line_reason(int(np.count_nonzero(np.isfinite(x) & np.isfinite(y))), len(T_K), len(T_K) - n_failed)
     if fluid.is_pure:
         crit = fluid.critical
         x_crit, y_crit = crit.get(diagram.x, np.nan), crit.get(diagram.y, np.nan)
         if np.isfinite(x_crit) and np.isfinite(y_crit):
             x = np.append(x, x_crit)
             y = np.append(y, y_crit)
-    return Curve(x, y, n_failed, n_evaluated=len(T_K))
+    return Curve(x, y, n_failed, reason=reason, n_evaluated=len(T_K))
+
+
+def _short_line_reason(n: int, n_evaluated: int, n_ok: int) -> str:
+    """Why a line has fewer than two points, from the counts of its evaluations; "" for two or more."""
+    if n >= 2:
+        return ""
+    if n_evaluated > 0 and n_ok == 0:
+        return "none of the {0} states of the line could be computed".format(n_evaluated)
+    return "only {0} point(s) of the line could be computed".format(n)
 
 
 def _saturation_grid(points: int, spacing: str) -> np.ndarray:
@@ -742,7 +766,10 @@ def _mixture_quality_line(fluid: Fluid, diagram: DiagramType, quality: float, po
     x = np.array([np.nan if s is None else s.x for s in found.samples], dtype=float)
     y = np.array([np.nan if s is None else s.y for s in found.samples], dtype=float)
     stopped = "" if found.stopped.startswith("the end of the range") else found.stopped
-    return Curve(x, y, found.n_failed, reason=stopped, n_evaluated=found.n_evaluated)
+    # The top of the envelope is always on the line, so count the drawable points
+    reason = stopped or _short_line_reason(int(np.count_nonzero(np.isfinite(x) & np.isfinite(y))),
+                                           found.n_evaluated, found.n_ok)
+    return Curve(x, y, found.n_failed, reason=reason, n_evaluated=found.n_evaluated)
 
 
 def _envelope_line(fluid: Fluid, diagram: DiagramType, quality: float):
