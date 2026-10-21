@@ -32,10 +32,26 @@ record ignores its labels and refuses a state given with via "sensible". A
 coolplot-core older than 1.2 still composes a 1.2 chart unless it has state
 labels; then the Python composer draws it, with a warning.
 
-One visible change: new charts draw the saturation curve also when no lines
-of constant quality (or relative humidity) include it. Set
-`chart.show_saturation = False` to draw a chart without it. Specs saved by
-1.1 keep their look.
+Two visible changes. New charts draw the saturation curve also when no
+lines of constant quality (or relative humidity) include it; set
+`chart.show_saturation = False` to draw a chart without it. And labels
+sit on rails, showing bare values with symbol and unit in the legend,
+which moves inside the plot area into the emptiest corner. For the look
+of 1.1:
+
+```python
+chart.settings = chart.settings.with_(labels={"mode": "edge"})
+legend = chart.theme.axes.legend.with_(location="outside right")
+chart.theme = chart.theme.with_(axes=chart.theme.axes.with_(legend=legend))
+```
+
+Specs saved by 1.1 hold their label mode and their theme (legend
+location included), so they draw as before. Code that reads label texts
+from the scene of a new chart finds bare numbers ("20" instead of
+"T=20 deg C") unless it asks for edge labels.
+
+A coolplot-core older than 1.2 refuses rails and the automatic legend;
+the Python composer then draws the chart, with a warning.
 
 ## From 1.0 to 1.1
 

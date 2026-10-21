@@ -107,7 +107,8 @@ def test_chart_scene(chart):
     assert scene.axes.y_label == "Humidity ratio W / g/kg"
     assert same_numbers(scene.axes.x_limits, (-10.0, 45.0))
     labels = [i for i in scene if i.role == "isoline_label"]
-    assert len(labels) > 10 and any(t.text == "RH=50 %" for t in labels)
+    assert len(labels) > 10 and any(t.id == "iso/RH/0.5/label" and t.text == "50" for t in labels)
+    assert "Relative humidity RH / %" in {i.legend for i in scene if i.legend}
     states = list(chart.cycle_states("Air conditioning").values())
     assert states[2].W == pytest.approx(8.9e-3) and states[1].RH == pytest.approx(0.95)
 
@@ -376,8 +377,13 @@ def test_the_mollier_chart_has_x_across_and_temperature_up(mollier):
     groups = {i.group for i in scene}
     assert {"iso/T", "iso/RH", "iso/h", "iso/Twb", "iso/v", "cycle/Air conditioning"} <= groups
     assert scene["iso/RH/1"].role == "saturation"
-    texts = [i.text for i in scene if i.role == "isoline_label"]
-    assert "phi=50 %" in texts and not any(t.startswith("RH=") for t in texts)
+    legends = {i.legend for i in scene if i.legend}
+    assert "Relative humidity phi / %" in legends and not any("RH" in t for t in legends)
+    assert scene["iso/RH/0.5/label"].text == "50"
+    chart = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25), style="mollier", settings="interactive")
+    chart.settings = chart.settings.with_(labels={"mode": "edge"})
+    chart.set_lines("RH", [50.0])
+    assert chart.update_scene()["iso/RH/0.5/label"].text == "phi=50 %"
     with pytest.raises(ValueError, match="style"):
         PsychrometricChart(style="din")
 
@@ -456,7 +462,8 @@ def test_the_mollier_scale_follows_a_changed_temperature_unit():
     assert chart.spec.limits.range_SI("Thx") == pytest.approx((273.15, 313.15))
     chart.set_lines("T", [50.0])
     scene = chart.update_scene()
-    assert scene.axes.y_label.endswith("deg F") and scene["iso/T/283.15/label"].text == "T=50 deg F"
+    assert scene.axes.y_label.endswith("deg F") and scene["iso/T/283.15/label"].text == "50"
+    assert "Dry-bulb temperature T / deg F" in {i.legend for i in scene if i.legend}
     kelvin = ENGINEERING.with_unit("Thx", Unit("K")).with_unit("T", Unit("deg F", 1.8, -459.67, "R"))
     assert kelvin["Thx"].label == "K"   # set on its own, it stays
 

@@ -931,7 +931,31 @@ class MatplotlibRenderer(Renderer):
         report = super().sync(scene)
         if report.axes_changed and getattr(self, "_event_ids", None) is not None:
             self._last_view = self._view()   # the view sync set is not the user's
+        self._lift_title(scene)
         return report
+
+    def _lift_title(self, scene):
+        """Put the title above labels outside the top of the frame (labels on rails, margin labels).
+
+        matplotlib keeps the title a fixed pad above the frame; constrained
+        layout then makes room for both. The height of the labels is
+        estimated from their length, as the label layout does.
+        """
+        from ..compose.layout import text_size_pt
+        axes = scene.axes
+        if not axes.title:
+            return
+        reach = 0.0
+        for item in scene:
+            if isinstance(item, Text) and item.visible and not item.clip and item.offset_pt[1] > 0.0:
+                width, height = text_size_pt(item.text, item.style)
+                reach = max(reach, item.offset_pt[1] + (width if item.direction is not None else height))
+        pad = matplotlib.rcParams["axes.titlepad"] + reach
+        if same_number(pad, getattr(self, "_title_pad", matplotlib.rcParams["axes.titlepad"])):
+            return
+        self._title_pad = pad
+        self.ax.set_title(axes.title, pad=pad)
+        _apply_text_style(self.ax.title, axes.style.title, self.strict_fonts)
 
     # Simulated input, for tests and the conformance kit
     def simulate_pointer(self, kind: str, x: float, y: float, button: int = 1):

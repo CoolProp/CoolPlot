@@ -36,6 +36,21 @@ guide in the documentation says what to change in your code.
   "An air handling unit on the Mollier h,x chart".
 - `Chart.state(entry)` gives a full state from two properties in the
   chart's units.
+- Label mode "rails" (`coolplot.compose.rails`): the bare values of each
+  family in a row along one edge, outside the frame at the top and on
+  the right with a tick where the line leaves, or just inside it on any
+  edge, turned along the lines with the label boxes on a common rail.
+  Each family takes the rail that fits the most labels, a second rail
+  for lines that do not reach the first, and labels at the ends of lines
+  that end inside the chart; whole levels of values are dropped when not
+  all fit, so a row never skips values irregularly. The legend gives the
+  symbol and unit of each family ("Temperature T / deg C"). The scene
+  gains the role `label_tick`. coolplot-core 1.2 lays rails out the same
+  way.
+- Legend location "auto": inside the plot area, in the corner where the
+  legend covers the fewest points of the drawn lines. The legend and the
+  badge are given their corners together (`coolplot.compose.corners`),
+  so they never share one, and rail labels keep clear of both.
 - Gallery examples: the basic air processes from one state; summer and
   winter operation of an air handling unit, with duties, the room's sensible
   heat ratio and a comfort zone; evaporative cooling in a dry climate. The
@@ -69,6 +84,12 @@ guide in the documentation says what to change in your code.
   and the size may be fractional.
 
 #### Changed
+- New charts lay out their labels on rails and put the legend inside the
+  plot area ("rails" and "auto" are the new defaults of
+  `LabelSettings.mode` and `LegendStyle.location`). Specs saved by 1.1
+  hold their label mode and their theme, so they draw as before.
+  `labels={"mode": "edge"}` and the legend location "outside right" give
+  the look of 1.1 (the how-to on labels).
 - The saturation curve is drawn whatever lines are set: a chart of a fluid
   with a critical point shows the dome also when the quality values leave
   out 0 and 1 or no quality lines are set, and a psychrometric chart the

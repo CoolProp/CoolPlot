@@ -393,7 +393,7 @@ TextStyle TextStyle::from_json(const json& data) {
 // ---------------------------------------------------------------------------
 
 void LegendStyle::validate() const {
-    static const std::vector<std::string> locations = {"upper left", "upper right", "lower left", "lower right", "outside right"};
+    static const std::vector<std::string> locations = {"upper left", "upper right", "lower left", "lower right", "outside right", "auto"};
     if (std::find(locations.begin(), locations.end(), location) == locations.end())
         throw Error("Unknown legend location '" + location + "'.");
     text.validate();
@@ -415,7 +415,7 @@ LegendStyle LegendStyle::from_json(const json& data) {
     check_keys(data, {"visible", "location", "background", "frame_color", "text"}, "LegendStyle");
     LegendStyle s;
     s.visible = bool_field(data, "visible", true);
-    s.location = string_field(data, "location", "outside right");
+    s.location = string_field(data, "location", "auto");
     s.background = opaque_field(data, "background", s.background, "LegendStyle");
     s.frame_color = opaque_field(data, "frame_color", Color::none(), "LegendStyle");
     if (data.contains("text")) s.text = TextStyle::from_json(data.at("text"));
@@ -726,7 +726,7 @@ Theme screen_theme(const std::string& name, const std::string& surface, const st
     a.has_grid_major = true;
     a.grid_major = line_of(gridline, 0.5);
     a.has_grid_minor = false;
-    a.legend.location = "outside right";
+    a.legend.location = "auto";
     a.legend.background = Color::of(surface);
     a.legend.text = text_of(sans(8.0), ink_secondary);
     t.axes = a;

@@ -76,7 +76,11 @@ One record describes a property diagram and a psychrometric chart alike;
   range); for humid air absolute bounds on the axis quantities,
   `{"bounds": {"T": [263.15, 323.15], "W": [0.0, 0.03]}}`.
 * `settings`: see `coolplot.spec.settings`; `look` is a theme name or a
-  theme record (the how-to on themes).
+  theme record (the how-to on themes). Since 1.2 the label mode
+  `"rails"` and the legend location `"auto"` are the defaults; a record
+  always holds its label mode, so a record of 1.1 keeps its labels, and
+  a theme record its legend location. In a scene the legend location is
+  always a corner or "outside right".
 * `isolines`: one entry per family, in drawing order. `values_SI` lists
   explicit values; `anchor` (since 1.1) places the lines through
   saturation states every `step_SI` of saturation temperature or
@@ -207,6 +211,7 @@ an item in place:
 |---|---|
 | `iso/<key>/<value>` | a line of constant `<key>` at the SI value `<value>` (12 significant digits) |
 | `iso/<key>/<value>/label` | its label |
+| `iso/<key>/<value>/tick` | the tick of its label on an outer rail (1.2) |
 | `cycle/<name>/loop/<i>` | the i-th chain of a cycle |
 | `cycle/<name>/states` | the markers of all states of a cycle, in ascending state number |
 | `cycle/<name>/number/<n>` | the number of state n |
@@ -216,7 +221,9 @@ Groups collect what is styled and toggled together (`iso/T`,
 `iso/T/label`, `cycle/<name>`, `cycle/<name>/numbers`). Roles say what
 an item means: `isoline`, `saturation` (the phase boundary: quality 0
 and 1, relative humidity 100 %), `quality` (the other lines of the
-boundary family), `isoline_label`, `cycle`, `process`, `state_points`,
+boundary family), `isoline_label`, `label_tick` (since 1.2: the short
+line on the frame where a line with an outer rail label leaves, id
+`iso/<key>/<value>/tick`, in the group of the labels), `cycle`, `process`, `state_points`,
 `state_number`, `annotation`. Z order: isolines 1, saturation 2, labels
 4, cycles and processes 5, state points 6, state numbers 7; backends
 keep everything below 0 for grid and background.

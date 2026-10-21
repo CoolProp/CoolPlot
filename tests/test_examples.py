@@ -69,7 +69,8 @@ def test_psychrometric_evaporative_cooling(tmp_path):
 def test_psychrometric_mollier(tmp_path):
     assert "phi =" in _run("psychrometric_mollier.py", tmp_path)
     svg = (tmp_path / "psychrometric_mollier.svg").read_text()
-    assert "Humidity ratio x" in svg and "phi=" in svg and "cooling coil" in svg and len(svg) > 10000
+    assert "Humidity ratio x / g/kg" in svg and "Relative humidity phi / %" in svg and "cooling coil" in svg \
+        and len(svg) > 10000
 
 
 def _ports_installed() -> bool:

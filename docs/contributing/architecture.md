@@ -270,7 +270,7 @@ Implemented in step 2 (`coolplot.spec.settings`):
   `warn_failed_fraction` (warn once per curve with more failed points
   inside the line than this).
 * `look`: a `Theme`.
-* `labels`: `mode` ("edge", "margin" or "inline"), `keep_out_pt`,
+* `labels`: `mode` ("rails", "edge", "margin" or "inline"), `keep_out_pt`,
   preferred `edges` per family, `margin_edges`, `fallback`, `every`
   (label every n-th line), `position` (inline mode), `digits` of the
   values shown, `show_units` and `tick_digits` (step 4).

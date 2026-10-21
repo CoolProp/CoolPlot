@@ -114,7 +114,7 @@ def test_switching_theme_recomputes_nothing():
     scene = d.scene
     assert scene["iso/T/273.15"].role == "isoline"
     assert scene["iso/Q/0"].role == "saturation" and scene["iso/Q/0.5"].role == "quality"
-    assert [text for text, _ in scene.legend_entries()] == ["Saturation", "Vapour quality", "Temperature"]
+    assert [text for text, _ in scene.legend_entries()] == ["Saturation", "Vapour quality x", "Temperature T / deg C"]
     d.set_line_style("T", width_pt=2.0)
     assert same_number(d.update_scene()["iso/T/273.15"].style.width_pt, 2.0)
     d.set_line_style("T")

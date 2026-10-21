@@ -27,8 +27,8 @@ std::vector<std::string> LabelSettings::preferred_edges(const std::string& famil
 
 LabelSettings LabelSettings::from_json(const json& data) {
     LabelSettings s;
-    s.mode = data.value("mode", "edge");
-    if (s.mode != "edge" && s.mode != "margin" && s.mode != "inline") throw Error("Unknown label mode '" + s.mode + "'.");
+    s.mode = data.value("mode", "rails");
+    if (s.mode != "rails" && s.mode != "edge" && s.mode != "margin" && s.mode != "inline") throw Error("Unknown label mode '" + s.mode + "'.");
     s.keep_out_pt = data.value("keep_out_pt", 12.0);
     if (!(s.keep_out_pt >= 0.0)) throw Error("LabelSettings.keep_out_pt has to be zero or positive.");
     if (data.contains("edges")) {

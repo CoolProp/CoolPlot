@@ -115,13 +115,17 @@ class LabelSettings:
     Attributes
     ----------
     mode : str
-        "edge": just inside the frame where the lines leave the plot,
-        clear of processes (the default). "margin": horizontal, outside the
-        frame, like a second set of tick labels. "inline": at ``position``
-        along each line, as in older versions.
+        "rails" (the default, since 1.2): the values of each family in a
+        row along one edge, outside the frame at the top and on the right
+        or just inside it, with symbol and unit in the legend
+        (:mod:`coolplot.compose.rails`). "edge": the full label just
+        inside the frame where each line leaves the plot, clear of
+        processes (the default before 1.2). "margin": horizontal, outside
+        the frame, like a second set of tick labels. "inline": at
+        ``position`` along each line, as in older versions.
     keep_out_pt : float
         Distance in points that labels keep from every process and its
-        state points in "edge" mode.
+        state points in "rails" and "edge" mode.
     edges : tuple of (family, edges)
         Preferred frame edges per isoline family, best first, for "edge"
         mode. Families not listed use the edges of their
@@ -147,7 +151,7 @@ class LabelSettings:
         Significant digits of tick labels; every backend writes them with
         :func:`coolplot.core.numbers.format_number`.
     """
-    mode: str = "edge"
+    mode: str = "rails"
     keep_out_pt: float = 12.0
     edges: Tuple[Tuple[str, Tuple[str, ...]], ...] = ()
     margin_edges: Tuple[str, ...] = ("top",)

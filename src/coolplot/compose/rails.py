@@ -37,7 +37,7 @@ family of a chart with a few rules:
 
 The module is pure and works in points on the plot area, like
 :mod:`coolplot.compose.layout`, whose geometry it uses. coolplot-core
-(cpp/src/rails.cpp) does the same, step for step.
+(cpp/src/layout.cpp, section "Rails") does the same, step for step.
 """
 from __future__ import annotations
 
@@ -160,19 +160,24 @@ def inner_candidate(piece: Piece, edge: str, bound: float, half_w: float, half_h
 
     The centre is moved along the line until the corner of the box
     nearest to the edge lies on the rail: two corrections, since the angle
-    changes a little as the label moves. Returns (box, direction in pt) or
-    None where the line does not reach the rail or bends too much there.
+    changes a little as the label moves. The centre stays at least half a
+    label from the ends of the piece (a steep line meets the first guess
+    close to the frame). Returns (box, direction in pt) or None where the
+    line does not reach the rail or bends too much there.
     """
+    if piece.length < 2.0 * half_w:
+        return None
     depth = bound + half_h
     c = None
     for _ in range(3):
         hit = crossing(piece, edge, depth, frame)
         if hit is None:
             return None
-        c = _candidate(piece, hit[2], half_w, half_h, 0.0)
+        c = _candidate(piece, min(max(hit[2], half_w), piece.length - half_w), half_w, half_h, 0.0)
         if c is None:
             return None
-        depth += bound - _nearest_depth(c.box, edge, frame)
+        # The next centre: where this one is, moved by what its box is off the rail
+        depth = _depth(edge, c.box.cx, c.box.cy, frame) + (bound - _nearest_depth(c.box, edge, frame))
     if abs(_nearest_depth(c.box, edge, frame) - bound) > 0.5:
         return None
     return c.box, c.direction

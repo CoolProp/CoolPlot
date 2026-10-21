@@ -1,11 +1,41 @@
 # How labels are placed
 
-Printed refrigerant charts write the value of a line at the edge of the
-chart where the line leaves it, rotated along the line. CoolPlot does
-the same by default (`"edge"` mode), and it has to do it again whenever
-the lines, the window or a cycle change, without labels jumping about.
+Printed charts write the values of a family of lines in a row along an
+edge, where the lines leave the chart, and say once what the numbers
+are. CoolPlot does that by default (`"rails"` mode, since 1.2), and it
+has to do it again whenever the lines, the window or a cycle change,
+without labels jumping about. The older `"edge"` mode writes the full
+label of each line where it leaves the chart.
 
-## The rules
+## Rails
+
+1. A rail is a row of labels along one edge. The outer rails sit outside
+   the frame, at the top and on the right (the bottom and the left carry
+   the tick labels): a tick on the frame marks the line, the bare value
+   stands next to it, horizontal, or vertical at the top when that fits
+   more labels. The inner rails sit just inside the frame on every edge;
+   there a label is turned along its line and moved along it until the
+   corner of its box nearest to the edge touches the rail, so that the
+   row looks straight whatever the angles. A second inner rail lies a
+   little further in.
+2. Each family takes the rail where most of its labels fit; outer rails
+   win a tie, and no two families share a rail. Lines of a family that
+   do not reach its rail (relative humidity leaves a psychrometric chart
+   at the top and on the right) may take a second free rail. A family
+   that fits on no rail, because its lines end inside the chart, gets a
+   label near the end of each line.
+3. When not all labels of a family fit, whole levels of values go: the
+   values that are multiples of ten steps of the family stay longest,
+   then those of five and two steps. The same level holds for the whole
+   row.
+4. Labels inside the frame keep clear of the cycles (`keep_out_pt`), of
+   each other, of the legend and of the badge. The legend and the badge
+   get their corners first, together, so they never share one.
+5. A family keeps the rail of the previous layout unless another fits
+   more than one label more, and a label that stays where it was is the
+   same item as before, so the renderer redraws nothing.
+
+## Edge labels
 
 1. The part of each line inside the frame is found, with the edge it
    enters and leaves through. Each family prefers two edges (isotherms

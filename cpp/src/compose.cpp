@@ -157,6 +157,24 @@ std::string axis_label(const DiagramSpec& spec, const std::string& key) {
     return spec.diagram.quantity_label(key) + " " + spec.diagram.symbol(key) + " / " + spec.units.at(key).label;
 }
 
+namespace {
+
+/// A family's legend text with its symbol and unit, e.g. "Temperature T / deg C" (the "rails" mode).
+std::string legend_with_unit(const DiagramSpec& spec, const std::string& key, const std::string& legend) {
+    const std::string& unit = spec.units.at(key).label;
+    std::string text = legend + " " + spec.diagram.symbol(key);
+    return (unit == "-" || unit.empty()) ? text : text + " / " + unit;
+}
+
+/// Whether the lines of a family are labelled by their saturation state, not their own value.
+bool saturation_labelled(const DiagramSpec& spec, const std::string& key) {
+    for (const IsolineSet& s : spec.isolines)
+        if (s.key == key && s.has_anchor && s.anchor_label == "saturation") return true;
+    return false;
+}
+
+}  // namespace
+
 std::string label_text(const DiagramSpec& spec, const std::string& key, double value_SI, bool has_anchor, double anchor_SI) {
     const LabelSettings& labels = spec.settings.labels;
     // A line placed by saturation states shows its own value, unless its
@@ -234,12 +252,15 @@ AxesSpec axes_spec(const DiagramSpec& spec, const Domain& domain, const Theme& t
 std::vector<Item> isoline_items(const DiagramSpec& spec, const Theme& theme, const std::vector<CurveInput>& curves) {
     const Unit& ux = spec.units.at(spec.diagram.x);
     const Unit& uy = spec.units.at(spec.diagram.y);
+    bool rails = spec.settings.labels.mode == "rails";
     std::vector<Item> items;
     std::set<std::string> legends_given;
     for (const CurveInput& c : curves) {
         Look look = isoline_look(spec, theme, c.request.key, c.request.value_SI);
         std::string legend_key = (look.role == "saturation" || look.role == "quality") ? look.role : c.request.key;
         bool has_legend = !legends_given.count(legend_key);
+        if (has_legend && rails && look.role != "saturation" && !saturation_labelled(spec, c.request.key))
+            look.legend = legend_with_unit(spec, c.request.key, look.legend);  // the labels show bare values
         legends_given.insert(legend_key);
         items.push_back(line_item(c.request.item_id, "iso/" + c.request.key, look.role, has_legend, look.legend, converted(ux, c.x),
                                   converted(uy, c.y), look.style, look.z_order));
@@ -282,6 +303,17 @@ std::vector<LabelRequest> label_requests(const DiagramSpec& spec, const Theme& t
             r.group = line->group + "/label";
             r.family = key;
             r.text = label_text(spec, key, c->request.value_SI, c->request.has_anchor, c->request.anchor_SI);
+            r.value = spec.units.at(key).from_SI(c->request.value_SI);
+            if (saturation_labelled(spec, key) && c->request.has_anchor) {
+                for (const IsolineSet& s : spec.isolines)
+                    if (s.key == key && s.has_anchor) {
+                        r.value = spec.units.at(s.anchor_by).from_SI(c->request.anchor_SI);
+                        break;
+                    }
+            } else if (spec.settings.labels.mode == "rails") {
+                r.text = spec.settings.labels.format_value(r.value);  // the bare value; symbol and unit are in the legend
+            }
+            r.line_color = line->line_style.color;
             r.style = theme.isoline_label;
             if (theme.isoline_label_color == "line" && line->line_style.color.present)
                 r.style.color = line->line_style.color;   // the label in its line's colour
@@ -328,15 +360,92 @@ std::vector<Item> inline_labels(const DiagramSpec& spec, const std::vector<Label
 
 std::vector<Item> labels_for(const DiagramSpec& spec, const std::vector<LabelRequest>& requests, const AxesSpec& axes,
                              const std::vector<KeepOut>& keep_out, std::pair<double, double> plot_size_pt,
-                             const std::map<std::string, Item>& previous) {
+                             const std::map<std::string, Item>& previous, const std::vector<TakenBox>& occupied) {
     const LabelSettings& settings = spec.settings.labels;
     if (settings.mode == "inline") return inline_labels(spec, requests, axes);
     Frame frame{axes.x_limits, axes.y_limits, axes.x_log, axes.y_log, plot_size_pt.first, plot_size_pt.second};
+    if (settings.mode == "rails") {
+        const LegendStyle& legend = axes.style.legend;
+        bool outer_right = !(legend.visible && legend.location == "outside right");
+        return place_rail_labels(requests, frame, keep_out, settings.keep_out_pt, previous, occupied, outer_right);
+    }
     if (settings.mode == "margin") return place_margin_labels(requests, frame, settings.margin_edges);
     std::map<std::string, std::vector<std::string>> edges;
     for (const LabelRequest& r : requests)
         if (!edges.count(r.family)) edges[r.family] = settings.preferred_edges(r.family, spec.diagram.family(r.family)->edges);
     return place_edge_labels(requests, frame, keep_out, settings.keep_out_pt, edges, previous, settings.fallback);
+}
+
+// Corners for a legend inside the plot area (coolplot.compose.corners; the badge is drawn by Python only)
+
+const char* const AUTO_CORNERS[] = {"lower right", "upper left", "upper right", "lower left"};
+const double LEGEND_INSET_PT = 6.0;
+
+TakenBox corner_box(const Frame& frame, const std::string& location, double width, double height, double inset) {
+    bool left = location.size() >= 4 && location.compare(location.size() - 4, 4, "left") == 0;
+    bool lower = location.compare(0, 5, "lower") == 0;
+    double cx = left ? inset + 0.5 * width : frame.width_pt - inset - 0.5 * width;
+    double cy = lower ? inset + 0.5 * height : frame.height_pt - inset - 0.5 * height;
+    return {cx, cy, 0.5 * width, 0.5 * height};
+}
+
+/// The corner whose box covers the fewest of the points; ties go to the first of AUTO_CORNERS.
+std::string emptiest_corner(const Frame& frame, double width, double height, double inset, const std::vector<double>& px,
+                            const std::vector<double>& py) {
+    if (!frame.usable()) return AUTO_CORNERS[0];
+    std::string best = AUTO_CORNERS[0];
+    long best_count = -1;
+    for (const char* corner : AUTO_CORNERS) {
+        TakenBox box = corner_box(frame, corner, width, height, inset);
+        long count = 0;
+        for (size_t i = 0; i < px.size(); ++i)
+            if (std::fabs(px[i] - box.cx) <= box.half_w && std::fabs(py[i] - box.cy) <= box.half_h) ++count;
+        if (best_count < 0 || count < best_count) {
+            best = corner;
+            best_count = count;
+        }
+    }
+    return best;
+}
+
+/// Decide the corner of a legend inside the plot area; returns its box, if there is one, for the rails.
+std::vector<TakenBox> place_legend(AxesSpec& axes, const Theme& theme, const Frame& frame, const std::vector<Item>& lines,
+                                   const std::vector<Item>& parts, const std::vector<Item>& drawn) {
+    std::vector<TakenBox> boxes;
+    const LegendStyle& style = theme.axes.legend;
+    if (style.visible && style.location != "outside right") {
+        std::vector<std::string> texts;
+        for (const std::vector<Item>* group : {&lines, &parts})
+            for (const Item& item : *group)
+                if (item.has_legend && !item.legend.empty() && item.visible && std::find(texts.begin(), texts.end(), item.legend) == texts.end())
+                    texts.push_back(item.legend);
+        if (!texts.empty()) {
+            size_t longest = 0;
+            for (const std::string& t : texts) longest = std::max(longest, text_length(t));
+            double size = style.text.font.size_pt;
+            double width = 44.0 * (72.0 / 96.0) + 0.6 * size * longest, height = 8.0 * (72.0 / 96.0) + 1.6 * size * texts.size();
+            std::string location = style.location;
+            if (location == "auto") {
+                std::vector<double> px, py;
+                for (const std::vector<Item>* group : {&lines, &drawn})
+                    for (const Item& item : *group) {
+                        if (group == &lines && !item.visible) continue;
+                        for (size_t i = 0; i < item.x.size(); ++i) {
+                            double x = frame.x_to_pt(item.x[i]), y = frame.y_to_pt(item.y[i]);
+                            if (std::isfinite(x) && std::isfinite(y)) {
+                                px.push_back(x);
+                                py.push_back(y);
+                            }
+                        }
+                    }
+                location = emptiest_corner(frame, width, height, LEGEND_INSET_PT, px, py);
+            }
+            axes.style.legend.location = location;
+            if (width > 0.0) boxes.push_back(corner_box(frame, location, width, height, LEGEND_INSET_PT));
+        }
+    }
+    if (axes.style.legend.location == "auto") axes.style.legend.location = "upper right";   // as AxesSpec reads it
+    return boxes;
 }
 
 std::vector<double> column(const std::vector<std::map<std::string, double>>& states, const std::string& key, const Unit& unit) {
@@ -517,12 +626,15 @@ Scene compose(const json& input) {
     Frame frame{axes.x_limits, axes.y_limits, axes.x_log, axes.y_log, size.first, size.second};
     process_parts = placed_state_numbers(process_parts, frame);
     std::vector<Item> lines = isoline_items(spec, theme, curves);
+    std::vector<TakenBox> boxes = place_legend(axes, theme, frame, lines, process_parts, drawn);
     Scene scene;
     scene.axes = axes;
     scene.items = lines;
     std::vector<LabelRequest> requests = label_requests(spec, theme, curves, lines);
     if (!requests.empty()) {
-        std::vector<Item> labels = labels_for(spec, requests, axes, keep_out, size, previous);
+        // Rails keep clear of the legend; the other modes, as before 1.2, do not
+        std::vector<TakenBox> occupied = spec.settings.labels.mode == "rails" ? boxes : std::vector<TakenBox>();
+        std::vector<Item> labels = labels_for(spec, requests, axes, keep_out, size, previous, occupied);
         scene.items.insert(scene.items.end(), labels.begin(), labels.end());
     }
     scene.items.insert(scene.items.end(), process_parts.begin(), process_parts.end());

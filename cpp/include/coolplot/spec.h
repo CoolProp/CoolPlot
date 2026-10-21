@@ -16,7 +16,7 @@ namespace coolplot {
 
 struct LabelSettings
 {
-    std::string mode = "edge";
+    std::string mode = "rails";
     double keep_out_pt = 12.0;
     std::map<std::string, std::vector<std::string>> edges;
     std::vector<std::string> margin_edges = {"top"};

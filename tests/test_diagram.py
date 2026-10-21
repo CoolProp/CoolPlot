@@ -106,6 +106,7 @@ def test_moving_a_cycle_touches_only_the_cycle(diagram):
 
 
 def test_labels_follow_lines(diagram):
+    diagram.settings = diagram.settings.with_(labels={"mode": "edge"})   # the full label, along its line
     diagram.set_lines("T", values=[0.0], labels=True)
     label = diagram.update_scene()["iso/T/273.15/label"]
     assert isinstance(label, Text)

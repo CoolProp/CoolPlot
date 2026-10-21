@@ -98,6 +98,22 @@ TEST_CASE("The saturation curve without lines of constant quality", "[compose]")
     check_case("compose_r290_ts_saturation_only.json");
 }
 
+TEST_CASE("Labels on rails, with the legend in the emptiest corner", "[compose][rails]") {
+    check_case("compose_rails_r290_ph.json");
+    check_case("compose_rails_r290_ph_narrow.json");
+    check_case("compose_rails_r290_ph_outside_legend.json");
+    check_case("compose_rails_r290_ph_anchored.json");
+}
+
+TEST_CASE("Rails keep their labels and families when a state moves", "[compose][rails]") {
+    check_case("compose_rails_r290_ph_moved.json");
+}
+
+TEST_CASE("Rails on psychrometric and Mollier charts", "[compose][rails]") {
+    check_case("compose_rails_psychrometric.json");
+    check_case("compose_rails_mollier.json");
+}
+
 TEST_CASE("Malformed state labels are refused, a null list reads as none", "[compose]") {
     json input = load("compose_psychrometric_labels.json").at("input");
     for (const char* bad : {R"([[2.5, "x"]])", R"([[2, 3]])", R"([[2]])", R"([[2, "a"], [2, "b"]])", R"({"2": "x"})"}) {

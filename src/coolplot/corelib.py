@@ -149,6 +149,11 @@ def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycle
         # labels would be missing from the scene without an error
         raise CoreRefusal("this coolplot_core ({0}) is older than 1.2 and cannot label the states of a "
                           "cycle".format(".".join(str(v) for v in core_version())))
+    if core_version() < (1, 2) and (spec.settings.labels.mode == "rails"
+                                    or spec.settings.look.axes.legend.location == "auto"):
+        # An older core refuses the mode and the location by name; say why
+        raise CoreRefusal("this coolplot_core ({0}) is older than 1.2 and cannot lay out labels on rails or "
+                          "place a legend by itself".format(".".join(str(v) for v in core_version())))
     if spec.diagram.is_mollier and core_version() < (1, 2):
         raise CoreRefusal("this coolplot_core ({0}) is older than 1.2 and cannot compose the Mollier h,x "
                           "chart".format(".".join(str(v) for v in core_version())))

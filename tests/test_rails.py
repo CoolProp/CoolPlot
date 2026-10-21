@@ -188,3 +188,21 @@ def test_texts_of_rails_draw_with_every_backend(tmp_path):
     chart.save(str(tmp_path / "rails.png"))
     assert (tmp_path / "rails.png").stat().st_size > 10000
     assert isinstance(next(t for t in chart.scene if t.role == "isoline_label"), Text)
+
+
+def test_matplotlib_lifts_the_title_above_the_top_rail():
+    pytest.importorskip("matplotlib")
+    import matplotlib
+    from coolplot.render.mpl import MatplotlibRenderer
+    chart = _ph()
+    chart.title = "R290"
+    renderer = chart.draw(MatplotlibRenderer(use_pyplot=False))
+    top = [t for t in chart.scene if t.role == "isoline_label" and not t.clip and t.offset_pt[1] > 0.0]
+    assert top
+    figure = renderer.figure
+    figure.canvas.draw()
+    title = renderer.ax.title.get_window_extent()
+    for t in top:
+        artist = next(a for a in renderer.ax.texts if a.get_text() == t.text and a.get_clip_on() is False)
+        assert artist.get_window_extent().y1 <= title.y0 + 1.0
+    assert renderer._title_pad > matplotlib.rcParams["axes.titlepad"]

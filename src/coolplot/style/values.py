@@ -356,7 +356,7 @@ LEGEND_LOCATIONS = ("upper left", "upper right", "lower left", "lower right", "o
 class LegendStyle(_Normalising):
     """Whether there is a legend, where it goes and how its box looks."""
     visible: bool = True
-    location: str = "outside right"
+    location: str = "auto"   # inside the plot area, in the corner the composer finds emptiest
     background: Optional[str] = "white"
     frame_color: Optional[str] = None
     text: TextStyle = field(default_factory=TextStyle)
