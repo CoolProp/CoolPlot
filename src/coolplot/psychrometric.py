@@ -87,7 +87,9 @@ class PsychrometricChart(Chart):
         if points is not None:
             settings = settings.with_(calc={"points": int(points)})
         p_Pa = 101325.0 if p is None else float(units["p"].to_SI(p))
-        T_range_K = tuple(units["T"].to_SI(T_range).tolist())
+        diagram = DiagramType.parse(STYLES[style])
+        temperature = "Thx" if diagram.is_mollier else "T"   # the Mollier chart is bounded by its temperature scale
+        T_range_K = tuple(units[temperature].to_SI(T_range).tolist())
         for T_K in T_range_K:
             if not within(T_K, HumidAirSpec.T_LIMITS_K):
                 raise ValueError("Temperatures have to lie between {0} and {1} K for HAPropsSI, got {2} K "
@@ -96,8 +98,6 @@ class PsychrometricChart(Chart):
         W_range = tuple(units["W"].to_SI(W_range).tolist())
         if min(W_range) < 0.0:
             raise ValueError("Humidity ratios have to be at least 0, got {0}.".format(W_range))
-        diagram = DiagramType.parse(STYLES[style])
-        temperature = "Thx" if diagram.is_mollier else "T"   # the Mollier chart is bounded by its temperature scale
         spec = DiagramSpec(fluid=HumidAirSpec(p_Pa), diagram=diagram, units=units,
                            limits=Region(((temperature, T_range_K), ("W", W_range))), settings=settings)
         Chart.__init__(self, spec, engine, cache, background, on_ready, workers)

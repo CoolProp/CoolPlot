@@ -144,7 +144,12 @@ class Engine:
         if request.key == "Q":
             return base + (calc.critical_margin, calc.saturation_spacing)
         # The margin decides where saturation states are inserted
-        return base + (domain.tp_box, calc.solver, calc.critical_margin)
+        key = base + (domain.tp_box, calc.solver, calc.critical_margin)
+        if request.key == "T" and spec.diagram.is_mollier:
+            # An isotherm of the Mollier chart ends a little beyond the top of
+            # the humidity ratio range, which the T-p box does not hold
+            key += (dict(domain.ranges_SI).get("W"),)
+        return key
 
     def curve(self, spec: DiagramSpec, domain: Domain, request: CurveRequest) -> Curve:
         """One curve, from the cache or freshly computed."""

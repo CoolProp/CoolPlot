@@ -434,3 +434,61 @@ def test_unit_records_leave_the_mollier_scale_out_unless_it_differs():
     own = UnitSystem("mine", dict(ENGINEERING.units))
     assert own.units["Thx"] == ENGINEERING.units["T"]
     assert PsychrometricChart(style="mollier").spec.to_dict()["units"] == "engineering"
+
+
+def test_mollier_isotherms_are_cached_per_humidity_range():
+    # The isotherms end a little beyond the top of W; a chart with a taller
+    # W axis must not be served the shorter isotherms of another
+    low = PsychrometricChart(T_range=(-10, 45), W_range=(0, 10), style="mollier")
+    low.set_lines("T", [30.0])
+    low.update_scene()
+    high = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25), style="mollier", cache=low.cache)
+    high.set_lines("T", [30.0])
+    x = np.asarray(high.update_scene()["iso/T/303.15"].x)
+    assert np.nanmax(x) > 25.0
+
+
+def test_the_mollier_scale_follows_a_changed_temperature_unit():
+    from coolplot.core.units import ENGINEERING, Unit
+    fahrenheit = ENGINEERING.with_unit("T", Unit("deg F", 1.8, -459.67, "R"))
+    assert fahrenheit["Thx"] == fahrenheit["T"]
+    chart = PsychrometricChart(T_range=(32, 104), W_range=(0, 20), units=fahrenheit, style="mollier")
+    assert chart.spec.limits.range_SI("Thx") == pytest.approx((273.15, 313.15))
+    chart.set_lines("T", [50.0])
+    scene = chart.update_scene()
+    assert scene.axes.y_label.endswith("deg F") and scene["iso/T/283.15/label"].text == "T=50 deg F"
+    kelvin = ENGINEERING.with_unit("Thx", Unit("K")).with_unit("T", Unit("deg F", 1.8, -459.67, "R"))
+    assert kelvin["Thx"].label == "K"   # set on its own, it stays
+
+
+def test_records_of_older_charts_get_the_mollier_temperature_when_read(chart):
+    s = air_state("T", 298.15, "RH", 0.5, P)
+    old = {k: s[k] for k in ("T", "W", "RH", "Twb", "Tdp", "h", "v", "p")}
+    chart.set_lines("RH", [50.0])
+    data = json.loads(json.dumps(chart.spec.to_dict()))
+    data["cycles"] = [{"name": "Old", "states": [[1, {"state": old}], [2, {"props": [["T", 303.15]], "via": "sensible"}]],
+                       "loops": [[1, 2]]}]
+    data["diagram"] = "mollier"
+    data["limits"] = {"bounds": {"Thx": [263.15, 318.15], "W": [0.0, 0.025]}}
+    again = PsychrometricChart.from_spec(DiagramSpec.from_dict(data))
+    first = again.cycle_states("Old")[1]
+    assert first.Thx == pytest.approx(s.Thx)
+    assert "cycle/Old" in {i.group for i in again.update_scene()}
+
+
+def test_mollier_bounds_outside_hapropssi_are_refused():
+    from coolplot.core.limits import Region
+    from coolplot.thermo.humid_air import HumidAir
+    with pytest.raises(ValueError, match="Temperatures have to lie between"):
+        HumidAir().domain(Region((("Thx", (100.0, 700.0)), ("W", (0.0, 0.02)))))
+
+
+def test_inputs_of_the_mollier_scale_are_named_in_errors(mollier):
+    from coolplot.core.errors import PropertyError
+    with pytest.raises(PropertyError) as info:
+        air_state("Thx", 330.0, "W", 0.2, P)   # deep in the fog
+    assert [k for k, _ in info.value.inputs] == ["Thx", "W"]
+    with pytest.raises(ValueError, match="dew point"):
+        mollier.add_cycle("Too cold", [{"T": 25, "RH": 50}, {"Thx": 5, "via": "sensible"}], closed=False)
+    with pytest.raises(ValueError, match="not offered"):
+        psychro_line("T", 300.0, P, T_RANGE)

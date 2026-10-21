@@ -16,7 +16,7 @@ import numpy as np
 
 from ...core.cycle import StateInput
 from ...core.errors import PropertyError
-from ...core.state import StatePoint
+from ...core.state import CP_DRY_AIR_J_KG_K, R0_J_KG, StatePoint, with_mollier_temperature
 from ..process import state_point
 
 # ``fluid`` in the functions below is a property provider: a
@@ -43,7 +43,7 @@ def predecessors(loops: Sequence[Sequence[int]]) -> Dict[int, int]:
 def resolve_state(fluid, given: StateInput, previous: StatePoint = None) -> StatePoint:
     """One state from how it was given; ``previous`` is needed for a via."""
     if given.state is not None:
-        return given.state
+        return with_mollier_temperature(given.state)   # a humid-air state made before 1.2 lacks Thx
     if given.via is None:
         (k1, v1), (k2, v2) = given.props
         return state_point(fluid, k1, v1, k2, v2)
@@ -53,6 +53,15 @@ def resolve_state(fluid, given: StateInput, previous: StatePoint = None) -> Stat
     if given.via == "sensible" and "W" not in fluid.quantities:
         raise ValueError("via 'sensible' keeps the humidity ratio W, which only humid air has; "
                          "a chart of {0} has no humidity ratio.".format(fluid.name))
+    if given.via == "sensible" and key in ("h", "Thx"):
+        # Given by the enthalpy or the Mollier scale: below the enthalpy at the dew point, water condenses
+        h = value if key == "h" else CP_DRY_AIR_J_KG_K * (value - 273.15) + R0_J_KG * previous.W
+        h_dew = state_point(fluid, "T", previous.Tdp, "W", previous.W).h
+        if h < h_dew:
+            raise ValueError("via 'sensible' cannot cool below the dew point {0:.2f} K of the state before "
+                             "(h = {1:.1f} J/kg there, {2:.1f} J/kg asked): water would condense. Give the "
+                             "state off the coil by two properties, e.g. T and RH.".format(
+                                 previous.Tdp, h_dew, h))
     if given.via == "sensible" and key == "T" and value < previous.Tdp:
         raise ValueError("via 'sensible' cannot cool to {0:.2f} K, below the dew point {1:.2f} K of the state "
                          "before: water would condense. Give the state off the coil by two properties, e.g. "

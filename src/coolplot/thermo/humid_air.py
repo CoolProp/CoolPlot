@@ -45,7 +45,7 @@ from ..core.limits import HUMID_AIR_P_LIMITS_PA as P_LIMITS_PA
 from ..core.limits import HUMID_AIR_T_LIMITS_K as T_LIMITS_K
 from ..core.limits import Region, within
 from ..core.quantities import QUANTITIES, quantity_key
-from ..core.state import AIR_STATE_KEYS, StatePoint
+from ..core.state import AIR_STATE_KEYS, CP_DRY_AIR_J_KG_K, R0_J_KG, StatePoint
 from ..core.floats import is_zero
 from .isolines import Curve
 
@@ -57,11 +57,6 @@ LINE_KEYS = tuple(f.key for f in FAMILIES["humid_air"])
 
 #: The families whose range over the visible region a chart needs for round default values.
 _SPAN_KEYS = ("RH", "Twb", "h", "v")
-
-#: The constants of the Mollier h,x chart's skewed axis (DIN 1946): the
-#: enthalpy of evaporation of water at 0 deg C and the specific heat of dry air.
-R0_J_KG = 2500e3
-CP_DRY_AIR_J_KG_K = 1006.0
 
 
 def mollier_temperature(h_J_kg, W):
@@ -80,7 +75,8 @@ def _name(key: str) -> str:
     except KeyError:
         name = None
     if name is None:
-        raise ValueError("Unknown humid-air quantity '{0}', expected one of {1}.".format(key, sorted(HUMID_AIR)))
+        raise ValueError("Unknown humid-air quantity '{0}', expected one of {1}.".format(
+            key, sorted(k for k in HUMID_AIR if QUANTITIES[k].humid_air_name is not None)))
     return name
 
 
@@ -104,12 +100,16 @@ def air_state(key1: str, value1: float, key2: str, value2: float, p_Pa: float = 
         if kW != "W":
             raise ValueError("The temperature scale Thx of the Mollier chart is given together with the "
                              "humidity ratio W, not with '{0}'.".format(kW))
-        return air_state("h", enthalpy_from_mollier(vT, vW), "W", vW, p_Pa)
+        try:
+            return air_state("h", enthalpy_from_mollier(vT, vW), "W", vW, p_Pa)
+        except PropertyError as e:   # said in the quantities that were given, not in h
+            raise PropertyError("humid air ({0:.6g} Pa)".format(p_Pa), (("Thx", vT), ("W", vW)), e.cause) from None
     # The total pressure is the chart's pressure, not one of the two
     # properties: CoolProp would return saturated air without a warning.
     if "p" in (key1, key2):
         raise ValueError("Humid air is at the total pressure of the chart ({0:.6g} Pa); give two of "
-                         "T, W, RH, Twb, Tdp, h and v. A process that keeps the humidity ratio is given "
+                         "T, W, RH, Twb, Tdp, h and v (or Thx and W). A process that keeps the humidity "
+                         "ratio is given "
                          "with via 'sensible'; a via that keeps the pressure does not work here.".format(p_Pa))
     try:
         values = {k: humid_air(k, key1, value1, key2, value2, p_Pa) for k in HUMID_AIR if k != "Thx"}
@@ -319,8 +319,8 @@ def psychro_line(key: str, value: float, p_Pa: float, T_range_K: Tuple[float, fl
     saturation, and lines simply continue. ``n_failed`` of the curve
     counts the points where HAPropsSI found no state.
     """
-    if key not in LINE_KEYS:
-        raise ValueError("Lines of constant '{0}' are not offered, expected one of {1}.".format(key, LINE_KEYS))
+    if key not in _SPAN_KEYS:   # isotherms are lines of the Mollier chart only (HumidAir.line)
+        raise ValueError("Lines of constant '{0}' are not offered, expected one of {1}.".format(key, _SPAN_KEYS))
     T_lo, T_hi = T_range_K
     T = np.linspace(T_lo, T_hi, points)
     W_sat = np.array(_saturation_grid(float(T_lo), float(T_hi), int(points), float(p_Pa)))
@@ -507,15 +507,17 @@ class HumidAir:
         W_range = limits.range_SI("W")
         bounds = dict(limits.bounds)
         Thx_range_K = None
-        if "Thx" in bounds:
-            Thx_range_K = limits.range_SI("Thx")
-            T_range_K = _dry_bulb_span(Thx_range_K, W_range)
-        else:
-            T_range_K = limits.range_SI("T")
-        for T_K in T_range_K:
+        # The bounds as given are checked: the span of a Mollier chart is clamped to the limits
+        given_K = limits.range_SI("Thx") if "Thx" in bounds else limits.range_SI("T")
+        for T_K in given_K:
             if not within(T_K, T_LIMITS_K):
                 raise ValueError("Temperatures have to lie between {0} and {1} K for HAPropsSI, got {2} K.".format(
-                    T_LIMITS_K[0], T_LIMITS_K[1], T_range_K))
+                    T_LIMITS_K[0], T_LIMITS_K[1], given_K))
+        if "Thx" in bounds:
+            Thx_range_K = given_K
+            T_range_K = _dry_bulb_span(Thx_range_K, W_range)
+        else:
+            T_range_K = given_K
         if W_range[0] < 0.0:
             raise ValueError("Humidity ratios have to be at least 0, got {0}.".format(W_range))
         tp_box = (T_range_K[0], T_range_K[1], self.p_Pa, self.p_Pa)

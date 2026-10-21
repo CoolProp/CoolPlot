@@ -114,11 +114,15 @@ def compose_record(spec, domain, curves, plot_size_pt=None, previous_labels=None
 def _drop_mollier_scale(record: dict) -> None:
     """Leave the quantity Thx (1.2) out of a record for an older core, which refuses keys it does not know.
 
-    Humid-air states hold Thx since 1.2, and a unit system may name a unit
-    for it. Only the Mollier chart draws it, and that is refused before.
+    Humid-air states (of cycles and of legacy processes) hold Thx since
+    1.2, and a unit system may name a unit for it. Only the Mollier chart
+    draws it, and that is refused before.
     """
     for cycle in record["cycles"]:
         for state in list(cycle["states"].values()) + [s for chain in cycle["chains"] for s in chain]:
+            state.pop("Thx", None)
+    for process in record["spec"].get("processes", ()):
+        for state in list(process.get("line_states", ())) + list(process.get("marker_states", ())):
             state.pop("Thx", None)
     units = record["spec"]["units"]
     if isinstance(units, dict):

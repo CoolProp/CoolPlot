@@ -107,7 +107,10 @@ class UnitSystem:
     def with_unit(self, key: str, unit: Unit, name: str = None) -> "UnitSystem":
         """Return a copy where one quantity uses a different unit."""
         units = dict(self.units)
-        units[quantity_key(key)] = unit
+        key = quantity_key(key)
+        units[key] = unit
+        if key == "T" and self.units.get("Thx") == self.units.get("T"):
+            units["Thx"] = unit   # the Mollier temperature scale follows the temperature, as it did
         return replace(self, name=name or self.name + "*", units=units)
 
 

@@ -46,7 +46,7 @@ from .compose import compose
 from .core.cycle import Cycle, StateInput
 from .core.errors import PropertyError
 from .core.quantities import quantity_key
-from .core.state import StatePoint
+from .core.state import StatePoint, with_mollier_temperature
 from .core.units import get_unit_system
 from .engine import BackgroundEngine, CurveCache, Engine, plan
 from .scene import Scene
@@ -137,10 +137,9 @@ def check_state(state: StatePoint, provider) -> StatePoint:
     """
     if "v" not in state and "rho" in state and provider.kind == "fluid" and state.rho > 0.0:
         state = StatePoint(v=1.0 / state.rho, **state.to_dict())
-    if "Thx" not in state and provider.kind == "humid_air" and "h" in state and "W" in state:
-        # A humid-air state saved before 1.2 lacks the temperature scale of the Mollier chart
-        from .thermo.humid_air import mollier_temperature
-        state = StatePoint(Thx=float(mollier_temperature(state.h, state.W)), **state.to_dict())
+    if provider.kind == "humid_air":
+        # A humid-air state made before 1.2 lacks the temperature scale of the Mollier chart
+        state = with_mollier_temperature(state)
     missing = [k for k in provider.quantities if k not in state]
     if missing:
         raise ValueError("The state {0} is not a state of {1}: it lacks {2}.".format(state, provider.name, missing))
@@ -389,7 +388,8 @@ class Chart:
         key : str
             Quantity held constant: "T", "p", "h", "s", "rho", "u" or "Q"
             in a property diagram; "RH", "Twb", "h" or "v" in a
-            psychrometric chart.
+            psychrometric chart, and also "T" (isotherms) in a Mollier
+            h,x chart.
         values : sequence, optional
             Explicit constant values, in the chart's units or in ``units``.
         num : int, optional
