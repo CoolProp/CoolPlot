@@ -98,7 +98,9 @@ def test_outdated_work_is_cancelled():
         second = set(d.engine._jobs)
         # The queued work for the old isotherms is gone, the new one queued
         # A cache key is (fluid, fingerprint, diagram, key, value_SI, ...)
-        assert not any(k[3] == "T" and any(same_number(k[4], v) for v in (253.15, 293.15)) for k in second)
+        T_old_K = {k[4] for k in first if k[3] == "T"}
+        assert len(T_old_K) == 3    # -20, 0 and 20 deg C
+        assert not any(k[3] == "T" and any(same_number(k[4], v) for v in T_old_K) for k in second)
         assert first - second
     finally:
         gate.set()
