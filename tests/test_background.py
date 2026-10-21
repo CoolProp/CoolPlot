@@ -10,6 +10,7 @@ import pytest
 pytest.importorskip("CoolProp")
 
 from coolplot import PropertyDiagram  # noqa: E402
+from coolplot.core.floats import same_number  # noqa: E402
 from coolplot.engine import BackgroundEngine  # noqa: E402
 from coolplot.engine.planning import plan  # noqa: E402
 from coolplot.render.svg import SvgRenderer  # noqa: E402
@@ -96,7 +97,10 @@ def test_outdated_work_is_cancelled():
         d.update_scene()
         second = set(d.engine._jobs)
         # The queued work for the old isotherms is gone, the new one queued
-        assert not any(k[3] in (253.15, 293.15) and k[2] == "T" for k in second)
+        # A cache key is (fluid, fingerprint, diagram, key, value_SI, ...)
+        T_old_K = {k[4] for k in first if k[3] == "T"}
+        assert len(T_old_K) == 3    # -20, 0 and 20 deg C
+        assert not any(k[3] == "T" and any(same_number(k[4], v) for v in T_old_K) for k in second)
         assert first - second
     finally:
         gate.set()

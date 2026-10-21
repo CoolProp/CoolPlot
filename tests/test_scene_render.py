@@ -9,6 +9,7 @@ from coolplot.render.base import Renderer
 from coolplot.render.svg import SvgRenderer
 from coolplot.render.ticks import ticks as _ticks
 from coolplot.scene import AxesSpec, Line, LineStyle, Markers, Scene, Text, items_equal
+from coolplot.core.floats import same_numbers
 from coolplot.core.units import ENGINEERING, SI, Unit
 
 
@@ -156,7 +157,7 @@ def test_scene_validation():
         Line(id="a", x=[0.0], y=[0.0], z_order=-1.0)
     with pytest.raises(ValueError):
         AxesSpec(x_limits=(0.0, float("nan")))
-    assert AxesSpec(x_limits=(10.0, 0.0)).x_limits == (0.0, 10.0)   # stored ascending
+    assert same_numbers(AxesSpec(x_limits=(10.0, 0.0)).x_limits, (0.0, 10.0))   # stored ascending
 
 
 def test_svg_survives_hostile_text_and_long_legends():

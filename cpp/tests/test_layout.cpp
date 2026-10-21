@@ -7,6 +7,7 @@
 #include "coolplot/layout.h"
 
 using namespace coolplot;
+using Catch::Matchers::WithinULP;
 
 namespace {
 
@@ -104,7 +105,7 @@ TEST_CASE("The keep-out zone around a process and unconnected markers", "[layout
     // Without fallbacks the slid-in spot next to the edge is still allowed
     std::vector<Item> strict = place_edge_labels(requests, f, {markers}, 12.0, edges, {}, false);
     REQUIRE(strict.size() == 1);
-    CHECK(strict[0].text_x == with_markers[0].text_x);
+    CHECK_THAT(strict[0].text_x, WithinULP(with_markers[0].text_x, 0));
 }
 
 TEST_CASE("Margin labels sit outside and do not collide", "[layout]") {
@@ -120,10 +121,10 @@ TEST_CASE("Margin labels sit outside and do not collide", "[layout]") {
     for (const Item& t : labels) {
         CHECK_FALSE(t.clip);
         CHECK(t.text_y == Catch::Approx(10.0));
-        CHECK(t.offset_y_pt == 3.0);
+        CHECK_THAT(t.offset_y_pt, WithinULP(3.0, 0));
         CHECK(t.text_style.h_align == "left");
         CHECK(t.has_direction);
-        CHECK(t.direction_y == 1.0);
+        CHECK_THAT(t.direction_y, WithinULP(1.0, 0));
     }
     CHECK(place_margin_labels(requests, f, {"left"}).empty());
 }
@@ -156,6 +157,6 @@ TEST_CASE("State numbers move clear of each other and of other markers", "[layou
     std::set<std::pair<double, double>> corners;
     for (const Item& t : placed) corners.insert({t.offset_x_pt, t.offset_y_pt});
     CHECK(corners.size() == 3);
-    CHECK(placed[0].offset_x_pt == 4.5);
+    CHECK_THAT(placed[0].offset_x_pt, WithinULP(4.5, 0));
     CHECK(placed[0].text_style.h_align == "left");
 }

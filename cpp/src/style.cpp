@@ -111,7 +111,7 @@ std::pair<Color, double> parse_color(const json& value) {
 
 Color opaque_color(const json& value, const std::string& owner, const std::string& field) {
     std::pair<Color, double> parsed = parse_color(value);
-    if (!parsed.first.present || parsed.second == 0.0) return Color::none();
+    if (!parsed.first.present || is_zero(parsed.second)) return Color::none();
     if (parsed.second < 1.0)
         throw Error(owner + ": " + field + " cannot be partly transparent (" + value.dump() + "); this field has no alpha of its own.");
     return parsed.first;
@@ -253,8 +253,8 @@ void LineStyle::validate() const {
 }
 
 bool LineStyle::operator==(const LineStyle& o) const {
-    return color == o.color && width_pt == o.width_pt && dash == o.dash && alpha == o.alpha && cap == o.cap && join == o.join
-           && casing_color == o.casing_color && casing_width_pt == o.casing_width_pt;
+    return color == o.color && same_number(width_pt, o.width_pt) && dash == o.dash && same_number(alpha, o.alpha) && cap == o.cap
+           && join == o.join && casing_color == o.casing_color && same_number(casing_width_pt, o.casing_width_pt);
 }
 
 json LineStyle::to_json() const {
@@ -298,8 +298,8 @@ void MarkerStyle::validate() const {
 }
 
 bool MarkerStyle::operator==(const MarkerStyle& o) const {
-    return shape == o.shape && size_pt == o.size_pt && face_color == o.face_color && edge_color == o.edge_color
-           && edge_width_pt == o.edge_width_pt && alpha == o.alpha;
+    return shape == o.shape && same_number(size_pt, o.size_pt) && face_color == o.face_color && edge_color == o.edge_color
+           && same_number(edge_width_pt, o.edge_width_pt) && same_number(alpha, o.alpha);
 }
 
 json MarkerStyle::to_json() const {
@@ -336,7 +336,7 @@ void Font::validate() const {
 }
 
 bool Font::operator==(const Font& o) const {
-    return family == o.family && size_pt == o.size_pt && weight == o.weight && style == o.style && files == o.files;
+    return family == o.family && same_number(size_pt, o.size_pt) && weight == o.weight && style == o.style && files == o.files;
 }
 
 json Font::to_json() const {
@@ -364,8 +364,8 @@ void TextStyle::validate() const {
 }
 
 bool TextStyle::operator==(const TextStyle& o) const {
-    return font == o.font && color == o.color && alpha == o.alpha && h_align == o.h_align && v_align == o.v_align
-           && halo_color == o.halo_color && halo_width_pt == o.halo_width_pt;
+    return font == o.font && color == o.color && same_number(alpha, o.alpha) && h_align == o.h_align && v_align == o.v_align
+           && halo_color == o.halo_color && same_number(halo_width_pt, o.halo_width_pt);
 }
 
 json TextStyle::to_json() const {
@@ -446,8 +446,8 @@ void AxesStyle::validate() const {
 
 bool AxesStyle::operator==(const AxesStyle& o) const {
     return background == o.background && figure_background == o.figure_background && frame_color == o.frame_color
-           && frame_width_pt == o.frame_width_pt && tick_color == o.tick_color && tick_length_pt == o.tick_length_pt
-           && tick_width_pt == o.tick_width_pt && tick_direction == o.tick_direction && tick_label == o.tick_label
+           && same_number(frame_width_pt, o.frame_width_pt) && tick_color == o.tick_color && same_number(tick_length_pt, o.tick_length_pt)
+           && same_number(tick_width_pt, o.tick_width_pt) && tick_direction == o.tick_direction && tick_label == o.tick_label
            && axis_label == o.axis_label && title == o.title && has_grid_major == o.has_grid_major
            && (!has_grid_major || grid_major == o.grid_major) && has_grid_minor == o.has_grid_minor
            && (!has_grid_minor || grid_minor == o.grid_minor) && legend == o.legend;
@@ -561,7 +561,7 @@ TextStyle scaled_text(TextStyle style, double factor) {
 }  // namespace
 
 Theme Theme::scaled(double factor) const {
-    if (factor == 1.0) return *this;
+    if (same_number(factor, 1.0)) return *this;
     Theme t = *this;
     t.isoline_label = scaled_text(isoline_label, factor);
     t.state_number = scaled_text(state_number, factor);

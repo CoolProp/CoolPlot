@@ -44,7 +44,7 @@ std::string strip_zeros(std::string text) {
 std::string format_number(double value, int digits) {
     if (std::isnan(value)) return "nan";
     if (std::isinf(value)) return value > 0 ? "inf" : "-inf";
-    if (value == 0.0) return "0";
+    if (is_zero(value)) return "0";
     // Round to the significant digits first, as Python's "{:.{digits}g}" does
     double rounded = parse_number(printf_string("%.*g", digits, value));
     if (!std::isfinite(rounded)) rounded = value;  // rounding up the largest numbers overflows
@@ -69,7 +69,7 @@ std::string repr_number(double value) {
     std::string text;
     for (int precision = 1; precision <= 17; ++precision) {
         text = printf_string("%.*g", precision, value);
-        if (parse_number(text) == value) break;
+        if (same_number(parse_number(text), value)) break;  // reads back to the same number
     }
     // Python writes exponents with at least two digits and keeps ".0" on integers
     size_t e = text.find('e');
@@ -80,7 +80,7 @@ std::string repr_number(double value) {
         std::snprintf(buffer, sizeof(buffer), "e%c%02d", exponent < 0 ? '-' : '+', std::abs(exponent));
         // Python switches to exponent form only below 1e-4 or from 1e16; inside
         // that range it writes the decimals out
-        if (value != 0.0 && std::fabs(value) >= 1e-4 && std::fabs(value) < 1e16) {
+        if (!is_zero(value) && std::fabs(value) >= 1e-4 && std::fabs(value) < 1e16) {
             int decimals = std::max(0, 16 - exponent);
             std::string plain = strip_zeros(printf_string("%.*f", decimals, value));
             if (plain.find('.') == std::string::npos) plain += ".0";
@@ -303,7 +303,7 @@ json UnitSystem::to_json() const {
         for (const auto& kv : units) {
             auto other = preset->second.units.find(kv.first);
             same = same && other != preset->second.units.end() && other->second.label == kv.second.label
-                   && other->second.scale == kv.second.scale && other->second.offset == kv.second.offset
+                   && same_number(other->second.scale, kv.second.scale) && same_number(other->second.offset, kv.second.offset)
                    && other->second.difference_label == kv.second.difference_label;
         }
         if (same) return name;
@@ -349,7 +349,7 @@ bool Family::has_line(double value_SI) const {
 }
 
 bool Family::is_boundary_value(double value_SI) const {
-    return std::find(boundary.begin(), boundary.end(), value_SI) != boundary.end();
+    return std::any_of(boundary.begin(), boundary.end(), [value_SI](double b) { return same_number(b, value_SI); });
 }
 
 namespace {

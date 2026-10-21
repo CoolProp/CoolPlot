@@ -24,6 +24,7 @@ from CoolProp import CoolProp as CP
 from ..core.errors import PropertyError
 from ..core.quantities import get_quantity, quantity_key
 from ..core.state import STATE_KEYS, StatePoint
+from ..core.floats import is_zero
 
 
 @lru_cache(maxsize=None)
@@ -484,8 +485,9 @@ class Fluid:
             h = s = float("nan")
             try:
                 probe = build_state(self._model)
-                T_K = (self.T_max_K or 300.0) * (1.0 - 1e-6)
-                p_Pa = max(self.p_min_Pa or 0.0, 1e5)
+                T_max_K = self.T_max_K
+                T_K = (300.0 if T_max_K is None or is_zero(T_max_K) else T_max_K) * (1.0 - 1e-6)
+                p_Pa = max(0.0 if self.p_min_Pa is None else self.p_min_Pa, 1e5)
                 probe.update(CoolProp.PT_INPUTS, p_Pa, T_K)
                 h, s = probe.hmass(), probe.smass()
             except Exception:

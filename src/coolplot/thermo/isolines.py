@@ -48,7 +48,7 @@ from ..core.diagram_type import DiagramType
 from .fluid import Fluid, parameter_index
 from .limits import property_range_SI
 from .stepping import Metric, Sample, trace
-from .floats import is_zero as _is_zero, sign_of as _sign_of
+from ..core.floats import is_zero as _is_zero, sign_of as _sign_of
 from .tracer import IsoLineTracer, _phases_are_distinct
 
 
