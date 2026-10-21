@@ -259,6 +259,21 @@ def test_dome_ends_with_the_same_sweep_value_are_ordered_by_quality():
     assert _dome_end_comes_first(300.0, 1.0, 300.001, 0.0, True)        # distinct sweep values decide
 
 
+def test_sign_tests_and_cache_keys_without_float_equality():
+    from coolplot.thermo.floats import is_zero, same_bits, sign_of
+    assert [sign_of(v) for v in (-2.0, 0.0, -0.0, 3.0)] == [-1, 0, 0, 1]
+    assert sign_of(np.float64(-1e-300)) == -1          # numpy scalars from the envelope arrays
+    assert same_bits(300.0, 300.0) and same_bits(np.float64(300.0), 300.0)
+    assert not same_bits(300.0, np.nextafter(300.0, 400.0))
+    assert not same_bits(0.0, -0.0)
+    assert same_bits(float("nan"), float("nan"))      # the same failed input is the same cache entry
+    assert is_zero(0.0) and is_zero(-0.0) and is_zero(np.float64(0.0))
+    assert not is_zero(5e-324) and not is_zero(float("nan")) and not is_zero(float("inf"))
+    from coolplot.thermo.native import _same_number
+    assert _same_number(0.0, -0.0) and _same_number(0.5, 0.5) and not _same_number(0.5, np.nextafter(0.5, 1.0))
+    assert not _same_number(float("nan"), float("nan"))       # as with ==: NaN is not the default
+
+
 def test_a_state_whose_saturated_outputs_fail_is_not_two_phases():
     from coolplot.thermo.tracer import _phases_are_distinct
 

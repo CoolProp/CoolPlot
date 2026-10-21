@@ -48,6 +48,7 @@ from ..core.diagram_type import DiagramType
 from .fluid import Fluid, parameter_index
 from .limits import property_range_SI
 from .stepping import Metric, Sample, trace
+from .floats import is_zero as _is_zero, sign_of as _sign_of
 from .tracer import IsoLineTracer, _phases_are_distinct
 
 
@@ -218,7 +219,7 @@ class _LineSolver:
         # the values in the order the pair needs them, so a zero in first
         # place means the constant goes first.
         self.pair, first, _ = CP.generate_update_pair(iso_index, 0.0, sweep_index, 1.0)
-        self.constant_first = (first == 0.0)
+        self.constant_first = first < 0.5    # the markers are 0 and 1
         inputs = (iso_index, sweep_index) if self.constant_first else (sweep_index, iso_index)
         self.out = (parameter_index(diagram.x), parameter_index(diagram.y), CoolProp.iT, CoolProp.iP)
         self.tracer = None
@@ -429,11 +430,13 @@ class _Line:
         envelope = self.fluid.phase_envelope()
         if envelope is None:
             return []
+        # The first crossing on each side of the envelope, keyed by side
+        # (False: bubble, flag Q = 0; True: dew, flag Q = 1)
         found = {}
         for w, q, sample in _envelope_crossings(envelope, self.diagram, self.iso_key, self.value_SI,
                                                 self.sweep.key, self.metric):
-            found.setdefault(q, (w, q, sample))
-        return [found[q] for q in (0.0, 1.0) if q in found]
+            found.setdefault(bool(q > 0.5), (w, q, sample))
+        return [found[dew] for dew in (False, True) if dew in found]
 
     def _quality_branch(self, q_a: float, sample_a: Sample, q_b: float, sample_b: Sample):
         """The part of an isotherm or isobar inside the dome, stepped in vapour quality."""
@@ -585,9 +588,9 @@ def _solve_crossing(fluid, diagram, iso_key, value_SI, sweep_key, a, b, quality,
         return (w, quality, Sample(found[1], found[2], _inside(metric, found[1], found[2]), None,
                                    (w, found[3], found[4], quality, found[5], "flash")))
     fa, fb = ends[0][0] - value_SI, ends[1][0] - value_SI
-    if fa == 0.0:
+    if _is_zero(fa):
         return result(a, ends[0])
-    if fb == 0.0:
+    if _is_zero(fb):
         return result(b, ends[1])
     if fa * fb > 0.0:
         return None
@@ -597,7 +600,7 @@ def _solve_crossing(fluid, diagram, iso_key, value_SI, sweep_key, a, b, quality,
         if state is None:
             return None
         fc = state[0] - value_SI
-        if fc == 0.0 or abs(b - a) <= 1e-12 * abs(c):
+        if _is_zero(fc) or abs(b - a) <= 1e-12 * abs(c):
             return result(c, state)
         if fc * fb < 0.0:
             a, fa = b, fb
@@ -628,9 +631,13 @@ def _envelope_crossings(envelope, diagram, iso_key, value_SI, sweep_key, metric,
     f = k - value_SI
     for i in range(len(f) - 1):
         a, b = f[i], f[i + 1]
-        if not (np.isfinite(a) and np.isfinite(b)) or a * b > 0.0 or a == b:
+        if not (np.isfinite(a) and np.isfinite(b)):
             continue
-        if b == 0.0 and i + 1 < len(f) - 1:
+        # No crossing when both residuals have the same sign or both are zero
+        sa, sb = _sign_of(a), _sign_of(b)
+        if sa * sb > 0 or (sa == 0 and sb == 0):
+            continue
+        if sb == 0 and i + 1 < len(f) - 1:
             continue   # an exact hit on a point is counted once, by the next pair
         t = a / (a - b)
         w, x, y, T_K, p_Pa, rho = [v[i] + t * (v[i + 1] - v[i]) for v in columns]
@@ -687,7 +694,7 @@ def compute_quality_line(fluid: Fluid, diagram: DiagramType, quality: float, poi
         raise ValueError("{0} has no two-phase region (CoolProp provides no critical point for it), so lines of "
                          "constant quality cannot be drawn.".format(fluid.name))
     if not fluid.is_pure:
-        if quality in (0.0, 1.0):
+        if quality <= 0.0 or quality >= 1.0:   # the bubble or the dew line (quality is in [0, 1])
             curve = _envelope_line(fluid, diagram, quality)
             if curve is not None:
                 return curve
@@ -794,11 +801,11 @@ def _envelope_line(fluid: Fluid, diagram: DiagramType, quality: float):
     if envelope is None:
         return None
     Q = envelope.Q
-    dew = np.flatnonzero(Q == 1.0)
-    bubble = np.flatnonzero(Q == 0.0)
+    dew = np.flatnonzero(Q > 0.5)        # each point is flagged Q = 0 (bubble) or Q = 1 (dew)
+    bubble = np.flatnonzero(Q < 0.5)
     if len(dew) < 2 or len(bubble) < 2:
         return None
-    if quality == 1.0:
+    if quality >= 1.0:                   # the caller passes quality 0 or 1
         rows = dew
     elif dew[-1] + 1 == bubble[0]:
         # The usual trace order: up the dew line, down the bubble line. The

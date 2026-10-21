@@ -33,6 +33,7 @@ from ..core.limits import HUMID_AIR_T_LIMITS_K as T_LIMITS_K
 from ..core.limits import Region, within
 from ..core.quantities import QUANTITIES, quantity_key
 from ..core.state import AIR_STATE_KEYS, StatePoint
+from .floats import is_zero
 from .isolines import Curve
 
 #: Quantities of humid air that HAPropsSI computes, by CoolPlot key.
@@ -133,7 +134,10 @@ def _W_by_search(key: str, value: float, T_K: float, p_Pa: float, W_sat: float):
         tolerance = 1e-7 * max(abs(value), 1.0)
         side = 0
         for _ in range(_SEARCH_ITERATIONS):
-            c = (a * f_b - b * f_a) / (f_b - f_a) if f_b != f_a else 0.5 * (a + b)
+            # a regula falsi step, or the midpoint when the residuals are the same (both
+            # zero: f_a <= 0 <= f_b holds throughout)
+            denominator = f_b - f_a
+            c = (a * f_b - b * f_a) / denominator if not is_zero(denominator) else 0.5 * (a + b)
             f_c = excess(c)
             if abs(f_c) <= tolerance or b - a < 1e-9:
                 return c, "ok"

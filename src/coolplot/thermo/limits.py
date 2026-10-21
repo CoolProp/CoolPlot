@@ -12,6 +12,7 @@ window in the scene and does not need new property calculations.
 """
 from __future__ import annotations
 
+import math
 from typing import Tuple
 
 import numpy as np
@@ -42,7 +43,7 @@ def resolve_tp_box(fluid: Fluid, limits: TpLimits, margin: float = 1e-7) -> Tupl
             value = bound.factor * saturation[key][end]
         else:
             value = float(bound)
-        if value != value:
+        if math.isnan(value):
             # A NaN limit, or a NaN factor of a relative one, would end in a
             # confusing "empty plotting region" below
             raise ValueError("The {0} limit of the plotting region is not a number; give a value, or None for "

@@ -15,12 +15,15 @@ falls back to a plain flash for that point.
 """
 from __future__ import annotations
 
+import sys
+
 import numpy as np
 
 import CoolProp
 from CoolProp.CoolProp import PropsSI
 
 from .fluid import build_state
+from .floats import is_zero as _is_zero, same_bits as _same_bits
 
 # The tracer needs CoolProp 8 (pyproject.toml): CoolProp 6 and 7 abort the
 # whole Python process (a C++ abort, not an exception) in some of the
@@ -505,7 +508,7 @@ class IsoLineTracer(object):
         target_index = self._i2 if self._sat_index == self._i1 else self._i1
         target = targets[target_index]
 
-        if self._sat_value is None or sat_value != self._sat_value:
+        if self._sat_value is None or not _same_bits(sat_value, self._sat_value):
             # Record the outcome and the value it belongs to together.  Storing
             # the value first and letting the build raise past it would leave
             # the previous outcome -- None, meaning "no dome, nothing to
@@ -622,7 +625,7 @@ class IsoLineTracer(object):
             slope = self._sp.first_partial_deriv(target_index, CoolProp.iDmolar, self._sat_index)
         except Exception:
             return None
-        if not np.isfinite(slope) or slope == 0.0:
+        if not np.isfinite(slope) or _is_zero(slope):
             return None
         return slope
 
@@ -701,7 +704,8 @@ class IsoLineTracer(object):
             f1 = self._quality_residual(q1, bracket)
             if abs(f1) <= tolerance:
                 return q1
-            if f1 == f0:
+            # No usable slope when the residual did not change (to below the smallest normal float)
+            if not abs(f1 - f0) >= sys.float_info.min:
                 return None
             slope = (f1 - f0) / (q1 - q0)
             q0, f0 = q1, f1
@@ -727,7 +731,7 @@ class IsoLineTracer(object):
             else:
                 fa *= 0.5  # Illinois: stops the retained endpoint from stalling
             b, fb = quality, fq
-            if fq == 0.0 or abs(b - a) < self.QUALITY_XTOL:
+            if _is_zero(fq) or abs(b - a) < self.QUALITY_XTOL:
                 break
         else:
             raise ValueError("The quality solver did not converge.")
@@ -810,7 +814,7 @@ class IsoLineTracer(object):
         """The Newton step (dT, drhomolar) that solves the linearised system"""
         (f1, f2), ((J11, J12), (J21, J22)) = residual, jacobian
         det = J11 * J22 - J12 * J21
-        if not np.isfinite(det) or det == 0.0:
+        if not np.isfinite(det) or _is_zero(det):
             raise ValueError("The Newton iteration hit a singular Jacobian.")
         dT = (J12 * f2 - J22 * f1) / det
         dD = (J21 * f1 - J11 * f2) / det
@@ -895,8 +899,10 @@ class IsoLineTracer(object):
         rho = np.asarray(data.rhomolar_vap, dtype=float)
         Q = np.asarray(data.Q, dtype=float)
         tables = []
-        for quality in (1.0, 0.0):
-            rows = np.flatnonzero((Q == quality) & np.isfinite(T_K) & np.isfinite(rho))
+        # The envelope flags each point with Q = 1 or Q = 0: first the points
+        # flagged 1, then those flagged 0, told apart by side, not by value
+        for flagged_one in (True, False):
+            rows = np.flatnonzero(((Q > 0.5) == flagged_one) & np.isfinite(T_K) & np.isfinite(rho))
             order = rows[np.argsort(T_K[rows])]
             tables.append((T_K[order], rho[order]))
         return tables

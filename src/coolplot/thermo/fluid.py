@@ -612,7 +612,7 @@ class PhaseEnvelope:
         self._values = {"T": _read_only(data.T), "p": _read_only(data.p), "Q": self.Q,
                         "rho": _read_only(rhomolar * work.molar_mass())}
         self._rhomolar = rhomolar
-        if not (np.any(self.Q == 0.0) and np.any(self.Q == 1.0)):
+        if not (np.any(self.Q < 0.5) and np.any(self.Q > 0.5)):   # flags: Q = 0 bubble, Q = 1 dew
             raise ValueError("The phase envelope of {0} has no bubble or no dew line.".format(fluid.name))
         self._hot = int(np.argmax(self._values["T"]))
         rho_liq, rho_vap = float(data.rhomolar_liq[self._hot]), float(rhomolar[self._hot])
@@ -641,7 +641,7 @@ class PhaseEnvelope:
             index = parameter_index(key)
             T_K = self._values["T"]
             for i in range(len(self)):
-                phase = CoolProp.iphase_liquid if self.Q[i] == 0.0 else CoolProp.iphase_gas
+                phase = CoolProp.iphase_liquid if self.Q[i] < 0.5 else CoolProp.iphase_gas   # flag Q = 0: bubble side
                 try:
                     self._work.specify_phase(phase)
                     self._work.update(CoolProp.DmolarT_INPUTS, self._rhomolar[i], T_K[i])
