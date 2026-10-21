@@ -14,15 +14,16 @@ diagram.settings = diagram.settings.with_(labels={"mode": "edge"})
 
 On rails each family takes the row where most of its labels fit, and
 when not all fit it drops whole levels of values: a family stepped by 10
-keeps the multiples of 100 longest, then those of 50 and 20, so evenly
-spaced values stay evenly spaced. Lines that leave through another edge
+keeps the multiples of 100 longest, then those of 50 and 20, so the row
+stays regular. Lines that leave through another edge
 get a second row; lines that end inside the chart get a label near
 their end. The legend reads "Temperature T / deg C", or "Specific
 entropy s at T_sat / deg C" for lines labelled by their saturation
 states. With legend
-location "auto" (the default) it sits inside the plot area, in a corner
-where it covers no cycle and the fewest lines; where no corner is free,
-or on a small plot area, it goes outside on the right.
+location "auto" (the default) it sits inside the plot area, in the corner
+where it covers the fewest cycle points, then the fewest lines; on a small
+page, where it would cover more than a quarter of the plot area, it goes
+outside on the right.
 
 In rails and edge mode every cycle keeps a zone of `keep_out_pt` points
 free of labels, no two labels overlap, and a label that does not fit is

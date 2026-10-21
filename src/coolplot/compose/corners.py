@@ -7,12 +7,13 @@ branding each take one corner. Either may be set to a corner or left to
 automatic one never takes the corner of the other:
 
 1. A corner that is set is kept (two set to the same corner share it).
-2. An automatic legend takes a corner where its box covers no point of a
-   cycle or process, and of those the one that covers the fewest points
-   of the isolines, among the corners the badge does not take. Where no
-   such corner is left, or where the legend would cover more than
-   :data:`MAX_LEGEND_SHARE` of the plot area, it goes outside on the
-   right instead, as before 1.2.
+2. An automatic legend larger than :data:`MAX_LEGEND_SHARE` of the
+   page's plot area (``default_plot_size_pt``, so the decision does not
+   depend on the plot area the last layout left) goes outside on the
+   right, as before 1.2. Otherwise it takes, among the corners the badge
+   does not take, the one whose box covers the fewest points of cycles
+   and processes, then of isolines: a corner clear of every cycle when
+   there is one.
 3. An automatic badge takes the corner, among those left, whose box
    covers the fewest points of cycles and processes, then of isolines.
 
@@ -30,7 +31,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from .layout import Box, Frame
+from .layout import Box, Frame, keep_out_points
 
 #: Corners tried by "auto", best first when several are equally free.
 AUTO_ORDER = ("lower right", "upper left", "upper right", "lower left")
@@ -87,19 +88,23 @@ def corner_counts(frame: Frame, width: float, height: float, inset: float, lines
     return out
 
 
-def auto_legend(frame: Frame, width: float, height: float, lines, overlays, taken: Sequence[str] = ()) -> str:
-    """The corner of an automatic legend, or "outside right" where none is free; see the module docstring."""
-    if not frame.usable or width * height > MAX_LEGEND_SHARE * frame.width_pt * frame.height_pt:
+def auto_legend(frame: Frame, width: float, height: float, lines, overlays, taken: Sequence[str] = (),
+                page_area_pt2: float = None) -> str:
+    """The corner of an automatic legend, or "outside right" when it is too large; see the module docstring.
+
+    ``page_area_pt2`` is the area of the page's plot area; None uses the frame.
+    """
+    area = frame.width_pt * frame.height_pt if page_area_pt2 is None else page_area_pt2
+    if width * height > MAX_LEGEND_SHARE * area:
         return "outside right"
-    free = [(n_lines, corner) for n_overlays, n_lines, corner in
-            corner_counts(frame, width, height, LEGEND_INSET_PT, lines, overlays, taken) if n_overlays == 0]
-    if not free:
-        return "outside right"
-    best = free[0]
-    for candidate in free[1:]:
-        if candidate[0] < best[0]:
+    counts = corner_counts(frame, width, height, LEGEND_INSET_PT, lines, overlays, taken)
+    if not frame.usable:
+        return counts[0][2]
+    best = counts[0]
+    for candidate in counts[1:]:
+        if candidate[:2] < best[:2]:
             best = candidate
-    return best[1]
+    return best[2]
 
 
 def auto_badge(frame: Frame, width: float, height: float, inset: float, lines, overlays,
@@ -118,24 +123,28 @@ def auto_badge(frame: Frame, width: float, height: float, inset: float, lines, o
 
 
 def place_corners(frame: Frame, lines, overlays, legend: Optional[Tuple[str, float, float]],
-                  badge: Optional[Tuple[str, float, float, float]]) -> Tuple[Optional[str], Optional[str], List[Box]]:
+                  badge: Optional[Tuple[str, float, float, float]],
+                  page_area_pt2: float = None) -> Tuple[Optional[str], Optional[str], List[Box]]:
     """(legend location, badge corner, boxes) for a legend inside the plot area and a badge.
 
-    ``lines`` and ``overlays`` are (x, y) display-unit lines: the isolines,
-    and the cycles and processes (lines and markers). ``legend`` is
-    (location, width, height) or None when there is no legend inside the
-    plot area; ``badge`` is (location, width, height, inset) or None. A
-    location is a corner or "auto"; an automatic legend may come back as
-    "outside right". The boxes are those of the legend inside the plot
+    ``lines`` are (x, y) display-unit isolines; ``overlays`` the cycles and
+    processes as for :func:`coolplot.compose.layout.keep_out_points`,
+    (x, y) for a line and (x, y, False) for markers, so that a straight
+    segment counts along its whole length. ``legend`` is (location, width,
+    height) or None when there is no legend inside the plot area;
+    ``badge`` is (location, width, height, inset) or None. A location is a
+    corner or "auto"; an automatic legend may come back as "outside
+    right". ``page_area_pt2`` is the area of the page's plot area, see
+    :func:`auto_legend`. The boxes are those of the legend inside the plot
     area and of the badge, for the label layout.
     """
     line_points = drawn_points(frame, lines)
-    overlay_points = drawn_points(frame, overlays)
+    overlay_points = keep_out_points(frame, overlays) if frame.usable else (np.array([]), np.array([]))
     legend_at = legend[0] if legend is not None else None
     badge_at = badge[0] if badge is not None else None
     if legend_at == "auto":
         legend_at = auto_legend(frame, legend[1], legend[2], line_points, overlay_points,
-                                () if badge_at in (None, "auto") else (badge_at,))
+                                () if badge_at in (None, "auto") else (badge_at,), page_area_pt2)
     if badge_at == "auto":
         badge_at = auto_badge(frame, badge[1], badge[2], badge[3], line_points, overlay_points,
                               () if legend_at in (None, "outside right") else (legend_at,))

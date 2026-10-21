@@ -277,3 +277,18 @@ def margin_reach(item: Text, fx: float, fy: float):
     reach = (left_px - dx + 4.0, right_px + dx + 4.0, up_px + dy + 4.0, down_px - dy + 4.0)
     touches = (fx <= 1e-9, fx >= 1.0 - 1e-9, fy >= 1.0 - 1e-9, fy <= 1e-9)
     return tuple(r if t else 0.0 for r, t in zip(reach, touches))
+
+
+def kept_margins(previous, previous_key, new, axes: AxesSpec):
+    """(margins, key): extra margins for texts outside the frame that only grow while the chart stays the same.
+
+    Labels on an outer rail widen a margin, which shrinks the plot area;
+    laid out again for that area, a family may leave the rail, and with a
+    margin that shrank back the next layout would put it there again, for
+    ever. So the margins keep their largest value until the limits, scales
+    or title of the chart change (``previous_key``, from the last call).
+    """
+    key = (axes.x_limits, axes.y_limits, axes.x_log, axes.y_log, axes.title)
+    if previous_key == key:
+        new = tuple(max(a, b) for a, b in zip(previous, new))
+    return tuple(new), key

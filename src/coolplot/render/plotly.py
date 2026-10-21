@@ -48,7 +48,7 @@ import plotly.graph_objects as go
 from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
 from ..core.numbers import format_number
 from ..style.values import AxesStyle, LineStyle, TextStyle, dash_pattern_pt
-from .base import Renderer, SyncReport, margin_reach, warn_without_branding
+from .base import Renderer, SyncReport, kept_margins, margin_reach, warn_without_branding
 from .ticks import ticks
 from ..core.floats import is_zero, same_number, same_numbers
 
@@ -463,13 +463,15 @@ class PlotlyRenderer(Renderer):
         title = self._axes is not None and bool(self._axes.title)
         extra = (max(0.0, need[0] - left), max(0.0, need[1] - right),
                  need[2] if title else max(0.0, need[2] - top), max(0.0, need[3] - bottom))
+        extra, self._margin_key = kept_margins(self._extra_margins, getattr(self, "_margin_key", None), extra,
+                                               self._axes or AxesSpec())
         if same_numbers(extra, self._extra_margins):
             return False
         self._extra_margins = extra
         self._apply_margins()
         if title:
-            if need[2] > 0.0:
-                self.figure.update_layout(title=dict(y=1.0, yref="paper", yanchor="bottom", pad=dict(b=need[2] + 6.0)))
+            if extra[2] > 0.0:
+                self.figure.update_layout(title=dict(y=1.0, yref="paper", yanchor="bottom", pad=dict(b=extra[2] + 6.0)))
             else:
                 self.figure.update_layout(title=dict(y=None, yref="container", yanchor="auto", pad=dict(b=0)))
         return True

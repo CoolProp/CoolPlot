@@ -27,10 +27,10 @@ family of a chart with a few rules:
    levels of values are dropped: the values that are multiples of ten
    steps of the family are kept longest, then those of five and two
    steps (:func:`value_levels`). The same level holds for the whole
-   row. Where even the coarsest level does not fit, because one of its
-   labels is blocked, every second, third ... label along the row is
-   kept instead (:func:`choose`), so evenly spaced values stay evenly
-   spaced.
+   row. Where even the coarsest level does not fit, labels are added one
+   by one, coarsest first; evenly spaced values keep every second,
+   third ... label along the row instead, unless that keeps fewer than
+   half as many (:func:`choose`).
 4. **Free space.** Labels inside the frame keep clear of the processes
    (``keep_out_pt``), of each other and of boxes that are taken (the
    legend and the badge).
@@ -111,18 +111,25 @@ def value_levels(values: Sequence[float]) -> List[int]:
 def choose(candidates: List[dict], fits) -> List[dict]:
     """The candidates of the finest level at which all of them fit together.
 
-    If not even the coarsest level fits (a label of it is blocked), every
-    m-th candidate along the rail is taken, for the smallest stride m at
-    which some offset fits; of those offsets the one with the most labels,
-    then the coarsest values. If no stride fits two labels, candidates are
-    added one by one, coarsest level first and along the rail, as long as
-    they fit.
+    If not even the coarsest level fits, candidates are added one by one,
+    coarsest level first and along the rail, as long as they fit. Where
+    the values are evenly spaced, every m-th candidate along the rail is
+    taken instead, for the smallest stride m at which some offset fits (of
+    those offsets the one with the most labels, then the coarsest values),
+    as long as that keeps at least half as many labels as one by one:
+    evenly spaced values then stay evenly spaced.
     """
     for max_level in range(len(LEVEL_STEPS) - 1, -1, -1):
         chosen = [c for c in candidates if c["level"] <= max_level]
         if chosen and fits(chosen):
             return chosen
+    greedy: List[dict] = []
+    for c in sorted(candidates, key=lambda c: (c["level"], c["along"])):
+        if fits(greedy + [c]):
+            greedy.append(c)
     row = sorted(candidates, key=lambda c: c["along"])
+    if not evenly_spaced([c["value"] for c in row]):
+        return greedy
     for stride in range(2, len(row) + 1):
         best = None
         for offset in range(stride):
@@ -133,12 +140,17 @@ def choose(candidates: List[dict], fits) -> List[dict]:
             if best is None or score > best[0]:
                 best = (score, subset)
         if best is not None:
-            return best[1]
-    chosen: List[dict] = []
-    for c in sorted(candidates, key=lambda c: (c["level"], c["along"])):
-        if fits(chosen + [c]):
-            chosen.append(c)
-    return chosen
+            return best[1] if 2 * len(best[1]) >= len(greedy) else greedy
+    return greedy
+
+
+def evenly_spaced(values: Sequence[float]) -> bool:
+    """Whether at least three finite values have equal gaps (to a millionth of the gap)."""
+    if len(values) < 3 or not all(math.isfinite(v) for v in values):
+        return False
+    ordered = sorted(values)
+    gaps = [b - a for a, b in zip(ordered, ordered[1:])]
+    return gaps[0] > 0.0 and all(abs(g - gaps[0]) <= 1e-6 * gaps[0] for g in gaps)
 
 
 def _depth(edge: str, x: float, y: float, frame: Frame) -> float:
@@ -247,14 +259,14 @@ def _candidates_on(slot, members, pieces, levels, frame: Frame, bound_of) -> Lis
                     continue
                 along = hit[0] if edge == "top" else hit[1]
                 out.append({"request": request, "x": hit[0], "y": hit[1], "along": along, "w": width,
-                            "h": height, "level": levels[index]})
+                            "h": height, "level": levels[index], "value": request.value})
                 break
-            found = inner_candidate(piece, edge, bound_of(k), 0.5 * width, 0.5 * height, frame)
+            found = inner_candidate(piece, edge, bound_of(edge, k), 0.5 * width, 0.5 * height, frame)
             if found is not None:
                 box, direction = found
                 along = box.cx if edge in ("top", "bottom") else box.cy
                 out.append({"request": request, "box": box, "direction": direction, "along": along,
-                            "level": levels[index]})
+                            "level": levels[index], "value": request.value})
                 break
     return out
 
@@ -292,7 +304,7 @@ def _end_candidates(members, pieces, levels) -> List[dict]:
             c = _candidate(piece, s, 0.5 * width, 0.5 * height, 0.0)
             if c is not None:
                 out.append({"request": request, "box": c.box, "direction": c.direction, "along": c.box.cx,
-                            "level": levels[index]})
+                            "level": levels[index], "value": request.value})
                 break
     return out
 
@@ -325,7 +337,7 @@ def _previous_slots(members, previous: Dict[str, Text], frame: Frame, bound_of) 
         for edge in EDGES:
             near = _nearest_depth(box, edge, frame)
             for k in (0, 1):
-                if abs(near - bound_of(k)) <= 1.0:
+                if abs(near - bound_of(edge, k)) <= 1.0:
                     found.add((edge, k))
     return found
 
@@ -396,8 +408,9 @@ def place_rail_labels(requests: Sequence[LabelRequest], frame: Frame, keep_out_l
     rails = _Rails(frame, kx, ky, keep_out_pt, occupied)
     height = max(LINE_HEIGHT * r.style.font.size_pt for r in requests)
 
-    def bound_of(k: int) -> float:
-        return PAD_PT + k * SECOND_RAIL * height
+    def bound_of(edge: str, k: int) -> float:
+        # The inner rails on the edges of the outer rails start beyond their ticks
+        return PAD_PT + (TICK_PT if edge in ("top", "right") else 0.0) + k * SECOND_RAIL * height
 
     families: Dict[str, List[LabelRequest]] = {}
     for request in requests:

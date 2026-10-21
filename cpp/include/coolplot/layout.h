@@ -92,6 +92,9 @@ struct KeepOut
     bool joined = true;
 };
 
+/// Points every 2 pt along the lines (single points for unjoined markers), in pt (coolplot.compose.layout.keep_out_points).
+void keep_out_points_pt(const Frame& frame, const std::vector<KeepOut>& lines, std::vector<double>& xs, std::vector<double>& ys);
+
 /// Edge labels for the requests, most important first (coolplot.compose.layout.place_edge_labels);
 /// ``occupied`` are boxes no label may overlap (the legend).
 std::vector<Item> place_edge_labels(const std::vector<LabelRequest>& requests, const Frame& frame, const std::vector<KeepOut>& keep_out,

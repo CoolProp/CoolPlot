@@ -92,6 +92,9 @@ def test_steps_are_round_in_the_units_shown():
     assert same_numbers(sorted(round(r.anchor_SI / 1e5, 9) for r in requests), [5.0, 10.0, 15.0, 20.0])
     for r in requests:   # an isotherm through a saturation pressure is at the saturation temperature
         assert r.value_SI == pytest.approx(bar.fluid.state_point("p", r.anchor_SI, "Q", 1.0).T, rel=1e-10)
+    assert "10" in _labels(bar, "T")   # rails: the bare saturation pressure, named in the legend
+    assert "Temperature T at p_sat / bar" in {i.legend for i in bar.update_scene() if i.legend}
+    bar.settings = bar.settings.with_(labels={"mode": "edge"})
     assert "p_sat=10 bar" in _labels(bar, "T")
 
 

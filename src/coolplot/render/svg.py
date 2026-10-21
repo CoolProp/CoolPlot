@@ -28,7 +28,7 @@ from ..core.numbers import format_number
 from ..scene import BADGE_BASELINE, AxesSpec, Item, Line, Markers, Text, drawable_limits
 from .ticks import ticks as _ticks
 from ..style.values import AxesStyle, TextStyle, dash_pattern_pt
-from .base import Renderer, SyncReport, margin_reach
+from .base import Renderer, SyncReport, kept_margins, margin_reach
 from ..core.floats import is_zero, same_number, same_numbers
 
 PX_PER_PT = 4.0 / 3.0
@@ -224,7 +224,9 @@ class SvgRenderer(Renderer):
     def _finish(self, report: SyncReport):
         self._parsed = None
         if report.changed:
-            self._extra_margins = self._unclipped_margins()
+            self._extra_margins, self._margin_key = kept_margins(
+                self._extra_margins, getattr(self, "_margin_key", None), self._unclipped_margins(),
+                self._axes or AxesSpec())
 
     # Geometry ----------------------------------------------------------
     @property

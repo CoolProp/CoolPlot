@@ -425,7 +425,8 @@ def corners_for(spec: DiagramSpec, theme: Theme, axes: AxesSpec, frame: Frame, b
     if badge is not None:
         badge_spec = (spec.settings.branding.location,) + tuple(badge.size_pt()) + (badge.inset_pt,)
     shown = [(line.x, line.y) for line in lines if line.visible]
-    legend_at, badge_at, boxes = place_corners(frame, shown, [(x, y) for x, y, _ in drawn], legend, badge_spec)
+    page_width, page_height = default_plot_size_pt(spec)
+    legend_at, badge_at, boxes = place_corners(frame, shown, drawn, legend, badge_spec, page_width * page_height)
     if legend is not None:
         axes = replace(axes, style=replace(axes.style, legend=replace(axes.style.legend, location=legend_at)))
     if badge is not None:

@@ -417,6 +417,10 @@ Item edge_text(const LabelRequest& request, const Frame& frame, const Box& box, 
 
 }  // namespace
 
+void keep_out_points_pt(const Frame& frame, const std::vector<KeepOut>& lines, std::vector<double>& xs, std::vector<double>& ys) {
+    keep_out_points(frame, lines, xs, ys);
+}
+
 std::vector<Item> place_edge_labels(const std::vector<LabelRequest>& requests, const Frame& frame, const std::vector<KeepOut>& keep_out,
                                     double keep_out_pt, const std::map<std::string, std::vector<std::string>>& preferred_edges,
                                     const std::map<std::string, Item>& previous, bool fallback, const std::vector<TakenBox>& occupied) {
@@ -488,6 +492,12 @@ struct Slot
     }
 };
 
+/// How far inside the frame the boxes of inner rail k of an edge start; on the edges of the outer rails beyond
+/// their ticks.
+double rail_bound(const std::string& edge, int k, double label_height) {
+    return LABEL_PAD_PT + ((edge == "top" || edge == "right") ? RAIL_TICK_PT : 0.0) + k * RAIL_SECOND * label_height;
+}
+
 std::vector<Slot> rail_slots(bool outer_right) {
     std::vector<Slot> out = {{"top", -1}};
     if (outer_right) out.push_back({"right", -1});
@@ -506,7 +516,21 @@ struct RailCand
     double dir_x = 0.0, dir_y = 0.0;
     double along = 0.0;
     int level = 0;
+    double value = 0.0;  // the value of the line, in display units
 };
+
+/// Whether at least three finite values have equal gaps (to a millionth of the gap).
+bool evenly_spaced(std::vector<double> values) {
+    if (values.size() < 3) return false;
+    for (double v : values)
+        if (!std::isfinite(v)) return false;
+    std::sort(values.begin(), values.end());
+    double first = values[1] - values[0];
+    if (!(first > 0.0)) return false;
+    for (size_t i = 1; i + 1 < values.size(); ++i)
+        if (std::fabs((values[i + 1] - values[i]) - first) > 1e-6 * first) return false;
+    return true;
+}
 
 /// The candidates of the finest level at which all of them fit; else one by one, coarsest level first.
 template <class Fits>
@@ -517,9 +541,22 @@ std::vector<RailCand> choose(const std::vector<RailCand>& cands, Fits fits) {
             if (c.level <= max_level) chosen.push_back(c);
         if (!chosen.empty() && fits(chosen)) return chosen;
     }
-    // Every m-th candidate along the rail, for the smallest stride at which some offset fits
+    // One by one, coarsest level first and along the rail
+    std::vector<RailCand> order = cands;
+    std::stable_sort(order.begin(), order.end(),
+                     [](const RailCand& a, const RailCand& b) { return a.level < b.level || (a.level == b.level && a.along < b.along); });
+    std::vector<RailCand> greedy;
+    for (const RailCand& c : order) {
+        greedy.push_back(c);
+        if (!fits(greedy)) greedy.pop_back();
+    }
+    // Evenly spaced values: every m-th candidate along the rail, for the smallest stride at which some offset fits,
+    // if that keeps at least half as many labels
     std::vector<RailCand> row = cands;
     std::stable_sort(row.begin(), row.end(), [](const RailCand& a, const RailCand& b) { return a.along < b.along; });
+    std::vector<double> values;
+    for (const RailCand& c : row) values.push_back(c.value);
+    if (!evenly_spaced(values)) return greedy;
     for (size_t stride = 2; stride <= row.size(); ++stride) {
         bool found = false;
         size_t best_size = 0;
@@ -541,17 +578,9 @@ std::vector<RailCand> choose(const std::vector<RailCand>& cands, Fits fits) {
                 best = subset;
             }
         }
-        if (found) return best;
+        if (found) return 2 * best.size() >= greedy.size() ? best : greedy;
     }
-    std::vector<RailCand> order = cands;
-    std::stable_sort(order.begin(), order.end(),
-                     [](const RailCand& a, const RailCand& b) { return a.level < b.level || (a.level == b.level && a.along < b.along); });
-    std::vector<RailCand> chosen;
-    for (const RailCand& c : order) {
-        chosen.push_back(c);
-        if (!fits(chosen)) chosen.pop_back();
-    }
-    return chosen;
+    return greedy;
 }
 
 /// How far a point lies inside the frame, measured from an edge.
@@ -649,13 +678,14 @@ struct RailState
 std::vector<RailCand> candidates_on(const Slot& slot, const std::vector<const LabelRequest*>& members, const std::vector<std::vector<Piece>>& pieces,
                                     const std::vector<int>& levels, const Frame& frame, double label_height) {
     std::vector<RailCand> out;
-    double bound = LABEL_PAD_PT + slot.k * RAIL_SECOND * label_height;
+    double bound = rail_bound(slot.edge, slot.k, label_height);
     for (size_t index = 0; index < members.size(); ++index) {
         std::pair<double, double> size = text_size_pt(members[index]->text, members[index]->style);
         for (const Piece& piece : pieces[index]) {
             RailCand c;
             c.request = members[index];
             c.level = levels[index];
+            c.value = members[index]->value;
             if (slot.k < 0) {
                 double x, y, s;
                 if (!crossing(piece, slot.edge, 0.0, frame, x, y, s)) continue;
@@ -723,6 +753,7 @@ std::vector<RailCand> end_candidates(const std::vector<const LabelRequest*>& mem
                 r.dir_y = c.dir_y;
                 r.along = c.box.cx;
                 r.level = levels[index];
+                r.value = members[index]->value;
                 out.push_back(r);
                 break;
             }
@@ -756,7 +787,7 @@ std::set<Slot> previous_slots(const std::vector<const LabelRequest*>& members, c
         for (const std::string& edge : EDGES) {
             double near = nearest_depth(box, edge, frame);
             for (int k = 0; k < 2; ++k)
-                if (std::fabs(near - (LABEL_PAD_PT + k * RAIL_SECOND * label_height)) <= 1.0) found.insert(Slot{edge, k});
+                if (std::fabs(near - rail_bound(edge, k, label_height)) <= 1.0) found.insert(Slot{edge, k});
         }
     }
     return found;

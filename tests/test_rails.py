@@ -18,11 +18,18 @@ def test_values_are_levelled_by_multiples_of_their_step():
 
 
 def test_choose_drops_whole_levels_then_fills_greedily():
-    cands = [{"level": level, "along": float(i)} for i, level in enumerate([0, 3, 2, 3, 1, 3, 2, 3, 0])]
+    cands = [{"level": level, "along": float(i), "value": 10.0 * i}
+             for i, level in enumerate([0, 3, 2, 3, 1, 3, 2, 3, 0])]
     assert [c["along"] for c in choose(cands, lambda cs: len(cs) <= 5)] == [0.0, 2.0, 4.0, 6.0, 8.0]
     assert [c["along"] for c in choose(cands, lambda cs: len(cs) <= 2)] == [0.0, 8.0]
     # Not even the coarsest level fits: one by one, coarsest first
     assert [c["along"] for c in choose(cands, lambda cs: len(cs) <= 1)] == [0.0]
+    # The coarsest level is blocked (the label at 0): evenly spaced values keep every m-th label
+    free = lambda cs: all(c["along"] > 0.5 for c in cs) and len(cs) <= 4   # noqa: E731
+    assert [c["along"] for c in choose(cands, free)] == [1.0, 3.0, 5.0, 7.0]
+    # Not evenly spaced: one by one
+    uneven = [dict(c, value=v) for c, v in zip(cands, [1, 2, 5, 10, 20, 50, 100, 200, 500])]
+    assert [c["along"] for c in choose(uneven, free)] == [8.0, 4.0, 2.0, 6.0]
 
 
 pytest.importorskip("CoolProp")
@@ -220,24 +227,33 @@ def test_a_redraw_with_nothing_changed_moves_no_label():
     assert all(again[key] is t for key, t in labels.items())
 
 
-def test_an_automatic_legend_never_covers_a_cycle():
-    from coolplot.compose.corners import corner_box, legend_size_pt
+def test_an_automatic_legend_keeps_clear_of_cycles_where_it_can():
+    from coolplot.compose.corners import CORNERS, corner_box, legend_size_pt
     from coolplot.compose.layout import keep_out_points
+    inside = 0
     for size in ((218.0, 117.0), (400.0, 300.0), (600.0, 420.0)):
         chart = _ph()
         scene = chart.update_scene(size)
         location = scene.axes.style.legend.location
-        if location == "outside right":
-            continue
+        assert location != "outside right"   # judged against the page, not the plot area left
         a = scene.axes
         frame = Frame(a.x_limits, a.y_limits, a.x_log, a.y_log, *size)
         texts = list(dict.fromkeys(i.legend for i in scene if i.legend and i.visible))
-        box = corner_box(frame, location, *legend_size_pt(texts, chart.theme.axes.legend.text.font.size_pt), 6.0)
-        cycle = [(i.x, i.y, isinstance(i, Line)) for i in scene if i.group == "cycle/Heat pump" and not isinstance(i, Text)]
-        px, py = keep_out_points(frame, [(x, y) for x, y, _ in cycle])
-        assert not np.any((np.abs(px - box.cx) <= box.half_w) & (np.abs(py - box.cy) <= box.half_h)), size
-    # On a small plot area the legend would cover a quarter of it: it goes outside
-    assert _ph().update_scene((218.0, 117.0)).axes.style.legend.location == "outside right"
+        width, height = legend_size_pt(texts, chart.theme.axes.legend.text.font.size_pt)
+        cycle = [(i.x, i.y) if isinstance(i, Line) else (i.x, i.y, False)
+                 for i in scene if i.group == "cycle/Heat pump" and not isinstance(i, Text)]
+        px, py = keep_out_points(frame, cycle)
+
+        def covered(corner):
+            box = corner_box(frame, corner, width, height, 6.0)
+            return int(np.count_nonzero((np.abs(px - box.cx) <= box.half_w) & (np.abs(py - box.cy) <= box.half_h)))
+        assert covered(location) == min(covered(c) for c in CORNERS), size
+        inside += covered(location) == 0
+    assert inside >= 2
+    # On a small page the legend would cover more than a quarter of the plot area: it goes outside
+    small = _ph()
+    small.settings = small.settings.with_(page={"width_pt": 240.0, "height_pt": 170.0})
+    assert small.update_scene((170.0, 130.0)).axes.style.legend.location == "outside right"
 
 
 def test_edge_labels_keep_clear_of_a_legend_inside():
@@ -268,3 +284,34 @@ def test_plotly_keeps_rail_labels_outside_the_frame_and_makes_room_for_them():
               if a.name and chart.scene[a.name].role == "isoline_label" and not chart.scene[a.name].clip
               and a.textangle]
     assert turned and all(a.xanchor == "center" and a.yanchor == "middle" and a.yshift > 4.0 for a in turned)
+
+
+@pytest.mark.parametrize("writer", ["svg", "plotly"])
+def test_the_labels_are_laid_out_for_the_plot_area_they_are_drawn_in(writer):
+    """Outer labels widen a margin; laid out again for the smaller plot area, the layout must settle."""
+    if writer == "plotly":
+        pytest.importorskip("plotly")
+        from coolplot.render.plotly import PlotlyRenderer as Writer
+        sizes = [(520, 360), (700, 450)]
+    else:
+        from coolplot.render.svg import SvgRenderer as Writer
+        sizes = [(700, 450), (520, 360)]
+    for width, height in sizes:
+        chart = _rails(PsychrometricChart(T_range=(-10, 45), W_range=(0, 25)))
+        chart.set_default_lines()
+        chart.title = "Humid air"
+        renderer = Writer(width=width, height=height)
+        chart.draw(renderer)
+        laid_out = chart._plot_size_pt
+        for _ in range(3):   # redraws as an interactive chart would make them
+            renderer.sync(chart.update_scene(renderer.plot_size_pt()))
+        assert tuple(renderer.plot_size_pt()) == pytest.approx(tuple(chart._plot_size_pt), abs=0.01)
+        assert len({tuple(round(v, 2) for v in s) for s in (laid_out, chart._plot_size_pt)}) <= 2
+
+
+def test_a_straight_segment_counts_along_its_whole_length():
+    from coolplot.compose.corners import place_corners
+    frame = Frame((0.0, 100.0), (0.0, 100.0), False, False, 600.0, 420.0)
+    # One segment from (60, 0) to (100, 40): its end points lie outside a legend in the lower right, its middle inside
+    legend_at, _, _ = place_corners(frame, [], [([60.0, 100.0], [0.0, 40.0])], ("auto", 150.0, 60.0), None)
+    assert legend_at != "lower right"

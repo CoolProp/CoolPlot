@@ -415,28 +415,29 @@ void points_of(const Frame& frame, const std::vector<Item>& items, bool visible_
     }
 }
 
-/// The corner of an automatic legend: one that covers no point of a cycle or process, of those the one that
-/// covers the fewest isoline points; "outside right" where none is free or the legend is too large.
+/// The corner of an automatic legend: "outside right" when it would cover more than MAX_LEGEND_SHARE of the
+/// page's plot area, else the corner that covers the fewest points of cycles and processes, then of isolines.
 std::string auto_legend(const Frame& frame, double width, double height, const std::vector<double>& lx, const std::vector<double>& ly,
-                        const std::vector<double>& ox, const std::vector<double>& oy) {
-    if (!frame.usable() || width * height > MAX_LEGEND_SHARE * frame.width_pt * frame.height_pt) return "outside right";
+                        const std::vector<double>& ox, const std::vector<double>& oy, double page_area_pt2) {
+    if (width * height > MAX_LEGEND_SHARE * page_area_pt2) return "outside right";
+    if (!frame.usable()) return AUTO_CORNERS[0];
     std::string best;
-    long best_count = -1;
+    long best_overlays = -1, best_lines = -1;
     for (const char* corner : AUTO_CORNERS) {
         TakenBox box = corner_box(frame, corner, width, height, LEGEND_INSET_PT);
-        if (count_inside(box, ox, oy) != 0) continue;
-        long count = count_inside(box, lx, ly);
-        if (best_count < 0 || count < best_count) {
+        long overlays = count_inside(box, ox, oy), lines = count_inside(box, lx, ly);
+        if (best_overlays < 0 || overlays < best_overlays || (overlays == best_overlays && lines < best_lines)) {
             best = corner;
-            best_count = count;
+            best_overlays = overlays;
+            best_lines = lines;
         }
     }
-    return best_count < 0 ? "outside right" : best;
+    return best;
 }
 
 /// Decide the corner of a legend inside the plot area; returns its box, if there is one, for the labels.
-std::vector<TakenBox> place_legend(AxesSpec& axes, const Theme& theme, const Frame& frame, const std::vector<Item>& lines,
-                                   const std::vector<Item>& parts, const std::vector<Item>& drawn) {
+std::vector<TakenBox> place_legend(AxesSpec& axes, const DiagramSpec& spec, const Theme& theme, const Frame& frame,
+                                   const std::vector<Item>& lines, const std::vector<Item>& parts, const std::vector<KeepOut>& overlays) {
     std::vector<TakenBox> boxes;
     const LegendStyle& style = theme.axes.legend;
     if (style.visible && style.location != "outside right") {
@@ -452,10 +453,12 @@ std::vector<TakenBox> place_legend(AxesSpec& axes, const Theme& theme, const Fra
             double width = 44.0 * (72.0 / 96.0) + 0.6 * size * longest, height = 8.0 * (72.0 / 96.0) + 1.6 * size * texts.size();
             std::string location = style.location;
             if (location == "auto") {
+                // Cycles count along their whole length, so that a long straight segment counts too
                 std::vector<double> lx, ly, ox, oy;
                 points_of(frame, lines, true, lx, ly);
-                points_of(frame, drawn, false, ox, oy);
-                location = auto_legend(frame, width, height, lx, ly, ox, oy);
+                if (frame.usable()) keep_out_points_pt(frame, overlays, ox, oy);
+                std::pair<double, double> page = default_plot_size_pt(spec);
+                location = auto_legend(frame, width, height, lx, ly, ox, oy, page.first * page.second);
             }
             axes.style.legend.location = location;
             if (location != "outside right" && width > 0.0) boxes.push_back(corner_box(frame, location, width, height, LEGEND_INSET_PT));
@@ -643,7 +646,7 @@ Scene compose(const json& input) {
     Frame frame{axes.x_limits, axes.y_limits, axes.x_log, axes.y_log, size.first, size.second};
     process_parts = placed_state_numbers(process_parts, frame);
     std::vector<Item> lines = isoline_items(spec, theme, curves);
-    std::vector<TakenBox> boxes = place_legend(axes, theme, frame, lines, process_parts, drawn);
+    std::vector<TakenBox> boxes = place_legend(axes, spec, theme, frame, lines, process_parts, keep_out);
     Scene scene;
     scene.axes = axes;
     scene.items = lines;
