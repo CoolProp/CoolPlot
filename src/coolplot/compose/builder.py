@@ -291,18 +291,33 @@ def cycle_items(spec: DiagramSpec, theme: Theme, cycle: CycleSpec, states, chain
     y = uy.from_SI([states[n][ky] for n in numbers])
     items.append(Markers(id=group + "/states", group=group, role="state_points", legend=cycle.name,
                          x=x, y=y, style=marker_style, z_order=Z_STATES))
-    if cycle.numbers:
-        items.extend(state_numbers(group, theme, marker_style, numbers, x, y))
+    if cycle.numbers or cycle.labels:
+        items.extend(state_numbers(group, theme, marker_style, numbers, x, y, dict(cycle.labels), cycle.numbers))
     return items
 
 
-def state_numbers(group: str, theme: Theme, marker_style, numbers, x, y) -> List[Text]:
-    """The number of each state, up and to the right of its marker, a fixed distance on screen."""
+def state_text(number: int, label, show_number: bool):
+    """What is written next to a state: "2", "2: label", "label", or None for nothing."""
+    if label is None:
+        return str(number) if show_number else None
+    return "{0}: {1}".format(number, label) if show_number else label
+
+
+def state_numbers(group: str, theme: Theme, marker_style, numbers, x, y, labels=None,
+                  show_numbers: bool = True) -> List[Text]:
+    """The number and label of each state, up and to the right of its marker, a fixed distance on screen."""
     offset = 0.5 * marker_style.size_pt + 1.5
     number_style = theme.state_number.with_(h_align="left", v_align="bottom")
-    return [Text(id="{0}/number/{1}".format(group, n), group=group + "/numbers", role="state_number",
-                 x=float(xi), y=float(yi), text=str(n), offset_pt=(offset, offset),
-                 style=number_style, z_order=Z_STATES + 1.0) for n, xi, yi in zip(numbers, x, y)]
+    labels = labels or {}
+    texts = []
+    for n, xi, yi in zip(numbers, x, y):
+        text = state_text(n, labels.get(n), show_numbers)
+        if text is None:
+            continue
+        texts.append(Text(id="{0}/number/{1}".format(group, n), group=group + "/numbers", role="state_number",
+                          x=float(xi), y=float(yi), text=text, offset_pt=(offset, offset),
+                          style=number_style, z_order=Z_STATES + 1.0))
+    return texts
 
 
 def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Tuple[float, float] = None,

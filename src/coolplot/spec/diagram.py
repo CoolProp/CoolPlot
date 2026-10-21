@@ -16,6 +16,7 @@ Change it with the ``with_*`` methods, which return a new spec.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from numbers import Integral
 from typing import Any, Dict, Optional, Tuple
 
 from ..core.cycle import Cycle, StateInput, check_loops, check_paths, default_loops
@@ -218,6 +219,25 @@ def _checked_states(name: str, states) -> Tuple[Tuple[int, StateInput], ...]:
     return checked
 
 
+def _checked_labels(name: str, numbers, labels) -> Tuple[Tuple[int, str], ...]:
+    """(number, text) pairs sorted by number, each for a state of the cycle and at most once."""
+    items = labels.items() if isinstance(labels, dict) else labels
+    checked = []
+    for number, text in items:
+        if isinstance(number, bool) or not isinstance(number, Integral):
+            raise ValueError("Cycle '{0}': label keys are state numbers, not {1!r}.".format(name, number))
+        if int(number) not in numbers:
+            raise ValueError("Cycle '{0}' has no state {1} to label.".format(name, number))
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("Cycle '{0}', state {1}: a label is a non-empty text, not {2!r}.".format(
+                name, number, text))
+        checked.append((int(number), text))
+    checked.sort()
+    if len({n for n, _ in checked}) != len(checked):
+        raise ValueError("Cycle '{0}': a state is labelled twice.".format(name))
+    return tuple(checked)
+
+
 @dataclass(frozen=True)
 class CycleSpec:
     """A cycle to draw: numbered states, the chains through them and how paths are drawn
@@ -226,7 +246,9 @@ class CycleSpec:
     of state numbers (one closed loop through all states in ascending order
     if empty), ``paths`` (from, to) -> path kind for connections that should
     not use "auto". ``numbers`` shows the state numbers. ``steps`` is the
-    number of segments per drawn path.
+    number of segments per drawn path. ``labels`` are (number, text)
+    pairs: the text is written next to that state, after its number
+    ("2: ADP 11.2 deg C"), or alone when the numbers are hidden.
     """
     name: str
     states: Tuple[Tuple[int, StateInput], ...]
@@ -236,6 +258,7 @@ class CycleSpec:
     line_style: Optional[LineStyle] = None
     marker_style: Optional[MarkerStyle] = None
     steps: int = 20
+    labels: Tuple[Tuple[int, str], ...] = ()
 
     def __post_init__(self):
         states = _checked_states(self.name, self.states)
@@ -247,6 +270,7 @@ class CycleSpec:
             raise ValueError("Cycle '{0}': steps has to be at least 1.".format(self.name))
         object.__setattr__(self, "steps", int(self.steps))
         object.__setattr__(self, "numbers", bool(self.numbers))
+        object.__setattr__(self, "labels", _checked_labels(self.name, numbers, self.labels))
 
     @classmethod
     def from_cycle(cls, cycle: Cycle, **changes) -> "CycleSpec":
@@ -258,11 +282,14 @@ class CycleSpec:
 
     def to_dict(self) -> dict:
         """The record of docs/reference/contracts.md for this cycle."""
-        return {"name": self.name, "states": [[n, s.to_dict()] for n, s in self.states],
-                "loops": [list(c) for c in self.loops], "paths": [[list(p), k] for p, k in self.paths],
-                "numbers": self.numbers, "steps": self.steps,
-                "line_style": None if self.line_style is None else style_to_dict(self.line_style),
-                "marker_style": None if self.marker_style is None else style_to_dict(self.marker_style)}
+        record = {"name": self.name, "states": [[n, s.to_dict()] for n, s in self.states],
+                  "loops": [list(c) for c in self.loops], "paths": [[list(p), k] for p, k in self.paths],
+                  "numbers": self.numbers, "steps": self.steps,
+                  "line_style": None if self.line_style is None else style_to_dict(self.line_style),
+                  "marker_style": None if self.marker_style is None else style_to_dict(self.marker_style)}
+        if self.labels:   # left out when empty, so records without labels stay as they were
+            record["labels"] = [[n, text] for n, text in self.labels]
+        return record
 
     @classmethod
     def from_dict(cls, data: dict) -> "CycleSpec":
@@ -272,7 +299,7 @@ class CycleSpec:
                    tuple((tuple(p), k) for p, k in data.get("paths", ())), data.get("numbers", True),
                    None if data.get("line_style") is None else style_from_dict(LineStyle, data["line_style"]),
                    None if data.get("marker_style") is None else style_from_dict(MarkerStyle, data["marker_style"]),
-                   data.get("steps", 20))
+                   data.get("steps", 20), tuple((n, text) for n, text in data.get("labels", ())))
 
 
 @dataclass(frozen=True)

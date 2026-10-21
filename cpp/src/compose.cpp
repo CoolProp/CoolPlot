@@ -364,14 +364,24 @@ std::vector<Item> process_items(const DiagramSpec& spec, const Theme& theme, con
     return items;
 }
 
+// What is written next to a state: "2", "2: label", "label", or nothing (empty)
+std::string state_text(int number, const std::map<int, std::string>& labels, bool show_number) {
+    auto label = labels.find(number);
+    if (label == labels.end()) return show_number ? std::to_string(number) : std::string();
+    return show_number ? std::to_string(number) + ": " + label->second : label->second;
+}
+
 std::vector<Item> state_numbers(const std::string& group, const Theme& theme, const MarkerStyle& marker_style, const std::vector<int>& numbers,
-                                const std::vector<double>& x, const std::vector<double>& y) {
+                                const std::vector<double>& x, const std::vector<double>& y, const std::map<int, std::string>& labels,
+                                bool show_numbers) {
     double offset = 0.5 * marker_style.size_pt + 1.5;
     TextStyle number_style = theme.state_number;
     number_style.h_align = "left";
     number_style.v_align = "bottom";
     std::vector<Item> out;
     for (size_t i = 0; i < numbers.size(); ++i) {
+        std::string text = state_text(numbers[i], labels, show_numbers);
+        if (text.empty()) continue;
         Item t;
         t.type = ItemType::Text;
         t.id = group + "/number/" + std::to_string(numbers[i]);
@@ -379,7 +389,7 @@ std::vector<Item> state_numbers(const std::string& group, const Theme& theme, co
         t.role = "state_number";
         t.text_x = x[i];
         t.text_y = y[i];
-        t.text = std::to_string(numbers[i]);
+        t.text = text;
         t.offset_x_pt = offset;
         t.offset_y_pt = offset;
         t.text_style = number_style;
@@ -408,8 +418,8 @@ std::vector<Item> cycle_items(const DiagramSpec& spec, const Theme& theme, const
     }
     std::vector<double> x = column(states, spec.diagram.x, ux), y = column(states, spec.diagram.y, uy);
     items.push_back(markers_item(group + "/states", group, "state_points", true, cycle.name, x, y, marker_style, Z_STATES));
-    if (cycle.numbers) {
-        std::vector<Item> texts = state_numbers(group, theme, marker_style, numbers, x, y);
+    if (cycle.numbers || !cycle.labels.empty()) {
+        std::vector<Item> texts = state_numbers(group, theme, marker_style, numbers, x, y, cycle.labels, cycle.numbers);
         items.insert(items.end(), texts.begin(), texts.end());
     }
     return items;

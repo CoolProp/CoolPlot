@@ -116,6 +116,16 @@ def main():
     chart.add_cycle("Air conditioning", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}, {"T": 20, "W": 8.9}], closed=False)
     compose_case("compose_psychrometric", chart)
 
+    # State labels: after the numbers on one process, alone (numbers hidden)
+    # on an outline whose other states get no text
+    labelled = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25), settings="interactive")
+    labelled.set_default_lines()
+    labelled.add_cycle("Air conditioning", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}, {"T": 20, "via": "sensible"}],
+                       closed=False, labels={2: "ADP 11.2 deg C", 3: "+7.1 kJ/kg"})
+    labelled.add_cycle("Comfort zone", [{"T": 20, "RH": 30}, {"T": 26, "RH": 30}, {"T": 26, "RH": 60},
+                                        {"T": 20, "RH": 60}], numbers=False, labels={3: "comfort"})
+    compose_case("compose_psychrometric_labels", labelled)
+
     # Isentropes through the saturated vapour every 10 K and isochores through
     # wet states every 20 K, labelled by their saturation temperature;
     # isotherms through the saturated vapour every 2 bar, labelled by their

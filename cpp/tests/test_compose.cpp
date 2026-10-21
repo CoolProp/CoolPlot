@@ -86,6 +86,10 @@ TEST_CASE("A psychrometric chart with an air process", "[compose]") {
     check_case("compose_r290_ph_line_labels.json");
 }
 
+TEST_CASE("State labels after the numbers, and alone with the numbers hidden", "[compose]") {
+    check_case("compose_psychrometric_labels.json");
+}
+
 TEST_CASE("Label texts and axis titles", "[compose]") {
     json data = load("compose_r290_ph.json");
     DiagramSpec spec = DiagramSpec::from_json(data.at("input").at("spec"));

@@ -86,7 +86,12 @@ One record describes a property diagram and a psychrometric chart alike;
   `via` (`coolplot.core.cycle.VIA_KINDS`); `loops` are chains of state
   numbers, `paths` lists `[[from, to], kind]` for connections not drawn
   with "auto" (`PATH_KINDS`). Air processes on a psychrometric chart are
-  cycles whose paths are straight.
+  cycles whose paths are straight. `labels` (since 1.2) lists
+  `[number, text]` pairs, a text written next to that state after its
+  number ("2: ADP 11.2 deg C"), or alone when `numbers` is false; the key
+  is left out when a cycle has no labels, so a record of 1.1 reads as it
+  was. The via kind "sensible" (since 1.2, humid air only) keeps the
+  humidity ratio of the state before.
 * `processes`: lines through complete states (`coolplot.spec.ProcessSpec`).
   `set_process`, which wrote them, was removed in 1.0; specs that hold
   processes still read and draw, and `DiagramSpec.with_process` adds one.

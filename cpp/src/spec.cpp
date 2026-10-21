@@ -119,6 +119,7 @@ DiagramSpec DiagramSpec::from_json(const json& data) {
         CycleSpec cycle;
         cycle.name = c.at("name").get<std::string>();
         cycle.numbers = c.value("numbers", true);
+        for (const json& label : c.value("labels", json::array())) cycle.labels[label.at(0).get<int>()] = label.at(1).get<std::string>();
         if (c.contains("line_style") && !c.at("line_style").is_null()) {
             cycle.has_line_style = true;
             cycle.line_style = LineStyle::from_json(c.at("line_style"));

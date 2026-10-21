@@ -510,7 +510,7 @@ class Chart:
 
     def add_cycle(self, name, states=None, loops=None, paths=None, numbers: bool = True, units=None,
                   line_style: LineStyle = None, marker_style: MarkerStyle = None, steps: int = 20,
-                  closed: bool = True, **arrays):
+                  closed: bool = True, labels=None, **arrays):
         """Add or replace a cycle, drawn on top of the chart.
 
         Parameters
@@ -548,6 +548,11 @@ class Chart:
             Segments per drawn path.
         closed : bool
             Whether the default loop returns to the first state.
+        labels : dict, optional
+            ``{number: text}``: a text written next to a state, after its
+            number, e.g. ``{2: "ADP 11.2 deg C", 3: "+8.1 kJ/kg"}`` shows
+            "2: ADP 11.2 deg C". With ``numbers=False`` the text stands
+            alone and states without a label get nothing.
         **arrays
             Instead of ``states``: arrays of two properties, e.g.
             ``add_cycle("measured", p=[...], h=[...])``.
@@ -559,17 +564,18 @@ class Chart:
         cycle = name if isinstance(name, Cycle) else (states if isinstance(states, Cycle) else None)
         if cycle is not None:
             spec = self._spec_from_model(cycle, None if isinstance(name, Cycle) else name, loops, paths, numbers,
-                                         line_style, marker_style, steps)
+                                         line_style, marker_style, steps, labels)
         else:
             unit_system = self._units(units)
             inputs = self._state_inputs(_states_from_arrays(states, arrays) if arrays else states, name, unit_system)
             spec = CycleSpec(str(name), inputs, loops or _default_loops(inputs, closed), paths or (), numbers,
-                             line_style, marker_style, steps)
+                             line_style, marker_style, steps, labels or ())
         self._compute_cycle(spec)   # compute now, so that errors show up here
         self.spec = self.spec.with_cycle(spec)
         return spec.name
 
-    def _spec_from_model(self, cycle: Cycle, name, loops, paths, numbers, line_style, marker_style, steps):
+    def _spec_from_model(self, cycle: Cycle, name, loops, paths, numbers, line_style, marker_style, steps,
+                         labels=None):
         """A CycleSpec for a computed Cycle, after checking that it belongs to this chart's fluid."""
         if cycle.fluid and self._other_fluid(cycle.fluid):
             raise ValueError("Cycle '{0}' was computed for {1}, but this chart shows {2}.".format(
@@ -577,7 +583,8 @@ class Chart:
         states = tuple((n, check_state(state, self.fluid)) for n, state in cycle.states)
         cycle = replace(cycle, states=states)   # with v filled in for a cycle computed before 0.7
         return CycleSpec.from_cycle(cycle, name=name, loops=loops, paths=paths, numbers=numbers,
-                                    line_style=line_style, marker_style=marker_style, steps=steps)
+                                    line_style=line_style, marker_style=marker_style, steps=steps,
+                                    labels=labels)
 
     def _state_inputs(self, states, name, unit_system):
         """(number, StateInput) pairs from a list (numbered from 1) or a dict of given states."""

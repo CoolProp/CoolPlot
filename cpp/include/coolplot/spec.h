@@ -81,6 +81,7 @@ struct CycleSpec
 {
     std::string name;
     bool numbers = true;
+    std::map<int, std::string> labels;  ///< text written next to a state, after its number
     bool has_line_style = false;
     LineStyle line_style;
     bool has_marker_style = false;
