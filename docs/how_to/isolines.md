@@ -20,6 +20,22 @@ diagram (isobars in a p-h chart) are not offered: they are the grid.
 Which families a diagram offers, and in which quantity each is stepped,
 is in {doc}`../reference/tables`.
 
+## The saturation curve
+
+A chart of a fluid with a critical point draws its saturation curve (the
+lines of quality 0 and 1, the dome) whatever lines are set, also when the
+lines of constant quality leave out 0 and 1 or are not set at all; a
+psychrometric chart draws the line of 100 % relative humidity. Since 1.2:
+
+```python
+diagram.set_lines("Q", values=[0.2, 0.5, 0.8])   # the dome stays
+diagram.show_saturation = False                  # hide the saturation curve
+```
+
+Incompressible liquids have no saturation curve. A chart saved before 1.2
+reads with `show_saturation = None`: there the quality (or humidity)
+values decide, as they did then.
+
 ## Place lines through saturation states
 
 Engineers read a log(p)-h chart at round evaporating and condensing

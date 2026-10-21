@@ -27,6 +27,14 @@ guide in the documentation says what to change in your code.
   with labels falls back to the Python composer with a warning.
 - `Chart.state(entry)` gives a full state from two properties in the
   chart's units.
+
+#### Changed
+- The saturation curve is drawn whatever lines are set: a chart of a fluid
+  with a critical point shows the dome also when the quality values leave
+  out 0 and 1 or no quality lines are set, and a psychrometric chart the
+  line of 100 % relative humidity. `chart.show_saturation = False` hides
+  it. Spec records gain a `show_saturation` field; a record of 1.1 reads
+  without it and draws as before.
 - Gallery examples: the basic air processes from one state; summer and
   winter operation of an air handling unit, with duties, the room's sensible
   heat ratio and a comfort zone; evaporative cooling in a dry climate. The

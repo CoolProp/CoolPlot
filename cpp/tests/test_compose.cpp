@@ -90,6 +90,10 @@ TEST_CASE("State labels after the numbers, and alone with the numbers hidden", "
     check_case("compose_psychrometric_labels.json");
 }
 
+TEST_CASE("The saturation curve without lines of constant quality", "[compose]") {
+    check_case("compose_r290_ts_saturation_only.json");
+}
+
 TEST_CASE("Malformed state labels are refused, a null list reads as none", "[compose]") {
     json input = load("compose_psychrometric_labels.json").at("input");
     for (const char* bad : {R"([[2.5, "x"]])", R"([[2, 3]])", R"([[2]])", R"([[2, "a"], [2, "b"]])", R"({"2": "x"})"}) {

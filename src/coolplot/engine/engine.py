@@ -94,7 +94,9 @@ class Engine:
         key = (spec.fluid, spec.limits, margin)
         if key not in self._domains:
             tp_box, ranges = chart_domain(self.fluid(spec.fluid), spec.limits, margin)
-            self._domains[key] = Domain(tp_box, ranges)
+            provider = self.fluid(spec.fluid)
+            has_saturation = provider.kind == "humid_air" or bool(getattr(provider, "has_critical_point", False))
+            self._domains[key] = Domain(tp_box, ranges, saturation=has_saturation)
             if len(self._domains) > 64:
                 self._domains.popitem(last=False)
         self._domains.move_to_end(key)

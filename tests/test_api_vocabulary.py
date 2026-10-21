@@ -31,7 +31,8 @@ CHART_METHODS = {
     "refresh", "close", "wait", "from_spec",
 }
 #: Properties; spec, engine and scene are plain attributes set by the constructor.
-CHART_PROPERTIES = {"cache", "progress", "fluid", "diagram_type", "units", "settings", "theme", "title", "kind"}
+CHART_PROPERTIES = {"cache", "progress", "fluid", "diagram_type", "units", "settings", "theme", "title", "kind",
+                    "show_saturation"}
 CHART_ATTRIBUTES = {"spec", "engine", "scene"}
 
 #: Names removed in 1.0 (deprecated from 0.5 to 0.9), with the method to use

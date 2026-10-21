@@ -309,6 +309,22 @@ class Chart:
         self.settings = self.spec.settings.with_(look=get_theme(value))
 
     @property
+    def show_saturation(self):
+        """Whether the saturation curve is drawn whatever lines are set.
+
+        True by default: the quality lines 0 and 1 of a fluid with a
+        critical point, or the line of 100 % relative humidity, are drawn
+        even when the lines set leave them out, or are not set at all.
+        False hides the curve; None leaves it to the values of the quality
+        or humidity lines (a chart saved before 1.2).
+        """
+        return self.spec.show_saturation
+
+    @show_saturation.setter
+    def show_saturation(self, value):
+        self.spec = self.spec.with_(show_saturation=value)
+
+    @property
     def title(self) -> str:
         """The title shown above the chart."""
         return self.spec.title

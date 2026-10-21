@@ -126,6 +126,11 @@ def main():
                                         {"T": 20, "RH": 60}], numbers=False, labels={3: "comfort"})
     compose_case("compose_psychrometric_labels", labelled)
 
+    # The saturation curve without lines of constant quality (drawn since 1.2)
+    bare = PropertyDiagram("R290", "Ts", tp_limits="ACHP", settings="interactive")
+    bare.set_lines("p", num=6, labels=True)
+    compose_case("compose_r290_ts_saturation_only", bare)
+
     # Isentropes through the saturated vapour every 10 K and isochores through
     # wet states every 20 K, labelled by their saturation temperature;
     # isotherms through the saturated vapour every 2 bar, labelled by their

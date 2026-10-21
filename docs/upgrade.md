@@ -30,6 +30,11 @@ record ignores its labels and refuses a state given with via "sensible". A
 coolplot-core older than 1.2 still composes a 1.2 chart unless it has state
 labels; then the Python composer draws it, with a warning.
 
+One visible change: new charts draw the saturation curve also when no lines
+of constant quality (or relative humidity) include it. Set
+`chart.show_saturation = False` to draw a chart without it. Specs saved by
+1.1 keep their look.
+
 ## From 1.0 to 1.1
 
 Nothing to change. 1.1 adds `set_lines(..., at_saturation=...)` and a

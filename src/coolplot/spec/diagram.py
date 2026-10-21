@@ -327,7 +327,11 @@ class DiagramSpec:
     ``style_overrides`` maps an isoline quantity to LineStyle field changes
     on top of the theme, stored as sorted pairs so the spec stays hashable.
     ``view_SI`` is the zoom window ((x_min, x_max), (y_min, y_max)) in SI
-    units, None for the full calculation region.
+    units, None for the full calculation region. ``show_saturation`` draws
+    the saturation curve (quality 0 and 1, or 100 % relative humidity)
+    whatever lines are set (True), hides it (False), or leaves it to the
+    values of the quality or humidity family (None, how a spec saved
+    before 1.2 reads).
     """
     fluid: Any
     diagram: DiagramType = DiagramType("p", "h")
@@ -340,6 +344,7 @@ class DiagramSpec:
     style_overrides: Tuple[Tuple[str, Tuple[Tuple[str, Any], ...]], ...] = ()
     view_SI: Tuple[Limits, Limits] = (None, None)
     title: str = ""
+    show_saturation: Optional[bool] = True
 
     def __post_init__(self):
         fluid = self.fluid if isinstance(self.fluid, HumidAirSpec) else FluidSpec.parse(self.fluid)
@@ -364,6 +369,8 @@ class DiagramSpec:
         _unique([c.name for c in self.cycles], "Cycle names have to be unique")
         object.__setattr__(self, "cycles", tuple(self.cycles))
         object.__setattr__(self, "view_SI", _checked_view(self.view_SI))
+        if self.show_saturation not in (True, False, None):
+            raise ValueError("show_saturation is True, False or None, not {0!r}.".format(self.show_saturation))
         object.__setattr__(self, "isolines", tuple(self.isolines))
         object.__setattr__(self, "processes", tuple(self.processes))
         object.__setattr__(self, "style_overrides", tuple(sorted(
@@ -437,7 +444,7 @@ class DiagramSpec:
                 "style_overrides": {k: {name: _plain(v) for name, v in changes}
                                     for k, changes in self.style_overrides},
                 "view_SI": [None if lim is None else list(lim) for lim in self.view_SI],
-                "title": self.title}
+                "title": self.title, "show_saturation": self.show_saturation}
 
     @classmethod
     def from_dict(cls, data: dict) -> "DiagramSpec":
@@ -454,7 +461,9 @@ class DiagramSpec:
                    cycles=tuple(CycleSpec.from_dict(c) for c in data.get("cycles", ())),
                    style_overrides=overrides,
                    view_SI=tuple(None if lim is None else tuple(lim) for lim in data.get("view_SI", (None, None))),
-                   title=data.get("title", ""))
+                   title=data.get("title", ""),
+                   # A record saved before 1.2 has no such field: its family values decide, as they did
+                   show_saturation=data.get("show_saturation"))
 
 
 # Validation helpers ----------------------------------------------------------

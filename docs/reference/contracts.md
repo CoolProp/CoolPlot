@@ -51,7 +51,8 @@ One record describes a property diagram and a psychrometric chart alike;
   "processes": [],
   "style_overrides": {"T": {"color": "#0000ff"}},
   "view_SI": [null, null],
-  "title": ""
+  "title": "",
+  "show_saturation": true
 }
 ```
 
@@ -98,6 +99,10 @@ One record describes a property diagram and a psychrometric chart alike;
 * `style_overrides`: `LineStyle` field changes per family, on top of
   the theme.
 * `view_SI`: `[x_limits, y_limits]`, each `null` or `[min, max]`.
+* `show_saturation` (since 1.2): `true` draws the saturation curve (quality
+  0 and 1, or 100 % relative humidity) whatever lines are set, `false`
+  hides it, `null` leaves it to the values of the family. A record of 1.1
+  has no such field and reads as `null`, so it draws as it did.
 
 ## 2. The curve record
 
