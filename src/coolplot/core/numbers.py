@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import math
 
+from .floats import is_zero
+
 #: Values whose magnitude is in [SCI_BELOW, SCI_ABOVE) are written as plain
 #: decimals, everything else in scientific notation such as 2.5e-4 or 1e7.
 SCI_BELOW = 1e-3
@@ -29,7 +31,7 @@ def format_number(value: float, digits: int = 6) -> str:
     value = float(value)
     if not math.isfinite(value):
         return "nan" if math.isnan(value) else ("inf" if value > 0 else "-inf")
-    if value == 0.0:
+    if is_zero(value):
         return "0"
     rounded = float("{0:.{1}g}".format(value, digits))
     if not math.isfinite(rounded):   # rounding up the largest numbers overflows

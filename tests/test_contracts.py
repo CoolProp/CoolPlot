@@ -11,6 +11,7 @@ import json
 import numpy as np
 import pytest
 
+from coolplot.core.floats import same_arrays
 from coolplot.testing import conformance_scene
 from coolplot.scene import Scene, items_equal
 
@@ -79,7 +80,7 @@ def test_curve_records_round_trip():
             text = _twice(curve.to_dict())
             again = Curve.from_dict(json.loads(text))
             assert _twice(again.to_dict()) == text
-            assert np.array_equal(again.x, curve.x, equal_nan=True) and again.method == curve.method
+            assert same_arrays(again.x, curve.x) and again.method == curve.method
 
 
 def test_complete_states_round_trip_whatever_the_key_order():

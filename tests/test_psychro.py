@@ -8,6 +8,7 @@ import pytest
 pytest.importorskip("CoolProp")
 from CoolProp.HumidAirProp import HAPropsSI  # noqa: E402
 
+from coolplot.core.floats import is_zero, same_numbers  # noqa: E402
 from coolplot.psychrometric import PsychrometricChart  # noqa: E402
 from coolplot.render.svg import SvgRenderer  # noqa: E402
 from coolplot.spec import DiagramSpec  # noqa: E402
@@ -78,12 +79,12 @@ def test_lines_reach_their_ends():
     # A falling line ends exactly at W = 0, for v where the ideal-gas law
     # nearly holds for dry air (T = p v / R_air)
     curve = psychro_line("v", 0.80, P, T_RANGE, points=100)
-    assert curve.y[-1] == 0.0
+    assert is_zero(curve.y[-1])
     assert curve.x[-1] == pytest.approx(P * 0.80 / 287.055, abs=0.5)
     # The 0 deg C wet-bulb line runs all the way down to dry air, through
     # the temperatures where HAPropsSI cannot give W from Twb directly
     curve = psychro_line("Twb", 273.15, P, T_RANGE, points=100)
-    assert curve.y[-1] == 0.0 and curve.x[-1] > 283.0
+    assert is_zero(curve.y[-1]) and curve.x[-1] > 283.0
     assert np.all(np.diff(curve.y) <= 1e-12)   # W falls along the line, no jumps back
 
 
@@ -102,7 +103,7 @@ def test_chart_scene(chart):
     assert scene["iso/RH/1"].role == "saturation"
     assert scene.axes.x_label == "Dry-bulb temperature T / deg C"
     assert scene.axes.y_label == "Humidity ratio W / g/kg"
-    assert scene.axes.x_limits == (-10.0, 45.0)
+    assert same_numbers(scene.axes.x_limits, (-10.0, 45.0))
     labels = [i for i in scene if i.role == "isoline_label"]
     assert len(labels) > 10 and any(t.text == "RH=50 %" for t in labels)
     states = list(chart.cycle_states("Air conditioning").values())

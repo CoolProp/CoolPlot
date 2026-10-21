@@ -10,6 +10,7 @@ import warnings
 import pytest
 
 import coolplot
+from coolplot.core.floats import same_number
 
 #: Names importable from the package.
 PACKAGE_NAMES = {
@@ -233,7 +234,7 @@ def test_set_lines_defaults_and_units_per_call():
                              {"p": 15.0, "Q": 0.0}, {"p": 3.0, "via": "isenthalpic"}])
     assert diagram.cycle_states("hp", units="engineering")[1]["T"] == pytest.approx(0.0)
     diagram.move_cycle_state("hp", 1, 450e3, 3e5, units="SI")   # SI values, where the display units are kJ and bar
-    assert diagram.cycle_states("hp")[1].h == pytest.approx(450e3) and diagram.cycle_states("hp")[1].p == 3e5
+    assert diagram.cycle_states("hp")[1].h == pytest.approx(450e3) and same_number(diagram.cycle_states("hp")[1].p, 3e5)
     chart = PsychrometricChart(T_range=(0, 40), W_range=(0, 20))
     chart.set_lines("RH")
     assert chart.line_sets()["RH"].labels is True and chart.line_sets()["RH"].rounding is True

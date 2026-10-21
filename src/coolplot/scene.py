@@ -32,6 +32,7 @@ from typing import Dict, Iterable, Iterator, Optional, Tuple
 import numpy as np
 
 
+from .core.floats import is_zero, is_zero_array, same_number
 from .style.values import (AxesStyle, LineStyle, MarkerStyle, TextStyle,  # noqa: F401 (re-exported)
                            style_from_dict, style_to_dict)
 
@@ -150,7 +151,7 @@ class Text(Item):
         object.__setattr__(self, "clip", bool(self.clip))
         if self.direction is not None:
             direction = tuple(float(v) for v in self.direction)
-            if not _finite_pair(direction) or direction == (0.0, 0.0):
+            if not _finite_pair(direction) or (is_zero(direction[0]) and is_zero(direction[1])):
                 raise ValueError("Text {0!r}: direction has to be two finite numbers, not both zero, or None; "
                                  "got {1}.".format(self.id, self.direction))
             object.__setattr__(self, "direction", direction)
@@ -173,12 +174,33 @@ def items_equal(a: Item, b: Item) -> bool:
     return all(_values_equal(getattr(a, f.name), getattr(b, f.name)) for f in fields(a))
 
 
+def _is_number(v) -> bool:
+    return isinstance(v, (int, float, np.integer, np.floating)) and not isinstance(v, (bool, np.bool_))
+
+
+def _same_or_both_nan(a: float, b: float) -> bool:
+    return (math.isnan(a) and math.isnan(b)) or same_number(a, b)
+
+
 def _values_equal(va, vb) -> bool:
-    """Field values compared by value; NaN equals NaN, so a text at NaN stays where it is."""
+    """Field values compared by value; NaN equals NaN, so a text at NaN stays where it is.
+
+    Numbers are compared with same_number (see coolplot.core.floats), arrays
+    element by element in the same way; style objects and texts with ==.
+    """
     if isinstance(va, np.ndarray) or isinstance(vb, np.ndarray):
-        return bool(np.array_equal(va, vb, equal_nan=True))
-    if isinstance(va, float) and isinstance(vb, float) and math.isnan(va) and math.isnan(vb):
-        return True
+        a = np.ascontiguousarray(va, dtype=np.float64)
+        b = np.ascontiguousarray(vb, dtype=np.float64)
+        if a.shape != b.shape:
+            return False
+        both_nan = np.isnan(a) & np.isnan(b)
+        both_zero = is_zero_array(a) & is_zero_array(b)
+        same = (a.view(np.uint64) == b.view(np.uint64)) & ~np.isnan(a)
+        return bool(np.all(both_nan | both_zero | same))
+    if _is_number(va) and _is_number(vb):
+        return _same_or_both_nan(float(va), float(vb))
+    if isinstance(va, tuple) and isinstance(vb, tuple) and all(_is_number(v) for v in va + vb):
+        return len(va) == len(vb) and all(_same_or_both_nan(float(x), float(y)) for x, y in zip(va, vb))
     return va == vb
 
 
@@ -202,10 +224,12 @@ def drawable_limits(limits, log: bool) -> Tuple[float, float]:
             hi = 10.0
         if not lo > 0.0:
             lo = hi * 1e-3
-        if lo == hi:
+        if same_number(lo, hi):
             lo, hi = lo / 10.0, hi * 10.0
-    elif lo == hi:
-        pad = abs(lo) * 0.1 or 0.5
+    elif same_number(lo, hi):
+        pad = abs(lo) * 0.1
+        if is_zero(pad):
+            pad = 0.5
         lo, hi = lo - pad, hi + pad
     return lo, hi
 

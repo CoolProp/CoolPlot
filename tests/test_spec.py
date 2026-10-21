@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from coolplot.core.floats import same_number, same_numbers
 from coolplot.core.limits import Relative, TpLimits
 from coolplot.core.state import StatePoint
 from coolplot.core.units import ENGINEERING, Unit
@@ -38,7 +39,8 @@ def test_bad_fluid_strings(text):
 
 def test_fluid_interactions_are_validated():
     spec = FluidSpec("HEOS", ("R32", "R125"), (0.5, 0.5), interactions=[[0, 1, "betaT", "1.02"]])
-    assert spec.interactions == ((0, 1, "betaT", 1.02),)
+    assert len(spec.interactions) == 1
+    assert spec.interactions[0][:3] == (0, 1, "betaT") and same_numbers(spec.interactions[0][3:], (1.02,))
     hash(spec)
     with pytest.raises(ValueError):
         FluidSpec("HEOS", ("R32", "R125"), (0.5, 0.5), interactions=[(0, 2, "betaT", 1.0)])
@@ -52,8 +54,8 @@ def test_settings_presets_and_derivation():
     assert fast.calc.points < Settings().calc.points
     assert get_settings("print").look.name == "print"
     changed = Settings().with_(calc={"points": 80}, look="dark", labels={"digits": 3}, page={"font_scale": 1.5})
-    assert (changed.calc.points, changed.look.name, changed.labels.digits, changed.page.font_scale) == \
-        (80, "dark", 3, 1.5)
+    assert (changed.calc.points, changed.look.name, changed.labels.digits) == (80, "dark", 3)
+    assert same_number(changed.page.font_scale, 1.5)
     assert changed.calc.saturation_points == Settings().calc.saturation_points
     with pytest.raises(ValueError):
         get_settings("fancy")
@@ -139,4 +141,4 @@ def test_switching_the_calculation_preset_keeps_the_rest():
     diagram.settings = diagram.settings.with_(calc="interactive")
     assert diagram.settings.calc.points == 60
     assert diagram.theme.name == "dark" and diagram.settings.labels.mode == "margin"
-    assert diagram.settings.page.width_pt == 504.0
+    assert same_number(diagram.settings.page.width_pt, 504.0)

@@ -4,17 +4,23 @@ import json
 
 import pytest
 
+from coolplot.core.floats import same_number, same_numbers
 from coolplot.style import (CSS_COLORS, AxesStyle, Font, LineStyle, MarkerStyle, TextStyle,
                             dash_pattern_pt, parse_color)
 from coolplot.style.theme import CLASSIC, DARK, DEFAULT, PRINT, THEMES, Theme, get_theme
 
 
+def _same_color(parsed, color, alpha):
+    """A (color, alpha) pair: the color compared with ==, the alpha bit for bit."""
+    return len(parsed) == 2 and parsed[0] == color and same_number(parsed[1], alpha)
+
+
 def test_parse_color():
-    assert parse_color("Red") == ("#ff0000", 1.0)
-    assert parse_color("#ABC") == ("#aabbcc", 1.0)
-    assert parse_color("#00ff0080") == ("#00ff00", 128 / 255)
+    assert _same_color(parse_color("Red"), "#ff0000", 1.0)
+    assert _same_color(parse_color("#ABC"), "#aabbcc", 1.0)
+    assert _same_color(parse_color("#00ff0080"), "#00ff00", 128 / 255)
     assert parse_color("#0f08")[1] == pytest.approx(0x88 / 255)
-    assert parse_color("none") == (None, 0.0)
+    assert _same_color(parse_color("none"), None, 0.0)
     for bad in ("reddish", "#12345", "rgb(1,2,3)", ""):
         with pytest.raises(ValueError):
             parse_color(bad)
@@ -28,7 +34,7 @@ def test_css_names_match_matplotlib():
 def test_styles_normalise_and_validate():
     line = LineStyle(color="#ff000080", alpha=0.5)
     assert line.color == "#ff0000" and line.alpha == pytest.approx(0.5 * 128 / 255)
-    assert LineStyle(dash=[2, 1]).dash == (2.0, 1.0)
+    assert same_numbers(LineStyle(dash=[2, 1]).dash, (2.0, 1.0))
     for kwargs in ({"dash": "wavy"}, {"dash": (1.0,)}, {"width_pt": -1}, {"alpha": 2},
                    {"cap": "pointy"}, {"color": "blurple"}):
         with pytest.raises(ValueError):
@@ -44,9 +50,9 @@ def test_styles_normalise_and_validate():
 
 def test_dash_patterns_scale_with_width_but_not_below_one_point():
     assert dash_pattern_pt("solid", 2.0) == ()
-    assert dash_pattern_pt("dashed", 2.0) == (7.4, 3.2)
-    assert dash_pattern_pt("dashed", 0.5) == (3.7, 1.6)
-    assert dash_pattern_pt((4.0, 1.0), 3.0) == (4.0, 1.0)  # explicit lengths are not scaled
+    assert same_numbers(dash_pattern_pt("dashed", 2.0), (7.4, 3.2))
+    assert same_numbers(dash_pattern_pt("dashed", 0.5), (3.7, 1.6))
+    assert same_numbers(dash_pattern_pt((4.0, 1.0), 3.0), (4.0, 1.0))  # explicit lengths are not scaled
 
 
 def test_theme_round_trip_through_json():
@@ -110,9 +116,9 @@ def test_switching_theme_recomputes_nothing():
     assert scene["iso/Q/0"].role == "saturation" and scene["iso/Q/0.5"].role == "quality"
     assert [text for text, _ in scene.legend_entries()] == ["Saturation", "Vapour quality", "Temperature"]
     d.set_line_style("T", width_pt=2.0)
-    assert d.update_scene()["iso/T/273.15"].style.width_pt == 2.0
+    assert same_number(d.update_scene()["iso/T/273.15"].style.width_pt, 2.0)
     d.set_line_style("T")
-    assert d.update_scene()["iso/T/273.15"].style.width_pt == DARK.isoline.width_pt
+    assert same_number(d.update_scene()["iso/T/273.15"].style.width_pt, DARK.isoline.width_pt)
 
 
 def test_theme_loading_is_strict():

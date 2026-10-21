@@ -39,7 +39,7 @@ void Item::validate() const {
     if (!(z_order >= 0.0 && std::isfinite(z_order))) throw Error("Item '" + id + "': z_order has to be finite and >= 0.");
     if (type == ItemType::Text) {
         if (!finite_pair(offset_x_pt, offset_y_pt)) throw Error("Text '" + id + "': offset_pt has to be two finite numbers.");
-        if (has_direction && (!finite_pair(direction_x, direction_y) || (direction_x == 0.0 && direction_y == 0.0)))
+        if (has_direction && (!finite_pair(direction_x, direction_y) || (is_zero(direction_x) && is_zero(direction_y))))
             throw Error("Text '" + id + "': direction has to be two finite numbers, not both zero, or None.");
         text_style.validate();
     } else {
@@ -125,28 +125,31 @@ Item Item::from_json(const json& data) {
 
 namespace {
 
-bool same_numbers(const std::vector<double>& a, const std::vector<double>& b) {
-    if (a.size() != b.size()) return false;
-    for (size_t i = 0; i < a.size(); ++i)
-        if (!(a[i] == b[i] || (std::isnan(a[i]) && std::isnan(b[i])))) return false;
-    return true;
+// For the redraw decision a NaN (a gap in a line) equals a NaN
+bool same_or_both_nan(double a, double b) {
+    return (std::isnan(a) && std::isnan(b)) || same_number(a, b);
 }
 
-bool same_number(double a, double b) {
-    return a == b || (std::isnan(a) && std::isnan(b));
+bool same_or_both_nan(const std::vector<double>& a, const std::vector<double>& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i)
+        if (!same_or_both_nan(a[i], b[i])) return false;
+    return true;
 }
 
 }  // namespace
 
 bool items_equal(const Item& a, const Item& b) {
     if (a.type != b.type || a.id != b.id || a.group != b.group || a.role != b.role || a.has_legend != b.has_legend
-        || (a.has_legend && a.legend != b.legend) || a.visible != b.visible || a.z_order != b.z_order)
+        || (a.has_legend && a.legend != b.legend) || a.visible != b.visible || !same_number(a.z_order, b.z_order))
         return false;
     if (a.type == ItemType::Text)
-        return same_number(a.text_x, b.text_x) && same_number(a.text_y, b.text_y) && a.text == b.text && a.has_direction == b.has_direction
-               && (!a.has_direction || (a.direction_x == b.direction_x && a.direction_y == b.direction_y)) && a.text_style == b.text_style
-               && a.offset_x_pt == b.offset_x_pt && a.offset_y_pt == b.offset_y_pt && a.clip == b.clip;
-    if (!same_numbers(a.x, b.x) || !same_numbers(a.y, b.y)) return false;
+        return same_or_both_nan(a.text_x, b.text_x) && same_or_both_nan(a.text_y, b.text_y) && a.text == b.text
+               && a.has_direction == b.has_direction
+               && (!a.has_direction || (same_number(a.direction_x, b.direction_x) && same_number(a.direction_y, b.direction_y)))
+               && a.text_style == b.text_style && same_number(a.offset_x_pt, b.offset_x_pt) && same_number(a.offset_y_pt, b.offset_y_pt)
+               && a.clip == b.clip;
+    if (!same_or_both_nan(a.x, b.x) || !same_or_both_nan(a.y, b.y)) return false;
     return a.type == ItemType::Line ? a.line_style == b.line_style : a.marker_style == b.marker_style;
 }
 
@@ -155,13 +158,13 @@ Range drawable_limits(Range limits, bool log) {
     if (log) {
         if (!(hi > 0.0)) hi = 10.0;
         if (!(lo > 0.0)) lo = hi * 1e-3;
-        if (lo == hi) {
+        if (same_number(lo, hi)) {
             lo = lo / 10.0;
             hi = hi * 10.0;
         }
-    } else if (lo == hi) {
+    } else if (same_number(lo, hi)) {
         double pad = std::fabs(lo) * 0.1;
-        if (pad == 0.0) pad = 0.5;
+        if (is_zero(pad)) pad = 0.5;
         lo -= pad;
         hi += pad;
     }
@@ -177,8 +180,10 @@ void AxesSpec::validate() const {
 
 bool AxesSpec::operator==(const AxesSpec& o) const {
     return x_label == o.x_label && y_label == o.y_label && x_log == o.x_log && y_log == o.y_log && has_x_limits == o.has_x_limits
-           && (!has_x_limits || (x_limits.lo == o.x_limits.lo && x_limits.hi == o.x_limits.hi)) && has_y_limits == o.has_y_limits
-           && (!has_y_limits || (y_limits.lo == o.y_limits.lo && y_limits.hi == o.y_limits.hi)) && title == o.title && style == o.style
+           && (!has_x_limits || (same_number(x_limits.lo, o.x_limits.lo) && same_number(x_limits.hi, o.x_limits.hi)))
+           && has_y_limits == o.has_y_limits
+           && (!has_y_limits || (same_number(y_limits.lo, o.y_limits.lo) && same_number(y_limits.hi, o.y_limits.hi))) && title == o.title
+           && style == o.style
            && tick_digits == o.tick_digits;
 }
 

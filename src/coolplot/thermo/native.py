@@ -32,7 +32,6 @@ need it skip there and in CI.
 """
 from __future__ import annotations
 
-import math
 import threading
 from collections import OrderedDict
 from typing import Optional
@@ -40,7 +39,7 @@ from typing import Optional
 import numpy as np
 
 from ..core.implementation import native_mode
-from .floats import is_zero, same_bits
+from ..core.floats import same_number
 from .isolines import Curve, _base_backend_fluid
 
 try:
@@ -95,15 +94,8 @@ def _interactions_are_default(backend: str, components, interactions) -> bool:
         _DEFAULT_INTERACTIONS[key] = defaults
     # Exactly the default, not close to it: the native module would ignore a
     # parameter that differs in the last digit.  The same bits, or both zero.
-    return all((i, j, name) in defaults and _same_number(defaults[(i, j, name)], float(value))
+    return all((i, j, name) in defaults and same_number(defaults[(i, j, name)], float(value))
                for i, j, name, value in interactions)
-
-
-def _same_number(a: float, b: float) -> bool:
-    """Whether a and b are the same number: the same bits, or +0.0 and -0.0 (NaN is no number)."""
-    if math.isnan(a) or math.isnan(b):
-        return False
-    return same_bits(a, b) or (is_zero(a) and is_zero(b))
 
 
 def fluid_string(model) -> Optional[str]:

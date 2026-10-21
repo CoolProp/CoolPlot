@@ -28,6 +28,7 @@ from ..spec.diagram import CycleSpec, DiagramSpec, ProcessSpec
 from ..style.theme import Theme
 from ..style.values import Font
 from .layout import Frame, LabelRequest, place_edge_labels, place_margin_labels, place_state_numbers
+from ..core.floats import is_zero, same_number
 
 # Drawing order: isolines, saturation dome, labels, processes and cycles,
 # state points, state numbers.
@@ -49,7 +50,7 @@ def _scaled(value, factor: float):
 @lru_cache(maxsize=8)
 def scaled_theme(theme: Theme, factor: float) -> Theme:
     """The theme with all font sizes scaled, see ``Settings.page.font_scale``."""
-    return theme if factor == 1.0 else _scaled(theme, factor)
+    return theme if same_number(factor, 1.0) else _scaled(theme, factor)
 
 
 def axis_label(spec: DiagramSpec, key: str) -> str:
@@ -103,15 +104,15 @@ def axis_scales(spec: DiagramSpec):
     unit with an offset (gauge pressure) gets a linear axis, since its
     values can be zero or negative."""
     diagram = spec.diagram
-    return (diagram.x_log and spec.units[diagram.x].offset == 0.0,
-            diagram.y_log and spec.units[diagram.y].offset == 0.0)
+    return (diagram.x_log and is_zero(spec.units[diagram.x].offset),
+            diagram.y_log and is_zero(spec.units[diagram.y].offset))
 
 
 def isoline_look(spec: DiagramSpec, theme: Theme, key: str, value_SI: float):
     """(style, role, legend text, z order) of one isoline, from the theme and overrides."""
     family = spec.diagram.family(key)
     if family.on_boundary:
-        if value_SI in family.boundary:
+        if any(same_number(value_SI, b) for b in family.boundary):
             return theme.saturation, "saturation", "Saturation", Z_SATURATION
         return theme.quality, "quality", spec.diagram.quantity_label(key), Z_ISOLINE
     families = [f.key for f in spec.diagram.families if not f.on_boundary]
@@ -184,7 +185,8 @@ def label_requests(spec: DiagramSpec, theme: Theme, curves, lines: Sequence[Line
     every = spec.settings.labels.every
     by_family = {}
     for (request, _), line in zip(curves, lines):
-        if not request.labels or request.value_SI in spec.diagram.family(request.key).boundary:
+        boundary = spec.diagram.family(request.key).boundary
+        if not request.labels or any(same_number(request.value_SI, b) for b in boundary):
             continue
         by_family.setdefault(request.key, []).append((request, line))
     order = sorted(by_family, key=lambda k: (not spec.diagram.family(k).on_boundary,

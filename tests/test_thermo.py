@@ -6,6 +6,7 @@ import pytest
 CoolProp = pytest.importorskip("CoolProp")
 from CoolProp.CoolProp import PropsSI  # noqa: E402
 
+from coolplot.core.floats import same_number, same_numbers  # noqa: E402
 from coolplot.thermo import (DiagramType, Fluid, Relative, TpLimits, compute_isoline,  # noqa: E402
                              compute_quality_line, get_tp_limits, process_path, resolve_tp_box,
                              state_point)
@@ -47,7 +48,7 @@ def test_fluid_constants(r290):
 
 def test_tp_limits(r290):
     T_lo_K, T_hi_K, p_lo_Pa, p_hi_Pa = resolve_tp_box(r290, get_tp_limits("ACHP"))
-    assert (T_lo_K, T_hi_K, p_lo_Pa) == (173.15, 493.15, 0.25e5)
+    assert same_numbers((T_lo_K, T_hi_K, p_lo_Pa), (173.15, 493.15, 0.25e5))
     assert p_hi_Pa == pytest.approx(2.25 * r290.critical["p"], rel=1e-6)
     custom = resolve_tp_box(r290, TpLimits(250.0, Relative(1.1), 1e5, 5e6))
     assert custom[1] == pytest.approx(1.1 * r290.critical["T"], rel=1e-6)
@@ -82,7 +83,8 @@ def test_saturation_dome_closes_at_critical_point(r290):
     bubble = compute_quality_line(r290, ph, 0.0, points=50)
     dew = compute_quality_line(r290, ph, 1.0, points=50)
     assert bubble.n_failed == 0 and dew.n_failed == 0
-    assert bubble.x[-1] == dew.x[-1] == pytest.approx(r290.critical["h"])
+    assert same_number(bubble.x[-1], dew.x[-1])
+    assert dew.x[-1] == pytest.approx(r290.critical["h"])
     assert bubble.y[-1] == pytest.approx(r290.critical["p"])
     assert bubble.x[0] < dew.x[0]
     with pytest.raises(ValueError):
@@ -97,7 +99,7 @@ def test_process_path(r290):
     assert path[0].T == pytest.approx(start.T)
     assert path[-1].p == pytest.approx(15e5)
     assert all(p.s == pytest.approx(start.s) for p in path)
-    assert path[2]["P"] == path[2].p  # alias access
+    assert same_number(path[2]["P"], path[2].p)  # alias access
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +202,7 @@ def test_bubble_line_closes_at_the_neighbouring_dew_point():
     fluid = Fluid("HEOS::CO2[0.5]&Propane[0.5]")
     ph = DiagramType.parse("ph")
     bubble, dew = compute_quality_line(fluid, ph, 0.0), compute_quality_line(fluid, ph, 1.0)
-    assert (bubble.x[0], bubble.y[0]) == (dew.x[-1], dew.y[-1])
+    assert same_numbers((bubble.x[0], bubble.y[0]), (dew.x[-1], dew.y[-1]))
 
 
 class _FailingState:

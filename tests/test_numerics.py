@@ -6,6 +6,7 @@ import pytest
 CoolProp = pytest.importorskip("CoolProp")
 from CoolProp.CoolProp import PropsSI  # noqa: E402
 
+from coolplot.core.floats import is_zero, same_numbers  # noqa: E402
 from coolplot.thermo import (DiagramType, Fluid, compute_isoline, compute_quality_line,  # noqa: E402
                              get_tp_limits, resolve_tp_box)
 
@@ -102,7 +103,7 @@ def test_mixture_dome_from_the_phase_envelope(blend):
     assert bubble.method == dew.method == "envelope"
     assert bubble.n_failed == 0 and dew.n_failed == 0
     # The dome closes: the bubble line starts where the dew line ends
-    assert (bubble.x[0], bubble.y[0]) == (dew.x[-1], dew.y[-1])
+    assert same_numbers((bubble.x[0], bubble.y[0]), (dew.x[-1], dew.y[-1]))
     # Every point is an envelope state: in a T-rho chart the bubble line
     # runs through the envelope's temperatures and bulk densities (CoolProp
     # keeps the bulk phase in the "vap" fields on both branches)
@@ -110,7 +111,7 @@ def test_mixture_dome_from_the_phase_envelope(blend):
     state.set_mole_fractions([0.7, 0.3])
     state.build_phase_envelope("veryfine")
     data = state.get_phase_envelope_data()
-    on_bubble = np.array(data.Q) == 0.0
+    on_bubble = np.array(data.Q) < 0.5   # Q is 0 on the bubble branch, 1 on the dew branch
     trho = compute_quality_line(blend, DiagramType.parse("Trho"), 0.0)
     assert trho.y[1:] == pytest.approx(np.array(data.T)[on_bubble], rel=1e-12)
     assert trho.x[1:] == pytest.approx(np.array(data.rhomolar_vap)[on_bubble] * state.molar_mass(), rel=1e-12)
@@ -152,7 +153,7 @@ def test_blend_lines_meet_the_dome_near_the_critical_point(blend):
     envelope = blend.phase_envelope()
     T_env, p_env = envelope.values("T"), envelope.values("p")
     for quality in (0.0, 1.0):
-        branch = envelope.Q == quality
+        branch = (envelope.Q > 0.5) == (quality > 0.5)   # Q is 0 or 1: pick the branch by side
         order = np.argsort(T_env[branch])
         p_sat = np.interp(340.0, T_env[branch][order], p_env[branch][order])
         assert np.min(np.abs(isotherm.y - p_sat)) < 1e-4 * p_sat
@@ -192,7 +193,7 @@ def test_states_computed_outside_the_axes_are_reported_as_such():
     from coolplot.thermo.stepping import Metric, Sample, trace
 
     def evaluate(u, careful):
-        if u == 0.0:
+        if is_zero(u):
             return None                          # the first, careful look fails
         return Sample(u, 2.0, inside=False)      # the rest lie above the chart
 
@@ -225,7 +226,7 @@ def test_a_saturation_density_that_is_not_a_number_leaves_the_root_undecided():
         def update(self, pair, quality, T):
             self.quality = quality
         def rhomolar(self):
-            return 10000.0 if self.quality == 0.0 else float("nan")
+            return 10000.0 if is_zero(self.quality) else float("nan")
         def p(self):
             return 1e6
 
@@ -260,7 +261,7 @@ def test_dome_ends_with_the_same_sweep_value_are_ordered_by_quality():
 
 
 def test_sign_tests_and_cache_keys_without_float_equality():
-    from coolplot.thermo.floats import is_zero, same_bits, sign_of
+    from coolplot.core.floats import is_zero, same_bits, sign_of
     assert [sign_of(v) for v in (-2.0, 0.0, -0.0, 3.0)] == [-1, 0, 0, 1]
     assert sign_of(np.float64(-1e-300)) == -1          # numpy scalars from the envelope arrays
     assert same_bits(300.0, 300.0) and same_bits(np.float64(300.0), 300.0)
@@ -269,9 +270,11 @@ def test_sign_tests_and_cache_keys_without_float_equality():
     assert same_bits(float("nan"), float("nan"))      # the same failed input is the same cache entry
     assert is_zero(0.0) and is_zero(-0.0) and is_zero(np.float64(0.0))
     assert not is_zero(5e-324) and not is_zero(float("nan")) and not is_zero(float("inf"))
-    from coolplot.thermo.native import _same_number
-    assert _same_number(0.0, -0.0) and _same_number(0.5, 0.5) and not _same_number(0.5, np.nextafter(0.5, 1.0))
-    assert not _same_number(float("nan"), float("nan"))       # as with ==: NaN is not the default
+    from coolplot.core.floats import is_zero_array, same_number, same_numbers
+    assert same_number(0.0, -0.0) and same_number(0.5, 0.5) and not same_number(0.5, np.nextafter(0.5, 1.0))
+    assert not same_number(float("nan"), float("nan"))       # as with ==: NaN is no number
+    assert same_numbers((1.0, 2.0), [1.0, 2.0]) and not same_numbers((1.0, 2.0), (1.0,))
+    assert is_zero_array(np.array([0.0, -0.0, 5e-324, np.nan])).tolist() == [True, True, False, False]
 
 
 def test_a_state_whose_saturated_outputs_fail_is_not_two_phases():

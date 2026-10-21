@@ -51,7 +51,7 @@ struct Dash
     std::vector<double> lengths;
 
     bool operator==(const Dash& other) const {
-        return name == other.name && lengths == other.lengths;
+        return name == other.name && same_numbers(lengths, other.lengths);
     }
     json to_json() const;
     static Dash from_json(const json& value);

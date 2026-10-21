@@ -29,6 +29,7 @@ from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
 from .ticks import ticks as _ticks
 from ..style.values import AxesStyle, TextStyle, dash_pattern_pt
 from .base import Renderer, SyncReport
+from ..core.floats import is_zero, same_number, same_numbers
 
 PX_PER_PT = 4.0 / 3.0
 _CAPS = {"butt": "butt", "round": "round", "square": "square"}
@@ -263,7 +264,7 @@ class SvgRenderer(Renderer):
         left, right, top, bottom = (m + e for m, e in zip(self.margins, extra))
         st = self._legend_style
         if st is not None and st.location == "outside right":
-            right += self._legend_size()[0] + 12.0 if self._legend_size()[0] else 0.0
+            right += 0.0 if is_zero(self._legend_size()[0]) else self._legend_size()[0] + 12.0
         # Never let margins and an outside legend eat the whole drawing
         width = max(self.width - left - right, 0.25 * self.width)
         return left, top, width, max(self.height - top - bottom, 0.25 * self.height)
@@ -332,7 +333,7 @@ class SvgRenderer(Renderer):
     def _build_elements(self):
         """Make the SVG element of every item that has none yet (all of them after the axes changed)."""
         to_px, mapping_key = self._mapper()
-        if mapping_key != self._mapping_key:
+        if self._mapping_key is None or not same_numbers(mapping_key, self._mapping_key):
             self._elements.clear()
             self._mapping_key = mapping_key
         for item_id, item in self._items.items():
@@ -528,7 +529,7 @@ class SvgRenderer(Renderer):
     def _legend_elements(self) -> List[str]:
         st = self._legend_style
         width, height = self._legend_size()
-        if not width:
+        if is_zero(width):
             return []
         bx, by, bw, bh = self._box
         pad = 8.0
@@ -720,7 +721,7 @@ def _svg_angle(item: Text, to_px, px: float, py: float) -> float:
     dx, dy = item.direction
     step = 1e-3
     qx, qy = (float(v) for v in to_px(item.x + dx * step, item.y + dy * step))
-    if not (math.isfinite(qx) and math.isfinite(qy)) or (qx, qy) == (px, py):
+    if not (math.isfinite(qx) and math.isfinite(qy)) or same_numbers((qx, qy), (px, py)):
         return 0.0
     # Screen y points down, so a rising line has a negative SVG angle.
     angle = math.degrees(math.atan2(qy - py, qx - px))
@@ -893,7 +894,7 @@ def _shape_from_geometry(el) -> Optional[str]:
         return _closed_shape(el, points)
     if len(points) == 4 and d.count("M") == 2:
         (x0, y0), (x1, y1) = points[0], points[1]
-        return "+" if (x0 == x1 or y0 == y1) else "x"
+        return "+" if (same_number(x0, x1) or same_number(y0, y1)) else "x"
     return None
 
 

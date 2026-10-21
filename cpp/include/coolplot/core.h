@@ -8,6 +8,9 @@
 #ifndef COOLPLOT_CORE_H
 #define COOLPLOT_CORE_H
 
+#include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -19,6 +22,44 @@
 namespace coolplot {
 
 using json = nlohmann::json;
+
+// Exact tests on doubles, without comparing two doubles for equality (the
+// same helpers as coolplot/core/floats.py). Comparing with == is fragile: two
+// ways of computing the same number can differ in the last bit. Where an
+// exact answer is meant, these ask a sharper question.
+
+/// Whether v is exactly zero, of either sign: a classification, not a comparison. NaN is not zero.
+inline bool is_zero(double v) {
+    return std::fpclassify(v) == FP_ZERO;
+}
+
+/// The 64 bits of a double, as an integer.
+inline std::uint64_t bits_of(double v) {
+    static_assert(sizeof(double) == sizeof(std::uint64_t), "a double has 64 bits");
+    std::uint64_t bits = 0;
+    std::memcpy(&bits, &v, sizeof bits);
+    return bits;
+}
+
+/// Whether two doubles are the same input, bit for bit (a cache key).
+inline bool same_bits(double a, double b) {
+    return bits_of(a) == bits_of(b);
+}
+
+/// Whether a and b are the very same number: the same bits, or +0.0 and -0.0. For a value set or
+/// copied earlier (a setting, a limit, a position), not for two results of a calculation. NaN is no number.
+inline bool same_number(double a, double b) {
+    if (std::isnan(a) || std::isnan(b)) return false;
+    return same_bits(a, b) || (is_zero(a) && is_zero(b));
+}
+
+/// same_number element by element.
+inline bool same_numbers(const std::vector<double>& a, const std::vector<double>& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i)
+        if (!same_number(a[i], b[i])) return false;
+    return true;
+}
 
 /// The error every bad input raises; the Python adapter turns it into ValueError.
 class Error : public std::runtime_error

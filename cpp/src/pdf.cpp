@@ -144,7 +144,7 @@ class Writer
         double top = options.margins_pt[2] + extra_margins_[2], bottom = options.margins_pt[3] + extra_margins_[3];
         if (scene.axes.style.legend.location == "outside right") {
             double width = legend_size().first;
-            if (width) right += width + 9.0;
+            if (!is_zero(width)) right += width + 9.0;
         }
         bw_ = std::max(options.width_pt - left - right, 0.25 * options.width_pt);
         bh_ = std::max(options.height_pt - top - bottom, 0.25 * options.height_pt);
@@ -474,7 +474,7 @@ class Writer
         if (!item.has_direction) return 0.0;
         double step = 1e-3;
         double qx = px(item.text_x + item.direction_x * step), qy = py(item.text_y + item.direction_y * step);
-        if (!(std::isfinite(qx) && std::isfinite(qy)) || (qx == x && qy == y)) return 0.0;
+        if (!(std::isfinite(qx) && std::isfinite(qy)) || (same_number(qx, x) && same_number(qy, y))) return 0.0;
         double angle = std::atan2(qy - y, qx - x) * 180.0 / PI;
         if (angle > 90.0) return angle - 180.0;
         if (angle <= -90.0) return angle + 180.0;
@@ -558,7 +558,7 @@ class Writer
     std::string legend() {
         const LegendStyle& st = scene_.axes.style.legend;
         std::pair<double, double> size = legend_size();
-        if (!size.first) return "";
+        if (is_zero(size.first)) return "";
         double pad = 6.0;
         double x = st.location == "upper left" || st.location == "lower left" ? bx_ + pad
                    : st.location == "outside right"                            ? bx_ + bw_ + 9.0

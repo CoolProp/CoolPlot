@@ -50,6 +50,7 @@ from ..core.numbers import format_number
 from ..style.values import AxesStyle, LineStyle, TextStyle, dash_pattern_pt
 from .base import Renderer, SyncReport
 from .ticks import ticks
+from ..core.floats import is_zero, same_number, same_numbers
 
 PX_PER_PT = 4.0 / 3.0
 TRANSPARENT = "rgba(0,0,0,0)"
@@ -551,7 +552,7 @@ class PlotlyRenderer(Renderer):
         out = {"visible": True, "kind": "text", "draw_rank": texts.index(item_id),
                "text": _unescape(annotation.text), "alpha": 1.0 if annotation.opacity is None else annotation.opacity,
                "h_align": annotation.xanchor, "v_align": _V_BACK[annotation.yanchor],
-               "screen_angle_deg": -(annotation.textangle or 0.0), "offset_pt": (dx, dy),
+               "screen_angle_deg": -_angle_or_zero(annotation.textangle), "offset_pt": (dx, dy),
                # Clipping is emulated by hiding texts outside the plot area
                "clip": self._drawn[item_id].clip,
                "drawn_points": [(fx + dx / width, fy + dy / height)]}
@@ -673,11 +674,23 @@ def _tick_label_rows(axis):
     return list(zip((float(v) for v in axis.tickvals or ()), axis.ticktext or ()))
 
 
+def _angle_or_zero(angle) -> float:
+    """The text angle, 0.0 when unset or zero (as plotly writes it)."""
+    return 0.0 if angle is None or is_zero(angle) else angle
+
+
+def _same_width(a, b) -> bool:
+    """Whether two line widths (None when unset) are the same setting."""
+    if a is None or b is None:
+        return a is None and b is None
+    return same_number(a, b)
+
+
 def _describe_layout_frame(xa, ya) -> dict:
     mirrored = (xa.showline and ya.showline and xa.mirror is True and ya.mirror is True
-                and xa.linecolor == ya.linecolor and xa.linewidth == ya.linewidth)
+                and xa.linecolor == ya.linecolor and _same_width(xa.linewidth, ya.linewidth))
     return dict(frame_color=_color_back(xa.linecolor) if xa.showline else None,
-                frame_width_pt=(xa.linewidth or 0.0) / PX_PER_PT, frame_sides=4 if mirrored else 0,
+                frame_width_pt=(0.0 if xa.linewidth is None else xa.linewidth) / PX_PER_PT, frame_sides=4 if mirrored else 0,
                 items_below_frame=xa.layer == "above traces" and ya.layer == "above traces")
 
 
@@ -714,8 +727,9 @@ def _describe_layout_grid(xa, ya, x_range, y_range) -> dict:
 
 def _describe_layout_legend(legend) -> dict:
     location = next((name for name, place in _LEGEND.items()
-                     if (legend.x, legend.y, legend.xanchor, legend.yanchor)
-                     == (place["x"], place["y"], place["xanchor"], place["yanchor"])), None)
+                     if (legend.xanchor, legend.yanchor) == (place["xanchor"], place["yanchor"])
+                     and legend.x is not None and legend.y is not None
+                     and same_numbers((legend.x, legend.y), (place["x"], place["y"]))), None)
     out = dict(legend_location=location, legend_background=_color_back(legend.bgcolor),
                items_below_legend=True)   # plotly draws the legend above everything
     out.update(_font_description("legend", legend.font, full=False))

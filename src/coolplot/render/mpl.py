@@ -61,6 +61,7 @@ from ..core.numbers import format_number
 from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
 from ..style.values import AxesStyle, dash_pattern_pt
 from .base import Renderer, SyncReport
+from ..core.floats import is_zero, same_number, same_numbers
 
 _CAPS = {"butt": "butt", "round": "round", "square": "projecting"}
 _CAPS_BACK = {v: k for k, v in _CAPS.items()}
@@ -94,7 +95,7 @@ def _hex_or_none(color):
     if isinstance(color, str) and color.lower() == "none":
         return None
     rgba = matplotlib.colors.to_rgba(color)
-    if rgba[3] == 0.0:
+    if is_zero(rgba[3]):   # fully transparent
         return None
     return to_hex(rgba, keep_alpha=False)
 
@@ -557,7 +558,7 @@ class MatplotlibRenderer(Renderer):
         from matplotlib.transforms import ScaledTranslation
         dx, dy = item.offset_pt
         transform = self.ax.transData
-        if dx or dy:
+        if not (is_zero(dx) and is_zero(dy)):
             transform = transform + ScaledTranslation(dx / 72.0, dy / 72.0, self.figure.dpi_scale_trans)
         artist.set_transform(transform)
         artist.set_clip_on(item.clip)
@@ -715,7 +716,9 @@ class MatplotlibRenderer(Renderer):
         """A pointer moving with a button held: a click's jitter, or a drag."""
         x, y = self._data(event)
         press["last"] = (x, y)
-        ratio = getattr(self.figure.canvas, "device_pixel_ratio", 1.0) or 1.0   # event pixels are physical
+        ratio = getattr(self.figure.canvas, "device_pixel_ratio", None)   # event pixels are physical
+        if ratio is None or is_zero(ratio):
+            ratio = 1.0
         slop = self.CLICK_SLOP_PX * ratio
         if not press["moved"] and math.hypot(event.x - press["x_px"], event.y - press["y_px"]) < slop:
             return   # jitter of a click
@@ -760,7 +763,7 @@ class MatplotlibRenderer(Renderer):
         if self._syncing:
             return
         view = self._view()
-        if view != self._last_view:
+        if not same_numbers(view[0] + view[1], self._last_view[0] + self._last_view[1]):
             self._last_view = view
             self._emit(ViewChanged(*view))
 
@@ -883,8 +886,8 @@ class MatplotlibRenderer(Renderer):
         halo = self._halos.get(item_id)
         if halo is None or not halo.get_visible():
             return None
-        matches = (halo.get_text() == artist.get_text() and halo.get_position() == artist.get_position()
-                   and halo.get_rotation() == artist.get_rotation()
+        matches = (halo.get_text() == artist.get_text() and same_numbers(halo.get_position(), artist.get_position())
+                   and same_number(halo.get_rotation(), artist.get_rotation())
                    and halo.get_fontproperties() == artist.get_fontproperties()
                    and artist.get_zorder() - _RANK_STEP < halo.get_zorder() < artist.get_zorder())
         return halo if matches else None
@@ -968,7 +971,7 @@ class MatplotlibRenderer(Renderer):
         color, width = spine.get_edgecolor(), spine.get_linewidth()
         out["frame_sides"] = sum(1 for sp in ax.spines.values()
                                  if sp.get_visible() and _hex_or_none(sp.get_edgecolor()) == _hex_or_none(color)
-                                 and sp.get_linewidth() == width)
+                                 and same_number(sp.get_linewidth(), width))
         items_z = [a.get_zorder() for a in self._artists.values()]
         out["items_below_frame"] = not items_z or max(items_z) < min(sp.get_zorder() for sp in ax.spines.values())
         out.update(self._legend_extra(items_z))
@@ -1222,9 +1225,9 @@ def _screen_angle(transform, x: float, y: float, dx: float, dy: float) -> float:
     """
     # A coordinate of zero sets no limit (it is on a linear axis, a log
     # axis has none); the other coordinate then sets the step.
-    limits = [abs(c / d) for c, d in ((x, dx), (y, dy)) if d and c]
+    limits = [abs(c / d) for c, d in ((x, dx), (y, dy)) if not (is_zero(d) or is_zero(c))]
     step = 1e-3 * min(limits) if limits else 1e-3
-    if not math.isfinite(step) or step == 0.0:
+    if not math.isfinite(step) or is_zero(step):
         step = 1e-3
     x0, y0 = transform.transform((x, y))
     x1, y1 = transform.transform((x + dx * step, y + dy * step))

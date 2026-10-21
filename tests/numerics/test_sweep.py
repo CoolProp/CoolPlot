@@ -13,6 +13,7 @@ CoolProp = pytest.importorskip("CoolProp")
 from CoolProp.CoolProp import PropsSI  # noqa: E402
 
 from coolplot.core.diagram_type import DiagramType  # noqa: E402
+from coolplot.core.floats import same_numbers  # noqa: E402
 from coolplot.core.limits import get_tp_limits  # noqa: E402
 from coolplot.core.quantities import get_quantity  # noqa: E402
 from coolplot.engine.planning import nice_linear, nice_log  # noqa: E402
@@ -238,7 +239,7 @@ def test_quality_lines_reach_the_top_of_the_dome(blend):
         for quality in (0.25, 0.5, 0.75):
             curve = compute_quality_line(fluid, diagram, quality)
             assert curve.n_valid >= 50 and curve.n_gaps == 0
-            assert (curve.x[-1], curve.y[-1]) == (envelope.top(diagram.x), envelope.top(diagram.y))
+            assert same_numbers((curve.x[-1], curve.y[-1]), (envelope.top(diagram.x), envelope.top(diagram.y)))
             # The last computed state before the top is within a few kelvin of it
             if name == "Ts":
                 assert curve.y[-2] >= envelope.top("T") - 5.0

@@ -407,7 +407,7 @@ class Writer
         double top = options_.margins[2] + extra_margins_[2], bottom = options_.margins[3] + extra_margins_[3];
         if (scene_.axes.style.legend.location == "outside right") {
             double width = legend_size().first;
-            if (width) right += width + 12.0;
+            if (!is_zero(width)) right += width + 12.0;
         }
         // Never let margins and an outside legend eat the whole drawing
         bw_ = std::max(options_.width - left - right, 0.25 * options_.width);
@@ -485,7 +485,7 @@ class Writer
         if (!item.has_direction) return 0.0;
         double step = 1e-3;
         double qx = to_px_x(item.text_x + item.direction_x * step), qy = to_px_y(item.text_y + item.direction_y * step);
-        if (!(std::isfinite(qx) && std::isfinite(qy)) || (qx == pxv && qy == pyv)) return 0.0;
+        if (!(std::isfinite(qx) && std::isfinite(qy)) || (same_number(qx, pxv) && same_number(qy, pyv))) return 0.0;
         double angle = std::atan2(qy - pyv, qx - pxv) * 180.0 / 3.14159265358979323846;
         if (angle >= 90.0) return angle - 180.0;
         if (angle < -90.0) return angle + 180.0;
@@ -582,7 +582,7 @@ class Writer
     void legend(std::vector<std::string>& lines) const {
         const LegendStyle& st = scene_.axes.style.legend;
         std::pair<double, double> size = legend_size();
-        if (!size.first) return;
+        if (is_zero(size.first)) return;
         double pad = 8.0;
         double x = st.location == "upper left" || st.location == "lower left" ? bx_ + pad
                    : st.location == "outside right"                            ? bx_ + bw_ + 12.0
