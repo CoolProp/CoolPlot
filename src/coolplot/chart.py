@@ -54,6 +54,7 @@ from .spec import CycleSpec, DiagramSpec, IsolineSet, SaturationAnchor, get_sett
 from .spec.diagram import ANCHOR_KEYS
 from .style.theme import Theme, get_theme
 from .style.values import LineStyle, MarkerStyle
+from .thermo.cycles.paths import resolve_state
 
 
 def _known_key(name, inputs):
@@ -646,6 +647,24 @@ class Chart:
             unit_system = self._units(units)
             return {n: states[n].in_units(unit_system) for n in sorted(states)}
         return {n: states[n] for n in sorted(states)}
+
+    def state(self, entry, units=None) -> StatePoint:
+        """The full state (SI units) from two properties in the chart's units or in ``units``.
+
+        ``entry`` is a dict as for a state of :meth:`add_cycle`, e.g.
+        ``chart.state({"T": 13, "RH": 95})`` on a psychrometric chart in
+        engineering units, or a StatePoint (returned as it is, after a
+        check that it belongs to this chart). A "via" needs a state before
+        it and is not accepted here.
+        """
+        given = state_input(entry, self._units(units), self.fluid)
+        if given.via is not None:
+            raise ValueError("A state with via '{0}' needs a state before it; give two properties.".format(
+                given.via))
+        try:
+            return resolve_state(self.fluid, given)
+        except PropertyError as e:
+            raise self._in_units(e) from None
 
     # ------------------------------------------------------------------
     # Interaction helpers

@@ -25,6 +25,9 @@ from .core.units import get_unit_system
 from .engine import CurveCache, Engine
 from .spec import DiagramSpec, HumidAirSpec, get_settings
 from .core.limits import within
+from .core.errors import PropertyError
+from .core.state import StatePoint
+from .thermo.humid_air import mixed_air
 
 
 class PsychrometricChart(Chart):
@@ -91,3 +94,23 @@ class PsychrometricChart(Chart):
     @points.setter
     def points(self, value):
         self.settings = self.spec.settings.with_(calc={"points": int(value)})
+
+    def mix(self, a, b, m_dot_a_kg_s: float = 1.0, m_dot_b_kg_s: float = 1.0, units=None) -> StatePoint:
+        """The state (SI units) after two streams of air mix adiabatically.
+
+        ``a`` and ``b`` are StatePoints or dicts of two properties in the
+        chart's units (or in ``units``), e.g. ``{"T": 32, "RH": 40}``.
+        ``m_dot_a_kg_s`` and ``m_dot_b_kg_s`` are their mass flows of dry
+        air; only the ratio matters. The mixed state lies on the straight
+        line between the two states, closer to the larger stream; it can
+        be given to :meth:`add_cycle` as it is.
+
+        >>> chart = PsychrometricChart()
+        >>> mixed = chart.mix({"T": 32, "RH": 40}, {"T": 24, "RH": 50}, m_dot_a_kg_s=0.3, m_dot_b_kg_s=0.7)
+        >>> round(mixed.T - 273.15, 1)
+        26.4
+        """
+        try:
+            return mixed_air(self.state(a, units), self.state(b, units), m_dot_a_kg_s, m_dot_b_kg_s)
+        except PropertyError as e:
+            raise self._in_units(e) from None

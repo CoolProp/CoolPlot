@@ -27,7 +27,8 @@ from ..process import state_point
 SAME_RTOL = 1e-6
 
 # The property a "via" keeps from the state before
-_KEPT = {"isenthalpic": "h", "isentropic": "s", "isobaric": "p", "isothermal": "T", "isochoric": "rho"}
+_KEPT = {"isenthalpic": "h", "isentropic": "s", "isobaric": "p", "isothermal": "T", "isochoric": "rho",
+         "sensible": "W"}
 
 
 def predecessors(loops: Sequence[Sequence[int]]) -> Dict[int, int]:
@@ -49,6 +50,9 @@ def resolve_state(fluid, given: StateInput, previous: StatePoint = None) -> Stat
     if previous is None:
         raise ValueError("A state with via '{0}' needs a state before it in the cycle.".format(given.via))
     key, value = given.props[0]
+    if given.via == "sensible" and "W" not in fluid.quantities:
+        raise ValueError("via 'sensible' keeps the humidity ratio W, which only humid air has; "
+                         "a chart of {0} has no humidity ratio.".format(fluid.name))
     if given.via in _KEPT:
         return state_point(fluid, key, value, _KEPT[given.via], previous[_KEPT[given.via]])
     # Compression or expansion with an isentropic efficiency

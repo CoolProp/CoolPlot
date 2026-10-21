@@ -33,7 +33,7 @@ from ..core.limits import HUMID_AIR_T_LIMITS_K as T_LIMITS_K
 from ..core.limits import Region, within
 from ..core.quantities import QUANTITIES, quantity_key
 from ..core.state import AIR_STATE_KEYS, StatePoint
-from ..core.floats import is_zero
+from ..core.floats import is_zero, same_number
 from .isolines import Curve
 
 #: Quantities of humid air that HAPropsSI computes, by CoolPlot key.
@@ -71,14 +71,49 @@ def air_state(key1: str, value1: float, key2: str, value2: float, p_Pa: float = 
     # properties: CoolProp would return saturated air without a warning.
     if "p" in (key1, key2):
         raise ValueError("Humid air is at the total pressure of the chart ({0:.6g} Pa); give two of "
-                         "T, W, RH, Twb, Tdp, h and v. A process that keeps the humidity ratio gives "
-                         "W, a 'via' that keeps the pressure does not work here.".format(p_Pa))
+                         "T, W, RH, Twb, Tdp, h and v. A process that keeps the humidity ratio is given "
+                         "with via 'sensible'; a via that keeps the pressure does not work here.".format(p_Pa))
     try:
         values = {k: humid_air(k, key1, value1, key2, value2, p_Pa) for k in HUMID_AIR}
     except ValueError as e:
         raise PropertyError("humid air ({0:.6g} Pa)".format(p_Pa), ((key1, value1), (key2, value2)),
                             str(e)) from None
     return StatePoint(p=p_Pa, **values)
+
+
+def mixed_air(a: StatePoint, b: StatePoint, m_dot_a_kg_s: float, m_dot_b_kg_s: float) -> StatePoint:
+    """The state after two streams of humid air mix adiabatically, e.g. outdoor and return air.
+
+    ``m_dot_a_kg_s`` and ``m_dot_b_kg_s`` are the mass flows of dry air of
+    the two streams; only their ratio matters. Per kg of dry air, the water
+    balance gives the humidity ratio and the energy balance the enthalpy of
+    the mix, each the flow-weighted mean of the two streams:
+
+        W_mix = (m_dot_a * W_a + m_dot_b * W_b) / (m_dot_a + m_dot_b)
+        h_mix = (m_dot_a * h_a + m_dot_b * h_b) / (m_dot_a + m_dot_b)
+
+    Both streams have to be at the same total pressure. Raises ValueError
+    if the mix would hold more water than saturated air at its temperature
+    (it would form fog, which a state of humid air cannot describe).
+    """
+    if not same_number(a.p, b.p):   # the chart pressure, copied into both states
+        raise ValueError("Streams mix at one total pressure; got {0:.6g} Pa and {1:.6g} Pa.".format(a.p, b.p))
+    m_dot_a_kg_s, m_dot_b_kg_s = float(m_dot_a_kg_s), float(m_dot_b_kg_s)
+    if not (m_dot_a_kg_s >= 0.0 and m_dot_b_kg_s >= 0.0 and m_dot_a_kg_s + m_dot_b_kg_s > 0.0):
+        raise ValueError("The mass flows have to be at least 0, and not both 0; got {0} and {1} kg/s.".format(
+            m_dot_a_kg_s, m_dot_b_kg_s))
+    m_dot_kg_s = m_dot_a_kg_s + m_dot_b_kg_s
+    W = (m_dot_a_kg_s * a.W + m_dot_b_kg_s * b.W) / m_dot_kg_s
+    h = (m_dot_a_kg_s * a.h + m_dot_b_kg_s * b.h) / m_dot_kg_s
+    try:
+        T_K = humid_air("T", "h", h, "W", W, a.p)
+    except ValueError as e:
+        raise PropertyError("humid air ({0:.6g} Pa)".format(a.p), (("h", h), ("W", W)), str(e)) from None
+    W_sat = saturation_W(T_K, a.p)
+    if W > W_sat:
+        raise ValueError("The mix at {0:.2f} K would hold {1:.4g} kg/kg of water, more than saturated air "
+                         "({2:.4g} kg/kg): it would form fog.".format(T_K, W, W_sat))
+    return air_state("h", h, "W", W, a.p)
 
 
 def saturation_W(T_K, p_Pa: float):

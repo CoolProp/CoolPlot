@@ -8,7 +8,7 @@ import pytest
 pytest.importorskip("CoolProp")
 from CoolProp.HumidAirProp import HAPropsSI  # noqa: E402
 
-from coolplot.core.floats import is_zero, same_numbers  # noqa: E402
+from coolplot.core.floats import is_zero, same_number, same_numbers  # noqa: E402
 from coolplot.psychrometric import PsychrometricChart  # noqa: E402
 from coolplot.render.svg import SvgRenderer  # noqa: E402
 from coolplot.spec import DiagramSpec  # noqa: E402
@@ -201,6 +201,60 @@ def test_a_via_that_keeps_the_pressure_is_refused_for_humid_air(chart):
     states = chart.cycle_states("Heating", units="engineering")
     assert states[2]["W"] == pytest.approx(states[1]["W"])
     assert states[2]["RH"] < 20.0
+
+
+def test_via_sensible_keeps_the_humidity_ratio(chart):
+    chart.add_cycle("Preheat", [{"T": -5.0, "RH": 80.0}, {"T": 20.0, "via": "sensible"}], closed=False)
+    states = chart.cycle_states("Preheat")
+    assert same_number(states[2].W, states[1].W)          # copied from state 1, not computed again
+    assert states[2].T == pytest.approx(293.15) and states[2].RH < 0.2
+    # The state that follows moves along when the state before it moves
+    chart.move_cycle_state("Preheat", 1, 0.0, 3.0)         # T in deg C, W in g/kg
+    moved = chart.cycle_states("Preheat")
+    assert same_number(moved[2].W, moved[1].W) and moved[2].W == pytest.approx(3e-3)
+
+
+def test_via_sensible_is_refused_for_a_fluid():
+    from coolplot import PropertyDiagram
+    diagram = PropertyDiagram("HEOS::R290", "ph", units="engineering")
+    with pytest.raises(ValueError, match="only humid air"):
+        diagram.add_cycle("x", [{"p": 3.0, "T": 0.0}, {"T": 20.0, "via": "sensible"}], closed=False)
+
+
+def test_mixing_conserves_dry_air_water_and_energy(chart):
+    outdoor, room = {"T": 32.0, "RH": 40.0}, {"T": 24.0, "RH": 50.0}
+    a, b = chart.state(outdoor), chart.state(room)
+    m_dot_a_kg_s, m_dot_b_kg_s = 0.3, 0.7
+    mixed = chart.mix(outdoor, room, m_dot_a_kg_s, m_dot_b_kg_s)
+    m_dot_kg_s = m_dot_a_kg_s + m_dot_b_kg_s
+    assert mixed.W * m_dot_kg_s == pytest.approx(a.W * m_dot_a_kg_s + b.W * m_dot_b_kg_s, rel=1e-9)   # water
+    assert mixed.h * m_dot_kg_s == pytest.approx(a.h * m_dot_a_kg_s + b.h * m_dot_b_kg_s, rel=1e-9)   # energy
+    assert b.T < mixed.T < a.T and mixed.T - b.T < a.T - mixed.T   # closer to the larger stream
+    # Only the ratio of the flows matters, and a stream without flow leaves the other as it is
+    assert chart.mix(outdoor, room, 3.0, 7.0).T == pytest.approx(mixed.T, rel=1e-12)
+    assert chart.mix(outdoor, room, 1.0, 0.0).T == pytest.approx(a.T, rel=1e-9)
+    # A mixed state goes into a cycle as it is
+    chart.add_cycle("Mixing", {1: outdoor, 2: room, 3: mixed}, loops=[[1, 3, 2]])
+    assert same_number(chart.cycle_states("Mixing")[3].W, mixed.W)
+
+
+def test_mixing_refuses_fog_bad_flows_and_two_pressures(chart):
+    with pytest.raises(ValueError, match="fog"):
+        chart.mix({"T": -5.0, "RH": 100.0}, {"T": 30.0, "RH": 95.0})
+    for flows in ((-1.0, 1.0), (0.0, 0.0), (float("nan"), 1.0)):
+        with pytest.raises(ValueError, match="mass flows"):
+            chart.mix({"T": 20.0, "RH": 50.0}, {"T": 25.0, "RH": 50.0}, *flows)
+    from coolplot.thermo.humid_air import mixed_air
+    with pytest.raises(ValueError, match="one total pressure"):
+        mixed_air(air_state("T", 293.15, "RH", 0.5, P), air_state("T", 293.15, "RH", 0.5, 0.9 * P), 1.0, 1.0)
+
+
+def test_a_state_from_two_properties_in_the_chart_units(chart):
+    state = chart.state({"T": 13.0, "RH": 95.0})
+    assert state.T == pytest.approx(286.15) and state.RH == pytest.approx(0.95)
+    assert chart.state(state) is state
+    with pytest.raises(ValueError, match="needs a state before it"):
+        chart.state({"T": 20.0, "via": "sensible"})
 
 
 def test_interaction_zooms_and_drags_air_states(chart):
