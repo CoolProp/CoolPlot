@@ -56,7 +56,13 @@ MAX_BEND_DEG = 35.0
 
 @dataclass(frozen=True)
 class LabelRequest:
-    """One line that wants a label, in display coordinates"""
+    """One line that wants a label, in display coordinates
+
+    ``value`` is the value of the line in display units (NaN where it has
+    none) and ``line_color`` the colour of the line; the "rails" mode
+    (:mod:`coolplot.compose.rails`) thins by the one and colours ticks
+    with the other.
+    """
     id: str
     group: str
     family: str
@@ -64,6 +70,8 @@ class LabelRequest:
     style: TextStyle
     x: np.ndarray
     y: np.ndarray
+    value: float = float("nan")
+    line_color: Optional[str] = None
 
 
 @dataclass(frozen=True)

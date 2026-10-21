@@ -94,7 +94,7 @@ class CalcSettings:
         object.__setattr__(self, "warn_failed_fraction", float(self.warn_failed_fraction))
 
 
-LABEL_MODES = ("edge", "margin", "inline")
+LABEL_MODES = ("rails", "edge", "margin", "inline")
 EDGES = ("top", "right", "bottom", "left")
 
 

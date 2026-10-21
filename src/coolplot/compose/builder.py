@@ -28,7 +28,9 @@ from ..spec.diagram import CycleSpec, DiagramSpec, ProcessSpec
 from ..style.theme import Theme
 from ..style.values import Font
 from .branding import branding
+from .corners import legend_size_pt, place_corners
 from .layout import Frame, LabelRequest, place_edge_labels, place_margin_labels, place_state_numbers
+from .rails import place_rail_labels
 from ..core.floats import is_zero, same_number
 
 # Drawing order: isolines, saturation dome, labels, processes and cycles,
@@ -124,6 +126,21 @@ def isoline_look(spec: DiagramSpec, theme: Theme, key: str, value_SI: float):
     return style, "isoline", spec.diagram.quantity_label(key), Z_ISOLINE
 
 
+def legend_with_unit(spec: DiagramSpec, key: str, legend: str) -> str:
+    """A family's legend text with its symbol and unit, e.g. "Temperature T / deg C".
+
+    Used by the "rails" label mode, whose labels show bare values.
+    """
+    unit = spec.units[key].label
+    text = "{0} {1}".format(legend, spec.diagram.symbol(key))
+    return text if unit in ("-", "") else text + " / " + unit
+
+
+def _saturation_labelled(spec: DiagramSpec, key: str) -> bool:
+    """Whether the lines of a family are labelled by their saturation state, not their own value."""
+    return any(s.key == key and s.anchor is not None and s.anchor.label == "saturation" for s in spec.isolines)
+
+
 def label_text(spec: DiagramSpec, key: str, value_SI: float, anchor_SI: float = None) -> str:
     """Text of an isoline label, e.g. "T=0 deg C" or "x=0.4".
 
@@ -162,6 +179,7 @@ def isoline_items(spec: DiagramSpec, theme: Theme, curves) -> List[Line]:
     relative humidity) get one entry each.
     """
     ux, uy = spec.units[spec.diagram.x], spec.units[spec.diagram.y]
+    rails = spec.settings.labels.mode == "rails"
     items = []
     legends_given = set()
     for request, curve in curves:
@@ -169,6 +187,8 @@ def isoline_items(spec: DiagramSpec, theme: Theme, curves) -> List[Line]:
         legend_key = role if role in ("saturation", "quality") else request.key
         if legend_key in legends_given:
             legend = None
+        elif rails and role != "saturation" and not _saturation_labelled(spec, request.key):
+            legend = legend_with_unit(spec, request.key, legend)   # the labels show bare values
         legends_given.add(legend_key)
         items.append(Line(id=request.item_id, group="iso/" + request.key, role=role, legend=legend,
                           x=ux.from_SI(curve.x), y=uy.from_SI(curve.y), style=style, z_order=z_order))
@@ -183,7 +203,8 @@ def label_requests(spec: DiagramSpec, theme: Theme, curves, lines: Sequence[Line
     (quality 0 and 1, relative humidity 100 %) are not labelled;
     ``Settings.labels.every`` thins out dense families.
     """
-    every = spec.settings.labels.every
+    labels = spec.settings.labels
+    every = labels.every
     by_family = {}
     for (request, _), line in zip(curves, lines):
         boundary = spec.diagram.family(request.key).boundary
@@ -198,9 +219,16 @@ def label_requests(spec: DiagramSpec, theme: Theme, curves, lines: Sequence[Line
             style = theme.isoline_label
             if theme.isoline_label_color == "line" and line.style.color is not None:
                 style = style.with_(color=line.style.color)   # the label in its line's colour
+            text = label_text(spec, key, request.value_SI, request.anchor_SI)
+            value = float(spec.units[key].from_SI(request.value_SI))
+            if _saturation_labelled(spec, key) and request.anchor_SI is not None:
+                anchor = next(s.anchor for s in spec.isolines if s.key == key and s.anchor is not None)
+                value = float(spec.units[anchor.by].from_SI(request.anchor_SI))
+            elif labels.mode == "rails":
+                text = labels.format_value(value)   # the bare value; symbol and unit are in the legend
             requests.append(LabelRequest(id=line.id + "/label", group=line.group + "/label", family=key,
-                                         text=label_text(spec, key, request.value_SI, request.anchor_SI),
-                                         style=style, x=line.x, y=line.y))
+                                         text=text, style=style, x=line.x, y=line.y, value=value,
+                                         line_color=line.style.color))
     return requests
 
 
@@ -246,6 +274,11 @@ def labels_for(spec: DiagramSpec, requests, axes: AxesSpec, keep_out_lines, plot
     if settings.mode == "inline":
         return inline_labels(spec, requests, axes)
     frame = Frame(axes.x_limits, axes.y_limits, axes.x_log, axes.y_log, *plot_size_pt)
+    if settings.mode == "rails":
+        legend = axes.style.legend
+        outer_right = not (legend.visible and legend.location == "outside right")
+        return place_rail_labels(requests, frame, keep_out_lines, settings.keep_out_pt, previous, occupied,
+                                 outer_right)
     if settings.mode == "margin":
         return place_margin_labels(requests, frame, settings.margin_edges)
     edges = {family: settings.preferred_edges(family, spec.diagram.family(family).edges)
@@ -349,17 +382,48 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Tuple[flo
     frame = Frame(axes.x_limits, axes.y_limits, axes.x_log, axes.y_log, *size)
     process_parts = placed_state_numbers(process_parts, frame)
     lines = isoline_items(spec, theme, curves)
-    badge, watermark, badge_box = branding(spec, theme, frame, [(line.x, line.y) for line in lines if line.visible]
-                                           + [(x, y) for x, y, _ in drawn], sources)
+    badge, watermark = branding(spec, theme, frame, sources)
+    axes, badge, boxes = corners_for(spec, theme, axes, frame, badge, lines, process_parts, drawn)
     if badge is not None or watermark is not None:
         axes = replace(axes, badge=badge, watermark=watermark)
     items: List[Item] = list(lines)
     requests = label_requests(spec, theme, curves, lines)
     if requests:
-        items.extend(labels_for(spec, requests, axes, drawn, size, previous_labels,
-                                () if badge_box is None else (badge_box,)))
+        # Rails keep clear of the legend and the badge; the other modes, as before 1.2, of the badge only
+        if spec.settings.labels.mode == "rails":
+            occupied = boxes
+        else:
+            occupied = boxes[-1:] if badge is not None else []
+        items.extend(labels_for(spec, requests, axes, drawn, size, previous_labels, tuple(occupied)))
     items.extend(process_parts)
     return items, axes
+
+
+def corners_for(spec: DiagramSpec, theme: Theme, axes: AxesSpec, frame: Frame, badge, lines, parts, drawn):
+    """(axes, badge, boxes) with the corners of a legend inside the plot area and of the badge decided.
+
+    See :func:`coolplot.compose.corners.place_corners`. ``boxes`` holds the
+    legend's box (when it is inside) and then the badge's.
+    """
+    legend_style = theme.axes.legend
+    legend = None
+    if legend_style.visible and legend_style.location != "outside right":
+        texts = []
+        for item in list(lines) + list(parts):
+            if item.legend and item.visible and item.legend not in texts:
+                texts.append(item.legend)
+        if texts:
+            legend = (legend_style.location,) + legend_size_pt(texts, legend_style.text.font.size_pt)
+    badge_spec = None
+    if badge is not None:
+        badge_spec = (spec.settings.branding.location,) + tuple(badge.size_pt()) + (badge.inset_pt,)
+    shown = [(line.x, line.y) for line in lines if line.visible] + [(x, y) for x, y, _ in drawn]
+    legend_at, badge_at, boxes = place_corners(frame, shown, legend, badge_spec)
+    if legend is not None:
+        axes = replace(axes, style=replace(axes.style, legend=replace(axes.style.legend, location=legend_at)))
+    if badge is not None:
+        badge = replace(badge, location=badge_at)
+    return axes, badge, boxes
 
 
 def overlay_items(spec: DiagramSpec, theme: Theme, cycles) -> List[Item]:

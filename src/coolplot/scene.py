@@ -26,7 +26,7 @@ This module imports neither CoolProp nor any plotting library.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from typing import Dict, Iterable, Iterator, Optional, Tuple
 
 import numpy as np
@@ -432,6 +432,11 @@ class AxesSpec:
         if not 1 <= int(self.tick_digits) <= 12:
             raise ValueError("AxesSpec: tick_digits has to be between 1 and 12, not {0}.".format(self.tick_digits))
         object.__setattr__(self, "tick_digits", int(self.tick_digits))
+        # The composer gives an "auto" legend its corner; a scene made
+        # without it gets the upper right one, so that writers see a corner
+        legend = getattr(self.style, "legend", None)
+        if legend is not None and legend.location == "auto":
+            object.__setattr__(self, "style", replace(self.style, legend=replace(legend, location="upper right")))
         # Limits are stored ascending; inverted axes are not supported.
         for name in ("x_limits", "y_limits"):
             limits = getattr(self, name)

@@ -349,7 +349,7 @@ class TextStyle(_Normalising):
 # ---------------------------------------------------------------------------
 # Axes and legend
 # ---------------------------------------------------------------------------
-LEGEND_LOCATIONS = ("upper left", "upper right", "lower left", "lower right", "outside right")
+LEGEND_LOCATIONS = ("upper left", "upper right", "lower left", "lower right", "outside right", "auto")
 
 
 @dataclass(frozen=True)

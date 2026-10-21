@@ -10,7 +10,7 @@ import zlib
 import pytest
 
 from coolplot import BrandingSettings, PropertyDiagram, Settings
-from coolplot.compose.branding import corner_box
+from coolplot.compose.corners import corner_box
 from coolplot.compose.layout import Frame
 from coolplot.core.images import PNG, SVG, load_picture, picture_from_bytes
 from coolplot.scene import CORNERS, Scene, axes_to_dict
