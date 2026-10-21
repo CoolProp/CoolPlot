@@ -191,7 +191,8 @@ def test_every_example_draws_the_same_from_both_paths(name, tmp_path):
         else:
             if record["core"]:
                 assert answered["compose"] > 0, answered
-            if record["numerics"] and name != "psychrometric.py":   # humid air is not part of the port
+            # Humid air is not part of CoolProp's port: the psychrometric examples compute no fluid lines
+            if record["numerics"] and not name.startswith("psychrometric"):
                 assert answered["numerics"] > 0, answered
         scenes = record["scenes"]
         files = {p.name: p.read_bytes() for p in folder.iterdir() if p.is_file() and p.name != "scenes.json"}

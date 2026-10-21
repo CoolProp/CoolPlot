@@ -27,7 +27,7 @@ PACKAGE_NAMES = {
 CHART_METHODS = {
     "set_lines", "set_default_lines", "remove_lines", "line_sets", "set_line_style",
     "add_cycle", "remove_cycle", "move_cycle_state", "cycle_states",
-    "set_view", "state_at", "to_display", "update_scene", "draw", "show", "save",
+    "set_view", "state", "state_at", "to_display", "update_scene", "draw", "show", "save",
     "refresh", "close", "wait", "from_spec",
 }
 #: Properties; spec, engine and scene are plain attributes set by the constructor.
@@ -74,7 +74,7 @@ def test_constructors_add_only_their_own_names():
     from coolplot.diagram import PropertyDiagram
     from coolplot.psychrometric import PsychrometricChart
     assert _public(PropertyDiagram) == {"kind", "fluid", "diagram_type", "tp_limits"}
-    assert _public(PsychrometricChart) == {"kind", "p_Pa", "points"}
+    assert _public(PsychrometricChart) == {"kind", "p_Pa", "points", "add_zone", "mix"}
 
 
 def test_removed_names_say_what_to_use_instead():
