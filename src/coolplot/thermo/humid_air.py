@@ -33,7 +33,7 @@ from ..core.limits import HUMID_AIR_T_LIMITS_K as T_LIMITS_K
 from ..core.limits import Region, within
 from ..core.quantities import QUANTITIES, quantity_key
 from ..core.state import AIR_STATE_KEYS, StatePoint
-from ..core.floats import is_zero, same_number
+from ..core.floats import is_zero
 from .isolines import Curve
 
 #: Quantities of humid air that HAPropsSI computes, by CoolPlot key.
@@ -96,24 +96,42 @@ def mixed_air(a: StatePoint, b: StatePoint, m_dot_a_kg_s: float, m_dot_b_kg_s: f
     if the mix would hold more water than saturated air at its temperature
     (it would form fog, which a state of humid air cannot describe).
     """
-    if not same_number(a.p, b.p):   # the chart pressure, copied into both states
+    # The same tolerance as a chart applies to the pressure of a state given to it
+    if abs(a.p - b.p) > 1e-6 * max(a.p, b.p):
         raise ValueError("Streams mix at one total pressure; got {0:.6g} Pa and {1:.6g} Pa.".format(a.p, b.p))
     m_dot_a_kg_s, m_dot_b_kg_s = float(m_dot_a_kg_s), float(m_dot_b_kg_s)
-    if not (m_dot_a_kg_s >= 0.0 and m_dot_b_kg_s >= 0.0 and m_dot_a_kg_s + m_dot_b_kg_s > 0.0):
-        raise ValueError("The mass flows have to be at least 0, and not both 0; got {0} and {1} kg/s.".format(
+    finite = math.isfinite(m_dot_a_kg_s) and math.isfinite(m_dot_b_kg_s)
+    if not (finite and m_dot_a_kg_s >= 0.0 and m_dot_b_kg_s >= 0.0 and max(m_dot_a_kg_s, m_dot_b_kg_s) > 0.0):
+        raise ValueError("The mass flows have to be finite, at least 0, and not both 0; got {0} and {1} kg/s.".format(
             m_dot_a_kg_s, m_dot_b_kg_s))
-    m_dot_kg_s = m_dot_a_kg_s + m_dot_b_kg_s
-    W = (m_dot_a_kg_s * a.W + m_dot_b_kg_s * b.W) / m_dot_kg_s
-    h = (m_dot_a_kg_s * a.h + m_dot_b_kg_s * b.h) / m_dot_kg_s
+    # The share of stream a in the mix, computed on flows scaled to at most 1
+    # so that very large or very small flows neither overflow nor underflow
+    m_dot_max_kg_s = max(m_dot_a_kg_s, m_dot_b_kg_s)
+    share_a = (m_dot_a_kg_s / m_dot_max_kg_s) / (m_dot_a_kg_s / m_dot_max_kg_s + m_dot_b_kg_s / m_dot_max_kg_s)
+    W = b.W + share_a * (a.W - b.W)
+    h = b.h + share_a * (a.h - b.h)
+    p_Pa = a.p
     try:
-        T_K = humid_air("T", "h", h, "W", W, a.p)
+        T_K = humid_air("T", "h", h, "W", W, p_Pa)
     except ValueError as e:
-        raise PropertyError("humid air ({0:.6g} Pa)".format(a.p), (("h", h), ("W", W)), str(e)) from None
-    W_sat = saturation_W(T_K, a.p)
-    if W > W_sat:
+        raise PropertyError("humid air ({0:.6g} Pa)".format(p_Pa), (("h", h), ("W", W)), str(e)) from None
+    W_sat = saturation_W(T_K, p_Pa)
+    if math.isnan(W_sat):   # no saturation state known there: refuse rather than guess
+        raise ValueError("The mix at {0:.2f} K is beyond the saturation states HAPropsSI gives at {1:.6g} Pa; "
+                         "it cannot be checked for fog.".format(T_K, p_Pa))
+    # A mix of saturated streams is saturated: allow for the last bits of the
+    # humidity ratio recomputed from h and W
+    if W > W_sat * (1.0 + 1e-9):
         raise ValueError("The mix at {0:.2f} K would hold {1:.4g} kg/kg of water, more than saturated air "
                          "({2:.4g} kg/kg): it would form fog.".format(T_K, W, W_sat))
-    return air_state("h", h, "W", W, a.p)
+    try:
+        return air_state("h", h, "W", W, p_Pa)
+    except PropertyError:
+        if W < W_sat * (1.0 - 1e-9):
+            raise
+        # Saturated within the last bits: HAPropsSI finds a relative humidity
+        # a hair above 1 from h and W, so the state is built as saturated air
+        return air_state("T", T_K, "RH", 1.0, p_Pa)
 
 
 def saturation_W(T_K, p_Pa: float):

@@ -84,6 +84,7 @@ from coolplot.chart import Chart
 from coolplot.thermo import native
 warnings.simplefilter("error", corelib.CoreFallbackWarning)
 scenes = []
+kinds = set()
 answered = {"compose": 0, "svg": 0, "numerics": 0}
 
 def counted(module, name, what):
@@ -102,12 +103,13 @@ _update_scene = Chart.update_scene
 def update_scene(self, *args, **kwargs):
     scene = _update_scene(self, *args, **kwargs)
     scenes.append(scene.to_dict())
+    kinds.add(self.spec.fluid.kind)
     return scene
 Chart.update_scene = update_scene
 def dump():
     with open("scenes.json", "w") as f:
         json.dump({"core": corelib.available(), "numerics": native.available(), "answered": answered,
-                   "scenes": scenes}, f, allow_nan=False)
+                   "kinds": sorted(kinds), "scenes": scenes}, f, allow_nan=False)
 atexit.register(dump)
 sys.argv = [sys.argv[1]]
 runpy.run_path(sys.argv[0], run_name="__main__")
@@ -191,8 +193,9 @@ def test_every_example_draws_the_same_from_both_paths(name, tmp_path):
         else:
             if record["core"]:
                 assert answered["compose"] > 0, answered
-            # Humid air is not part of CoolProp's port: the psychrometric examples compute no fluid lines
-            if record["numerics"] and not name.startswith("psychrometric"):
+            # Humid air is not part of CoolProp's port: an example without a chart of a fluid computes
+            # nothing there
+            if record["numerics"] and "fluid" in record["kinds"]:
                 assert answered["numerics"] > 0, answered
         scenes = record["scenes"]
         files = {p.name: p.read_bytes() for p in folder.iterdir() if p.is_file() and p.name != "scenes.json"}

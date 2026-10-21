@@ -579,6 +579,8 @@ class WebRenderer(SvgRenderer):
             item = self._items.get(item_id)
             if item is None or not item.visible or not isinstance(item, (Line, Markers)):
                 continue
+            if isinstance(item, Markers) and is_zero(item.style.size_pt):
+                continue   # markers without size (the corners of a zone) cannot be grabbed
             xs, ys = (np.asarray(v, dtype=float) for v in to_px(item.x, item.y))
             if isinstance(item, Markers):
                 reach = max(radius, item.style.size_pt * PX_PER_PT / 2.0)

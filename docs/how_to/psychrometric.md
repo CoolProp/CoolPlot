@@ -76,13 +76,14 @@ chart.add_cycle("Summer", summer_states, loops=summer_loops, **red)
 ## Labels on states
 
 `labels={number: text}` writes a text next to a state, after its number
-("4: cooling coil -37.2 kW"); with `numbers=False` the label stands alone.
+("2: cooling coil -35.1 kW"); with `numbers=False` the label stands alone.
 A label that uses computed states (a duty, a sensible heat ratio) comes from
 `cycle_states`; adding the cycle again under its name replaces it:
 
 ```python
+m_dot_kg_s = 1.0                       # dry air through the coil
 states = chart.cycle_states("Cooling")
-Q_dot_coil_kW = 2.0 * (states[2].h - states[1].h) * 1e-3     # 2.0 kg/s of dry air
+Q_dot_coil_kW = m_dot_kg_s * (states[2].h - states[1].h) * 1e-3
 chart.add_cycle("Cooling", cooling_states, closed=False,
                 labels={2: "cooling coil {0:.1f} kW".format(Q_dot_coil_kW)})
 ```

@@ -53,6 +53,10 @@ def resolve_state(fluid, given: StateInput, previous: StatePoint = None) -> Stat
     if given.via == "sensible" and "W" not in fluid.quantities:
         raise ValueError("via 'sensible' keeps the humidity ratio W, which only humid air has; "
                          "a chart of {0} has no humidity ratio.".format(fluid.name))
+    if given.via == "sensible" and key == "T" and value < previous.Tdp:
+        raise ValueError("via 'sensible' cannot cool to {0:.2f} K, below the dew point {1:.2f} K of the state "
+                         "before: water would condense. Give the state off the coil by two properties, e.g. "
+                         "T and RH.".format(value, previous.Tdp))
     if given.via in _KEPT:
         return state_point(fluid, key, value, _KEPT[given.via], previous[_KEPT[given.via]])
     # Compression or expansion with an isentropic efficiency

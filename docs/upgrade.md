@@ -19,6 +19,17 @@ starting with an underscore, the helpers in `coolplot.core`,
 `coolplot.testing`, the scene item ids, and the exact coordinates of a
 chart (better numerics may move points).
 
+## From 1.1 to 1.2
+
+Nothing to change. 1.2 adds `"via": "sensible"`, `PsychrometricChart.mix`,
+`PsychrometricChart.add_zone`, `Chart.state` and state labels
+(`add_cycle(..., labels=...)`). Cycle records gain an optional `labels`
+list, left out when a cycle has none, so records of 1.1 read and write
+unchanged. The other way round is not covered: CoolPlot 1.1 reading a 1.2
+record ignores its labels and refuses a state given with via "sensible". A
+coolplot-core older than 1.2 still composes a 1.2 chart unless it has state
+labels; then the Python composer draws it, with a warning.
+
 ## From 1.0 to 1.1
 
 Nothing to change. 1.1 adds `set_lines(..., at_saturation=...)` and a

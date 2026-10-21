@@ -564,9 +564,16 @@ std::vector<Item> place_state_numbers(const std::vector<Item>& numbers, const Fr
                 oy.push_back(my[i]);
             }
         const Spot* choice = nullptr;
+        const Spot* inside = nullptr;  // the first corner inside the frame, should every corner be taken
         Box box = {0.0, 0.0, 0.0, 0.5 * width, 0.5 * height};
+        Box inside_box = box;
         for (const Spot& spot : SPOTS) {
             box = Box{px + spot.sx * (distance + 0.5 * width), py + spot.sy * (distance + 0.5 * height), 0.0, 0.5 * width, 0.5 * height};
+            if (!box.inside(frame.width_pt, frame.height_pt, 0.0)) continue;  // a long label would be cut off
+            if (!inside) {
+                inside = &spot;
+                inside_box = box;
+            }
             bool blocked = box.near_points(ox, oy, 2.0);
             for (const Box& b : placed)
                 if (box.overlaps(b, 0.5)) blocked = true;
@@ -574,6 +581,10 @@ std::vector<Item> place_state_numbers(const std::vector<Item>& numbers, const Fr
                 choice = &spot;
                 break;
             }
+        }
+        if (!choice && inside) {
+            choice = inside;
+            box = inside_box;
         }
         if (!choice) {
             choice = &SPOTS[0];

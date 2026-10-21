@@ -221,9 +221,18 @@ def _checked_states(name: str, states) -> Tuple[Tuple[int, StateInput], ...]:
 
 def _checked_labels(name: str, numbers, labels) -> Tuple[Tuple[int, str], ...]:
     """(number, text) pairs sorted by number, each for a state of the cycle and at most once."""
-    items = labels.items() if isinstance(labels, dict) else labels
+    if isinstance(labels, dict):
+        items = list(labels.items())
+    elif isinstance(labels, (list, tuple)):
+        items = list(labels)
+    else:
+        raise ValueError("Cycle '{0}': labels are a dict {{number: text}} or (number, text) pairs, not {1!r}.".format(
+            name, labels))
     checked = []
-    for number, text in items:
+    for item in items:
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            raise ValueError("Cycle '{0}': a label is a (number, text) pair, not {1!r}.".format(name, item))
+        number, text = item
         if isinstance(number, bool) or not isinstance(number, Integral):
             raise ValueError("Cycle '{0}': label keys are state numbers, not {1!r}.".format(name, number))
         if int(number) not in numbers:
@@ -231,7 +240,12 @@ def _checked_labels(name: str, numbers, labels) -> Tuple[Tuple[int, str], ...]:
         if not isinstance(text, str) or not text.strip():
             raise ValueError("Cycle '{0}', state {1}: a label is a non-empty text, not {2!r}.".format(
                 name, number, text))
-        checked.append((int(number), text))
+        try:
+            text.encode("utf-8")   # a lone surrogate cannot be written to SVG, PDF or the core
+        except UnicodeEncodeError:
+            raise ValueError("Cycle '{0}', state {1}: the label {2!r} is not valid text.".format(
+                name, number, text)) from None
+        checked.append((int(number), str(text)))
     checked.sort()
     if len({n for n, _ in checked}) != len(checked):
         raise ValueError("Cycle '{0}': a state is labelled twice.".format(name))
@@ -299,7 +313,7 @@ class CycleSpec:
                    tuple((tuple(p), k) for p, k in data.get("paths", ())), data.get("numbers", True),
                    None if data.get("line_style") is None else style_from_dict(LineStyle, data["line_style"]),
                    None if data.get("marker_style") is None else style_from_dict(MarkerStyle, data["marker_style"]),
-                   data.get("steps", 20), tuple((n, text) for n, text in data.get("labels", ())))
+                   data.get("steps", 20), tuple((n, text) for n, text in (data.get("labels") or ())))
 
 
 @dataclass(frozen=True)

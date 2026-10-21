@@ -39,7 +39,7 @@ chart.add_zone("Comfort zone", T_range=(23, 27), RH_range=(30, 60), label="comfo
 
 outdoor = {"T": 38, "RH": 15}
 outdoor_state = chart.state(outdoor)
-T_out_C, Twb_out_C = outdoor_state.T - 273.15, outdoor_state.Twb - 273.15
+T_outdoor_C, Twb_outdoor_C = outdoor_state.T - 273.15, outdoor_state.Twb - 273.15
 
 
 def supply_label(state):
@@ -54,7 +54,7 @@ def style(color):
 
 
 # Direct evaporative cooling --------------------------------------------------
-T_direct_C = T_out_C - epsilon_direct * (T_out_C - Twb_out_C)
+T_direct_C = T_outdoor_C - epsilon_direct * (T_outdoor_C - Twb_outdoor_C)
 direct = [outdoor, {"T": T_direct_C, "via": "isenthalpic"}]
 chart.add_cycle("Direct", direct, closed=False, numbers=False, **style("#b9770e"))
 direct_supply = chart.cycle_states("Direct")[2]
@@ -64,7 +64,7 @@ chart.add_cycle("Direct", direct, closed=False, numbers=False, **style("#b9770e"
 # Indirect, then direct --------------------------------------------------------
 # The indirect stage cools towards the outdoor wet-bulb temperature (the
 # wetted secondary air) at the outdoor humidity ratio
-T_indirect_C = T_out_C - epsilon_indirect * (T_out_C - Twb_out_C)
+T_indirect_C = T_outdoor_C - epsilon_indirect * (T_outdoor_C - Twb_outdoor_C)
 Twb_indirect_C = chart.state({"T": T_indirect_C, "W": outdoor_state.W * 1e3}).Twb - 273.15
 T_two_stage_C = T_indirect_C - epsilon_direct * (T_indirect_C - Twb_indirect_C)
 two_stage = [outdoor,
@@ -76,7 +76,7 @@ chart.add_cycle("Indirect, then direct", two_stage, closed=False, numbers=False,
                 labels={2: "after the indirect stage", 3: supply_label(two_stage_supply)})
 
 print("Outdoor air: T = {0:.1f} deg C, wet bulb {1:.1f} deg C, W = {2:.2f} g/kg".format(
-    T_out_C, Twb_out_C, outdoor_state.W * 1e3))
+    T_outdoor_C, Twb_outdoor_C, outdoor_state.W * 1e3))
 for name, state in (("Direct", direct_supply), ("Indirect, then direct", two_stage_supply)):
     print("{0:22s} supply T = {1:5.1f} deg C, RH = {2:5.1f} %, W = {3:5.2f} g/kg".format(
         name, state.T - 273.15, state.RH * 100, state.W * 1e3))

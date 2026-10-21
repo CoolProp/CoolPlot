@@ -676,6 +676,8 @@ class MatplotlibRenderer(Renderer):
             item = self._drawn.get(item_id)
             if not artist.get_visible() or isinstance(item, Text):
                 continue
+            if isinstance(item, Markers) and is_zero(item.style.size_pt):
+                continue   # markers without size (the corners of a zone) cannot be grabbed
             artist.set_pickradius(self.PICK_RADIUS_PT)
             hit, details = artist.contains(mouse_event)
             if hit:

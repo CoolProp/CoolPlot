@@ -569,7 +569,7 @@ class Chart:
             unit_system = self._units(units)
             inputs = self._state_inputs(_states_from_arrays(states, arrays) if arrays else states, name, unit_system)
             spec = CycleSpec(str(name), inputs, loops or _default_loops(inputs, closed), paths or (), numbers,
-                             line_style, marker_style, steps, labels or ())
+                             line_style, marker_style, steps, () if labels is None else labels)
         self._compute_cycle(spec)   # compute now, so that errors show up here
         self.spec = self.spec.with_cycle(spec)
         return spec.name

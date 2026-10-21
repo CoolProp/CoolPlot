@@ -206,12 +206,17 @@ def test_a_via_that_keeps_the_pressure_is_refused_for_humid_air(chart):
 def test_via_sensible_keeps_the_humidity_ratio(chart):
     chart.add_cycle("Preheat", [{"T": -5.0, "RH": 80.0}, {"T": 20.0, "via": "sensible"}], closed=False)
     states = chart.cycle_states("Preheat")
-    assert same_number(states[2].W, states[1].W)          # copied from state 1, not computed again
+    assert states[2].W == pytest.approx(states[1].W, rel=1e-12)   # HAPropsSI gives back the W it was given
     assert states[2].T == pytest.approx(293.15) and states[2].RH < 0.2
     # The state that follows moves along when the state before it moves
     chart.move_cycle_state("Preheat", 1, 0.0, 3.0)         # T in deg C, W in g/kg
     moved = chart.cycle_states("Preheat")
-    assert same_number(moved[2].W, moved[1].W) and moved[2].W == pytest.approx(3e-3)
+    assert moved[2].W == pytest.approx(moved[1].W, rel=1e-12) and moved[2].W == pytest.approx(3e-3)
+
+
+def test_via_sensible_below_the_dew_point_says_so(chart):
+    with pytest.raises(ValueError, match="below the dew point"):
+        chart.add_cycle("Too cold", [{"T": 24.0, "RH": 50.0}, {"T": 5.0, "via": "sensible"}], closed=False)
 
 
 def test_via_sensible_is_refused_for_a_fluid():
@@ -238,10 +243,24 @@ def test_mixing_conserves_dry_air_water_and_energy(chart):
     assert same_number(chart.cycle_states("Mixing")[3].W, mixed.W)
 
 
+@pytest.mark.parametrize("T_C", [-20.0, 0.0, 20.0, 35.0, 49.0])
+def test_saturated_streams_mix_to_saturated_air_not_fog(chart, T_C):
+    saturated = {"T": T_C, "RH": 100.0}
+    for flows in ((1.0, 0.0), (0.5, 0.5), (0.3, 0.7)):
+        mixed = chart.mix(saturated, saturated, *flows)
+        assert mixed.T == pytest.approx(T_C + 273.15, abs=1e-6) and mixed.RH == pytest.approx(1.0, abs=1e-6)
+
+
+def test_extreme_flows_keep_their_ratio(chart):
+    a, b = {"T": 32.0, "RH": 40.0}, {"T": 24.0, "RH": 50.0}
+    assert chart.mix(a, b, 1e308, 1e308).T == pytest.approx(chart.mix(a, b).T, rel=1e-12)
+    assert chart.mix(a, b, 5e-324, 0.0).T == pytest.approx(chart.state(a).T, rel=1e-9)   # no underflow to W = 0
+
+
 def test_mixing_refuses_fog_bad_flows_and_two_pressures(chart):
     with pytest.raises(ValueError, match="fog"):
         chart.mix({"T": -5.0, "RH": 100.0}, {"T": 30.0, "RH": 95.0})
-    for flows in ((-1.0, 1.0), (0.0, 0.0), (float("nan"), 1.0)):
+    for flows in ((-1.0, 1.0), (0.0, 0.0), (float("nan"), 1.0), (float("inf"), 1.0)):
         with pytest.raises(ValueError, match="mass flows"):
             chart.mix({"T": 20.0, "RH": 50.0}, {"T": 25.0, "RH": 50.0}, *flows)
     from coolplot.thermo.humid_air import mixed_air
@@ -264,10 +283,12 @@ def test_a_zone_follows_its_humidity_lines_without_markers_or_numbers(chart):
     assert all(c.name != "Comfort" for c in chart.spec.cycles)
 
 
-@pytest.mark.parametrize("T_range, RH_range, segments", [((20, 20), (30, 60), 12), ((20, 26), (60, 60), 12),
-                                                         ((20, 26), (30, 60), 0)])
-def test_a_zone_needs_an_area_and_a_segment(chart, T_range, RH_range, segments):
-    with pytest.raises(ValueError):
+@pytest.mark.parametrize("T_range, RH_range, segments, match", [
+    ((20, 20), (30, 60), 12, "two different"), ((20, 26), (60, 60), 12, "two different"),
+    ((20, 26), (30, 60), 0, "whole number"), ((20, 26), (30, 60), 2.7, "whole number"),
+    ((20, 26), (30, 60), True, "whole number")])
+def test_a_zone_needs_an_area_and_a_segment(chart, T_range, RH_range, segments, match):
+    with pytest.raises(ValueError, match=match):
         chart.add_zone("bad", T_range, RH_range, segments=segments)
 
 

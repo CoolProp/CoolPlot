@@ -80,8 +80,8 @@ next to a state, after its number ("2: discharge"), or alone with
 `numbers=False`. Labels are placed clear of the markers like the numbers.
 A label that depends on computed states (a duty, a temperature) comes
 from `cycle_states`; add the cycle again under its name with the labels.
-`chart.state({"p": 3.0, "T": 0.0})` gives a single state in the chart's
-units.
+`chart.state({"p": 3.0, "T": 0.0})` gives a single state from two
+properties in the chart's units (the StatePoint it returns is in SI units).
 
 States you computed yourself, for example with
 `coolplot.thermo.process_path`, go into `add_cycle` as `StatePoint`

@@ -18,6 +18,8 @@ Example
 """
 from __future__ import annotations
 
+from numbers import Integral
+
 import numpy as np
 
 from .chart import REMOVED_NAMES, Chart
@@ -108,7 +110,10 @@ class PsychrometricChart(Chart):
         the two temperatures, and two edges that follow the lines of
         constant relative humidity, each drawn with ``segments`` straight
         pieces. ``label``, if given, is written at the corner of the
-        lowest temperature and highest humidity. Returns the name; the
+        lowest temperature and highest humidity. Without ``line_style``
+        the zone is drawn like the next process (it takes a style of the
+        theme's process palette); a dashed grey line keeps it apart from
+        the processes. Its corners cannot be dragged. Returns the name; the
         zone is removed with :meth:`remove_cycle`.
 
         >>> chart = PsychrometricChart()
@@ -120,8 +125,8 @@ class PsychrometricChart(Chart):
         if not T_lo < T_hi or not RH_lo < RH_hi:
             raise ValueError("A zone needs two different temperatures and two different humidities, not {0} "
                              "and {1}.".format(tuple(T_range), tuple(RH_range)))
-        if int(segments) < 1:
-            raise ValueError("segments has to be at least 1, not {0}.".format(segments))
+        if isinstance(segments, bool) or not isinstance(segments, Integral) or segments < 1:
+            raise ValueError("segments is a whole number of at least 1, not {0!r}.".format(segments))
         T_edge = np.linspace(T_lo, T_hi, int(segments) + 1)
         # Along the lower humidity edge to the warm side, back along the upper edge
         states = [{"T": T, "RH": RH_lo} for T in T_edge] + [{"T": T, "RH": RH_hi} for T in T_edge[::-1]]

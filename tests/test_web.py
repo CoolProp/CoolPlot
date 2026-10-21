@@ -224,6 +224,17 @@ def test_margin_does_not_grab_clipped_markers():
     assert renderer._hit(px, py) == (None, None)
 
 
+def test_markers_without_size_cannot_be_grabbed():
+    from coolplot.style.values import MarkerStyle
+    renderer = WebRenderer()
+    hidden = MarkerStyle(size_pt=0.0, face_color="none", edge_color="none")
+    renderer.sync(Scene(AxesSpec(x_limits=(0.0, 10.0), y_limits=(0.0, 10.0)),
+                        [Markers(id="zone", x=[5.0], y=[5.0], style=hidden), Markers(id="m", x=[2.0], y=[2.0])]))
+    to_px, _ = renderer._mapper()
+    assert renderer._hit(*(float(v) for v in to_px(5.0, 5.0))) == (None, None)
+    assert renderer._hit(*(float(v) for v in to_px(2.0, 2.0))) == ("m", 0)
+
+
 def test_page_title_is_escaped_once():
     page = WebRenderer().page(title="a<b & c")
     assert "<title>a&lt;b &amp; c</title>" in page

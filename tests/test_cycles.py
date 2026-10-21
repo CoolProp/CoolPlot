@@ -235,7 +235,9 @@ def test_a_cycle_without_labels_keeps_its_old_record(diagram):
 
 @pytest.mark.parametrize("labels, match", [({5: "x"}, "no state 5"), ({2: ""}, "non-empty"), ({2: 3}, "non-empty"),
                                            ({2.5: "x"}, "state numbers"), ({True: "x"}, "state numbers"),
-                                           ([(2, "a"), (2, "b")], "labelled twice")])
+                                           ([(2, "a"), (2, "b")], "labelled twice"), (0, "labels are"),
+                                           (False, "labels are"), ("2: x", "labels are"), ([(2,)], "pair"),
+                                           ({2: "\ud800"}, "not valid text")])
 def test_bad_state_labels_are_refused(diagram, labels, match):
     with pytest.raises(ValueError, match=match):
         diagram.add_cycle("Heat pump", HEAT_PUMP, labels=labels)

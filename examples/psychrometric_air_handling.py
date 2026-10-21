@@ -63,13 +63,15 @@ summer = {
 summer_loops = [[1, 3], [2, 3, 4, 5, 2]]
 summer_style = season_style("#c0392b")
 chart.add_cycle("Summer", summer, loops=summer_loops, **summer_style)
-s = chart.cycle_states("Summer")
-Q_dot_coil_kW = kW(m_dot_supply_kg_s, s[4].h - s[3].h)
-Q_dot_reheat_kW = kW(m_dot_supply_kg_s, s[5].h - s[4].h)
+summer_states = chart.cycle_states("Summer")
+# The coil duty leaves out the enthalpy of the condensate, about 0.5 % here
+Q_dot_coil_kW = kW(m_dot_supply_kg_s, summer_states[4].h - summer_states[3].h)
+Q_dot_reheat_kW = kW(m_dot_supply_kg_s, summer_states[5].h - summer_states[4].h)
 # Room load: the sensible part warms the supply air at its own humidity ratio
 # to the room temperature, the rest is the latent part (moisture)
-h_sensible_J_kg = chart.state({"T": s[2].T - 273.15, "W": s[5].W * 1e3}).h - s[5].h
-SHR = h_sensible_J_kg / (s[2].h - s[5].h)
+supply, room_air = summer_states[5], summer_states[2]
+dh_sensible_J_kg = chart.state({"T": room_air.T, "W": supply.W}, units="SI").h - supply.h
+SHR = dh_sensible_J_kg / (room_air.h - supply.h)
 chart.add_cycle("Summer", summer, loops=summer_loops, **summer_style, labels={
     2: "room, SHR {0:.2f}".format(SHR),
     3: "mixed, {0:.0f} % outdoor air".format(outdoor_share * 100),
@@ -86,17 +88,18 @@ winter = {
     4: {"T": 28, "via": "sensible"},                   # after the heating coil
     5: {"W": W_room_g_kg, "via": "isothermal"},        # after the steam humidifier, the supply air
 }
+# The supply air reaches the humidity ratio of the room: no latent load in winter
 winter_loops = [[1, 3], [2, 3, 4, 5, 2]]
 winter_style = season_style("#1f4e9c")
 chart.add_cycle("Winter", winter, loops=winter_loops, **winter_style)
-w = chart.cycle_states("Winter")
-Q_dot_heating_kW = kW(m_dot_supply_kg_s, w[4].h - w[3].h)
-m_dot_steam_kg_h = m_dot_supply_kg_s * (w[5].W - w[4].W) * 3600.0
+winter_states = chart.cycle_states("Winter")
+Q_dot_heating_kW = kW(m_dot_supply_kg_s, winter_states[4].h - winter_states[3].h)
+m_dot_steam_kg_h = m_dot_supply_kg_s * (winter_states[5].W - winter_states[4].W) * 3600.0
 chart.add_cycle("Winter", winter, loops=winter_loops, **winter_style, labels={
     4: "heating coil {0:+.1f} kW".format(Q_dot_heating_kW),
     5: "steam {0:.1f} kg/h".format(m_dot_steam_kg_h)})
 
-for season, states in (("Summer", s), ("Winter", w)):
+for season, states in (("Summer", summer_states), ("Winter", winter_states)):
     print(season)
     for number, state in states.items():
         print("  {0}: T = {1:5.1f} deg C, RH = {2:5.1f} %, W = {3:5.2f} g/kg, h = {4:5.1f} kJ/kg".format(
