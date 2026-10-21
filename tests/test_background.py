@@ -174,6 +174,7 @@ def test_failures_are_retried_then_reported(monkeypatch):
     monkeypatch.setattr(background, "compute_curve", flaky)
     d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP", background="threads",
                         settings=None)
+    d.show_saturation = False   # one line only, so that both failures hit it
     d.set_lines("T", values=[0.0], points=40)
     d.spec = d.spec.with_(settings=d.spec.settings.with_(calc=replace(d.spec.settings.calc, preview_points=0)))
     try:
@@ -193,6 +194,7 @@ def test_failures_are_retried_then_reported(monkeypatch):
     # A single failure is retried and the line arrives
     calls["n"] = 1
     d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP", background="threads")
+    d.show_saturation = False
     d.set_lines("T", values=[0.0], points=40)
     d.spec = d.spec.with_(settings=d.spec.settings.with_(calc=replace(d.spec.settings.calc, preview_points=0)))
     try:
