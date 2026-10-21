@@ -52,13 +52,32 @@
     return buffer[0];
   }
 
+  // Exact tests on numbers without comparing two numbers for equality (the
+  // same helpers as coolplot/core/floats.py): isZero classifies the bits of
+  // the double, sameNumber says whether two values are the very number set or
+  // copied earlier (the same bits, or +0 and -0; NaN is no number).
+  // A DataView fixes the byte order (big-endian), whatever the machine uses.
+  var floatView = new DataView(new ArrayBuffer(8));
+  function isZero(value) {
+    floatView.setFloat64(0, value);
+    return (floatView.getUint32(0) & 0x7fffffff) === 0 && floatView.getUint32(4) === 0;
+  }
+  function sameNumber(a, b) {
+    if (isNaN(a) || isNaN(b)) { return false; }
+    if (isZero(a) && isZero(b)) { return true; }
+    floatView.setFloat64(0, a);
+    var high = floatView.getUint32(0), low = floatView.getUint32(4);
+    floatView.setFloat64(0, b);
+    return high === floatView.getUint32(0) && low === floatView.getUint32(4);
+  }
+
   // value.toFixed(decimals), rounded half to even and without exponent.
   function toFixedEven(value, decimals) {
     var abs = Math.abs(value);
     if (abs >= 1e21) {
       return (value < 0 ? "-" : "") + BigInt(abs).toString() + (decimals > 0 ? "." + "0".repeat(decimals) : "");
     }
-    if (value !== 0 && tieRoundsDown(abs, decimals)) { value = towardZero(value); }
+    if (!isZero(value) && tieRoundsDown(abs, decimals)) { value = towardZero(value); }
     return value.toFixed(decimals);
   }
 
@@ -85,7 +104,7 @@
   function reprNumber(value) {
     if (isNaN(value)) { return "nan"; }
     if (!isFinite(value)) { return value > 0 ? "inf" : "-inf"; }
-    if (value === 0) { return (1 / value < 0) ? "-0.0" : "0.0"; }
+    if (isZero(value)) { return (1 / value < 0) ? "-0.0" : "0.0"; }
     var parts = value.toExponential().split("e");
     var sign = parts[0][0] === "-" ? "-" : "";
     var digits = parts[0].replace("-", "").replace(".", "");
@@ -118,7 +137,7 @@
     if (digits === undefined) { digits = 6; }
     if (isNaN(value)) { return "nan"; }
     if (!isFinite(value)) { return value > 0 ? "inf" : "-inf"; }
-    if (value === 0) { return "0"; }
+    if (isZero(value)) { return "0"; }
     var rounded = parseFloat(toPrecisionEven(value, digits));
     if (!isFinite(rounded)) { rounded = value; }   // rounding up the largest numbers overflows
     var magnitude = Math.abs(rounded);
@@ -271,9 +290,10 @@
     if (log) {
       if (!(hi > 0)) { hi = 10.0; }
       if (!(lo > 0)) { lo = hi * 1e-3; }
-      if (lo === hi) { lo /= 10.0; hi *= 10.0; }
-    } else if (lo === hi) {
-      var pad = Math.abs(lo) * 0.1 || 0.5;
+      if (sameNumber(lo, hi)) { lo /= 10.0; hi *= 10.0; }
+    } else if (sameNumber(lo, hi)) {
+      var pad = Math.abs(lo) * 0.1;
+      if (isZero(pad)) { pad = 0.5; }
       lo -= pad; hi += pad;
     }
     return [lo, hi];
@@ -370,7 +390,7 @@
     var left = margins[0] + extra[0], right = margins[1] + extra[1], top = margins[2] + extra[2], bottom = margins[3] + extra[3];
     if (legend.location === "outside right") {
       var lw = legendSize()[0];
-      right += lw ? lw + 12.0 : 0.0;
+      right += (isZero(lw) || isNaN(lw)) ? 0.0 : lw + 12.0;   // NaN counts as no legend, as before
     }
     var bw = Math.max(width - left - right, 0.25 * width), bh = Math.max(height - top - bottom, 0.25 * height);
     var bx = left, by = top;
@@ -425,7 +445,7 @@
       var angle = 0.0;
       if (item.direction) {
         var qx = toPxX(tx + item.direction[0] * 1e-3), qy = toPxY(ty + item.direction[1] * 1e-3);
-        if (isFinite(qx) && isFinite(qy) && !(qx === x && qy === y)) {
+        if (isFinite(qx) && isFinite(qy) && !(sameNumber(qx, x) && sameNumber(qy, y))) {
           angle = Math.atan2(qy - y, qx - x) * 180.0 / Math.PI;
           if (angle >= 90.0) { angle -= 180.0; } else if (angle < -90.0) { angle += 180.0; }
         }
@@ -502,7 +522,7 @@
     }
     // Legend
     var size = legendSize();
-    if (size[0]) {
+    if (!(isZero(size[0]) || isNaN(size[0]))) {
       var pad = 8.0;
       var lx = { "upper left": bx + pad, "lower left": bx + pad, "upper right": bx + bw - pad - size[0],
                  "lower right": bx + bw - pad - size[0], "outside right": bx + bw + 12.0 }[legend.location];

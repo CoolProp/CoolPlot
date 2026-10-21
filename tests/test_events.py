@@ -7,6 +7,7 @@ pytest.importorskip("CoolProp")
 
 from coolplot import PropertyDiagram  # noqa: E402
 from coolplot.core.events import ViewChanged  # noqa: E402
+from coolplot.core.floats import same_number  # noqa: E402
 from coolplot.interaction import Interaction  # noqa: E402
 from coolplot.render.mpl import MatplotlibRenderer  # noqa: E402
 from coolplot.render.svg import SvgRenderer  # noqa: E402
@@ -135,7 +136,7 @@ def test_click_only_without_moving_and_drag_only_with_the_left_button(app):
     renderer.simulate_pointer("press", s1.h / 1e3, s1.p / 1e5, button=3)
     renderer.simulate_pointer("move", s1.h / 1e3 + 20.0, s1.p / 1e5)
     renderer.simulate_pointer("release", s1.h / 1e3 + 20.0, s1.p / 1e5, button=3)
-    assert diagram.cycle_states("Heat pump")[1].h == before
+    assert same_number(diagram.cycle_states("Heat pump")[1].h, before)
     assert not any(type(e).__name__.startswith("Drag") for e in seen)
 
 

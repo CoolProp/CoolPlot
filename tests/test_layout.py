@@ -7,6 +7,7 @@ import pytest
 
 from coolplot.compose.layout import (Box, Frame, LabelRequest, keep_out_points, place_edge_labels, place_margin_labels,
                                      text_size_pt, visible_pieces)
+from coolplot.core.floats import same_numbers
 from coolplot.core.numbers import format_number
 from coolplot.style.values import Font, TextStyle
 
@@ -88,7 +89,8 @@ def test_keep_out_zone_around_a_process():
 def test_layout_is_deterministic_and_stable():
     first = place_edge_labels(_fan(), FRAME, [], 10.0, {"s": ("top",)})
     again = place_edge_labels(_fan(), FRAME, [], 10.0, {"s": ("top",)})
-    assert [(t.id, t.x, t.y) for t in first] == [(t.id, t.x, t.y) for t in again]
+    assert [t.id for t in first] == [t.id for t in again]
+    assert same_numbers([v for t in first for v in (t.x, t.y)], [v for t in again for v in (t.x, t.y)])
     previous = {t.id: t for t in first}
     # A process appears in a corner: labels away from it are the same items
     corner = (np.array([90.0, 99.0]), np.array([90.0, 99.0]))

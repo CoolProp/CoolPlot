@@ -153,7 +153,7 @@ std::pair<double, double> Piece::project(double qx, double qy) const {
     for (size_t i = 0; i + 1 < px.size(); ++i) {
         double ax = px[i], ay = py[i], dx = px[i + 1] - ax, dy = py[i + 1] - ay;
         double seg = dx * dx + dy * dy;
-        double t = seg == 0.0 ? 0.0 : std::min(std::max(((qx - ax) * dx + (qy - ay) * dy) / seg, 0.0), 1.0);
+        double t = is_zero(seg) ? 0.0 : std::min(std::max(((qx - ax) * dx + (qy - ay) * dy) / seg, 0.0), 1.0);
         double dist = std::hypot(ax + t * dx - qx, ay + t * dy - qy);
         if (dist < best_dist) {  // the first of equally near segments
             best_dist = dist;
@@ -204,7 +204,7 @@ Clipped clip_segment(double x0, double y0, double x1, double y1, double width, d
     double p[4] = {-dx, dx, -dy, dy};
     double q[4] = {x0, width - x0, y0, height - y0};
     for (int code = 0; code < 4; ++code) {
-        bool parallel = p[code] == 0.0;
+        bool parallel = is_zero(p[code]);
         if (parallel && q[code] < 0.0) c.visible = false;
         double t = q[code] / (parallel ? 1.0 : p[code]);
         if (p[code] < 0.0 && t > c.t0) {
@@ -278,7 +278,7 @@ bool candidate(const Piece& piece, double s, double half_w, double half_h, doubl
     if (s - half_w < 0.0 || s + half_w > piece.length()) return false;
     std::pair<double, double> a = piece.at(s - half_w), m = piece.at(s), b = piece.at(s + half_w);
     double dx = b.first - a.first, dy = b.second - a.second;
-    if (dx == 0.0 && dy == 0.0) return false;
+    if (is_zero(dx) && is_zero(dy)) return false;
     double first = std::atan2(m.second - a.second, m.first - a.first), second = std::atan2(b.second - m.second, b.first - m.first);
     double turn = second - first + PI;
     turn = std::fmod(turn, 2.0 * PI);  // Python's modulo keeps the sign of the divisor

@@ -23,7 +23,7 @@ import CoolProp
 from CoolProp.CoolProp import PropsSI
 
 from .fluid import build_state
-from .floats import is_zero as _is_zero, same_bits as _same_bits
+from ..core.floats import is_zero as _is_zero, same_bits as _same_bits
 
 # The tracer needs CoolProp 8 (pyproject.toml): CoolProp 6 and 7 abort the
 # whole Python process (a C++ abort, not an exception) in some of the

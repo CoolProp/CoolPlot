@@ -8,6 +8,7 @@ import pytest
 pytest.importorskip("CoolProp")
 
 from coolplot import ProcessSpec, PropertyDiagram  # noqa: E402
+from coolplot.core.floats import same_numbers  # noqa: E402
 from coolplot.render.svg import SvgRenderer  # noqa: E402
 from coolplot.scene import Line, Markers, Text  # noqa: E402
 from coolplot.thermo import process_path, state_point  # noqa: E402
@@ -72,7 +73,7 @@ def test_zoom_needs_no_calculation(diagram):
     diagram.set_view(x_limits=(200.0, 700.0), y_limits=(1.0, 50.0))
     scene = diagram.update_scene()
     assert diagram.cache.misses == misses
-    assert scene.axes.x_limits == (200.0, 700.0)
+    assert same_numbers(scene.axes.x_limits, (200.0, 700.0))
     diagram.units = "KSI"
     assert diagram.update_scene().axes.y_limits == pytest.approx((100.0, 5000.0))
 

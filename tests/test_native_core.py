@@ -11,6 +11,7 @@ import pytest
 
 from coolplot import corelib as native
 from coolplot.compose.builder import compose as compose_python
+from coolplot.core.floats import same_numbers
 from coolplot.scene import Scene, items_equal
 from coolplot.testing import conformance_scene, run_conformance
 
@@ -227,7 +228,7 @@ def test_the_svg_writer_of_the_port_is_byte_identical():
         python.sync(scene)
         ported.sync(scene)
         assert ported.to_svg() == python.to_svg()
-        assert ported.plot_size_pt() == python.plot_size_pt()
+        assert same_numbers(ported.plot_size_pt(), python.plot_size_pt())
 
 
 @needs_core

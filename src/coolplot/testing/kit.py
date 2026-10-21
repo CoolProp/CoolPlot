@@ -32,6 +32,7 @@ from typing import Callable, List
 
 import numpy as np
 
+from ..core.floats import same_number
 from ..core.numbers import format_number
 from ..scene import AxesSpec, Line, Markers, Scene, Text, drawable_limits
 from ..style.values import (AxesStyle, Font, GENERIC_FONTS, LegendStyle, LineStyle, MarkerStyle, MARKER_SHAPES,
@@ -346,7 +347,7 @@ def _check_scene(renderer, scene: Scene, failures: List[str], label: str):
                 failures.append("{0}: only {1} major grid lines on the {2} axis [style]".format(
                     label, axes_actual.get(name), name[0]))
     for name, limits in (("x_limits", scene.axes.x_limits), ("y_limits", scene.axes.y_limits)):
-        if limits is not None and limits[0] == limits[1]:
+        if limits is not None and same_number(limits[0], limits[1]):
             lo, hi = axes_actual.get(name, (None, None))
             if lo is None or not lo < limits[0] < hi:
                 failures.append("{0}: equal {1} {2} drawn as {3} [robustness]".format(

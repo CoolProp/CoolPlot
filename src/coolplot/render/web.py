@@ -43,6 +43,7 @@ from ..core.events import Click, Drag, DragEnd, DragStart, Hover, ViewChanged
 from ..scene import AxesSpec, Line, Markers
 from .base import SyncReport
 from .svg import PX_PER_PT, SvgRenderer, check_suffix
+from ..core.floats import is_zero
 
 #: The JavaScript client. Plain ES2017, no libraries; ASCII only.
 CLIENT_JS = r"""
@@ -497,7 +498,7 @@ class WebRenderer(SvgRenderer):
         return out
 
     def _zoom(self, px, py, delta):
-        if delta == 0.0:
+        if is_zero(delta):
             return
         # One notch of a mouse wheel (100 pixels) is one step; a trackpad
         # sends many small deltas, each a fraction of a step

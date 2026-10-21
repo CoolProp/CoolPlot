@@ -13,6 +13,7 @@ import pytest
 CoolProp = pytest.importorskip("CoolProp")
 from CoolProp.CoolProp import PropsSI  # noqa: E402
 
+from coolplot.core.floats import same_numbers  # noqa: E402
 from coolplot.thermo import DiagramType, Fluid, compute_isoline, get_tp_limits, resolve_tp_box  # noqa: E402
 from coolplot.thermo import native  # noqa: E402
 from coolplot.thermo.isolines import Curve  # noqa: E402
@@ -170,12 +171,12 @@ def test_mixture_dome_from_the_phase_envelope(blend):
     dew = native.compute_curve(blend, PH, "Q", 1.0, box, 50, "auto", 1e-7, "critical")
     assert bubble.method == dew.method == "envelope"
     assert bubble.n_failed == 0 and dew.n_failed == 0
-    assert (bubble.x[0], bubble.y[0]) == (dew.x[-1], dew.y[-1])
+    assert same_numbers((bubble.x[0], bubble.y[0]), (dew.x[-1], dew.y[-1]))
     state = CoolProp.AbstractState("HEOS", "R32&R125")
     state.set_mole_fractions([0.7, 0.3])
     state.build_phase_envelope("veryfine")
     data = state.get_phase_envelope_data()
-    on_bubble = np.array(data.Q) == 0.0
+    on_bubble = np.array(data.Q) < 0.5   # Q is 0 on the bubble branch, 1 on the dew branch
     assert bubble.y[1:] == pytest.approx(np.array(data.p)[on_bubble], rel=1e-12)
 
 

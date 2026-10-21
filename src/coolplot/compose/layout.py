@@ -38,6 +38,7 @@ import numpy as np
 
 from ..scene import Text
 from ..style.values import TextStyle
+from ..core.floats import is_zero, is_zero_array
 
 EDGES = ("top", "right", "bottom", "left")
 
@@ -206,8 +207,9 @@ class Piece:
         ax, ay = self.px[:-1], self.py[:-1]
         dx, dy = np.diff(self.px), np.diff(self.py)
         seg = dx * dx + dy * dy
-        safe = np.where(seg == 0.0, 1.0, seg)
-        t = np.where(seg == 0.0, 0.0, np.clip(((qx - ax) * dx + (qy - ay) * dy) / safe, 0.0, 1.0))
+        degenerate = is_zero_array(seg)   # a segment of zero length
+        safe = np.where(degenerate, 1.0, seg)
+        t = np.where(degenerate, 0.0, np.clip(((qx - ax) * dx + (qy - ay) * dy) / safe, 0.0, 1.0))
         dist = np.hypot(ax + t * dx - qx, ay + t * dy - qy)
         i = int(np.argmin(dist))   # the first of equally near segments, like a loop would find
         return float(self.arc[i] + t[i] * math.sqrt(seg[i])), float(dist[i])
@@ -233,7 +235,7 @@ def _clip_segments(x0, y0, x1, y1, width: float, height: float):
     edge0, edge1 = np.full(n, -1), np.full(n, -1)
     visible = np.isfinite(x0) & np.isfinite(y0) & np.isfinite(x1) & np.isfinite(y1)
     for code, (p, q) in enumerate(((-dx, x0), (dx, width - x0), (-dy, y0), (dy, height - y0))):
-        parallel = p == 0.0
+        parallel = is_zero_array(p)
         visible &= ~(parallel & (q < 0.0))   # parallel to this edge and outside it
         t = q / np.where(parallel, 1.0, p)
         entering = (p < 0.0) & (t > t0)
@@ -301,7 +303,7 @@ def _candidate(piece: Piece, s: float, half_w: float, half_h: float, score: floa
     mx, my = piece.at(s)
     bx, by = piece.at(s + half_w)
     dx, dy = bx - ax, by - ay
-    if dx == 0.0 and dy == 0.0:
+    if is_zero(dx) and is_zero(dy):
         return None
     # How much the line bends under the label: angle between the two halves
     first, second = math.atan2(my - ay, mx - ax), math.atan2(by - my, bx - mx)

@@ -23,6 +23,7 @@ import os
 import re
 from dataclasses import dataclass, field, fields, replace
 from typing import Optional, Tuple, Union
+from ..core.floats import is_zero
 
 # ---------------------------------------------------------------------------
 # Colours
@@ -124,7 +125,7 @@ def opaque_color(value, owner: str, name: str) -> Optional[str]:
     one is refused rather than silently drawn opaque.
     """
     hex_color, alpha = parse_color(value)
-    if hex_color is None or alpha == 0.0:
+    if hex_color is None or is_zero(alpha):
         return None
     if alpha < 1.0:
         raise ValueError("{0}: {1} cannot be partly transparent ({2!r}); this field has no "

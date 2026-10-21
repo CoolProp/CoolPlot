@@ -6,6 +6,17 @@
 #include "coolplot/style.h"
 
 using namespace coolplot;
+using Catch::Matchers::WithinULP;
+
+namespace {
+
+// Exact element by element: the same size, and each element within 0 ulp.
+void check_exactly(const std::vector<double>& got, const std::vector<double>& want) {
+    REQUIRE(got.size() == want.size());
+    for (size_t i = 0; i < got.size(); ++i) CHECK_THAT(got[i], WithinULP(want[i], 0));
+}
+
+}  // namespace
 
 TEST_CASE("The central number format", "[core]") {
     CHECK(format_number(25.0) == "25");
@@ -33,7 +44,7 @@ TEST_CASE("The central number format", "[core]") {
     CHECK(repr_number(1e16) == "1e+16");
     CHECK(repr_number(25000.0) == "25000.0");
     CHECK(repr_number(9565121.031517146) == "9565121.031517146");
-    CHECK(snap(253.14999999999998) == 253.15);
+    CHECK_THAT(snap(253.14999999999998), WithinULP(253.15, 0));
 }
 
 TEST_CASE("Quantities and their aliases", "[core]") {
@@ -62,7 +73,7 @@ TEST_CASE("Unit systems", "[core]") {
     CHECK(record.at("units").at("p") == json::array({"MPa", 1e-6, 0.0}));
     CHECK(record.at("units").at("T") == json::array({"deg C", 1.0, -273.15, "K"}));
     UnitSystem again = UnitSystem::from_json(record);
-    CHECK(again.at("p").scale == 1e-6);
+    CHECK_THAT(again.at("p").scale, WithinULP(1e-6, 0));
     CHECK(again.at("T").difference_label == "K");
     CHECK_THROWS_AS(get_unit_system("cgs"), Error);
 }
@@ -89,8 +100,12 @@ TEST_CASE("Diagram types and families", "[core]") {
 }
 
 TEST_CASE("Colours are normalised", "[style]") {
-    CHECK(parse_color("Red") == std::make_pair(Color::of("#ff0000"), 1.0));
-    CHECK(parse_color("#ABC") == std::make_pair(Color::of("#aabbcc"), 1.0));
+    std::pair<Color, double> red = parse_color("Red");
+    CHECK(red.first == Color::of("#ff0000"));
+    CHECK_THAT(red.second, WithinULP(1.0, 0));
+    std::pair<Color, double> grey = parse_color("#ABC");
+    CHECK(grey.first == Color::of("#aabbcc"));
+    CHECK_THAT(grey.second, WithinULP(1.0, 0));
     std::pair<Color, double> half = parse_color("#00ff0080");
     CHECK(half.first == Color::of("#00ff00"));
     CHECK(half.second == Catch::Approx(128.0 / 255.0));
@@ -103,7 +118,7 @@ TEST_CASE("Styles normalise and validate", "[style]") {
     LineStyle line = LineStyle::from_json({{"color", "#ff000080"}, {"alpha", 0.5}});
     CHECK(line.color == Color::of("#ff0000"));
     CHECK(line.alpha == Catch::Approx(0.5 * 128.0 / 255.0));
-    CHECK(LineStyle::from_json({{"dash", {2, 1}}}).dash.lengths == std::vector<double>{2.0, 1.0});
+    check_exactly(LineStyle::from_json({{"dash", {2, 1}}}).dash.lengths, {2.0, 1.0});
     for (json bad : {json{{"dash", "wavy"}}, json{{"dash", {1.0}}}, json{{"width_pt", -1}}, json{{"alpha", 2}}, json{{"cap", "pointy"}},
                      json{{"color", "blurple"}}, json{{"colour", "red"}}})
         CHECK_THROWS_AS(LineStyle::from_json(bad), Error);
@@ -118,9 +133,9 @@ TEST_CASE("Styles normalise and validate", "[style]") {
 
 TEST_CASE("Dash patterns scale with the width but not below one point", "[style]") {
     CHECK(dash_pattern_pt(Dash{"solid", {}}, 2.0).empty());
-    CHECK(dash_pattern_pt(Dash{"dashed", {}}, 2.0) == std::vector<double>{7.4, 3.2});
-    CHECK(dash_pattern_pt(Dash{"dashed", {}}, 0.5) == std::vector<double>{3.7, 1.6});
-    CHECK(dash_pattern_pt(Dash{"", {4.0, 1.0}}, 3.0) == std::vector<double>{4.0, 1.0});
+    check_exactly(dash_pattern_pt(Dash{"dashed", {}}, 2.0), {7.4, 3.2});
+    check_exactly(dash_pattern_pt(Dash{"dashed", {}}, 0.5), {3.7, 1.6});
+    check_exactly(dash_pattern_pt(Dash{"", {4.0, 1.0}}, 3.0), {4.0, 1.0});
 }
 
 TEST_CASE("Themes round-trip through JSON and give out colours per slot", "[style]") {
@@ -149,7 +164,7 @@ TEST_CASE("Themes round-trip through JSON and give out colours per slot", "[styl
     CHECK_THROWS_AS(AxesStyle::from_json({{"tick_direction", "sideways"}}), Error);
     CHECK_THROWS_AS(get_theme("neon"), Error);
     Theme scaled = base.scaled(2.0);
-    CHECK(scaled.isoline_label.font.size_pt == 15.0);
-    CHECK(scaled.axes.title.font.size_pt == 22.0);
-    CHECK(scaled.isoline.width_pt == base.isoline.width_pt);
+    CHECK_THAT(scaled.isoline_label.font.size_pt, WithinULP(15.0, 0));
+    CHECK_THAT(scaled.axes.title.font.size_pt, WithinULP(22.0, 0));
+    CHECK_THAT(scaled.isoline.width_pt, WithinULP(base.isoline.width_pt, 0));
 }

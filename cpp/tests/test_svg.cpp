@@ -9,12 +9,20 @@
 
 #include "coolplot/capi.h"
 #include "coolplot/compose.h"
+#include "coolplot/core.h"
 #include "coolplot/pdf.h"
 #include "coolplot/svg.h"
 
 using namespace coolplot;
+using Catch::Matchers::WithinULP;
 
 namespace {
+
+// Exact element by element: the same size, and each element within 0 ulp.
+void check_exactly(const std::vector<double>& got, const std::vector<double>& want) {
+    REQUIRE(got.size() == want.size());
+    for (size_t i = 0; i < got.size(); ++i) CHECK_THAT(got[i], WithinULP(want[i], 0));
+}
 
 std::string read(const std::string& name) {
     std::ifstream in(std::string(COOLPLOT_TEST_DATA) + "/" + name);
@@ -53,12 +61,12 @@ void check_svg(const Scene& scene, const std::string& golden, const SvgOptions& 
 }  // namespace
 
 TEST_CASE("Ticks", "[svg]") {
-    CHECK(ticks(0.0, 10.0, false) == std::vector<double>{0.0, 2.0, 4.0, 6.0, 8.0, 10.0});
-    CHECK(ticks(0.1, 100.0, true) == std::vector<double>{0.1, 1.0, 10.0, 100.0});
-    CHECK(ticks(1.0, 50.0, true) == std::vector<double>{1.0, 2.0, 5.0, 10.0, 20.0, 50.0});
+    check_exactly(ticks(0.0, 10.0, false), {0.0, 2.0, 4.0, 6.0, 8.0, 10.0});
+    check_exactly(ticks(0.1, 100.0, true), {0.1, 1.0, 10.0, 100.0});
+    check_exactly(ticks(1.0, 50.0, true), {1.0, 2.0, 5.0, 10.0, 20.0, 50.0});
     CHECK(ticks(1.5, 1.9, true).size() >= 3);  // a range inside one decade falls back to linear steps
     CHECK(ticks(0.1, 1.0, true, true).size() == 8);
-    CHECK(ticks(5.0, 5.0, false) == std::vector<double>{5.0});
+    check_exactly(ticks(5.0, 5.0, false), {5.0});
 }
 
 TEST_CASE("XML escaping as the Python writer does it", "[svg]") {
@@ -195,9 +203,10 @@ TEST_CASE("The writers ignore the C locale", "[svg][pdf][locale]") {
         CHECK(format_number(0.5) == "0.5");
         CHECK(format_number(1.7976931348623157e308, 2) == "1.8e308");  // overflow while rounding
         CHECK(format_number(-1.7976931348623157e308, 3) == "-1.8e308");
-        CHECK(parse_number("1.5e400") == HUGE_VAL);
-        CHECK(parse_number("-1.5e-400") == 0.0);
-        CHECK(snap(253.14999999999998) == 253.15);
+        double huge = parse_number("1.5e400");
+        CHECK((std::isinf(huge) && huge > 0.0));
+        CHECK(coolplot::is_zero(parse_number("-1.5e-400")));
+        CHECK_THAT(snap(253.14999999999998), WithinULP(253.15, 0));
         CHECK(DiagramSpec::from_json(data.at("input").at("spec")).diagram.name() == "ph");
     } catch (...) {
         std::setlocale(LC_NUMERIC, old.c_str());

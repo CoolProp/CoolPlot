@@ -68,8 +68,8 @@ std::vector<double> converted(const Unit& unit, const std::vector<double>& value
 
 /// (x_log, y_log): a quantity shown in a unit with an offset gets a linear axis.
 std::pair<bool, bool> axis_scales(const DiagramSpec& spec) {
-    return {spec.diagram.x_log() && spec.units.at(spec.diagram.x).offset == 0.0,
-            spec.diagram.y_log() && spec.units.at(spec.diagram.y).offset == 0.0};
+    return {spec.diagram.x_log() && is_zero(spec.units.at(spec.diagram.x).offset),
+            spec.diagram.y_log() && is_zero(spec.units.at(spec.diagram.y).offset)};
 }
 
 /// Widen (lo, hi) so that all finite values lie inside, with a margin of pad times the span.

@@ -33,7 +33,7 @@ from ..core.limits import HUMID_AIR_T_LIMITS_K as T_LIMITS_K
 from ..core.limits import Region, within
 from ..core.quantities import QUANTITIES, quantity_key
 from ..core.state import AIR_STATE_KEYS, StatePoint
-from .floats import is_zero
+from ..core.floats import is_zero
 from .isolines import Curve
 
 #: Quantities of humid air that HAPropsSI computes, by CoolPlot key.

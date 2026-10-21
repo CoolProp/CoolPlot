@@ -8,6 +8,7 @@
 #include "coolplot/scene.h"
 
 using namespace coolplot;
+using Catch::Matchers::WithinULP;
 
 namespace {
 
@@ -21,11 +22,11 @@ json load(const std::string& name) {
 
 TEST_CASE("The limits a backend draws", "[scene]") {
     CHECK(drawable_limits({0.0, 100.0}, true).lo == Catch::Approx(0.1));
-    CHECK(drawable_limits({-5.0, 0.0}, true).hi == 10.0);
-    CHECK(drawable_limits({5.0, 5.0}, true).lo == 0.5);
+    CHECK_THAT(drawable_limits({-5.0, 0.0}, true).hi, WithinULP(10.0, 0));
+    CHECK_THAT(drawable_limits({5.0, 5.0}, true).lo, WithinULP(0.5, 0));
     CHECK(drawable_limits({5.0, 5.0}, false).lo == Catch::Approx(4.5));
-    CHECK(drawable_limits({0.0, 0.0}, false).hi == 0.5);
-    CHECK(drawable_limits({3.0, 1.0}, false).lo == 1.0);
+    CHECK_THAT(drawable_limits({0.0, 0.0}, false).hi, WithinULP(0.5, 0));
+    CHECK_THAT(drawable_limits({3.0, 1.0}, false).lo, WithinULP(1.0, 0));
 }
 
 TEST_CASE("Scene validation", "[scene]") {

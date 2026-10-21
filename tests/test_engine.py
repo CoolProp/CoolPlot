@@ -5,6 +5,7 @@ import warnings
 import numpy as np
 import pytest
 
+from coolplot.core.floats import same_number, same_numbers
 from coolplot.engine.planning import Domain, isoline_id, isoline_values_SI, nice_linear, nice_log, plan, snap
 from coolplot.spec import DiagramSpec, IsolineSet
 
@@ -14,18 +15,18 @@ DOMAIN = Domain((200.0, 400.0, 1e5, 4e6),
 
 
 def test_nice_linear_steps():
-    assert nice_linear(-73.15, 126.85, 11).tolist() == [-60.0, -40.0, -20.0, 0.0, 20.0, 40.0, 60.0, 80.0,
-                                                        100.0, 120.0]
+    assert same_numbers(nice_linear(-73.15, 126.85, 11), [-60.0, -40.0, -20.0, 0.0, 20.0, 40.0, 60.0, 80.0,
+                                                          100.0, 120.0])
     assert nice_linear(0.0, 1.0, 11).tolist() == pytest.approx(np.linspace(0, 1, 11))
     values = nice_linear(1.03, 2.97, 5)
     assert np.allclose(np.diff(values), 0.5)
 
 
 def test_nice_log_mantissas():
-    assert nice_log(1.0, 40.0, 6).tolist() == [1.0, 2.0, 5.0, 10.0, 20.0]
+    assert same_numbers(nice_log(1.0, 40.0, 6), [1.0, 2.0, 5.0, 10.0, 20.0])
     dense = nice_log(1.0, 40.0, 12)
-    assert dense.tolist() == [1.0, 1.5, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 30.0]
-    assert nice_log(0.0, 10.0, 5).tolist() == nice_linear(0.0, 10.0, 5).tolist()   # no log of zero
+    assert same_numbers(dense, [1.0, 1.5, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 30.0])
+    assert same_numbers(nice_log(0.0, 10.0, 5), nice_linear(0.0, 10.0, 5))   # no log of zero
 
 
 def test_rounding_happens_in_display_units():
@@ -43,7 +44,7 @@ def test_ids_are_snapped_and_unique():
     spec = DiagramSpec("R290", isolines=(IsolineSet("T", values_SI=(253.15, -20.0 + 273.15, 300.0, 300.001)),))
     requests = plan(spec, DOMAIN)
     assert [r.item_id for r in requests] == ["iso/T/253.15", "iso/T/300", "iso/T/300.001"]
-    assert snap(0.1 + 0.2) == 0.3
+    assert same_number(snap(0.1 + 0.2), 0.3)
 
 
 def test_plan_uses_settings_and_overrides():
@@ -53,7 +54,7 @@ def test_plan_uses_settings_and_overrides():
     assert [(r.key, r.points) for r in requests] == [("Q", 100)] * 3 + [("T", 33)] * 2
     assert [r.labels for r in requests] == [False] * 3 + [True] * 2
     unsorted = DiagramSpec("R290", isolines=(IsolineSet("Q", values_SI=(1.0, 0.0, 1.5)),))
-    assert [r.value_SI for r in plan(unsorted, DOMAIN)] == [0.0, 1.0]
+    assert same_numbers([r.value_SI for r in plan(unsorted, DOMAIN)], [0.0, 1.0])
 
 
 # ---------------------------------------------------------------------------
@@ -103,8 +104,8 @@ def test_state_snapshot_is_independent_of_the_users_state():
     state.set_mole_fractions([0.7, 0.3])
     state.set_binary_interaction_double(0, 1, "betaT", 1.01)
     d = PropertyDiagram(state, "ph", tp_limits="ACHP")
-    assert d.spec.fluid.fractions == (0.7, 0.3)
-    assert (0, 1, "betaT", 1.01) in d.spec.fluid.interactions
+    assert same_numbers(d.spec.fluid.fractions, (0.7, 0.3))
+    assert any(i[:3] == (0, 1, "betaT") and same_numbers(i[3:], (1.01,)) for i in d.spec.fluid.interactions)
     state.set_mole_fractions([0.2, 0.8])   # must not leak into the diagram
     assert d.fluid.state.get_mole_fractions() == pytest.approx([0.7, 0.3])
     assert d.fluid.state.get_binary_interaction_double(0, 1, "betaT") == pytest.approx(1.01)
