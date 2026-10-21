@@ -12,6 +12,7 @@ cycles
 psychrometric
 blends
 pdf_print
+branding
 themes
 embedding
 caching

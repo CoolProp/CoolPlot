@@ -25,7 +25,7 @@ from xml.sax.saxutils import escape, quoteattr
 import numpy as np
 
 from ..core.numbers import format_number
-from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
+from ..scene import BADGE_BASELINE, AxesSpec, Item, Line, Markers, Text, drawable_limits
 from .ticks import ticks as _ticks
 from ..style.values import AxesStyle, TextStyle, dash_pattern_pt
 from .base import Renderer, SyncReport
@@ -33,6 +33,8 @@ from ..core.floats import is_zero, same_number, same_numbers
 
 PX_PER_PT = 4.0 / 3.0
 _CAPS = {"butt": "butt", "round": "round", "square": "square"}
+#: Units of the document size and how many of them make one pixel.
+SIZE_UNITS = {"px": 1.0, "pt": 1.0 / PX_PER_PT, "mm": 25.4 / 72.0 / PX_PER_PT}
 
 
 def _px(value_pt: float) -> str:
@@ -141,8 +143,8 @@ class SvgRenderer(Renderer):
 
     Parameters
     ----------
-    width, height : int
-        Size of the drawing in pixels.
+    width, height : float
+        Size of the drawing in pixels (CSS pixels, 1 pt = 4/3 px).
     margins : (left, right, top, bottom)
         Space around the plotting area for ticks and labels, in pixels.
         An outside legend adds to the right margin.
@@ -153,6 +155,15 @@ class SvgRenderer(Renderer):
         Write the document with coolplot-core (:mod:`coolplot.corelib`).
         None (the default) follows the native mode, see
         :func:`coolplot.corelib.enabled`; the document is the same either way.
+        coolplot-core draws neither the badge nor the watermark, nor a
+        physical ``unit`` or a size in fractions of a pixel: a document with
+        any of them is always written here.
+    unit : str
+        Unit of the ``width`` and ``height`` attributes of the document:
+        "px" (the default, the size in pixels), or "pt" or "mm" for the
+        same drawing with its printed size, so that a program that places
+        the file on a page gets it at the intended size. The drawing
+        itself always uses pixels (1 pt = 4/3 px) in its viewBox.
     """
 
     capabilities = frozenset({"file_output", "css_classes"})
@@ -161,8 +172,11 @@ class SvgRenderer(Renderer):
     owns_canvas = True
 
     def __init__(self, width: int = 800, height: int = 600, margins=(80, 20, 40, 60),
-                 id_prefix: str = "coolplot", native: bool = None):
+                 id_prefix: str = "coolplot", native: bool = None, unit: str = "px"):
         super().__init__()
+        if unit not in SIZE_UNITS:
+            raise ValueError("SvgRenderer: unit has to be one of {0}, not {1!r}.".format(sorted(SIZE_UNITS), unit))
+        self.unit = unit
         self.native = native
         self.width = width
         self.height = height
@@ -313,7 +327,7 @@ class SvgRenderer(Renderer):
     # Output ------------------------------------------------------------
     def to_svg(self) -> str:
         """The complete SVG document for the last synchronised scene, ASCII only."""
-        if self._use_native():
+        if self._use_native() and not self._needs_python_writer():
             from .. import corelib
             # In scene order: coolplot-core takes the legend from that order and
             # sorts by z order for drawing, with the same tie-break as the scene
@@ -323,6 +337,13 @@ class SvgRenderer(Renderer):
                 return document
         head, items, tail = self._document_parts()
         return "\n".join([head, '<g class="cp-items">'] + [e for _, e in items] + ['</g>', tail])
+
+    def _needs_python_writer(self) -> bool:
+        """Whether the document has parts coolplot-core does not write (branding, a physical unit)."""
+        axes = self._axes
+        branded = axes is not None and (axes.badge is not None or axes.watermark is not None)
+        whole = float(self.width).is_integer() and float(self.height).is_integer()
+        return branded or self.unit != "px" or not whole
 
     def _use_native(self) -> bool:
         if self.native is None:
@@ -355,11 +376,14 @@ class SvgRenderer(Renderer):
         bx, by, bw, bh = self._box
         (x0, x1), (y0, y1) = self._limits()
         clip = self.id_prefix + "-plot-area"
+        pictures = axes.badge is not None and axes.badge.logo or axes.watermark is not None
         head: List[str] = [
-            '<svg xmlns="http://www.w3.org/2000/svg" width="{0}" height="{1}" viewBox="0 0 {0} {1}" '
+            '<svg xmlns="http://www.w3.org/2000/svg"{8} width="{9}" height="{10}" viewBox="0 0 {0} {1}" '
             'data-x-log="{2}" data-y-log="{3}" data-x-limits="{4} {5}" data-y-limits="{6} {7}">'.format(
-                self.width, self.height, int(axes.x_log), int(axes.y_log),
-                repr(x0), repr(x1), repr(y0), repr(y1)),
+                _num(self.width), _num(self.height), int(axes.x_log), int(axes.y_log),
+                repr(x0), repr(x1), repr(y0), repr(y1),
+                ' xmlns:xlink="http://www.w3.org/1999/xlink"' if pictures else "",
+                self._size_attr(self.width), self._size_attr(self.height)),
             '<rect class="cp-figure" width="100%" height="100%" fill="{0}"/>'.format(
                 st.figure_background or "none"),
             '<defs><clipPath id="{0}"><rect x="{1}" y="{2}" width="{3}" height="{4}"/></clipPath></defs>'.format(
@@ -367,6 +391,7 @@ class SvgRenderer(Renderer):
             '<rect class="cp-background" x="{0}" y="{1}" width="{2}" height="{3}" fill="{4}"/>'.format(
                 _num(bx), _num(by), _num(bw), _num(bh), st.background or "none"),
         ]
+        head.extend(self._watermark_elements(axes))
         head.extend(self._grid(to_px, axes))
         # Every item clips itself (see _open), so that unclipped text keeps
         # its place in the drawing order.
@@ -376,9 +401,71 @@ class SvgRenderer(Renderer):
             'stroke="{4}" stroke-width="{5}"/>'.format(_num(bx), _num(by), _num(bw), _num(bh),
                                                      st.frame_color or "none", _px(st.frame_width_pt))]
         tail.extend(self._ticks_and_labels(to_px, axes))
+        tail.extend(self._badge_elements(axes))
         tail.extend(self._legend_elements())
         tail.append('</svg>')
         return _ascii("\n".join(head)), items, _ascii("\n".join(tail))
+
+    def _size_attr(self, pixels: float) -> str:
+        """A width or height attribute in the document's unit, e.g. "841.89pt"."""
+        if self.unit == "px":
+            return _num(pixels)
+        return _num(pixels * SIZE_UNITS[self.unit]) + self.unit
+
+    def _watermark_elements(self, axes: AxesSpec) -> List[str]:
+        """The watermark, centred in the plot area and clipped to it."""
+        mark = axes.watermark
+        if mark is None or not mark.picture:
+            return []
+        bx, by, bw, bh = self._box
+        width, height = mark.width_pt * PX_PER_PT, mark.height_pt() * PX_PER_PT
+        return ['<image class="cp-watermark" x="{0}" y="{1}" width="{2}" height="{3}" opacity="{4}" '
+                'clip-path="url(#{5}-plot-area)" preserveAspectRatio="xMidYMid meet" xlink:href="{6}"/>'.format(
+                    _num(bx + 0.5 * (bw - width)), _num(by + 0.5 * (bh - height)), _num(width), _num(height),
+                    _num(mark.opacity), self.id_prefix, mark.picture[0].data_uri())]
+
+    def badge_box_px(self) -> Optional[Tuple[float, float, float, float]]:
+        """(x, y, width, height) of the badge in pixels, y down, or None without a badge."""
+        badge = self._axes.badge if self._axes is not None else None
+        if badge is None or badge.empty:
+            return None
+        bx, by, bw, bh = self._box
+        width, height = (v * PX_PER_PT for v in badge.size_pt())
+        inset = badge.inset_pt * PX_PER_PT
+        vertical, horizontal = badge.location.split()
+        x = bx + inset if horizontal == "left" else bx + bw - inset - width
+        y = by + inset if vertical == "upper" else by + bh - inset - height
+        return x, y, width, height
+
+    def _badge_elements(self, axes: AxesSpec) -> List[str]:
+        """The badge: its box, the logo and the text lines, left aligned."""
+        box = self.badge_box_px()
+        if box is None:
+            return []
+        badge = axes.badge
+        x, y, width, height = box
+        pad = badge.padding_pt * PX_PER_PT
+        out = ['<g class="cp-badge">',
+               '<rect class="cp-badge-box" x="{0}" y="{1}" width="{2}" height="{3}" fill="{4}" '
+               'fill-opacity="{5}" stroke="{6}" stroke-width="{7}"/>'.format(
+                   _num(x), _num(y), _num(width), _num(height), badge.background or "none",
+                   _num(badge.background_alpha), badge.frame_color or "none",
+                   _px(badge.frame_width_pt if badge.frame_color else 0.0))]
+        top = y + pad
+        if badge.logo:
+            logo_w, logo_h = badge.logo_width_pt * PX_PER_PT, badge.logo_height_pt() * PX_PER_PT
+            out.append('<image class="cp-badge-logo" x="{0}" y="{1}" width="{2}" height="{3}" '
+                       'preserveAspectRatio="xMidYMid meet" xlink:href="{4}"/>'.format(
+                           _num(x + pad), _num(top), _num(logo_w), _num(logo_h), badge.logo[0].data_uri()))
+            top += logo_h + (badge.gap_pt * PX_PER_PT if badge.lines else 0.0)
+        line_h = badge.line_height_pt * PX_PER_PT
+        size = badge.text.font.size_pt * PX_PER_PT
+        for i, line in enumerate(badge.lines):
+            out.append('<text class="cp-badge-text" x="{0}" y="{1}" text-anchor="start" {2}>{3}</text>'.format(
+                _num(x + pad), _num(top + i * line_h + BADGE_BASELINE * size), _text_attrs(badge.text),
+                _xml_text(line)))
+        out.append('</g>')
+        return out
 
     def plot_size_pt(self):
         """(width, height) of the plot area in points."""

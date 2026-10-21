@@ -27,6 +27,37 @@ guide in the documentation says what to change in your code.
   with labels falls back to the Python composer with a warning.
 - `Chart.state(entry)` gives a full state from two properties in the
   chart's units.
+- Gallery examples: the basic air processes from one state; summer and
+  winter operation of an air handling unit, with duties, the room's sensible
+  heat ratio and a comfort zone; evaporative cooling in a dry climate. The
+  how-to guide "Draw air processes on a psychrometric chart" explains the
+  pieces.
+- Branding: `Settings.branding` (`coolplot.BrandingSettings`) puts a badge
+  in a corner of the plot area, with a logo (PNG or SVG), the references
+  of the equation of state of the fluid ("short": "R290: Lemmon et al.
+  (2009)", or "full" with journal, volume and pages), the CoolProp and
+  CoolPlot versions and lines of your own, and a faint watermark picture
+  behind the lines. The references come from CoolProp's BibTeX keys and
+  the bibliography in its package: every component of a mixture plus the
+  references of its mixture model, ASHRAE RP-1485 for humid air, the
+  backend's name for REFPROP and cubic equations. `location="auto"` takes
+  the corner where the badge covers the fewest points of the drawn
+  lines; edge labels (the default label mode) keep clear of the badge.
+  Drawn by the matplotlib and SVG writers, which give the badge the same
+  size, the size the label layout keeps clear (logos in PDF keep all
+  their pixels; PS and EPS leave the watermark out, with a warning, as
+  PostScript has no transparent images); the web renderer draws it as
+  the SVG writer does. The scene record carries it as `axes.badge` and
+  `axes.watermark`. coolplot-core does not compose or draw it, so a
+  branded chart uses the Python composer and SVG writer; the plotly
+  backend, the coolplot-core PDF writer and the JavaScript writer of
+  `scene_page` warn and leave it out.
+  How-to page "Logo, references and watermark".
+- `Chart.uncached_curves()`: how many lines the next update would
+  calculate, counting the curve cache in memory and on disk; an
+  application can tell a cheap request from an expensive one first.
+- `SvgRenderer(unit="pt" | "mm")` writes the document size with a unit,
+  and the size may be fractional.
 
 #### Changed
 - The saturation curve is drawn whatever lines are set: a chart of a fluid
@@ -35,11 +66,19 @@ guide in the documentation says what to change in your code.
   line of 100 % relative humidity. `chart.show_saturation = False` hides
   it. Spec records gain a `show_saturation` field; a record of 1.1 reads
   without it and draws as before.
-- Gallery examples: the basic air processes from one state; summer and
-  winter operation of an air handling unit, with duties, the room's sensible
-  heat ratio and a comfort zone; evaporative cooling in a dry climate. The
-  how-to guide "Draw air processes on a psychrometric chart" explains the
-  pieces.
+- `save("chart.svg")` writes the size of `settings.page` (in points)
+  instead of 800 x 600 pixels; `width`, `height` and `unit` still
+  override it. A size in points is not a whole number of pixels, so this
+  document is written by the Python SVG writer, also with the native
+  mode on; `SvgRenderer(native=True)` with whole pixels still uses
+  coolplot-core.
+- `save()` to PNG, PDF and other matplotlib formats draws into a figure
+  outside pyplot unless `draw()` or `show()` made one before, so saving
+  charts in a server or a loop no longer collects pyplot figures.
+- CoolProp's pseudo-pure models of blends ("R407C", "R410A", "Air") give
+  one warning that names the mixture to use ("R407C.mix") instead of one
+  warning per missing line of constant quality.
+- CI also tests Python 3.14.
 
 ### 1.1.0
 

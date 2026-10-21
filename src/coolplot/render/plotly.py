@@ -48,7 +48,7 @@ import plotly.graph_objects as go
 from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
 from ..core.numbers import format_number
 from ..style.values import AxesStyle, LineStyle, TextStyle, dash_pattern_pt
-from .base import Renderer, SyncReport
+from .base import Renderer, SyncReport, warn_without_branding
 from .ticks import ticks
 from ..core.floats import is_zero, same_number, same_numbers
 
@@ -238,6 +238,7 @@ class PlotlyRenderer(Renderer):
 
     # Backend hooks ------------------------------------------------------
     def _set_axes(self, axes: AxesSpec):
+        warn_without_branding(self, axes)
         st: AxesStyle = axes.style
         layout = self.figure.layout
         self.figure.update_layout(

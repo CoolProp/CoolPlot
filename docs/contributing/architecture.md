@@ -253,6 +253,7 @@ change costs, because that decides what is recomputed:
 | `look` | the theme: every colour, line, marker and font | restyling only |
 | `labels` | mode (edge, margin, inline), keep-out margin around processes, density, number format and rounding of all values shown | new label layout only |
 | `page` | hints for the backends: preferred canvas size, font scale (the legend position is part of the theme) | backend layout only |
+| `branding` | badge (logo, references, versions, own lines, corner) and watermark (1.2) | layout only (the references are looked up once per fluid) |
 
 Defaults come from presets (`screen`, `print`, `publication`,
 `interactive`). An application that wants few points while the user drags

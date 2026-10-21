@@ -42,6 +42,7 @@ _LAZY = {
     "CalcSettings": ".spec",
     "LabelSettings": ".spec",
     "PageSettings": ".spec",
+    "BrandingSettings": ".spec",
     "Engine": ".engine",
     "Fluid": ".thermo",
     "DiagramType": ".core.diagram_type",

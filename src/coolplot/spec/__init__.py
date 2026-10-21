@@ -6,8 +6,8 @@ CoolProp nor a plotting library.
 """
 from .diagram import CycleSpec, DiagramSpec, IsolineSet, ProcessSpec, SaturationAnchor
 from .fluid import FluidSpec, HumidAirSpec
-from .settings import PRESETS, CalcSettings, LabelSettings, PageSettings, Settings, get_settings
+from .settings import PRESETS, BrandingSettings, CalcSettings, LabelSettings, PageSettings, Settings, get_settings
 
 __all__ = ["CycleSpec", "DiagramSpec", "IsolineSet", "ProcessSpec",
            "SaturationAnchor", "FluidSpec", "HumidAirSpec", "PRESETS",
-           "CalcSettings", "LabelSettings", "PageSettings", "Settings", "get_settings"]
+           "BrandingSettings", "CalcSettings", "LabelSettings", "PageSettings", "Settings", "get_settings"]

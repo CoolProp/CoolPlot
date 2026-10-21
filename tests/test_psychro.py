@@ -53,7 +53,8 @@ def default_values(key, T_range, W_range, units="SI"):
     from coolplot.engine import plan
     chart = PsychrometricChart(T_range=T_range, W_range=W_range, units=units)
     chart.set_lines(key)
-    return [r.value_SI for r in plan(chart.spec, chart.engine.domain(chart.spec))]
+    # Only the family's own lines: the plan also holds the saturation curve
+    return [r.value_SI for r in plan(chart.spec, chart.engine.domain(chart.spec)) if r.key == key]
 
 
 def test_default_values_are_round():

@@ -12,11 +12,14 @@ what has to be redone (docs/contributing/architecture.md, section 5):
   rebuilds the labels.
 * ``page``: hints for the backends, such as the preferred canvas size. A
   change only affects the layout of the page.
+* ``branding``: a badge with logo, references and text lines, and a
+  watermark. A change only affects the layout of the page.
 
 Presets cover the common cases; derive variants with :meth:`Settings.with_`.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import asdict, dataclass, field, fields, replace
 from typing import Tuple
 
@@ -214,6 +217,117 @@ class PageSettings:
         return self.width_pt / 72.0, self.height_pt / 72.0
 
 
+BADGE_LOCATIONS = ("auto", "upper left", "upper right", "lower left", "lower right")
+REFERENCE_STYLES = ("none", "short", "full")
+
+
+def _sources(value) -> Tuple[str, ...]:
+    """Picture sources as a tuple of strings; one string or path is one source."""
+    if isinstance(value, (str, os.PathLike)):
+        value = (value,) if os.fspath(value) else ()
+    sources = tuple(os.fspath(v) for v in value)
+    if any(not s for s in sources):
+        raise ValueError("BrandingSettings: an empty picture source.")
+    return sources
+
+
+@dataclass(frozen=True)
+class BrandingSettings:
+    """Who made a chart and where its data come from
+
+    Everything here is off by default. A change only affects the layout
+    of the page, like :class:`PageSettings`; nothing is recalculated.
+
+    The badge is a box in one corner of the plot area. It holds, from top
+    to bottom, the logo, the references, the versions line and the
+    ``lines`` given here. The watermark is a faint picture in the middle
+    of the plot area, behind the grid and the lines.
+
+    Attributes
+    ----------
+    logo : tuple of str
+        The logo as file names or ``data:`` URIs of PNG or SVG files:
+        variants of the same picture, best first. The SVG writer uses the
+        first one; matplotlib (PNG and PDF output) needs a PNG, so give a
+        PNG rendering of an SVG logo as well, for example
+        ``("logo.svg", "logo.png")``.
+    logo_width_pt : float
+        Width of the logo in points.
+    references : str
+        "none"; "short" for the equation of state of every fluid as first
+        author and year ("n-Propane: Lemmon et al. (2009)"); "full" with
+        the journal, volume and pages as well. Mixtures add the
+        reference of their mixing model, humid air that of ASHRAE RP-1485.
+    versions : bool
+        Add a line with the CoolProp and CoolPlot versions.
+    lines : tuple of str
+        Further lines, for example a web address and a date.
+    location : str
+        "auto" (the corner where the badge covers the fewest points of
+        the drawn lines) or a corner:
+        "upper left", "upper right", "lower left", "lower right".
+    font_size_pt : float
+        Size of the badge text (the theme's tick label font family).
+    background_alpha : float
+        Opacity of the badge background, which has the colour of the plot
+        area, so the lines under the badge stay faintly visible.
+    frame : bool
+        Outline the badge with the colour of the axes frame.
+    watermark : tuple of str
+        The watermark picture, given like ``logo``. Empty for none.
+    watermark_width : float
+        Width of the watermark as a fraction of the plot area width; it
+        is made smaller if it would be taller than 0.8 of the plot height.
+    watermark_opacity : float
+        Opacity of the watermark, 0 to 1.
+    """
+    logo: Tuple[str, ...] = ()
+    logo_width_pt: float = 60.0
+    references: str = "none"
+    versions: bool = False
+    lines: Tuple[str, ...] = ()
+    location: str = "auto"
+    font_size_pt: float = 6.0
+    background_alpha: float = 0.85
+    frame: bool = True
+    watermark: Tuple[str, ...] = ()
+    watermark_width: float = 0.5
+    watermark_opacity: float = 0.06
+
+    def __post_init__(self):
+        object.__setattr__(self, "logo", _sources(self.logo))
+        object.__setattr__(self, "watermark", _sources(self.watermark))
+        lines = (self.lines,) if isinstance(self.lines, str) else self.lines
+        object.__setattr__(self, "lines", tuple(str(line) for line in lines))
+        if self.references not in REFERENCE_STYLES:
+            raise ValueError("Unknown references style '{0}', expected one of {1}.".format(
+                self.references, REFERENCE_STYLES))
+        if self.location not in BADGE_LOCATIONS:
+            raise ValueError("Unknown badge location '{0}', expected one of {1}.".format(
+                self.location, BADGE_LOCATIONS))
+        for name in ("logo_width_pt", "font_size_pt"):
+            value = float(getattr(self, name))
+            if not value > 0.0:
+                raise ValueError("BrandingSettings.{0} has to be positive, not {1}.".format(name, value))
+            object.__setattr__(self, name, value)
+        for name in ("background_alpha", "watermark_opacity"):
+            value = float(getattr(self, name))
+            if not 0.0 <= value <= 1.0:
+                raise ValueError("BrandingSettings.{0} has to be between 0 and 1, not {1}.".format(name, value))
+            object.__setattr__(self, name, value)
+        width = float(self.watermark_width)
+        if not 0.0 < width <= 1.0:
+            raise ValueError("BrandingSettings.watermark_width has to be in (0, 1], not {0}.".format(width))
+        object.__setattr__(self, "watermark_width", width)
+        object.__setattr__(self, "versions", bool(self.versions))
+        object.__setattr__(self, "frame", bool(self.frame))
+
+    @property
+    def has_badge(self) -> bool:
+        """Whether the settings ask for a badge at all."""
+        return bool(self.logo or self.lines or self.versions or self.references != "none")
+
+
 @dataclass(frozen=True)
 class Settings:
     """Everything that tunes a diagram, see the module docstring"""
@@ -221,22 +335,26 @@ class Settings:
     look: Theme = field(default_factory=lambda: get_theme("default"))
     labels: LabelSettings = field(default_factory=LabelSettings)
     page: PageSettings = field(default_factory=PageSettings)
+    branding: BrandingSettings = field(default_factory=BrandingSettings)
 
     def __post_init__(self):
         object.__setattr__(self, "look", get_theme(self.look))
-        for name, cls in (("calc", CalcSettings), ("labels", LabelSettings), ("page", PageSettings)):
+        for name, cls in (("calc", CalcSettings), ("labels", LabelSettings), ("page", PageSettings),
+                          ("branding", BrandingSettings)):
             if not isinstance(getattr(self, name), cls):
                 raise TypeError("Settings.{0} has to be a {1}.".format(name, cls.__name__))
 
-    def with_(self, calc: dict = None, look=None, labels: dict = None, page: dict = None) -> "Settings":
+    def with_(self, calc: dict = None, look=None, labels: dict = None, page: dict = None,
+              branding: dict = None) -> "Settings":
         """Copy with some values changed.
 
-        ``calc``, ``labels`` and ``page`` take dicts of the fields to change,
-        ``look`` a theme or theme name, for example
+        ``calc``, ``labels``, ``page`` and ``branding`` take dicts of the
+        fields to change, ``look`` a theme or theme name, for example
         ``settings.with_(calc={"points": 100}, look="dark")``. ``calc`` also
         takes a preset name: ``settings.with_(calc="interactive")`` uses few
         points while the user drags and keeps theme, labels and page;
         ``settings.with_(calc="screen")`` goes back to full detail.
+        ``branding`` also takes a :class:`BrandingSettings` value.
         """
         if isinstance(calc, str):
             calc_value = get_settings(calc).calc
@@ -244,16 +362,22 @@ class Settings:
             calc_value = calc
         else:
             calc_value = replace(self.calc, **calc) if calc else self.calc
+        if isinstance(branding, BrandingSettings):
+            branding_value = branding
+        else:
+            branding_value = replace(self.branding, **branding) if branding else self.branding
         return replace(self,
                        calc=calc_value,
                        look=get_theme(look) if look is not None else self.look,
                        labels=replace(self.labels, **labels) if labels else self.labels,
-                       page=replace(self.page, **page) if page else self.page)
+                       page=replace(self.page, **page) if page else self.page,
+                       branding=branding_value)
 
     def to_dict(self) -> dict:
         """The settings record of docs/reference/contracts.md."""
         return {"calc": asdict(self.calc), "look": self.look.to_dict(),
-                "labels": asdict(self.labels), "page": asdict(self.page)}
+                "labels": asdict(self.labels), "page": asdict(self.page),
+                "branding": asdict(self.branding)}
 
     @classmethod
     def from_dict(cls, data: dict) -> "Settings":
@@ -268,7 +392,8 @@ class Settings:
         return cls(calc=part(CalcSettings, data.get("calc")),
                    look=Theme.from_dict(look) if isinstance(look, dict) else get_theme(look or "default"),
                    labels=part(LabelSettings, data.get("labels")),
-                   page=part(PageSettings, data.get("page")))
+                   page=part(PageSettings, data.get("page")),
+                   branding=part(BrandingSettings, data.get("branding")))
 
 
 #: Ready-made settings. "interactive" uses few points so that dragging

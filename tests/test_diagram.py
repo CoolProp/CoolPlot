@@ -161,17 +161,24 @@ def test_save_chooses_the_writer_by_extension(tmp_path):
 
 
 def test_svg_and_html_saves_use_the_page_size(tmp_path):
-    """The canvas follows settings.page, as for matplotlib, unless a size is given."""
+    """The canvas follows settings.page, as for matplotlib, unless a size is given.
+
+    An SVG file states the page size in points (252 x 189 pt); an HTML page
+    has it in pixels (336 x 252 px).
+    """
     import re
     from coolplot import PropertyDiagram
     diagram = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP", settings="publication")
     diagram.set_lines("T", num=3)
-    size = re.compile(r'<svg [^>]*width="(\d+)" height="(\d+)"')
-    for name in ("chart.svg", "chart.html"):
-        diagram.save(tmp_path / name)
-        assert size.search((tmp_path / name).read_text()).groups() == ("336", "252")   # 252 x 189 pt
-    diagram.save(tmp_path / "wide.svg", width=500, height=300)
+    size = re.compile(r'<svg [^>]*width="([\d.]+(?:pt)?)" height="([\d.]+(?:pt)?)"')
+    diagram.save(tmp_path / "chart.svg")
+    assert size.search((tmp_path / "chart.svg").read_text()).groups() == ("252pt", "189pt")
+    diagram.save(tmp_path / "chart.html")
+    assert size.search((tmp_path / "chart.html").read_text()).groups() == ("336", "252")
+    diagram.save(tmp_path / "wide.svg", width=500, height=300, unit="px")
     assert size.search((tmp_path / "wide.svg").read_text()).groups() == ("500", "300")
+    diagram.save(tmp_path / "wide.html", width=500, height=300)
+    assert size.search((tmp_path / "wide.html").read_text()).groups() == ("500", "300")
 
 
 def test_changing_the_diagram_type_drops_families_it_cannot_draw():

@@ -27,6 +27,7 @@ from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
 from ..spec.diagram import CycleSpec, DiagramSpec, ProcessSpec
 from ..style.theme import Theme
 from ..style.values import Font
+from .branding import branding
 from .layout import Frame, LabelRequest, place_edge_labels, place_margin_labels, place_state_numbers
 from ..core.floats import is_zero, same_number
 
@@ -235,8 +236,12 @@ def default_plot_size_pt(spec: DiagramSpec) -> Tuple[float, float]:
 
 
 def labels_for(spec: DiagramSpec, requests, axes: AxesSpec, keep_out_lines, plot_size_pt,
-               previous) -> List[Text]:
-    """Place the labels according to ``Settings.labels.mode``."""
+               previous, occupied=()) -> List[Text]:
+    """Place the labels according to ``Settings.labels.mode``.
+
+    ``occupied`` are boxes (points, see :class:`coolplot.compose.layout.Box`)
+    that edge labels keep clear of, such as the badge.
+    """
     settings = spec.settings.labels
     if settings.mode == "inline":
         return inline_labels(spec, requests, axes)
@@ -246,7 +251,7 @@ def labels_for(spec: DiagramSpec, requests, axes: AxesSpec, keep_out_lines, plot
     edges = {family: settings.preferred_edges(family, spec.diagram.family(family).edges)
              for family in {r.family for r in requests}}
     return place_edge_labels(requests, frame, keep_out_lines, settings.keep_out_pt, edges, previous,
-                             settings.fallback)
+                             settings.fallback, occupied)
 
 
 def process_items(spec: DiagramSpec, theme: Theme, process: ProcessSpec, index: int) -> List[Item]:
@@ -321,7 +326,8 @@ def state_numbers(group: str, theme: Theme, marker_style, numbers, x, y, labels=
 
 
 def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Tuple[float, float] = None,
-            previous_labels: Dict[str, Text] = None, cycles: Sequence = None) -> Tuple[List[Item], AxesSpec]:
+            previous_labels: Dict[str, Text] = None, cycles: Sequence = None,
+            sources: Sequence[str] = ()) -> Tuple[List[Item], AxesSpec]:
     """All scene items and the axes for a diagram.
 
     ``curves`` are (CurveRequest, Curve) pairs as returned by
@@ -331,7 +337,9 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Tuple[flo
     maps label ids to the label items of the previous scene, so that labels
     stay where they were while that spot is still free. ``cycles`` holds
     (states, chains) for each cycle of the spec, from
-    :meth:`coolplot.engine.Engine.cycle`.
+    :meth:`coolplot.engine.Engine.cycle`. ``sources`` are the badge lines
+    naming the sources of the properties, from
+    :meth:`coolplot.engine.Engine.source_lines`.
     """
     theme = scaled_theme(spec.settings.look, spec.settings.page.font_scale)
     process_parts = overlay_items(spec, theme, cycles or ())
@@ -341,10 +349,15 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Tuple[flo
     frame = Frame(axes.x_limits, axes.y_limits, axes.x_log, axes.y_log, *size)
     process_parts = placed_state_numbers(process_parts, frame)
     lines = isoline_items(spec, theme, curves)
+    badge, watermark, badge_box = branding(spec, theme, frame, [(line.x, line.y) for line in lines if line.visible]
+                                           + [(x, y) for x, y, _ in drawn], sources)
+    if badge is not None or watermark is not None:
+        axes = replace(axes, badge=badge, watermark=watermark)
     items: List[Item] = list(lines)
     requests = label_requests(spec, theme, curves, lines)
     if requests:
-        items.extend(labels_for(spec, requests, axes, drawn, size, previous_labels))
+        items.extend(labels_for(spec, requests, axes, drawn, size, previous_labels,
+                                () if badge_box is None else (badge_box,)))
     items.extend(process_parts)
     return items, axes
 
