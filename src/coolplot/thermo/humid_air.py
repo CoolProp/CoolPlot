@@ -15,10 +15,23 @@ point is found exactly.
 
 All values are in SI units: K, kg/kg, a fraction 0 to 1 for RH, J/kg and
 m3/kg per kg of dry air.
+
+The Mollier h,x chart of European practice draws the same lines with the
+humidity ratio x (W here) on the horizontal axis and a skewed enthalpy
+axis: its vertical coordinate is
+
+    Thx = 273.15 K + (h - r0 * W) / cp_a,   r0 = 2500 kJ/kg, cp_a = 1.006 kJ/(kg K)
+
+(DIN 1946), read as a temperature. At W = 0 it is the dry-bulb
+temperature, isotherms are nearly horizontal straight lines and lines of
+constant enthalpy fall to the right by r0 / cp_a. Mixing is linear in h
+and W, so mixing lines are straight in this chart. Every humid-air state
+holds Thx; it can be given together with W.
 """
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from functools import lru_cache
 from typing import Optional, Tuple
 
@@ -36,11 +49,29 @@ from ..core.state import AIR_STATE_KEYS, StatePoint
 from ..core.floats import is_zero
 from .isolines import Curve
 
-#: Quantities of humid air that HAPropsSI computes, by CoolPlot key.
+#: Quantities of a humid-air state, by CoolPlot key (all but the total pressure).
 HUMID_AIR = tuple(k for k in AIR_STATE_KEYS if k != "p")
 
-#: Families of lines a psychrometric chart can show.
+#: Families of lines a psychrometric chart can show (isotherms only on the Mollier chart).
 LINE_KEYS = tuple(f.key for f in FAMILIES["humid_air"])
+
+#: The families whose range over the visible region a chart needs for round default values.
+_SPAN_KEYS = ("RH", "Twb", "h", "v")
+
+#: The constants of the Mollier h,x chart's skewed axis (DIN 1946): the
+#: enthalpy of evaporation of water at 0 deg C and the specific heat of dry air.
+R0_J_KG = 2500e3
+CP_DRY_AIR_J_KG_K = 1006.0
+
+
+def mollier_temperature(h_J_kg, W):
+    """The vertical coordinate of the Mollier chart, as a temperature in K (array or scalar)."""
+    return 273.15 + (np.asarray(h_J_kg, dtype=float) - R0_J_KG * np.asarray(W, dtype=float)) / CP_DRY_AIR_J_KG_K
+
+
+def enthalpy_from_mollier(Thx_K: float, W: float) -> float:
+    """The specific enthalpy (J/kg dry air) of the point (W, Thx) of a Mollier chart."""
+    return CP_DRY_AIR_J_KG_K * (Thx_K - 273.15) + R0_J_KG * W
 
 
 def _name(key: str) -> str:
@@ -67,6 +98,13 @@ def air_state(key1: str, value1: float, key2: str, value2: float, p_Pa: float = 
     key1, key2 = quantity_key(key1), quantity_key(key2)
     if key1 == key2:
         raise ValueError("Give two different properties, not '{0}' twice.".format(key1))
+    if "Thx" in (key1, key2):
+        # A point of the Mollier chart: its temperature scale and the humidity ratio give the enthalpy
+        (kT, vT), (kW, vW) = ((key1, value1), (key2, value2)) if key1 == "Thx" else ((key2, value2), (key1, value1))
+        if kW != "W":
+            raise ValueError("The temperature scale Thx of the Mollier chart is given together with the "
+                             "humidity ratio W, not with '{0}'.".format(kW))
+        return air_state("h", enthalpy_from_mollier(vT, vW), "W", vW, p_Pa)
     # The total pressure is the chart's pressure, not one of the two
     # properties: CoolProp would return saturated air without a warning.
     if "p" in (key1, key2):
@@ -74,10 +112,11 @@ def air_state(key1: str, value1: float, key2: str, value2: float, p_Pa: float = 
                          "T, W, RH, Twb, Tdp, h and v. A process that keeps the humidity ratio is given "
                          "with via 'sensible'; a via that keeps the pressure does not work here.".format(p_Pa))
     try:
-        values = {k: humid_air(k, key1, value1, key2, value2, p_Pa) for k in HUMID_AIR}
+        values = {k: humid_air(k, key1, value1, key2, value2, p_Pa) for k in HUMID_AIR if k != "Thx"}
     except ValueError as e:
         raise PropertyError("humid air ({0:.6g} Pa)".format(p_Pa), ((key1, value1), (key2, value2)),
                             str(e)) from None
+    values["Thx"] = float(mollier_temperature(values["h"], values["W"]))
     return StatePoint(p=p_Pa, **values)
 
 
@@ -132,6 +171,20 @@ def mixed_air(a: StatePoint, b: StatePoint, m_dot_a_kg_s: float, m_dot_b_kg_s: f
         # Saturated within the last bits: HAPropsSI finds a relative humidity
         # a hair above 1 from h and W, so the state is built as saturated air
         return air_state("T", T_K, "RH", 1.0, p_Pa)
+
+
+def _dry_bulb_span(Thx_range_K, W_range) -> Tuple[float, float]:
+    """The dry-bulb temperatures behind a Mollier chart's window, with a margin.
+
+    Along a horizontal of the Mollier chart the dry-bulb temperature falls
+    with W (in deg C: t = thx * cp_a / (cp_a + cp_v * W), cp_v the specific
+    heat of water vapour), so the corners of the window bound it; 5 K on
+    either side cover the rest, within the limits of HAPropsSI.
+    """
+    cp_v_J_kg_K = 1860.0
+    corners = [273.15 + (Thx - 273.15) * CP_DRY_AIR_J_KG_K / (CP_DRY_AIR_J_KG_K + cp_v_J_kg_K * W)
+               for Thx in Thx_range_K for W in W_range]
+    return (max(min(corners) - 5.0, T_LIMITS_K[0]), min(max(corners) + 5.0, T_LIMITS_K[1]))
 
 
 def saturation_W(T_K, p_Pa: float):
@@ -442,14 +495,23 @@ class HumidAir:
         return "straight"
 
     def domain(self, limits: Region, margin: float = 0.0):
-        """(tp_box, ranges) of a chart over ``limits`` (bounds on T and W).
+        """(tp_box, ranges) of a chart over ``limits`` (bounds on T and W, or on Thx and W).
 
         The T-p box is flat in pressure. The ranges hold T, W and p from
         the limits and the span of RH, Twb, h and v over the visible part
-        of the chart, so that round default values can be chosen.
+        of the chart, so that round default values can be chosen. A
+        Mollier chart is bounded by its temperature scale Thx; the
+        dry-bulb temperatures behind it (a little further apart, since the
+        isotherms rise with W) are swept, and Thx is in the ranges too.
         """
-        T_range_K = limits.range_SI("T")
         W_range = limits.range_SI("W")
+        bounds = dict(limits.bounds)
+        Thx_range_K = None
+        if "Thx" in bounds:
+            Thx_range_K = limits.range_SI("Thx")
+            T_range_K = _dry_bulb_span(Thx_range_K, W_range)
+        else:
+            T_range_K = limits.range_SI("T")
         for T_K in T_range_K:
             if not within(T_K, T_LIMITS_K):
                 raise ValueError("Temperatures have to lie between {0} and {1} K for HAPropsSI, got {2} K.".format(
@@ -458,13 +520,48 @@ class HumidAir:
             raise ValueError("Humidity ratios have to be at least 0, got {0}.".format(W_range))
         tp_box = (T_range_K[0], T_range_K[1], self.p_Pa, self.p_Pa)
         ranges = [("T", T_range_K), ("W", W_range), ("p", (self.p_Pa, self.p_Pa))]
+        if Thx_range_K is not None:
+            ranges.append(("Thx", Thx_range_K))
         spans = chart_ranges(self.p_Pa, T_range_K, W_range)
-        if any(key not in spans for key in LINE_KEYS):
+        if any(key not in spans for key in _SPAN_KEYS):
             raise ValueError("The region T = {0} K, W = {1} lies entirely above saturation (fog) at {2} Pa; "
                              "there are no humid-air states to draw.".format(T_range_K, W_range, self.p_Pa))
         ranges.extend(sorted(spans.items()))
         return tp_box, tuple(ranges)
 
-    def line(self, key: str, value_SI: float, tp_box, points: int) -> Curve:
-        """A line of constant ``key`` over the temperature range of ``tp_box``."""
-        return psychro_line(key, value_SI, self.p_Pa, (tp_box[0], tp_box[1]), points)
+    def line(self, key: str, value_SI: float, tp_box, points: int, diagram=None, ranges=None) -> Curve:
+        """A line of constant ``key`` over the temperature range of ``tp_box``.
+
+        In the axes of ``diagram``: (T, W) for the psychrometric chart, (W,
+        Thx) for the Mollier chart, where isotherms are lines too (from
+        dry air to saturation, at most a little beyond the visible humidity
+        ratios given in ``ranges``).
+        """
+        if diagram is None or not diagram.is_mollier:
+            return psychro_line(key, value_SI, self.p_Pa, (tp_box[0], tp_box[1]), points)
+        if key == "T":
+            return self._isotherm(value_SI, points, None if ranges is None else dict(ranges).get("W"))
+        curve = psychro_line(key, value_SI, self.p_Pa, (tp_box[0], tp_box[1]), points)
+        return self._to_mollier(curve, np.asarray(curve.x, dtype=float), np.asarray(curve.y, dtype=float))
+
+    def _isotherm(self, T_K: float, points: int, W_range) -> Curve:
+        """A line of constant dry-bulb temperature on the Mollier chart, from W = 0 to saturation."""
+        W_end = saturation_W(T_K, self.p_Pa)
+        if W_range is not None:
+            W_cap = 1.2 * W_range[1]   # no need to compute far beyond the top of the chart
+            W_end = W_cap if not math.isfinite(W_end) else min(W_end, W_cap)
+        if not (math.isfinite(W_end) and W_end > 0.0):
+            return Curve(np.array([]), np.array([]), reason="no humid-air states at {0:.2f} K".format(T_K))
+        W = np.linspace(0.0, W_end, max(int(points), 2))
+        return self._to_mollier(Curve(np.full_like(W, T_K), W), np.full_like(W, T_K), W)
+
+    def _to_mollier(self, curve: Curve, T_K: np.ndarray, W: np.ndarray) -> Curve:
+        """The curve with x = W and y = Thx; points HAPropsSI cannot compute become gaps (NaN)."""
+        Thx = np.full_like(W, np.nan)
+        for i, (t, w) in enumerate(zip(T_K, W)):
+            if math.isfinite(t) and math.isfinite(w):
+                try:
+                    Thx[i] = mollier_temperature(humid_air("h", "T", t, "W", max(w, 0.0), self.p_Pa), w)
+                except ValueError:
+                    pass
+        return replace(curve, x=np.asarray(W, dtype=float), y=Thx)

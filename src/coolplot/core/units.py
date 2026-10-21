@@ -71,6 +71,10 @@ class UnitSystem:
         for key, unit in units.items():
             if not isinstance(unit, Unit):
                 raise TypeError("The unit of '{0}' has to be a Unit, not {1!r}.".format(key, unit))
+        # The temperature scale of the Mollier chart is shown like the
+        # temperature, unless the system says otherwise
+        if "T" in units and "Thx" not in units:
+            units["Thx"] = units["T"]
         # A plain dict (not a read-only proxy), so that the value pickles
         # and deep-copies; the dataclass is frozen and nothing writes to it.
         object.__setattr__(self, "units", units)

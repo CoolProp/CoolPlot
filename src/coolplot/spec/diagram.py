@@ -504,9 +504,12 @@ def _hashable(value):
 def _units_to_dict(units: UnitSystem):
     if UNIT_SYSTEMS.get(units.name.upper()) == units:
         return units.name
+    # The Mollier temperature scale is left out where it copies the
+    # temperature: a record without it reads the same, also in CoolPlot 1.1
     return {"name": units.name,
             "units": {k: [u.label, u.scale, u.offset] + ([u.difference_label] if u.difference_label else [])
-                      for k, u in units.units.items()}}
+                      for k, u in units.units.items()
+                      if not (k == "Thx" and units.units.get("T") == u)}}
 
 
 def _units_from_dict(data) -> UnitSystem:

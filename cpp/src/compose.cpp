@@ -154,7 +154,7 @@ Item markers_item(const std::string& id, const std::string& group, const std::st
 }  // namespace
 
 std::string axis_label(const DiagramSpec& spec, const std::string& key) {
-    return spec.diagram.quantity_label(key) + " " + get_quantity(key).symbol + " / " + spec.units.at(key).label;
+    return spec.diagram.quantity_label(key) + " " + spec.diagram.symbol(key) + " / " + spec.units.at(key).label;
 }
 
 std::string label_text(const DiagramSpec& spec, const std::string& key, double value_SI, bool has_anchor, double anchor_SI) {
@@ -165,12 +165,12 @@ std::string label_text(const DiagramSpec& spec, const std::string& key, double v
     if (has_anchor)
         for (const IsolineSet& s : spec.isolines)
             if (s.key == key && s.has_anchor) anchored = &s;
-    std::string shown_key = key, symbol = get_quantity(key).symbol;
+    std::string shown_key = key, symbol = spec.diagram.symbol(key);
     double shown = value_SI;
     if (anchored && anchored->anchor_label == "saturation") {
         shown_key = anchored->anchor_by;
         shown = anchor_SI;
-        symbol = get_quantity(shown_key).symbol;
+        symbol = spec.diagram.symbol(shown_key);
         if (same_number(anchored->anchor_Q, 1.0))
             symbol += "_sat";
         else if (is_zero(anchored->anchor_Q))

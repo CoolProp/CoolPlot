@@ -23,7 +23,8 @@ the display units the spec asked for. Non-finite values are written as
 CoolPlot's own strings are ASCII; user texts (titles, cycle names) pass
 through as given. Keys of quantities are those of
 `coolplot.core.quantities`: `T`, `p`, `h`, `s`, `rho`, `v`, `u`, `Q` for
-fluids, plus `W`, `RH`, `Twb`, `Tdp`, `v` for humid air.
+fluids, plus `W`, `RH`, `Twb`, `Tdp`, `h`, `v` and `Thx` (the temperature
+scale of the Mollier chart, since 1.2) for humid air.
 
 ## 1. The chart spec
 
@@ -61,12 +62,15 @@ One record describes a property diagram and a psychrometric chart alike;
   "humid_air").
 * `diagram`: the name of a diagram type, vertical axis first: `ph`, `Ts`,
   `hs`, `ps`, `prho`, `Trho`, `pT` for fluids, `WT` (or `psychrometric`)
-  for humid air. The kind of the diagram has to match the fluid.
+  and, since 1.2, `ThxW` (or `mollier`, `hx`; the Mollier h,x chart) for
+  humid air. The kind of the diagram has to match the fluid.
 * `units`: a name (`SI`, `KSI`, `engineering`, `IP`) or
   `{"name": ..., "units": {"p": ["bar", 1e-5, 0.0], ...}}` with
   `[label, scale, offset]` per quantity (display = SI * scale + offset),
   and an optional fourth element, the label of a difference in the
   quantity (`["deg C", 1.0, -273.15, "K"]`; the label itself if absent).
+  `Thx` takes the unit of `T` when it is left out, and is written only
+  when it differs from it.
 * `limits`: for fluids a T-p box, each bound a number, `null` (the limit
   of the equation of state) or `{"relative": f}` (f times the saturation
   range); for humid air absolute bounds on the axis quantities,
@@ -83,7 +87,9 @@ One record describes a property diagram and a psychrometric chart alike;
   `rounding`. A record of 1.0 has no `anchor` and reads as `null`.
 * `cycles`: numbered states, each given by a full state (`{"state":
   {"T": ..., "p": ..., ...}}`, holding every quantity of the chart's
-  fluid or of humid air, in any order), two properties, or one property and
+  fluid or of humid air, in any order; a humid-air state of 1.1 has no
+  `Thx`, which is computed from `h` and `W` when it is read), two
+  properties, or one property and
   `via` (`coolplot.core.cycle.VIA_KINDS`); `loops` are chains of state
   numbers, `paths` lists `[[from, to], kind]` for connections not drawn
   with "auto" (`PATH_KINDS`). Air processes on a psychrometric chart are

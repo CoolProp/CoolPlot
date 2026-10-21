@@ -163,7 +163,7 @@ def compute_curve(provider, diagram, key: str, value_SI: float, tp_box, points: 
     """
     key = quantity_key(key)
     if provider.kind == "humid_air":
-        return provider.line(key, value_SI, tp_box, points)
+        return provider.line(key, value_SI, tp_box, points, diagram, ranges)
     if use_native is None:
         use_native = native.enabled()
     if use_native and native.available():

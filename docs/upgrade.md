@@ -22,8 +22,10 @@ chart (better numerics may move points).
 ## From 1.1 to 1.2
 
 Nothing to change. 1.2 adds `"via": "sensible"`, `PsychrometricChart.mix`,
-`PsychrometricChart.add_zone`, `Chart.state` and state labels
-(`add_cycle(..., labels=...)`). Cycle records gain an optional `labels`
+`PsychrometricChart.add_zone`, `Chart.state`, state labels
+(`add_cycle(..., labels=...)`) and the Mollier h,x chart
+(`PsychrometricChart(..., style="mollier")`). Humid-air states gain the
+quantity `Thx`; a state saved by 1.1 gets it computed when it is read. Cycle records gain an optional `labels`
 list, left out when a cycle has none, so records of 1.1 read and write
 unchanged. The other way round is not covered: CoolPlot 1.1 reading a 1.2
 record ignores its labels and refuses a state given with via "sensible". A

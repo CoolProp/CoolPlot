@@ -14,6 +14,26 @@ chart.set_default_lines()
 
 `p=0.9` sets another total pressure (in bar with "engineering").
 
+## The Mollier h,x chart
+
+The chart used in Europe (DIN 1946, VDI 4670) puts the humidity ratio,
+called x, across, and a temperature scale up:
+
+```python
+chart = PsychrometricChart(T_range=(0, 40), W_range=(0, 20), style="mollier")
+chart.set_default_lines()
+```
+
+The scale is linear in the specific enthalpy, Thx = 0 deg C + (h - r0 x)
+/ cp_a with r0 = 2500 kJ/kg and cp_a = 1.006 kJ/kg/K, so the lines of
+constant enthalpy are straight and fall to the right, and a straight line
+is still a mixing line. The isotherms rise slightly with x, since moist air
+holds more enthalpy at the same temperature. For dry air the scale is the
+dry-bulb temperature; `T_range` is its range. The relative humidity is
+called phi. Everything else is as on the psychrometric chart: states,
+processes, zones and labels take the same keys (`W` for x, `RH` for phi),
+and every state also holds `Thx`. The default lines add isotherms.
+
 ## Processes
 
 An air process is a cycle that does not close: `add_cycle(name, states,
@@ -102,6 +122,7 @@ chart.add_zone("Comfort zone", T_range=(20, 26), RH_range=(30, 60), label="comfo
                line_style=LineStyle(color="#7f8c8d", width_pt=1.5, dash="dashed"))
 ```
 
-The gallery ({doc}`../gallery/index`) has three worked examples: the basic
+The gallery ({doc}`../gallery/index`) has four worked examples: the basic
 processes from one state, summer and winter operation of an air handling
-unit, and evaporative cooling in a dry climate.
+unit, evaporative cooling in a dry climate, and an air handling unit on the
+Mollier h,x chart.

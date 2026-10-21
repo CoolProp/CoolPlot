@@ -90,6 +90,10 @@ TEST_CASE("State labels after the numbers, and alone with the numbers hidden", "
     check_case("compose_psychrometric_labels.json");
 }
 
+TEST_CASE("The Mollier h,x chart with isotherms, x and phi", "[compose]") {
+    check_case("compose_mollier.json");
+}
+
 TEST_CASE("The saturation curve without lines of constant quality", "[compose]") {
     check_case("compose_r290_ts_saturation_only.json");
 }

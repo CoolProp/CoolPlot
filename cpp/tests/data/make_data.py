@@ -126,6 +126,13 @@ def main():
                                         {"T": 20, "RH": 60}], numbers=False, labels={3: "comfort"})
     compose_case("compose_psychrometric_labels", labelled)
 
+    # The Mollier h,x chart: isotherms, x and phi, a process with labels
+    mollier = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25), settings="interactive", style="mollier")
+    mollier.set_default_lines()
+    mollier.add_cycle("Air conditioning", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}, {"T": 20, "via": "sensible"}],
+                      closed=False, labels={2: "coil"})
+    compose_case("compose_mollier", mollier)
+
     # The saturation curve without lines of constant quality (drawn since 1.2)
     bare = PropertyDiagram("R290", "Ts", tp_limits="ACHP", settings="interactive")
     bare.set_lines("p", num=6, labels=True)

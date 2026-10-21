@@ -25,6 +25,15 @@ guide in the documentation says what to change in your code.
   The cycle record gains an optional `labels` list; records of 1.1 read and
   write as before. coolplot-core 1.2 draws them. With an older core, a chart
   with labels falls back to the Python composer with a warning.
+- The Mollier h,x chart of humid air (DIN 1946, VDI 4670):
+  `PsychrometricChart(..., style="mollier")` draws the humidity ratio x
+  across and the temperature scale Thx, linear in the enthalpy, up, with
+  isotherms, lines of constant enthalpy falling to the right and the
+  symbols x and phi. Diagram name `ThxW` (or `mollier`, `hx`). Humid-air
+  states gain `Thx`; states saved by 1.1 get it computed when they are
+  read. coolplot-core 1.2 composes it; with an older core, a Mollier
+  chart falls back to the Python composer with a warning. Gallery example
+  "An air handling unit on the Mollier h,x chart".
 - `Chart.state(entry)` gives a full state from two properties in the
   chart's units.
 - Gallery examples: the basic air processes from one state; summer and

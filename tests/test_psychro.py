@@ -12,7 +12,8 @@ from coolplot.core.floats import is_zero, same_number, same_numbers  # noqa: E40
 from coolplot.psychrometric import PsychrometricChart  # noqa: E402
 from coolplot.render.svg import SvgRenderer  # noqa: E402
 from coolplot.spec import DiagramSpec  # noqa: E402
-from coolplot.thermo.humid_air import air_state, chart_ranges, psychro_line, saturation_W  # noqa: E402
+from coolplot.thermo.humid_air import (air_state, chart_ranges, enthalpy_from_mollier,  # noqa: E402
+                                       mollier_temperature, psychro_line, saturation_W)
 
 P = 101325.0
 T_RANGE = (263.15, 318.15)
@@ -340,3 +341,96 @@ def test_the_wet_bulb_search_reports_no_convergence(monkeypatch):
     from coolplot.thermo import humid_air
     monkeypatch.setattr(humid_air, "_SEARCH_ITERATIONS", 1)
     assert humid_air._W_by_search("h", 50e3, 300.0, 101325.0, 0.03)[1] == "failed"
+
+
+# The Mollier h,x chart (1.2): x horizontal, the temperature scale Thx up
+
+@pytest.fixture
+def mollier():
+    c = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25), style="mollier")
+    c.set_default_lines()
+    c.add_cycle("Air conditioning", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}, {"T": 20, "via": "sensible"}],
+                closed=False)
+    return c
+
+
+def test_the_mollier_temperature_scale_is_linear_in_enthalpy():
+    s = air_state("T", 298.15, "RH", 0.5, P)
+    assert s.Thx == pytest.approx(mollier_temperature(s.h, s.W))
+    assert s.Thx == pytest.approx(273.15 + (s.h - 2500e3 * s.W) / 1006.0)
+    assert enthalpy_from_mollier(s.Thx, s.W) == pytest.approx(s.h)
+    # dry air: the scale is the dry-bulb temperature, to the reference of h
+    assert air_state("T", 293.15, "W", 0.0, P).Thx == pytest.approx(293.15, abs=0.05)
+    back = air_state("Thx", s.Thx, "W", s.W, P)
+    assert back.T == pytest.approx(298.15) and back.RH == pytest.approx(0.5)
+    with pytest.raises(ValueError, match="humidity ratio"):
+        air_state("Thx", 300.0, "RH", 0.5, P)
+
+
+def test_the_mollier_chart_has_x_across_and_temperature_up(mollier):
+    assert mollier.style == "mollier" and mollier.spec.diagram.is_mollier
+    scene = mollier.update_scene()
+    assert scene.axes.x_label == "Humidity ratio x / g/kg"
+    assert scene.axes.y_label == "Temperature T / deg C"
+    assert same_numbers(scene.axes.x_limits, (0.0, 25.0)) and same_numbers(scene.axes.y_limits, (-10.0, 45.0))
+    groups = {i.group for i in scene}
+    assert {"iso/T", "iso/RH", "iso/h", "iso/Twb", "iso/v", "cycle/Air conditioning"} <= groups
+    assert scene["iso/RH/1"].role == "saturation"
+    texts = [i.text for i in scene if i.role == "isoline_label"]
+    assert "phi=50 %" in texts and not any(t.startswith("RH=") for t in texts)
+    with pytest.raises(ValueError, match="style"):
+        PsychrometricChart(style="din")
+
+
+def test_the_psychrometric_chart_keeps_its_axes_and_symbols(chart):
+    assert chart.style == "psychrometric" and not chart.spec.diagram.is_mollier
+    assert "T" not in {iso.key for iso in chart.spec.isolines}
+    assert chart.spec.diagram.symbol("W") == "W" and chart.spec.diagram.symbol("RH") == "RH"
+
+
+def test_mollier_isotherms_hold_their_temperature_and_rise(mollier):
+    scene = mollier.update_scene()
+    line = scene["iso/T/293.15"]
+    x, y = np.asarray(line.x), np.asarray(line.y)
+    ok = np.isfinite(x) & np.isfinite(y)
+    assert ok.sum() > 5 and np.all(np.diff(y[ok]) / np.diff(x[ok]) > 0.0)   # the isotherms rise with x
+    for xi, yi in zip(x[ok][::5], y[ok][::5]):
+        W = xi * 1e-3
+        T = HAPropsSI("T", "H", enthalpy_from_mollier(yi + 273.15, W), "W", W, "P", P)
+        assert T == pytest.approx(293.15, abs=1e-6)
+    # lines of constant enthalpy fall to the right
+    h = scene["iso/h/40000"]
+    hx, hy = np.asarray(h.x), np.asarray(h.y)
+    ok = np.isfinite(hx) & np.isfinite(hy)
+    assert np.all(np.diff(hy[ok]) / np.diff(hx[ok]) < 0.0)
+
+
+def test_mollier_states_cursor_and_drag(mollier):
+    states = list(mollier.cycle_states("Air conditioning").values())
+    assert states[2].W == pytest.approx(states[1].W)
+    for s in states:
+        assert s.Thx == pytest.approx(mollier_temperature(s.h, s.W))
+    cursor = mollier.state_at(10.0, 25.0)
+    assert cursor.W == pytest.approx(0.010) and cursor.Thx == pytest.approx(298.15)
+    assert cursor.T < cursor.Thx   # moist air is cooler than its point on the scale
+    data = json.loads(json.dumps(mollier.spec.to_dict()))
+    assert DiagramSpec.from_dict(data) == mollier.spec
+    assert PsychrometricChart.from_spec(DiagramSpec.from_dict(data)).style == "mollier"
+
+
+def test_states_of_older_charts_get_the_mollier_temperature(chart):
+    # a full air state written before 1.2 has no Thx; reading it fills it in
+    s = air_state("T", 298.15, "RH", 0.5, P)
+    from coolplot.core.state import StatePoint
+    old = StatePoint(**{k: s[k] for k in ("T", "W", "RH", "Twb", "Tdp", "h", "v", "p")})
+    chart.add_cycle("Old", [old, {"T": 30, "via": "sensible"}], closed=False)
+    first = list(chart.cycle_states("Old").values())[0]
+    assert first.Thx == pytest.approx(s.Thx)
+
+
+def test_unit_records_leave_the_mollier_scale_out_unless_it_differs():
+    from coolplot.core.units import ENGINEERING, UnitSystem
+    assert ENGINEERING.units["Thx"] == ENGINEERING.units["T"]
+    own = UnitSystem("mine", dict(ENGINEERING.units))
+    assert own.units["Thx"] == ENGINEERING.units["T"]
+    assert PsychrometricChart(style="mollier").spec.to_dict()["units"] == "engineering"

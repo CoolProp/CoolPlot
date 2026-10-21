@@ -56,7 +56,7 @@ def scaled_theme(theme: Theme, factor: float) -> Theme:
 
 def axis_label(spec: DiagramSpec, key: str) -> str:
     """Axis title with symbol and unit, e.g. "Specific enthalpy h / kJ/kg"."""
-    return "{0} {1} / {2}".format(spec.diagram.quantity_label(key), get_quantity(key).symbol, spec.units[key].label)
+    return "{0} {1} / {2}".format(spec.diagram.quantity_label(key), spec.diagram.symbol(key), spec.units[key].label)
 
 
 def _include(limits, values, log: bool, pad: float = 0.04):
@@ -138,7 +138,7 @@ def label_text(spec: DiagramSpec, key: str, value_SI: float, anchor_SI: float = 
         anchor = next((s.anchor for s in spec.isolines if s.key == key and s.anchor is not None), None)
     if anchor is not None and anchor.label == "saturation":
         key, value_SI = anchor.by, anchor_SI
-        symbol = get_quantity(key).symbol
+        symbol = spec.diagram.symbol(key)
         if same_number(anchor.Q, 1.0):
             symbol += "_sat"
         elif is_zero(anchor.Q):
@@ -146,7 +146,7 @@ def label_text(spec: DiagramSpec, key: str, value_SI: float, anchor_SI: float = 
         else:
             symbol += "({0}={1})".format(get_quantity("Q").symbol, labels.format_value(anchor.Q))
     else:
-        symbol = get_quantity(key).symbol
+        symbol = spec.diagram.symbol(key)
     unit = spec.units[key]
     text = "{0}={1}".format(symbol, labels.format_value(float(unit.from_SI(value_SI))))
     if labels.show_units and unit.label not in ("-", ""):

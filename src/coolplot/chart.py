@@ -137,6 +137,10 @@ def check_state(state: StatePoint, provider) -> StatePoint:
     """
     if "v" not in state and "rho" in state and provider.kind == "fluid" and state.rho > 0.0:
         state = StatePoint(v=1.0 / state.rho, **state.to_dict())
+    if "Thx" not in state and provider.kind == "humid_air" and "h" in state and "W" in state:
+        # A humid-air state saved before 1.2 lacks the temperature scale of the Mollier chart
+        from .thermo.humid_air import mollier_temperature
+        state = StatePoint(Thx=float(mollier_temperature(state.h, state.W)), **state.to_dict())
     missing = [k for k in provider.quantities if k not in state]
     if missing:
         raise ValueError("The state {0} is not a state of {1}: it lacks {2}.".format(state, provider.name, missing))

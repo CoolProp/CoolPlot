@@ -17,7 +17,7 @@ from .quantities import quantity_key
 STATE_KEYS = ("T", "p", "h", "s", "rho", "v", "u", "Q")
 
 #: Quantities stored in every state of humid air (per kg of dry air).
-AIR_STATE_KEYS = ("T", "W", "RH", "Twb", "Tdp", "h", "v", "p")
+AIR_STATE_KEYS = ("T", "W", "RH", "Twb", "Tdp", "h", "v", "Thx", "p")
 
 # The order in which a StatePoint keeps its quantities, whatever order they
 # were given in, so that equal states compare and hash equal and a state

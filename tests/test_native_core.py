@@ -392,6 +392,46 @@ def test_an_older_core_refuses_state_labels(monkeypatch):
 
 
 @needs_core
+def test_an_older_core_is_not_sent_the_mollier_scale(monkeypatch):
+    """A core from before 1.2 refuses the quantity Thx; it still composes a psychrometric chart, not a Mollier one."""
+    pytest.importorskip("CoolProp")
+    from coolplot import PsychrometricChart
+    from coolplot.compose import compose
+    from coolplot.engine import plan
+    real = native._core
+    sent = []
+
+    class OlderCore:
+        Error = real.Error
+        scene_to_svg = staticmethod(real.scene_to_svg)
+
+        @staticmethod
+        def compose(text):
+            sent.append(json.loads(text))
+            return real.compose(text)
+    monkeypatch.setattr(native, "_core", OlderCore)
+    monkeypatch.setattr(native, "core_version", lambda: (1, 1, 0))
+    monkeypatch.setenv("COOLPLOT_NATIVE", "1")
+    for style in ("psychrometric", "mollier"):
+        chart = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25), settings="interactive", style=style)
+        chart.add_cycle("Air", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}], closed=False)
+        spec = chart.spec
+        domain = chart.engine.domain(spec)
+        curves = chart.engine.curves(spec, domain, plan(spec, domain))
+        cycles = [chart.engine.cycle(spec, c) for c in spec.cycles]
+        if style == "psychrometric":
+            assert native.compose(spec, domain, curves, cycles=cycles) is not None
+            states = sent[-1]["cycles"][0]["states"]
+            assert states and not any("Thx" in s for s in states.values())
+            assert not any("Thx" in s for chain in sent[-1]["cycles"][0]["chains"] for s in chain)
+        else:
+            calls = len(sent)
+            with pytest.warns(native.CoreFallbackWarning, match="Mollier"):
+                items, axes = compose(spec, domain, curves, cycles=cycles)
+            assert len(sent) == calls and axes.x_label.startswith("Humidity ratio x") and items
+
+
+@needs_core
 def test_labels_in_the_colour_of_their_lines_compose_the_same_through_the_port():
     pytest.importorskip("CoolProp")
     from coolplot import PropertyDiagram

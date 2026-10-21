@@ -66,6 +66,12 @@ def test_psychrometric_evaporative_cooling(tmp_path):
     assert "outdoor air" in svg and "supply" in svg and len(svg) > 10000
 
 
+def test_psychrometric_mollier(tmp_path):
+    assert "phi =" in _run("psychrometric_mollier.py", tmp_path)
+    svg = (tmp_path / "psychrometric_mollier.svg").read_text()
+    assert "Humidity ratio x" in svg and "phi=" in svg and "cooling coil" in svg and len(svg) > 10000
+
+
 def _ports_installed() -> bool:
     from coolplot import corelib
     from coolplot.thermo import native
@@ -139,7 +145,7 @@ def _same(a, b, path="", rel=1e-9):
 #: folder is a server, tested by tests/test_web_server.py).
 BOTH_PATHS = ["quickstart.py", "two_stage_cycles.py", "refrigerant_blend.py", "psychrometric.py",
               "interactive_cycle.py", "saturation_lines.py", "psychrometric_processes.py",
-              "psychrometric_air_handling.py", "psychrometric_evaporative_cooling.py"]
+              "psychrometric_air_handling.py", "psychrometric_evaporative_cooling.py", "psychrometric_mollier.py"]
 
 
 def test_the_list_of_examples_is_complete():

@@ -75,7 +75,7 @@ def test_constructors_add_only_their_own_names():
     from coolplot.diagram import PropertyDiagram
     from coolplot.psychrometric import PsychrometricChart
     assert _public(PropertyDiagram) == {"kind", "fluid", "diagram_type", "tp_limits"}
-    assert _public(PsychrometricChart) == {"kind", "p_Pa", "points", "add_zone", "mix"}
+    assert _public(PsychrometricChart) == {"kind", "p_Pa", "points", "add_zone", "mix", "style"}
 
 
 def test_removed_names_say_what_to_use_instead():

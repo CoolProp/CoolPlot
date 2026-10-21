@@ -35,8 +35,12 @@ from .style.values import LineStyle, MarkerStyle
 from .thermo.humid_air import mixed_air
 
 
+#: The chart styles and their diagram types.
+STYLES = {"psychrometric": "WT", "mollier": "mollier"}
+
+
 class PsychrometricChart(Chart):
-    """A psychrometric chart: humidity ratio over dry-bulb temperature
+    """A psychrometric chart: humidity ratio over dry-bulb temperature, or the Mollier h,x chart
 
     Parameters
     ----------
@@ -54,6 +58,14 @@ class PsychrometricChart(Chart):
         As for :class:`coolplot.PropertyDiagram`.
     points : int, optional
         Points per line; default from ``settings.calc``.
+    style : str
+        "psychrometric" (the default): humidity ratio W over dry-bulb
+        temperature, as in ASHRAE practice. "mollier": the Mollier h,x
+        chart of European practice (DIN 1946), the humidity ratio x on the
+        horizontal axis and a skewed enthalpy axis read as a temperature
+        scale (``T_range``) on the vertical one; it adds isotherms to the
+        lines and writes x and phi for the humidity ratio and the relative
+        humidity. Values are given as W and RH in both.
     engine, cache, background, on_ready, workers
         See :class:`coolplot.Chart`.
     """
@@ -65,7 +77,9 @@ class PsychrometricChart(Chart):
 
     def __init__(self, p: float = None, T_range=(-10.0, 50.0), W_range=(0.0, 30.0), units="engineering",
                  theme=None, settings=None, points: int = None, engine: Engine = None, cache: CurveCache = None,
-                 background: str = None, on_ready=None, workers: int = None):
+                 background: str = None, on_ready=None, workers: int = None, style: str = "psychrometric"):
+        if style not in STYLES:
+            raise ValueError("Unknown style {0!r}, expected one of {1}.".format(style, sorted(STYLES)))
         units = get_unit_system(units, stacklevel=3)
         settings = get_settings(settings)
         if theme is not None:
@@ -82,9 +96,16 @@ class PsychrometricChart(Chart):
         W_range = tuple(units["W"].to_SI(W_range).tolist())
         if min(W_range) < 0.0:
             raise ValueError("Humidity ratios have to be at least 0, got {0}.".format(W_range))
-        spec = DiagramSpec(fluid=HumidAirSpec(p_Pa), diagram=DiagramType.parse("WT"), units=units,
-                           limits=Region((("T", T_range_K), ("W", W_range))), settings=settings)
+        diagram = DiagramType.parse(STYLES[style])
+        temperature = "Thx" if diagram.is_mollier else "T"   # the Mollier chart is bounded by its temperature scale
+        spec = DiagramSpec(fluid=HumidAirSpec(p_Pa), diagram=diagram, units=units,
+                           limits=Region(((temperature, T_range_K), ("W", W_range))), settings=settings)
         Chart.__init__(self, spec, engine, cache, background, on_ready, workers)
+
+    @property
+    def style(self) -> str:
+        """"psychrometric" or "mollier", see the class docstring."""
+        return "mollier" if self.spec.diagram.is_mollier else "psychrometric"
 
     @property
     def p_Pa(self) -> float:
