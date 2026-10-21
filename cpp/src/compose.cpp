@@ -171,9 +171,9 @@ std::string label_text(const DiagramSpec& spec, const std::string& key, double v
         shown_key = anchored->anchor_by;
         shown = anchor_SI;
         symbol = get_quantity(shown_key).symbol;
-        if (anchored->anchor_Q == 1.0)
+        if (same_number(anchored->anchor_Q, 1.0))
             symbol += "_sat";
-        else if (anchored->anchor_Q == 0.0)
+        else if (is_zero(anchored->anchor_Q))
             symbol += "_sat,liq";
         else
             symbol += "(" + get_quantity("Q").symbol + "=" + labels.format_value(anchored->anchor_Q) + ")";

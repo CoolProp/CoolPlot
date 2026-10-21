@@ -8,6 +8,7 @@ import pytest
 pytest.importorskip("CoolProp")
 
 from coolplot import DiagramSpec, PropertyDiagram, PsychrometricChart  # noqa: E402
+from coolplot.core.floats import is_zero, same_numbers  # noqa: E402
 from coolplot.engine import plan  # noqa: E402
 from coolplot.spec import IsolineSet, SaturationAnchor  # noqa: E402
 
@@ -29,7 +30,7 @@ def test_isentropes_through_the_saturated_vapour_every_10_K():
     chart.set_lines("s", at_saturation={"T": 10, "range": (-40, 60)}, labels=True)
     requests = _requests(chart, "s")
     T_sat_C = sorted(round(r.anchor_SI - 273.15, 9) for r in requests)
-    assert T_sat_C == [-40.0, -30.0, -20.0, -10.0, 0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
+    assert same_numbers(T_sat_C, [-40.0, -30.0, -20.0, -10.0, 0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0])
     for r in requests:
         dew = chart.fluid.state_point("T", r.anchor_SI, "Q", 1.0)
         assert r.value_SI == pytest.approx(dew.s, rel=1e-10)
@@ -70,7 +71,8 @@ def test_a_blend_uses_its_dew_or_bubble_point():
     dew = {round(r.anchor_SI, 6): r.value_SI for r in _requests(chart, "s")}
     chart.set_lines("s", at_saturation={"T": 20, "Q": 0, "range": (-20, 20)})
     bubble = {round(r.anchor_SI, 6): r.value_SI for r in _requests(chart, "s")}
-    assert sorted(dew) == sorted(bubble) == [253.15, 273.15, 293.15]
+    assert same_numbers(sorted(dew), [253.15, 273.15, 293.15])
+    assert same_numbers(sorted(bubble), [253.15, 273.15, 293.15])
     for T in dew:   # dew point and bubble point of the blend at the same temperature
         assert dew[T] == pytest.approx(chart.fluid.state_point("T", T, "Q", 1.0).s, rel=1e-9)
         assert bubble[T] == pytest.approx(chart.fluid.state_point("T", T, "Q", 0.0).s, rel=1e-9)
@@ -85,7 +87,7 @@ def test_steps_are_round_in_the_units_shown():
     bar = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP")
     bar.set_lines("T", at_saturation={"p": 5, "range": (1, 22), "label": "saturation"}, labels=True)
     requests = _requests(bar, "T")
-    assert sorted(round(r.anchor_SI / 1e5, 9) for r in requests) == [5.0, 10.0, 15.0, 20.0]
+    assert same_numbers(sorted(round(r.anchor_SI / 1e5, 9) for r in requests), [5.0, 10.0, 15.0, 20.0])
     for r in requests:   # an isotherm through a saturation pressure is at the saturation temperature
         assert r.value_SI == pytest.approx(bar.fluid.state_point("p", r.anchor_SI, "Q", 1.0).T, rel=1e-10)
     assert "p_sat=10 bar" in _labels(bar, "T")
@@ -124,7 +126,7 @@ def test_wrong_requests_are_refused_with_a_reason():
     assert "s" not in chart.line_sets()
     # the quality may be written x, as the labels write it
     chart.set_lines("s", at_saturation={"T": 20, "x": 0, "range": (0, 20)})
-    assert chart.line_sets()["s"].anchor.Q == 0.0
+    assert is_zero(chart.line_sets()["s"].anchor.Q)
     with pytest.raises(ValueError, match="not both"):
         IsolineSet("s", range_SI=(1.0, 2.0), anchor=SaturationAnchor())
     air = PsychrometricChart(T_range=(0, 40), W_range=(0, 20))
@@ -151,7 +153,7 @@ def test_anchored_lines_share_the_cache_with_the_same_values_given_explicitly():
     chart.update_scene()
     values = [r.value_SI for r in _requests(chart, "s")]
     # round in the chart's units, here kelvin
-    assert sorted(round(r.anchor_SI, 9) for r in _requests(chart, "s")) == [260.0, 270.0, 280.0, 290.0]
+    assert same_numbers(sorted(round(r.anchor_SI, 9) for r in _requests(chart, "s")), [260.0, 270.0, 280.0, 290.0])
     misses = chart.cache.misses
     chart.set_lines("s", values=values)
     chart.update_scene()
@@ -197,7 +199,7 @@ def test_states_that_cannot_be_computed_are_left_out_with_a_warning():
     with pytest.warns(UserWarning, match="1 of 3 saturation states"):
         pairs = saturation_anchor_values(fluid, "s", "T", 10.0, 1.0, (263.15, 283.15), (100.0, 400.0, 1.0, 1e8),
                                          1e-7, ENGINEERING["T"])
-    assert [round(t, 2) for t, _ in pairs] == [263.15, 283.15]
+    assert same_numbers([round(t, 2) for t, _ in pairs], [263.15, 283.15])
 
 
 def test_a_fluid_without_a_saturation_curve_is_refused_when_the_lines_are_set():

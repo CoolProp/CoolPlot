@@ -46,7 +46,7 @@ from dataclasses import replace
 from typing import Callable, Dict, Optional, Tuple
 
 from ..spec.diagram import DiagramSpec
-from ..thermo.provider import compute_curve as _compute_curve, make_provider
+from ..thermo.provider import compute_curve as _compute_curve, make_provider, same_fingerprint
 from .cache import CurveCache
 from .engine import Engine
 from .planning import CurveRequest, Domain
@@ -68,7 +68,7 @@ def _worker_fluid(fluid_spec, fingerprint=None):
     if fluids is None:
         fluids = _local.fluids = {}
     provider = fluids.get(fluid_spec)
-    if provider is None or (fingerprint is not None and provider.fingerprint != fingerprint):
+    if provider is None or (fingerprint is not None and not same_fingerprint(provider.fingerprint, fingerprint)):
         if len(fluids) > 8:
             fluids.clear()
         provider = fluids[fluid_spec] = make_provider(fluid_spec)
@@ -331,7 +331,7 @@ class BackgroundEngine(Engine):
             # A worker that computed under another reference state or
             # configuration (a spawned process never sees the parent's
             # set_reference_state) gives a line that must not outlive this run
-            same = fingerprint == key[1]
+            same = same_fingerprint(fingerprint, key[1])
             if not same:
                 self._warn_once_mismatch(key)
             self.cache.put(key, curve, disk=same)

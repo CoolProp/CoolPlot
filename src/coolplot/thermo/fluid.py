@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import os
 from functools import lru_cache
 from typing import Optional, Tuple
@@ -28,7 +27,7 @@ from CoolProp import CoolProp as CP
 from ..core.errors import PropertyError
 from ..core.quantities import get_quantity, quantity_key
 from ..core.state import STATE_KEYS, StatePoint
-from ..core.floats import is_zero, same_bits
+from ..core.floats import is_zero, same_result
 
 
 @lru_cache(maxsize=None)
@@ -521,11 +520,7 @@ class Fluid:
         """
         h, s = self._probe()
         _, _, h0, s0 = self.fingerprint
-
-        def same(a, b):
-            # The same number, with NaN equal to NaN: the probe repeats one computation
-            return same_bits(a, b) or (is_zero(a) and is_zero(b)) or (math.isnan(a) and math.isnan(b))
-        return not (same(h, h0) and same(s, s0))
+        return not (same_result(h, h0) and same_result(s, s0))   # the probe repeats one computation
 
     @property
     def critical(self) -> dict:

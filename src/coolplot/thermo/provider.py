@@ -28,6 +28,7 @@ import math
 import warnings
 from typing import Optional, Tuple
 
+from ..core.floats import same_result
 from ..core.quantities import quantity_key
 from .fluid import Fluid
 from .humid_air import HumidAir
@@ -41,6 +42,30 @@ def make_provider(spec):
     if getattr(spec, "kind", "fluid") == "humid_air":
         return HumidAir(spec.p_Pa)
     return Fluid(spec)
+
+
+def same_fingerprint(a: Tuple, b: Tuple) -> bool:
+    """Whether two provider fingerprints are the same.
+
+    A fingerprint is a tuple of plain values: texts (the CoolProp version, a
+    digest of its configuration) and numbers (the enthalpy and entropy of a
+    probe state, the pressure of humid air). Numbers are compared as results
+    of one repeated computation (:func:`coolplot.core.floats.same_result`),
+    so a probe that gave NaN, such as for INCOMP::T66, matches itself; texts
+    are compared with ``==``. Tuple ``==`` would compare the numbers with
+    ``==`` too, and find NaN unequal to NaN.
+    """
+    a, b = tuple(a), tuple(b)
+    if len(a) != len(b):
+        return False
+    for x, y in zip(a, b):
+        if isinstance(x, (int, float)) and isinstance(y, (int, float)) and not isinstance(x, bool) \
+                and not isinstance(y, bool):
+            if not same_result(float(x), float(y)):
+                return False
+        elif x != y:
+            return False
+    return True
 
 
 def chart_domain(provider, limits, margin: float) -> Tuple[Tuple[float, float, float, float], Tuple]:

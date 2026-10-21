@@ -14,6 +14,7 @@ import pytest
 pytest.importorskip("CoolProp")
 
 from coolplot import PropertyDiagram  # noqa: E402
+from coolplot.core.floats import same_number  # noqa: E402
 from coolplot.engine import CurveCache  # noqa: E402
 from coolplot.engine import store as store_module  # noqa: E402
 from coolplot.engine.store import REVISION, SUFFIX, CurveStore, fluid_folder, key_text  # noqa: E402
@@ -113,7 +114,7 @@ def test_the_size_limit_of_coolprops_tables_applies(tmp_path, monkeypatch):
     old = CP.get_config_double(key)
     CP.set_config_double(key, 2.5)
     try:
-        assert CurveStore(str(tmp_path)).limit_GB == 2.5   # read from CoolProp, not assumed
+        assert same_number(CurveStore(str(tmp_path)).limit_GB, 2.5)   # read from CoolProp, not assumed
     finally:
         CP.set_config_double(key, old)
 
@@ -302,3 +303,37 @@ def test_background_workers_never_store_lines_of_another_reference_state(tmp_pat
         CP.set_reference_state("R290", "DEF")
         chart.close()
         chart.engine.refresh()
+
+
+def test_a_fingerprint_with_nan_matches_itself():
+    """A probe that failed gives NaN; NaN is the same result again, not another reference state."""
+    from coolplot.thermo.provider import same_fingerprint
+    nan = float("nan")
+    assert same_fingerprint(("8.0.0", "abc", nan, nan), ("8.0.0", "abc", float("nan"), float("nan")))
+    assert same_fingerprint(("8.0.0", 101325), ("8.0.0", 101325.0))
+    assert not same_fingerprint(("8.0.0", "abc", nan, nan), ("8.0.0", "abc", 1.0, nan))
+    assert not same_fingerprint(("8.0.0", "abc", 1.0, 2.0), ("8.0.0", "abd", 1.0, 2.0))
+    assert not same_fingerprint(("8.0.0", "abc", 1.0, 2.0), ("8.0.0", "abc", 1.0, 2.0000000000000004))
+    assert not same_fingerprint(("8.0.0", "abc"), ("8.0.0", "abc", 1.0))
+
+
+@pytest.mark.parametrize("mode", ["threads", "processes"])
+def test_background_lines_of_a_fluid_without_a_probe_go_to_disk(tmp_path, mode):
+    """INCOMP::T66 has no state at the probe point, so its fingerprint holds NaN."""
+    import CoolProp.CoolProp as CP
+    T_min_K, T_max_K = CP.PropsSI("Tmin", "INCOMP::T66"), CP.PropsSI("Tmax", "INCOMP::T66")
+    cache = CurveCache(directory=str(tmp_path))
+    chart = PropertyDiagram("INCOMP::T66", "Ts", units="SI", tp_limits=[T_min_K + 10.0, T_max_K - 10.0, 1e5, 1e6],
+                            settings="interactive", cache=cache, background=mode)
+    chart.set_lines("P", values=[2e5, 5e5])
+    try:
+        assert all(np.isnan(v) for v in chart.engine.fluid(chart.spec.fluid).fingerprint[2:])
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            chart.update_scene()
+            chart.wait()
+            chart.update_scene()
+        assert not [w for w in caught if "another CoolProp reference state" in str(w.message)]
+        assert cache.misses > 0 and cache.disk.saved == cache.misses
+    finally:
+        chart.close()

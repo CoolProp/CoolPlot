@@ -138,9 +138,9 @@ def label_text(spec: DiagramSpec, key: str, value_SI: float, anchor_SI: float = 
     if anchor is not None and anchor.label == "saturation":
         key, value_SI = anchor.by, anchor_SI
         symbol = get_quantity(key).symbol
-        if anchor.Q == 1.0:
+        if same_number(anchor.Q, 1.0):
             symbol += "_sat"
-        elif anchor.Q == 0.0:
+        elif is_zero(anchor.Q):
             symbol += "_sat,liq"
         else:
             symbol += "({0}={1})".format(get_quantity("Q").symbol, labels.format_value(anchor.Q))
