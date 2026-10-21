@@ -159,18 +159,32 @@ std::string axis_label(const DiagramSpec& spec, const std::string& key) {
 
 namespace {
 
-/// A family's legend text with its symbol and unit, e.g. "Temperature T / deg C" (the "rails" mode).
-std::string legend_with_unit(const DiagramSpec& spec, const std::string& key, const std::string& legend) {
-    const std::string& unit = spec.units.at(key).label;
-    std::string text = legend + " " + spec.diagram.symbol(key);
-    return (unit == "-" || unit.empty()) ? text : text + " / " + unit;
+/// The isoline set of a family labelled by its saturation states, else nullptr.
+const IsolineSet* saturation_anchor(const DiagramSpec& spec, const std::string& key) {
+    for (const IsolineSet& s : spec.isolines)
+        if (s.key == key && s.has_anchor && s.anchor_label == "saturation") return &s;
+    return nullptr;
 }
 
-/// Whether the lines of a family are labelled by their saturation state, not their own value.
-bool saturation_labelled(const DiagramSpec& spec, const std::string& key) {
-    for (const IsolineSet& s : spec.isolines)
-        if (s.key == key && s.has_anchor && s.anchor_label == "saturation") return true;
-    return false;
+/// The symbol of the saturation state lines are labelled by: "T_sat", "T_sat,liq" or "T(x=0.5)".
+std::string saturation_symbol(const DiagramSpec& spec, const IsolineSet& anchored) {
+    std::string symbol = spec.diagram.symbol(anchored.anchor_by);
+    if (same_number(anchored.anchor_Q, 1.0)) return symbol + "_sat";
+    if (is_zero(anchored.anchor_Q)) return symbol + "_sat,liq";
+    return symbol + "(" + get_quantity("Q").symbol + "=" + spec.settings.labels.format_value(anchored.anchor_Q) + ")";
+}
+
+/// A family's legend text with its symbol and unit, e.g. "Temperature T / deg C" (the "rails" mode); a family
+/// labelled by its saturation states says so: "Specific entropy s at T_sat / deg C".
+std::string legend_with_unit(const DiagramSpec& spec, const std::string& key, const std::string& legend) {
+    std::string text = legend + " " + spec.diagram.symbol(key);
+    std::string unit_key = key;
+    if (const IsolineSet* anchored = saturation_anchor(spec, key)) {
+        text += " at " + saturation_symbol(spec, *anchored);
+        unit_key = anchored->anchor_by;
+    }
+    const std::string& unit = spec.units.at(unit_key).label;
+    return (unit == "-" || unit.empty()) ? text : text + " / " + unit;
 }
 
 }  // namespace
@@ -188,13 +202,7 @@ std::string label_text(const DiagramSpec& spec, const std::string& key, double v
     if (anchored && anchored->anchor_label == "saturation") {
         shown_key = anchored->anchor_by;
         shown = anchor_SI;
-        symbol = spec.diagram.symbol(shown_key);
-        if (same_number(anchored->anchor_Q, 1.0))
-            symbol += "_sat";
-        else if (is_zero(anchored->anchor_Q))
-            symbol += "_sat,liq";
-        else
-            symbol += "(" + get_quantity("Q").symbol + "=" + labels.format_value(anchored->anchor_Q) + ")";
+        symbol = saturation_symbol(spec, *anchored);
     }
     const Unit& unit = spec.units.at(shown_key);
     std::string text = symbol + "=" + labels.format_value(unit.from_SI(shown));
@@ -259,7 +267,7 @@ std::vector<Item> isoline_items(const DiagramSpec& spec, const Theme& theme, con
         Look look = isoline_look(spec, theme, c.request.key, c.request.value_SI);
         std::string legend_key = (look.role == "saturation" || look.role == "quality") ? look.role : c.request.key;
         bool has_legend = !legends_given.count(legend_key);
-        if (has_legend && rails && look.role != "saturation" && !saturation_labelled(spec, c.request.key))
+        if (has_legend && rails && look.role != "saturation")
             look.legend = legend_with_unit(spec, c.request.key, look.legend);  // the labels show bare values
         legends_given.insert(legend_key);
         items.push_back(line_item(c.request.item_id, "iso/" + c.request.key, look.role, has_legend, look.legend, converted(ux, c.x),
@@ -304,15 +312,11 @@ std::vector<LabelRequest> label_requests(const DiagramSpec& spec, const Theme& t
             r.family = key;
             r.text = label_text(spec, key, c->request.value_SI, c->request.has_anchor, c->request.anchor_SI);
             r.value = spec.units.at(key).from_SI(c->request.value_SI);
-            if (saturation_labelled(spec, key) && c->request.has_anchor) {
-                for (const IsolineSet& s : spec.isolines)
-                    if (s.key == key && s.has_anchor) {
-                        r.value = spec.units.at(s.anchor_by).from_SI(c->request.anchor_SI);
-                        break;
-                    }
-            } else if (spec.settings.labels.mode == "rails") {
+            const IsolineSet* anchored = saturation_anchor(spec, key);
+            if (anchored && c->request.has_anchor)
+                r.value = spec.units.at(anchored->anchor_by).from_SI(c->request.anchor_SI);  // the saturation state shown
+            if (spec.settings.labels.mode == "rails")
                 r.text = spec.settings.labels.format_value(r.value);  // the bare value; symbol and unit are in the legend
-            }
             r.line_color = line->line_style.color;
             r.style = theme.isoline_label;
             if (theme.isoline_label_color == "line" && line->line_style.color.present)

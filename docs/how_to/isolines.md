@@ -57,7 +57,9 @@ and stop just below the critical point. Each line is labelled with its
 own value, like any other line (`s=2.321 kJ/kg/K`, four significant
 digits, since the values are not round). `"label": "saturation"` names the
 saturation state instead, `T_sat=0 deg C` for the vapour side,
-`T_sat,liq=0 deg C` for the liquid side. For a blend, `"Q": 1` is the dew point and `"Q": 0`
+`T_sat,liq=0 deg C` for the liquid side (with labels on rails, the default
+since 1.2, the bare saturation value, and the legend says "Specific entropy
+s at T_sat / deg C"). For a blend, `"Q": 1` is the dew point and `"Q": 0`
 the bubble point at that temperature. A line placed this way is the same
 line, and the same cache entry, as one given by its value.
 

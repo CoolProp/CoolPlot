@@ -162,17 +162,23 @@ def test_badge_lines_come_in_order_and_auto_takes_the_emptiest_corner(logo_files
     assert [p.mime for p in badge.logo] == [SVG, PNG]
     frame = _frame(scene, size)
     lines = [(item.x, item.y) for item in scene if item.role in ("isoline", "saturation", "quality")]
+    overlays = [(item.x, item.y) for item in scene if item.group and item.group.startswith(("cycle/", "process/"))
+                and item.role in ("cycle", "process", "state_points")]
     width, height = badge.size_pt()
 
-    def points_in(corner):
+    def points_in(corner, drawn):
         box = corner_box(frame, corner, width, height, badge.inset_pt)
         total = 0
-        for x, y in lines:
+        for x, y in drawn:
             px, py = frame.to_pt(x, y)
             total += int(((abs(px - box.cx) <= box.half_w) & (abs(py - box.cy) <= box.half_h)).sum())
         return total
 
-    counts = {c: points_in(c) for c in CORNERS}
+    # The legend sits inside and takes its corner first; the badge takes the
+    # emptiest of the others, cycles counting before lines
+    legend = scene.axes.style.legend.location
+    assert badge.location != legend
+    counts = {c: (points_in(c, overlays), points_in(c, lines)) for c in CORNERS if c != legend}
     assert counts[badge.location] == min(counts.values())
     assert max(counts.values()) > min(counts.values())   # the choice mattered
 

@@ -129,16 +129,33 @@ def isoline_look(spec: DiagramSpec, theme: Theme, key: str, value_SI: float):
 def legend_with_unit(spec: DiagramSpec, key: str, legend: str) -> str:
     """A family's legend text with its symbol and unit, e.g. "Temperature T / deg C".
 
-    Used by the "rails" label mode, whose labels show bare values.
+    Used by the "rails" label mode, whose labels show bare values. A
+    family labelled by its saturation states says so, with the unit of
+    those: "Specific entropy s at T_sat / deg C".
     """
-    unit = spec.units[key].label
     text = "{0} {1}".format(legend, spec.diagram.symbol(key))
+    anchor = _saturation_anchor(spec, key)
+    if anchor is not None:
+        text += " at " + saturation_symbol(spec, anchor)
+        key = anchor.by
+    unit = spec.units[key].label
     return text if unit in ("-", "") else text + " / " + unit
 
 
-def _saturation_labelled(spec: DiagramSpec, key: str) -> bool:
-    """Whether the lines of a family are labelled by their saturation state, not their own value."""
-    return any(s.key == key and s.anchor is not None and s.anchor.label == "saturation" for s in spec.isolines)
+def saturation_symbol(spec: DiagramSpec, anchor) -> str:
+    """The symbol of the saturation state lines are labelled by: "T_sat", "T_sat,liq" or "T(x=0.5)"."""
+    symbol = spec.diagram.symbol(anchor.by)
+    if same_number(anchor.Q, 1.0):
+        return symbol + "_sat"
+    if is_zero(anchor.Q):
+        return symbol + "_sat,liq"
+    return symbol + "({0}={1})".format(get_quantity("Q").symbol, spec.settings.labels.format_value(anchor.Q))
+
+
+def _saturation_anchor(spec: DiagramSpec, key: str):
+    """The anchor of a family labelled by its saturation states, else None."""
+    return next((s.anchor for s in spec.isolines if s.key == key and s.anchor is not None
+                 and s.anchor.label == "saturation"), None)
 
 
 def label_text(spec: DiagramSpec, key: str, value_SI: float, anchor_SI: float = None) -> str:
@@ -155,13 +172,7 @@ def label_text(spec: DiagramSpec, key: str, value_SI: float, anchor_SI: float = 
         anchor = next((s.anchor for s in spec.isolines if s.key == key and s.anchor is not None), None)
     if anchor is not None and anchor.label == "saturation":
         key, value_SI = anchor.by, anchor_SI
-        symbol = spec.diagram.symbol(key)
-        if same_number(anchor.Q, 1.0):
-            symbol += "_sat"
-        elif is_zero(anchor.Q):
-            symbol += "_sat,liq"
-        else:
-            symbol += "({0}={1})".format(get_quantity("Q").symbol, labels.format_value(anchor.Q))
+        symbol = saturation_symbol(spec, anchor)
     else:
         symbol = spec.diagram.symbol(key)
     unit = spec.units[key]
@@ -187,7 +198,7 @@ def isoline_items(spec: DiagramSpec, theme: Theme, curves) -> List[Line]:
         legend_key = role if role in ("saturation", "quality") else request.key
         if legend_key in legends_given:
             legend = None
-        elif rails and role != "saturation" and not _saturation_labelled(spec, request.key):
+        elif rails and role != "saturation":
             legend = legend_with_unit(spec, request.key, legend)   # the labels show bare values
         legends_given.add(legend_key)
         items.append(Line(id=request.item_id, group="iso/" + request.key, role=role, legend=legend,
@@ -221,10 +232,10 @@ def label_requests(spec: DiagramSpec, theme: Theme, curves, lines: Sequence[Line
                 style = style.with_(color=line.style.color)   # the label in its line's colour
             text = label_text(spec, key, request.value_SI, request.anchor_SI)
             value = float(spec.units[key].from_SI(request.value_SI))
-            if _saturation_labelled(spec, key) and request.anchor_SI is not None:
-                anchor = next(s.anchor for s in spec.isolines if s.key == key and s.anchor is not None)
-                value = float(spec.units[anchor.by].from_SI(request.anchor_SI))
-            elif labels.mode == "rails":
+            anchor = _saturation_anchor(spec, key)
+            if anchor is not None and request.anchor_SI is not None:
+                value = float(spec.units[anchor.by].from_SI(request.anchor_SI))   # the saturation state shown
+            if labels.mode == "rails":
                 text = labels.format_value(value)   # the bare value; symbol and unit are in the legend
             requests.append(LabelRequest(id=line.id + "/label", group=line.group + "/label", family=key,
                                          text=text, style=style, x=line.x, y=line.y, value=value,

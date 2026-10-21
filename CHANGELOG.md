@@ -43,8 +43,10 @@ guide in the documentation says what to change in your code.
   Each family takes the rail that fits the most labels, a second rail
   for lines that do not reach the first, and labels at the ends of lines
   that end inside the chart; whole levels of values are dropped when not
-  all fit, so a row never skips values irregularly. The legend gives the
-  symbol and unit of each family ("Temperature T / deg C"). The scene
+  all fit, so evenly spaced values stay evenly spaced. The legend gives
+  the symbol and unit of each family ("Temperature T / deg C"; for lines
+  labelled by their saturation states "Specific entropy s at T_sat /
+  deg C"). The scene
   gains the role `label_tick`. coolplot-core 1.2 lays rails out the same
   way.
 - Legend location "auto": inside the plot area, in a corner where the

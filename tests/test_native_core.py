@@ -346,11 +346,20 @@ def test_lines_placed_by_saturation_states_compose_the_same_through_the_port():
     python, ported = _both_scenes(chart)
     difference = _same(python.to_dict(), ported.to_dict())
     assert difference == "", difference
+    # On rails the labels show bare values and the legend says what they are
+    values = [i.text for i in ported if i.id.endswith("/label")]
+    assert values and all(re.fullmatch(r"-?[0-9.]+(e[-+]?[0-9]+)?", t) for t in values)
+    legends = {i.legend for i in ported if i.legend}
+    assert {"Specific entropy s at T_sat / deg C", "Density rho at T_sat,liq / deg C",
+            "Temperature T / deg C"} <= legends
+    # Edge labels write the saturation state out, the same way through the port
+    chart.settings = chart.settings.with_(labels={"mode": "edge"})
+    python, ported = _both_scenes(chart)
+    difference = _same(python.to_dict(), ported.to_dict())
+    assert difference == "", difference
     texts = [i.text for i in ported if i.id.endswith("/label")]
     assert any(t.startswith("T_sat=") for t in texts) and any(t.startswith("T_sat,liq=") for t in texts)
-    # Lines labelled by value show the bare value on rails
-    values = [i.text for i in ported if i.id.startswith("iso/T/") and i.id.endswith("/label")]
-    assert values and all(re.fullmatch(r"-?[0-9.]+(e[-+]?[0-9]+)?", t) for t in values)
+    assert any(t.startswith("T=") for t in texts)
 
 
 @needs_core
@@ -361,7 +370,7 @@ def test_an_older_core_refuses_lines_placed_by_saturation_states(monkeypatch):
     from coolplot.compose import compose
     from coolplot.engine import plan
     assert native.core_version() >= (1, 1)
-    chart = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    chart = _before_12(PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive"))
     chart.set_lines("s", at_saturation={"T": 20, "label": "saturation"}, labels=True)
     spec = chart.spec
     domain = chart.engine.domain(spec)
