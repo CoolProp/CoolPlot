@@ -47,10 +47,13 @@ guide in the documentation says what to change in your code.
   symbol and unit of each family ("Temperature T / deg C"). The scene
   gains the role `label_tick`. coolplot-core 1.2 lays rails out the same
   way.
-- Legend location "auto": inside the plot area, in the corner where the
-  legend covers the fewest points of the drawn lines. The legend and the
-  badge are given their corners together (`coolplot.compose.corners`),
-  so they never share one, and rail labels keep clear of both.
+- Legend location "auto": inside the plot area, in a corner where the
+  legend covers no point of a cycle or process and the fewest points of
+  the isolines; outside on the right when no corner is free or the
+  legend would cover more than a quarter of the plot area. The legend
+  and the badge are given their corners together
+  (`coolplot.compose.corners`), so an automatic one never takes the
+  corner of the other, and rail and edge labels keep clear of both.
 - Gallery examples: the basic air processes from one state; summer and
   winter operation of an air handling unit, with duties, the room's sensible
   heat ratio and a comfort zone; evaporative cooling in a dry climate. The

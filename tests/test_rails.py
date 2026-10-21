@@ -206,3 +206,65 @@ def test_matplotlib_lifts_the_title_above_the_top_rail():
         artist = next(a for a in renderer.ax.texts if a.get_text() == t.text and a.get_clip_on() is False)
         assert artist.get_window_extent().y1 <= title.y0 + 1.0
     assert renderer._title_pad > matplotlib.rcParams["axes.titlepad"]
+
+
+def test_a_redraw_with_nothing_changed_moves_no_label():
+    # Relative humidity and wet-bulb temperature take second rails on a low chart; laying it out
+    # again with the first layout as the previous one keeps every label
+    chart = _rails(PsychrometricChart(T_range=(-10, 45), W_range=(0, 25)))
+    chart.set_default_lines()
+    first = chart.update_scene((500.0, 180.0))
+    labels = {t.id: t for t in first if t.role == "isoline_label"}
+    again = chart.update_scene((500.0, 180.0))
+    assert {t.id for t in again if t.role == "isoline_label"} == set(labels)
+    assert all(again[key] is t for key, t in labels.items())
+
+
+def test_an_automatic_legend_never_covers_a_cycle():
+    from coolplot.compose.corners import corner_box, legend_size_pt
+    from coolplot.compose.layout import keep_out_points
+    for size in ((218.0, 117.0), (400.0, 300.0), (600.0, 420.0)):
+        chart = _ph()
+        scene = chart.update_scene(size)
+        location = scene.axes.style.legend.location
+        if location == "outside right":
+            continue
+        a = scene.axes
+        frame = Frame(a.x_limits, a.y_limits, a.x_log, a.y_log, *size)
+        texts = list(dict.fromkeys(i.legend for i in scene if i.legend and i.visible))
+        box = corner_box(frame, location, *legend_size_pt(texts, chart.theme.axes.legend.text.font.size_pt), 6.0)
+        cycle = [(i.x, i.y, isinstance(i, Line)) for i in scene if i.group == "cycle/Heat pump" and not isinstance(i, Text)]
+        px, py = keep_out_points(frame, [(x, y) for x, y, _ in cycle])
+        assert not np.any((np.abs(px - box.cx) <= box.half_w) & (np.abs(py - box.cy) <= box.half_h)), size
+    # On a small plot area the legend would cover a quarter of it: it goes outside
+    assert _ph().update_scene((218.0, 117.0)).axes.style.legend.location == "outside right"
+
+
+def test_edge_labels_keep_clear_of_a_legend_inside():
+    chart = _ph()
+    chart.settings = chart.settings.with_(labels={"mode": "edge"})
+    scene = chart.update_scene(SIZE)
+    a = scene.axes
+    assert a.style.legend.location != "outside right"
+    from coolplot.compose.corners import corner_box, legend_size_pt
+    frame = _frame(scene)
+    texts = list(dict.fromkeys(i.legend for i in scene if i.legend and i.visible))
+    legend = corner_box(frame, a.style.legend.location,
+                        *legend_size_pt(texts, chart.theme.axes.legend.text.font.size_pt), 6.0)
+    assert not any(box.overlaps(legend, 0.0) for _, box in _inner_boxes(scene, frame))
+
+
+def test_plotly_keeps_rail_labels_outside_the_frame_and_makes_room_for_them():
+    pytest.importorskip("plotly")
+    from coolplot.render.plotly import PlotlyRenderer
+    chart = _ph()
+    chart.title = "R290"
+    renderer = PlotlyRenderer()
+    renderer.sync(chart.update_scene(SIZE))   # laid out with the temperatures upright at the top
+    assert any(t.role == "isoline_label" and not t.clip and t.direction is not None for t in chart.scene)
+    margin = renderer.figure.layout.margin
+    assert margin.t > renderer.margins[2]
+    turned = [a for a in renderer.figure.layout.annotations
+              if a.name and chart.scene[a.name].role == "isoline_label" and not chart.scene[a.name].clip
+              and a.textangle]
+    assert turned and all(a.xanchor == "center" and a.yanchor == "middle" and a.yshift > 4.0 for a in turned)

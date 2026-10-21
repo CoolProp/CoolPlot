@@ -419,12 +419,13 @@ Item edge_text(const LabelRequest& request, const Frame& frame, const Box& box, 
 
 std::vector<Item> place_edge_labels(const std::vector<LabelRequest>& requests, const Frame& frame, const std::vector<KeepOut>& keep_out,
                                     double keep_out_pt, const std::map<std::string, std::vector<std::string>>& preferred_edges,
-                                    const std::map<std::string, Item>& previous, bool fallback) {
+                                    const std::map<std::string, Item>& previous, bool fallback, const std::vector<TakenBox>& occupied) {
     std::vector<Item> labels;
     if (!frame.usable()) return labels;
     std::vector<double> kx, ky;
     keep_out_points(frame, keep_out, kx, ky);
     std::vector<Box> placed;
+    for (const TakenBox& b : occupied) placed.push_back(Box{b.cx, b.cy, 0.0, b.half_w, b.half_h});
     for (const LabelRequest& request : requests) {
         std::pair<double, double> size = text_size_pt(request.text, request.style);
         double half_w = 0.5 * size.first, half_h = 0.5 * size.second;
@@ -515,6 +516,32 @@ std::vector<RailCand> choose(const std::vector<RailCand>& cands, Fits fits) {
         for (const RailCand& c : cands)
             if (c.level <= max_level) chosen.push_back(c);
         if (!chosen.empty() && fits(chosen)) return chosen;
+    }
+    // Every m-th candidate along the rail, for the smallest stride at which some offset fits
+    std::vector<RailCand> row = cands;
+    std::stable_sort(row.begin(), row.end(), [](const RailCand& a, const RailCand& b) { return a.along < b.along; });
+    for (size_t stride = 2; stride <= row.size(); ++stride) {
+        bool found = false;
+        size_t best_size = 0;
+        int best_levels = 0;
+        std::vector<RailCand> best;
+        for (size_t offset = 0; offset < stride; ++offset) {
+            std::vector<RailCand> subset;
+            int levels = 0;
+            for (size_t i = offset; i < row.size(); i += stride) {
+                subset.push_back(row[i]);
+                levels += row[i].level;
+            }
+            if (subset.size() < 2 || !fits(subset)) continue;
+            // (size, -levels) compared like Python's tuples: more labels, then coarser values
+            if (!found || subset.size() > best_size || (subset.size() == best_size && -levels > -best_levels)) {
+                found = true;
+                best_size = subset.size();
+                best_levels = levels;
+                best = subset;
+            }
+        }
+        if (found) return best;
     }
     std::vector<RailCand> order = cands;
     std::stable_sort(order.begin(), order.end(),
@@ -704,41 +731,35 @@ std::vector<RailCand> end_candidates(const std::vector<const LabelRequest*>& mem
     return out;
 }
 
-/// The rail most labels of a family sat on in the previous layout; false if none.
-bool previous_slot(const std::vector<const LabelRequest*>& members, const std::map<std::string, Item>& previous, const Frame& frame,
-                   double second_bound, Slot& out) {
-    std::map<Slot, int> votes;
+/// The rails that held labels of a family in the previous layout: an outer label counts for its rail, a label
+/// inside the frame for every inner rail its box touches (within 1 pt).
+std::set<Slot> previous_slots(const std::vector<const LabelRequest*>& members, const std::map<std::string, Item>& previous, const Frame& frame,
+                              double label_height) {
+    std::set<Slot> found;
     for (const LabelRequest* request : members) {
-        auto found = previous.find(request->id);
-        if (found == previous.end()) continue;
-        const Item& old = found->second;
-        Slot slot;
+        auto entry = previous.find(request->id);
+        if (entry == previous.end()) continue;
+        const Item& old = entry->second;
         if (!old.clip) {
-            slot = old.offset_y_pt > 0.0 ? Slot{"top", -1} : Slot{"right", -1};
-        } else {
-            double px = frame.x_to_pt(old.text_x), py = frame.y_to_pt(old.text_y);
-            if (!(std::isfinite(px) && std::isfinite(py))) continue;
-            double best = 0.0;
-            std::string edge;
-            for (size_t i = 0; i < EDGES.size(); ++i) {
-                double d = rail_depth(EDGES[i], px, py, frame);
-                if (i == 0 || d < best) {
-                    best = d;
-                    edge = EDGES[i];
-                }
-            }
-            slot = Slot{edge, best < second_bound ? 0 : 1};
+            found.insert(old.offset_y_pt > 0.0 ? Slot{"top", -1} : Slot{"right", -1});
+            continue;
         }
-        votes[slot] += 1;
+        double px = frame.x_to_pt(old.text_x), py = frame.y_to_pt(old.text_y);
+        if (!(std::isfinite(px) && std::isfinite(py))) continue;
+        double angle = 0.0;
+        if (old.has_direction) {
+            double dx = frame.x_to_pt(old.text_x + old.direction_x) - px, dy = frame.y_to_pt(old.text_y + old.direction_y) - py;
+            if (std::isfinite(dx) && std::isfinite(dy)) angle = std::atan2(dy, dx);
+        }
+        std::pair<double, double> size = text_size_pt(old.text, old.text_style);
+        Box box{px, py, angle, 0.5 * size.first, 0.5 * size.second};
+        for (const std::string& edge : EDGES) {
+            double near = nearest_depth(box, edge, frame);
+            for (int k = 0; k < 2; ++k)
+                if (std::fabs(near - (LABEL_PAD_PT + k * RAIL_SECOND * label_height)) <= 1.0) found.insert(Slot{edge, k});
+        }
     }
-    if (votes.empty()) return false;
-    int most = -1;
-    for (const auto& kv : votes)
-        if (kv.second > most) {
-            most = kv.second;
-            out = kv.first;
-        }
-    return true;
+    return found;
 }
 
 /// The tick on the frame and the label outside it.
@@ -854,7 +875,6 @@ std::vector<Item> place_rail_labels(const std::vector<LabelRequest>& requests, c
     for (const TakenBox& b : occupied) state.placed.push_back(Box{b.cx, b.cy, 0.0, b.half_w, b.half_h});
     double label_height = 0.0;
     for (const LabelRequest& r : requests) label_height = std::max(label_height, LABEL_LINE_HEIGHT * r.style.font.size_pt);
-    double second_bound = LABEL_PAD_PT + 1 * RAIL_SECOND * label_height;
 
     // Families in order of their first request, with their lines in points and the levels of their values
     std::vector<std::string> family_order;
@@ -890,17 +910,16 @@ std::vector<Item> place_rail_labels(const std::vector<LabelRequest>& requests, c
     std::vector<Pair> pairs;
     for (size_t f = 0; f < family_order.size(); ++f) {
         const std::string& key = family_order[f];
-        Slot kept_slot;
-        bool has_kept = previous_slot(families[key], previous, frame, second_bound, kept_slot);
+        std::set<Slot> kept_slots = previous_slots(families[key], previous, frame, label_height);
         for (size_t s = 0; s < slots.size(); ++s) {
             bool vertical;
             int score = static_cast<int>(select_on(slots[s], candidates_on(slots[s], families[key], pieces[key], levels[key], frame, label_height),
                                                    state, vertical)
                                              .size());
-            pairs.push_back({f, s, score, has_kept && kept_slot == slots[s] ? 1 : 0});
+            pairs.push_back({f, s, score, kept_slots.count(slots[s]) ? 1 : 0});
         }
     }
-    // Rails go to the family that fits the most labels there; the rail of the previous layout counts one label more
+    // Rails go to the family that fits the most labels there; a rail that held labels of the family counts one more
     std::stable_sort(pairs.begin(), pairs.end(), [&](const Pair& a, const Pair& b) {
         int sa = -(a.score + a.bonus), sb = -(b.score + b.bonus);
         if (sa != sb) return sa < sb;
@@ -935,6 +954,11 @@ std::vector<Item> place_rail_labels(const std::vector<LabelRequest>& requests, c
                 outer_items(c, slot.edge, vertical, frame, tick, text);
                 items.push_back(tick);
                 items.push_back(kept(previous, text, frame));
+                // The tick reaches into the frame; labels inside keep clear of it
+                if (slot.edge == "top")
+                    state.placed.push_back(Box{c.x, frame.height_pt - 0.5 * RAIL_TICK_PT, 0.0, 0.5 * RAIL_TICK_WIDTH_PT, 0.5 * RAIL_TICK_PT});
+                else
+                    state.placed.push_back(Box{frame.width_pt - 0.5 * RAIL_TICK_PT, c.y, 0.0, 0.5 * RAIL_TICK_PT, 0.5 * RAIL_TICK_WIDTH_PT});
             } else {
                 state.placed.push_back(c.box);
                 items.push_back(kept(previous, edge_text(*c.request, frame, c.box, c.dir_x, c.dir_y), frame));

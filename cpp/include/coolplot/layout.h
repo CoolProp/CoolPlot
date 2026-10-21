@@ -92,10 +92,12 @@ struct KeepOut
     bool joined = true;
 };
 
-/// Edge labels for the requests, most important first (coolplot.compose.layout.place_edge_labels).
+/// Edge labels for the requests, most important first (coolplot.compose.layout.place_edge_labels);
+/// ``occupied`` are boxes no label may overlap (the legend).
 std::vector<Item> place_edge_labels(const std::vector<LabelRequest>& requests, const Frame& frame, const std::vector<KeepOut>& keep_out,
                                     double keep_out_pt, const std::map<std::string, std::vector<std::string>>& preferred_edges,
-                                    const std::map<std::string, Item>& previous, bool fallback);
+                                    const std::map<std::string, Item>& previous, bool fallback,
+                                    const std::vector<TakenBox>& occupied = std::vector<TakenBox>());
 
 /// The level of each value for thinning: 0 for multiples of ten steps, 1 of five, 2 of two, 3 for the rest
 /// (coolplot.compose.rails.value_levels).

@@ -939,16 +939,17 @@ class MatplotlibRenderer(Renderer):
 
         matplotlib keeps the title a fixed pad above the frame; constrained
         layout then makes room for both. The height of the labels is
-        estimated from their length, as the label layout does.
+        estimated from their length, as the label layout does (0.55 times
+        the font size per character, 1.25 times the font size high).
         """
-        from ..compose.layout import text_size_pt
         axes = scene.axes
         if not axes.title:
             return
         reach = 0.0
         for item in scene:
             if isinstance(item, Text) and item.visible and not item.clip and item.offset_pt[1] > 0.0:
-                width, height = text_size_pt(item.text, item.style)
+                size = item.style.font.size_pt
+                width, height = 0.55 * size * max(len(item.text), 1), 1.25 * size
                 reach = max(reach, item.offset_pt[1] + (width if item.direction is not None else height))
         pad = matplotlib.rcParams["axes.titlepad"] + reach
         if same_number(pad, getattr(self, "_title_pad", matplotlib.rcParams["axes.titlepad"])):

@@ -48,7 +48,7 @@ import plotly.graph_objects as go
 from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
 from ..core.numbers import format_number
 from ..style.values import AxesStyle, LineStyle, TextStyle, dash_pattern_pt
-from .base import Renderer, SyncReport, warn_without_branding
+from .base import Renderer, SyncReport, margin_reach, warn_without_branding
 from .ticks import ticks
 from ..core.floats import is_zero, same_number, same_numbers
 
@@ -202,6 +202,7 @@ class PlotlyRenderer(Renderer):
         self._legend_style = None
         self._applied_log = None       # (x_log, y_log) the trace data was prepared for
         self._clipped = set()          # texts hidden because their anchor is outside
+        self._extra_margins = (0.0, 0.0, 0.0, 0.0)   # room for texts outside the frame, see _annotate
         self.figure.update_layout(width=self.width, height=self.height, autosize=False,
                                   showlegend=False, hovermode="closest")
         self._apply_margins()
@@ -216,7 +217,7 @@ class PlotlyRenderer(Renderer):
         return 50.0 + 0.6 * size_px * longest
 
     def _apply_margins(self):
-        left, right, top, bottom = self.margins
+        left, right, top, bottom = (m + e for m, e in zip(self.margins, self._extra_margins))
         right += self._legend_room()
         self.figure.update_layout(margin=dict(l=left, r=right, t=top, b=bottom, autoexpand=False))
 
@@ -436,6 +437,7 @@ class PlotlyRenderer(Renderer):
         x_log, y_log = self._log()
         annotations = []
         self._clipped = set()
+        need = [0.0, 0.0, 0.0, 0.0]   # room texts outside the frame need: left, right, top, bottom (px)
         for item_id in sorted(self._texts, key=lambda i: self._rank.get(i, 0)):
             item = self._texts[item_id]
             if not _showable(item, x_log, y_log):
@@ -444,16 +446,56 @@ class PlotlyRenderer(Renderer):
             inside = 0.0 <= fx <= 1.0 and 0.0 <= fy <= 1.0
             if item.visible and item.clip and not inside:
                 self._clipped.add(item_id)
+            if item.visible and not item.clip and math.isfinite(fx) and math.isfinite(fy):
+                need = [max(n, r) for n, r in zip(need, margin_reach(item, fx, fy))]
             annotations.append(self._annotation_of(item_id, item, x_log, y_log, inside))
         self.figure.layout.annotations = annotations
+        if self._fit_margins(need):
+            self._annotate()   # the angles of turned texts follow the size of the plot area
+
+    def _fit_margins(self, need) -> bool:
+        """Widen the margins for texts outside the frame (labels on rails, margin labels), like the SVG writer.
+
+        With a title above them, the title moves to just above the labels.
+        Returns whether the margins changed.
+        """
+        left, right, top, bottom = self.margins
+        title = self._axes is not None and bool(self._axes.title)
+        extra = (max(0.0, need[0] - left), max(0.0, need[1] - right),
+                 need[2] if title else max(0.0, need[2] - top), max(0.0, need[3] - bottom))
+        if same_numbers(extra, self._extra_margins):
+            return False
+        self._extra_margins = extra
+        self._apply_margins()
+        if title:
+            if need[2] > 0.0:
+                self.figure.update_layout(title=dict(y=1.0, yref="paper", yanchor="bottom", pad=dict(b=need[2] + 6.0)))
+            else:
+                self.figure.update_layout(title=dict(y=None, yref="container", yanchor="auto", pad=dict(b=0)))
+        return True
 
     def _annotation_of(self, item_id: str, item: Text, x_log: bool, y_log: bool, inside: bool) -> dict:
         s = item.style
+        angle = self._screen_angle(item)
+        xanchor, yanchor = _H_ANCHOR[s.h_align], _V_ANCHOR[s.v_align]
+        xshift, yshift = item.offset_pt[0] * PX_PER_PT, item.offset_pt[1] * PX_PER_PT
+        if not item.clip and not is_zero(angle) and (s.h_align != "center" or s.v_align != "center"):
+            # plotly anchors a turned text by its turned bounding box, which
+            # puts a turned label outside the frame partly inside it; anchor
+            # its centre instead and shift it by where the centre lies from
+            # the anchor point in the text's own frame, turned on screen
+            size_px = s.font.size_pt * PX_PER_PT
+            width, height = 0.6 * size_px * len(item.text), 1.25 * size_px
+            cx = {"left": 0.5 * width, "center": 0.0, "right": -0.5 * width}[s.h_align]
+            cy = {"bottom": 0.5 * height, "center": 0.0, "top": -0.5 * height}[s.v_align]
+            a = math.radians(angle)
+            xshift += cx * math.cos(a) - cy * math.sin(a)
+            yshift += cx * math.sin(a) + cy * math.cos(a)
+            xanchor, yanchor = "center", "middle"
         return dict(
             x=math.log10(item.x) if x_log else item.x, y=math.log10(item.y) if y_log else item.y,
             xref="x", yref="y", text=_escape(item.text), showarrow=False,
-            textangle=-self._screen_angle(item), xanchor=_H_ANCHOR[s.h_align], yanchor=_V_ANCHOR[s.v_align],
-            xshift=item.offset_pt[0] * PX_PER_PT, yshift=item.offset_pt[1] * PX_PER_PT,
+            textangle=-angle, xanchor=xanchor, yanchor=yanchor, xshift=xshift, yshift=yshift,
             font=_font_with_halo(s), opacity=s.alpha, visible=item.visible and (inside or not item.clip),
             name=item_id, captureevents=False)
 

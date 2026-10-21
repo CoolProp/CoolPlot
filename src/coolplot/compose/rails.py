@@ -27,12 +27,16 @@ family of a chart with a few rules:
    levels of values are dropped: the values that are multiples of ten
    steps of the family are kept longest, then those of five and two
    steps (:func:`value_levels`). The same level holds for the whole
-   family, so a row never skips values irregularly.
+   row. Where even the coarsest level does not fit, because one of its
+   labels is blocked, every second, third ... label along the row is
+   kept instead (:func:`choose`), so evenly spaced values stay evenly
+   spaced.
 4. **Free space.** Labels inside the frame keep clear of the processes
    (``keep_out_pt``), of each other and of boxes that are taken (the
    legend and the badge).
-5. **Stability.** A family keeps the rail of the previous layout unless
-   another rail fits more than one label more, and a label that stays
+5. **Stability.** A rail that held labels of a family in the previous
+   layout counts one label more for it, so a family keeps its rails
+   unless another fits more than one label more, and a label that stays
    where it was is returned as the same item, so nothing is redrawn.
 
 The module is pure and works in points on the plot area, like
@@ -46,6 +50,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from ..core.floats import same_numbers
 from ..scene import Line, Text
 from ..style.values import LineStyle
 from .layout import (EDGES, PAD_PT, Box, Frame, LabelRequest, Piece, _candidate, _text, keep_out_points,
@@ -106,13 +111,29 @@ def value_levels(values: Sequence[float]) -> List[int]:
 def choose(candidates: List[dict], fits) -> List[dict]:
     """The candidates of the finest level at which all of them fit together.
 
-    If not even the coarsest level fits, candidates are added one by one,
-    coarsest level first and along the rail, as long as they fit.
+    If not even the coarsest level fits (a label of it is blocked), every
+    m-th candidate along the rail is taken, for the smallest stride m at
+    which some offset fits; of those offsets the one with the most labels,
+    then the coarsest values. If no stride fits two labels, candidates are
+    added one by one, coarsest level first and along the rail, as long as
+    they fit.
     """
     for max_level in range(len(LEVEL_STEPS) - 1, -1, -1):
         chosen = [c for c in candidates if c["level"] <= max_level]
         if chosen and fits(chosen):
             return chosen
+    row = sorted(candidates, key=lambda c: c["along"])
+    for stride in range(2, len(row) + 1):
+        best = None
+        for offset in range(stride):
+            subset = row[offset::stride]
+            if len(subset) < 2 or not fits(subset):
+                continue
+            score = (len(subset), -sum(c["level"] for c in subset))
+            if best is None or score > best[0]:
+                best = (score, subset)
+        if best is not None:
+            return best[1]
     chosen: List[dict] = []
     for c in sorted(candidates, key=lambda c: (c["level"], c["along"])):
         if fits(chosen + [c]):
@@ -276,26 +297,37 @@ def _end_candidates(members, pieces, levels) -> List[dict]:
     return out
 
 
-def _previous_slot(members, previous: Dict[str, Text], frame: Frame, second_bound: float):
-    """The rail most labels of a family sat on in the previous layout, or None."""
-    votes: Dict[Tuple[str, int], int] = {}
+def _previous_slots(members, previous: Dict[str, Text], frame: Frame, bound_of) -> set:
+    """The rails that held labels of a family in the previous layout.
+
+    An outer label counts for its rail; a label inside the frame counts
+    for every inner rail its box touches (within 1 pt), so a label at the
+    end of a line counts for none.
+    """
+    found = set()
     for request in members:
         old = previous.get(request.id)
         if old is None:
             continue
         if not old.clip:
-            slot = ("top", -1) if old.offset_pt[1] > 0.0 else ("right", -1)
-        else:
-            (px,), (py,) = frame.to_pt([old.x], [old.y])
-            if not (math.isfinite(px) and math.isfinite(py)):
-                continue
-            depths = [(_depth(edge, px, py, frame), i, edge) for i, edge in enumerate(EDGES)]
-            depth, _, edge = min(depths)
-            slot = (edge, 0 if depth < second_bound else 1)
-        votes[slot] = votes.get(slot, 0) + 1
-    if not votes:
-        return None
-    return max(sorted(votes), key=lambda s: votes[s])
+            found.add(("top", -1) if old.offset_pt[1] > 0.0 else ("right", -1))
+            continue
+        (px,), (py,) = frame.to_pt([old.x], [old.y])
+        if not (math.isfinite(px) and math.isfinite(py)):
+            continue
+        angle = 0.0
+        if old.direction is not None:
+            dx, dy = frame_direction(frame, old)
+            if math.isfinite(dx) and math.isfinite(dy):
+                angle = math.atan2(dy, dx)
+        width, height = text_size_pt(old.text, old.style)
+        box = Box(float(px), float(py), angle, 0.5 * width, 0.5 * height)
+        for edge in EDGES:
+            near = _nearest_depth(box, edge, frame)
+            for k in (0, 1):
+                if abs(near - bound_of(k)) <= 1.0:
+                    found.add((edge, k))
+    return found
 
 
 def _outer_items(c: dict, edge: str, vertical: bool, frame: Frame) -> List:
@@ -326,7 +358,7 @@ def _outer_items(c: dict, edge: str, vertical: bool, frame: Frame) -> List:
 def _kept(old: Optional[Text], new: Text, frame: Frame) -> Text:
     """The old label item where the new one is the same label in the same place, else the new one."""
     if old is None or old.text != new.text or old.style != new.style or old.clip != new.clip \
-            or old.offset_pt != new.offset_pt or (old.direction is None) != (new.direction is None):
+            or not same_numbers(old.offset_pt, new.offset_pt) or (old.direction is None) != (new.direction is None):
         return new
     (ox, nx), (oy, ny) = frame.to_pt([old.x, new.x], [old.y, new.y])
     if not (math.isfinite(ox) and math.isfinite(oy)) or math.hypot(nx - ox, ny - oy) >= 0.5:
@@ -381,12 +413,12 @@ def place_rail_labels(requests: Sequence[LabelRequest], frame: Frame, keep_out_l
         for slot in rail_slots:
             cands = _candidates_on(slot, members, pieces[key], levels[key], frame, bound_of)
             scores[key, slot] = len(_select(slot, cands, rails)[0])
-    # Rails go to the family that fits the most labels there; the rail of
-    # the previous layout counts one label more, so that a family does not
-    # jump between rails that fit about as many
-    kept = {key: _previous_slot(members, previous, frame, bound_of(1)) for key, members in families.items()}
+    # Rails go to the family that fits the most labels there; a rail that
+    # held labels of the family in the previous layout counts one label
+    # more, so that a family does not jump between rails that fit about as many
+    kept = {key: _previous_slots(members, previous, frame, bound_of) for key, members in families.items()}
     family_order = list(families)
-    pairs = sorted(scores, key=lambda ks: (-(scores[ks] + (1 if kept[ks[0]] == ks[1] else 0)), ks[1][1] >= 0,
+    pairs = sorted(scores, key=lambda ks: (-(scores[ks] + (1 if ks[1] in kept[ks[0]] else 0)), ks[1][1] >= 0,
                                            rail_slots.index(ks[1]), family_order.index(ks[0])))
     assignment: Dict[str, Tuple[str, int]] = {}
     for key, slot in pairs:
@@ -401,6 +433,13 @@ def place_rail_labels(requests: Sequence[LabelRequest], frame: Frame, keep_out_l
             if slot[1] < 0:
                 tick, text = _outer_items(c, slot[0], vertical, frame)
                 items.extend([tick, _kept(previous.get(text.id), text, frame)])
+                # The tick reaches into the frame; labels inside keep clear of it
+                if slot[0] == "top":
+                    rails.placed.append(Box(c["x"], frame.height_pt - 0.5 * TICK_PT, 0.0, 0.5 * TICK_WIDTH_PT,
+                                            0.5 * TICK_PT))
+                else:
+                    rails.placed.append(Box(frame.width_pt - 0.5 * TICK_PT, c["y"], 0.0, 0.5 * TICK_PT,
+                                            0.5 * TICK_WIDTH_PT))
             else:
                 rails.placed.append(c["box"])
                 text = _text(c["request"], frame, c["box"], c["direction"])

@@ -389,12 +389,8 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Tuple[flo
     items: List[Item] = list(lines)
     requests = label_requests(spec, theme, curves, lines)
     if requests:
-        # Rails keep clear of the legend and the badge; the other modes, as before 1.2, of the badge only
-        if spec.settings.labels.mode == "rails":
-            occupied = boxes
-        else:
-            occupied = boxes[-1:] if badge is not None else []
-        items.extend(labels_for(spec, requests, axes, drawn, size, previous_labels, tuple(occupied)))
+        # Rail and edge labels keep clear of a legend inside the plot area and of the badge
+        items.extend(labels_for(spec, requests, axes, drawn, size, previous_labels, tuple(boxes)))
     items.extend(process_parts)
     return items, axes
 
@@ -417,8 +413,8 @@ def corners_for(spec: DiagramSpec, theme: Theme, axes: AxesSpec, frame: Frame, b
     badge_spec = None
     if badge is not None:
         badge_spec = (spec.settings.branding.location,) + tuple(badge.size_pt()) + (badge.inset_pt,)
-    shown = [(line.x, line.y) for line in lines if line.visible] + [(x, y) for x, y, _ in drawn]
-    legend_at, badge_at, boxes = place_corners(frame, shown, legend, badge_spec)
+    shown = [(line.x, line.y) for line in lines if line.visible]
+    legend_at, badge_at, boxes = place_corners(frame, shown, [(x, y) for x, y, _ in drawn], legend, badge_spec)
     if legend is not None:
         axes = replace(axes, style=replace(axes.style, legend=replace(axes.style.legend, location=legend_at)))
     if badge is not None:

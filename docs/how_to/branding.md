@@ -28,9 +28,10 @@ own `lines`. `location="auto"` (the default) puts it into the corner
 where it covers the fewest points of the drawn lines; name a corner
 ("upper left", "upper right", "lower left", "lower right") to fix it.
 Rail and edge labels keep clear of the badge; inline and margin labels
-do not. The badge and a legend inside the plot area never share a
-corner: a corner you name is kept, and "auto" takes the emptiest of the
-others. matplotlib and the SVG writer draw the badge at
+do not. The badge and a legend inside the plot area are given their
+corners together: a corner you name is kept, and "auto" takes the
+emptiest of the others (preferring corners without cycles), so the two
+share a corner only when you name the same one for both. matplotlib and the SVG writer draw the badge at
 the same size, the one the label layout keeps clear; the text widths are
 estimated, generously for common sans-serif fonts.
 

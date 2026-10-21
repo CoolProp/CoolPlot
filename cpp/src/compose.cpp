@@ -373,7 +373,7 @@ std::vector<Item> labels_for(const DiagramSpec& spec, const std::vector<LabelReq
     std::map<std::string, std::vector<std::string>> edges;
     for (const LabelRequest& r : requests)
         if (!edges.count(r.family)) edges[r.family] = settings.preferred_edges(r.family, spec.diagram.family(r.family)->edges);
-    return place_edge_labels(requests, frame, keep_out, settings.keep_out_pt, edges, previous, settings.fallback);
+    return place_edge_labels(requests, frame, keep_out, settings.keep_out_pt, edges, previous, settings.fallback, occupied);
 }
 
 // Corners for a legend inside the plot area (coolplot.compose.corners; the badge is drawn by Python only)
@@ -389,26 +389,48 @@ TakenBox corner_box(const Frame& frame, const std::string& location, double widt
     return {cx, cy, 0.5 * width, 0.5 * height};
 }
 
-/// The corner whose box covers the fewest of the points; ties go to the first of AUTO_CORNERS.
-std::string emptiest_corner(const Frame& frame, double width, double height, double inset, const std::vector<double>& px,
-                            const std::vector<double>& py) {
-    if (!frame.usable()) return AUTO_CORNERS[0];
-    std::string best = AUTO_CORNERS[0];
+const double MAX_LEGEND_SHARE = 0.25;
+
+long count_inside(const TakenBox& box, const std::vector<double>& px, const std::vector<double>& py) {
+    long count = 0;
+    for (size_t i = 0; i < px.size(); ++i)
+        if (std::fabs(px[i] - box.cx) <= box.half_w && std::fabs(py[i] - box.cy) <= box.half_h) ++count;
+    return count;
+}
+
+void points_of(const Frame& frame, const std::vector<Item>& items, bool visible_only, std::vector<double>& px, std::vector<double>& py) {
+    for (const Item& item : items) {
+        if (visible_only && !item.visible) continue;
+        for (size_t i = 0; i < item.x.size(); ++i) {
+            double x = frame.x_to_pt(item.x[i]), y = frame.y_to_pt(item.y[i]);
+            if (std::isfinite(x) && std::isfinite(y)) {
+                px.push_back(x);
+                py.push_back(y);
+            }
+        }
+    }
+}
+
+/// The corner of an automatic legend: one that covers no point of a cycle or process, of those the one that
+/// covers the fewest isoline points; "outside right" where none is free or the legend is too large.
+std::string auto_legend(const Frame& frame, double width, double height, const std::vector<double>& lx, const std::vector<double>& ly,
+                        const std::vector<double>& ox, const std::vector<double>& oy) {
+    if (!frame.usable() || width * height > MAX_LEGEND_SHARE * frame.width_pt * frame.height_pt) return "outside right";
+    std::string best;
     long best_count = -1;
     for (const char* corner : AUTO_CORNERS) {
-        TakenBox box = corner_box(frame, corner, width, height, inset);
-        long count = 0;
-        for (size_t i = 0; i < px.size(); ++i)
-            if (std::fabs(px[i] - box.cx) <= box.half_w && std::fabs(py[i] - box.cy) <= box.half_h) ++count;
+        TakenBox box = corner_box(frame, corner, width, height, LEGEND_INSET_PT);
+        if (count_inside(box, ox, oy) != 0) continue;
+        long count = count_inside(box, lx, ly);
         if (best_count < 0 || count < best_count) {
             best = corner;
             best_count = count;
         }
     }
-    return best;
+    return best_count < 0 ? "outside right" : best;
 }
 
-/// Decide the corner of a legend inside the plot area; returns its box, if there is one, for the rails.
+/// Decide the corner of a legend inside the plot area; returns its box, if there is one, for the labels.
 std::vector<TakenBox> place_legend(AxesSpec& axes, const Theme& theme, const Frame& frame, const std::vector<Item>& lines,
                                    const std::vector<Item>& parts, const std::vector<Item>& drawn) {
     std::vector<TakenBox> boxes;
@@ -426,22 +448,13 @@ std::vector<TakenBox> place_legend(AxesSpec& axes, const Theme& theme, const Fra
             double width = 44.0 * (72.0 / 96.0) + 0.6 * size * longest, height = 8.0 * (72.0 / 96.0) + 1.6 * size * texts.size();
             std::string location = style.location;
             if (location == "auto") {
-                std::vector<double> px, py;
-                for (const std::vector<Item>* group : {&lines, &drawn})
-                    for (const Item& item : *group) {
-                        if (group == &lines && !item.visible) continue;
-                        for (size_t i = 0; i < item.x.size(); ++i) {
-                            double x = frame.x_to_pt(item.x[i]), y = frame.y_to_pt(item.y[i]);
-                            if (std::isfinite(x) && std::isfinite(y)) {
-                                px.push_back(x);
-                                py.push_back(y);
-                            }
-                        }
-                    }
-                location = emptiest_corner(frame, width, height, LEGEND_INSET_PT, px, py);
+                std::vector<double> lx, ly, ox, oy;
+                points_of(frame, lines, true, lx, ly);
+                points_of(frame, drawn, false, ox, oy);
+                location = auto_legend(frame, width, height, lx, ly, ox, oy);
             }
             axes.style.legend.location = location;
-            if (width > 0.0) boxes.push_back(corner_box(frame, location, width, height, LEGEND_INSET_PT));
+            if (location != "outside right" && width > 0.0) boxes.push_back(corner_box(frame, location, width, height, LEGEND_INSET_PT));
         }
     }
     if (axes.style.legend.location == "auto") axes.style.legend.location = "upper right";   // as AxesSpec reads it
@@ -632,9 +645,8 @@ Scene compose(const json& input) {
     scene.items = lines;
     std::vector<LabelRequest> requests = label_requests(spec, theme, curves, lines);
     if (!requests.empty()) {
-        // Rails keep clear of the legend; the other modes, as before 1.2, do not
-        std::vector<TakenBox> occupied = spec.settings.labels.mode == "rails" ? boxes : std::vector<TakenBox>();
-        std::vector<Item> labels = labels_for(spec, requests, axes, keep_out, size, previous, occupied);
+        // Rail and edge labels keep clear of a legend inside the plot area
+        std::vector<Item> labels = labels_for(spec, requests, axes, keep_out, size, previous, boxes);
         scene.items.insert(scene.items.end(), labels.begin(), labels.end());
     }
     scene.items.insert(scene.items.end(), process_parts.begin(), process_parts.end());

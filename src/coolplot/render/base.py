@@ -19,7 +19,7 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Callable, Dict, FrozenSet, List, Optional, Tuple
 
-from ..scene import AxesSpec, Item, Scene, items_equal
+from ..scene import AxesSpec, Item, Scene, Text, items_equal
 
 #: Optional abilities a backend can declare in ``Renderer.capabilities``.
 CAPABILITIES = {
@@ -247,3 +247,33 @@ class Renderer:
     def describe_axes(self) -> dict:
         """Read back: the axes as drawn, in the normalised form of :mod:`coolplot.testing`."""
         raise NotImplementedError
+
+
+# ---------------------------------------------------------------------------
+# Texts outside the frame
+# ---------------------------------------------------------------------------
+#: Pixels per point at 96 px per inch, as the SVG and plotly writers use.
+PX_PER_PT = 4.0 / 3.0
+
+
+def text_extent_px(item: Text):
+    """(left, right, down, up) reach of a text from its anchor in px, from its length and alignment."""
+    size_px = item.style.font.size_pt * PX_PER_PT
+    length, height = 0.6 * size_px * len(item.text), 1.25 * size_px
+    vertical = item.direction is not None and abs(item.direction[1]) > abs(item.direction[0])
+    h_align, v_align = item.style.h_align, item.style.v_align
+    along = {"left": (0.0, length), "center": (length / 2, length / 2), "right": (length, 0.0)}[h_align]
+    across = {"bottom": (0.0, height), "center": (height / 2, height / 2), "top": (height, 0.0)}[v_align]
+    if vertical:   # reads upwards: its start is at the bottom
+        return across[1], across[0], along[0], along[1]
+    return along[0], along[1], across[0], across[1]
+
+
+def margin_reach(item: Text, fx: float, fy: float):
+    """How far (left, right, top, bottom) a text on the frame reaches beyond it, in px, with
+    a little room; zero on the sides the text does not touch."""
+    left_px, right_px, down_px, up_px = text_extent_px(item)
+    dx, dy = item.offset_pt[0] * PX_PER_PT, item.offset_pt[1] * PX_PER_PT
+    reach = (left_px - dx + 4.0, right_px + dx + 4.0, up_px + dy + 4.0, down_px - dy + 4.0)
+    touches = (fx <= 1e-9, fx >= 1.0 - 1e-9, fy >= 1.0 - 1e-9, fy <= 1e-9)
+    return tuple(r if t else 0.0 for r, t in zip(reach, touches))

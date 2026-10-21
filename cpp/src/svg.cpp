@@ -587,7 +587,7 @@ class Writer
         double x = st.location == "upper left" || st.location == "lower left" ? bx_ + pad
                    : st.location == "outside right"                            ? bx_ + bw_ + 12.0
                                                                                 : bx_ + bw_ - pad - size.first;
-        bool upper = st.location == "upper left" || st.location == "upper right" || st.location == "outside right";
+        bool upper = st.location == "upper left" || st.location == "upper right" || st.location == "outside right" || st.location == "auto";
         double y = upper ? by_ + pad : by_ + bh_ - pad - size.second;
         double size_px = st.text.font.size_pt * PX_PER_PT;
         lines.push_back("<g class=\"cp-legend\">");

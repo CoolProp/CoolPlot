@@ -27,11 +27,19 @@ label of each line where it leaves the chart.
 3. When not all labels of a family fit, whole levels of values go: the
    values that are multiples of ten steps of the family stay longest,
    then those of five and two steps. The same level holds for the whole
-   row.
+   row. Where even the coarsest level does not fit, because one of its
+   labels is blocked, every second, third ... label along the row stays,
+   so evenly spaced values stay evenly spaced (values that are not, such
+   as 1, 2, 5, 10, 20, keep their coarsest ones).
 4. Labels inside the frame keep clear of the cycles (`keep_out_pt`), of
-   each other, of the legend and of the badge. The legend and the badge
-   get their corners first, together, so they never share one.
-5. A family keeps the rail of the previous layout unless another fits
+   each other, of the ticks of the outer rails, of the legend and of the
+   badge. The legend and the badge get their corners first: an automatic
+   legend takes a corner where it covers no point of a cycle, the one
+   that covers the fewest isoline points, and goes outside on the right
+   when no corner is free or it would cover more than a quarter of the
+   plot area; an automatic badge takes the emptiest of the corners left.
+5. A rail that held labels of a family in the previous layout counts one
+   label more for it, so a family keeps its rails unless another fits
    more than one label more, and a label that stays where it was is the
    same item as before, so the renderer redraws nothing.
 

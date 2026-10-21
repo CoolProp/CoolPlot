@@ -5,6 +5,7 @@ These tests run only when ``coolplot_core`` is installed (built from cpp/
 with -DCOOLPLOT_CORE_PYTHON=ON); without it they are skipped, in CI too.
 """
 import json
+import re
 import math
 
 import pytest
@@ -284,7 +285,7 @@ def test_the_pdf_of_a_chart_reads_back(tmp_path):
     assert all(not f.problems for f in content.fonts) and content.fonts
     texts = set(content.texts)
     assert "Propane heat pump" in texts and "heat pump" in texts
-    assert any(t.startswith("T=") for t in texts)
+    assert "Temperature T / deg C" in texts   # rails: bare values, symbol and unit in the legend
     with pytest.raises(ValueError, match="PDF"):
         renderer.save(str(tmp_path / "chart.svg"))
 
@@ -347,7 +348,9 @@ def test_lines_placed_by_saturation_states_compose_the_same_through_the_port():
     assert difference == "", difference
     texts = [i.text for i in ported if i.id.endswith("/label")]
     assert any(t.startswith("T_sat=") for t in texts) and any(t.startswith("T_sat,liq=") for t in texts)
-    assert any(t.startswith("T=") for t in texts)
+    # Lines labelled by value show the bare value on rails
+    values = [i.text for i in ported if i.id.startswith("iso/T/") and i.id.endswith("/label")]
+    assert values and all(re.fullmatch(r"-?[0-9.]+(e[-+]?[0-9]+)?", t) for t in values)
 
 
 @needs_core
@@ -391,6 +394,14 @@ def test_an_older_core_refuses_state_labels(monkeypatch):
     assert any(getattr(i, "text", "") == "2: coil" for i in items)   # drawn by the Python composer
 
 
+def _before_12(chart):
+    """The chart with the label mode and legend of 1.1, which an older core understands."""
+    chart.settings = chart.settings.with_(labels={"mode": "edge"})
+    legend = chart.theme.axes.legend.with_(location="outside right")
+    chart.theme = chart.theme.with_(axes=chart.theme.axes.with_(legend=legend))
+    return chart
+
+
 @needs_core
 def test_an_older_core_is_not_sent_the_mollier_scale(monkeypatch):
     """A core from before 1.2 refuses the quantity Thx; it still composes a psychrometric chart, not a Mollier one."""
@@ -413,7 +424,7 @@ def test_an_older_core_is_not_sent_the_mollier_scale(monkeypatch):
     monkeypatch.setattr(native, "core_version", lambda: (1, 1, 0))
     monkeypatch.setenv("COOLPLOT_NATIVE", "1")
     for style in ("psychrometric", "mollier"):
-        chart = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25), settings="interactive", style=style)
+        chart = _before_12(PsychrometricChart(T_range=(-10, 45), W_range=(0, 25), settings="interactive", style=style))
         chart.add_cycle("Air", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}], closed=False)
         spec = chart.spec
         domain = chart.engine.domain(spec)
@@ -465,7 +476,7 @@ def test_an_older_core_is_not_sent_the_label_colour(monkeypatch):
             return real.compose(text)
     monkeypatch.setattr(native, "_core", OlderCore)
     monkeypatch.setattr(native, "core_version", lambda: (1, 0, 0))
-    chart = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    chart = _before_12(PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive"))
     chart.set_lines("T", num=4, labels=True)
     spec = chart.spec
     domain = chart.engine.domain(spec)

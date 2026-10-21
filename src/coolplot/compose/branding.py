@@ -7,8 +7,9 @@ of the axes, sized in points for the plot area the labels are laid out
 for. The badge is made in the corner of the settings (the lower right
 one for "auto"); the composer then gives it its corner together with the
 legend
-(:func:`coolplot.compose.corners.place_corners`), so that the two never
-share a corner and isoline labels keep clear of both.
+(:func:`coolplot.compose.corners.place_corners`), so that an automatic
+one never takes the corner of the other, and isoline labels keep clear of
+both.
 """
 from __future__ import annotations
 
