@@ -166,7 +166,7 @@ TEST_CASE("The C ABI composes, writes SVG and reports errors", "[svg][capi]") {
     CHECK(std::string(error).find("not valid JSON") != std::string::npos);
     coolplot_free(error);
     CHECK(coolplot_compose(nullptr, &scene_json, nullptr) == 1);
-    CHECK(std::string(coolplot_version()) == "1.1.0");
+    CHECK(std::string(coolplot_version()) == "1.2.0");
 }
 
 TEST_CASE("The writers ignore the C locale", "[svg][pdf][locale]") {

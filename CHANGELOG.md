@@ -6,6 +6,33 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### 1.2.0
+
+#### Added
+- Air processes on psychrometric charts:
+  - `"via": "sensible"` keeps the humidity ratio of the state before
+    (a heating coil, or a cooling coil above the dew point). Charts of a
+    fluid refuse it.
+  - `PsychrometricChart.mix(a, b, m_dot_a_kg_s, m_dot_b_kg_s)` gives the
+    state after two air streams mix adiabatically, from the water and
+    energy balances per kg of dry air; a mix that would form fog is refused.
+  - `PsychrometricChart.add_zone(name, T_range, RH_range, label=...)`
+    outlines a region of temperature and relative humidity, such as a
+    comfort zone. Its humidity edges follow the lines of constant relative
+    humidity.
+- State labels: `add_cycle(..., labels={2: "ADP 11.2 deg C"})` writes a
+  text next to a state, after its number, or alone with `numbers=False`.
+  The cycle record gains an optional `labels` list; records of 1.1 read and
+  write as before. coolplot-core 1.2 draws them. With an older core, a chart
+  with labels falls back to the Python composer with a warning.
+- `Chart.state(entry)` gives a full state from two properties in the
+  chart's units.
+- Gallery examples: the basic air processes from one state; summer and
+  winter operation of an air handling unit, with duties, the room's sensible
+  heat ratio and a comfort zone; evaporative cooling in a dry climate. The
+  how-to guide "Draw air processes on a psychrometric chart" explains the
+  pieces.
+
 ### 1.1.0
 
 #### Added

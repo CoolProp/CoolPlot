@@ -371,6 +371,27 @@ def test_an_older_core_refuses_lines_placed_by_saturation_states(monkeypatch):
 
 
 @needs_core
+def test_an_older_core_refuses_state_labels(monkeypatch):
+    """A core from before 1.2 would ignore the labels of a cycle and draw only the numbers."""
+    pytest.importorskip("CoolProp")
+    from coolplot import PsychrometricChart
+    from coolplot.compose import compose
+    from coolplot.engine import plan
+    assert native.core_version() >= (1, 2)
+    chart = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25), settings="interactive")
+    chart.add_cycle("Air", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}], closed=False, labels={2: "coil"})
+    spec = chart.spec
+    domain = chart.engine.domain(spec)
+    curves = chart.engine.curves(spec, domain, plan(spec, domain))
+    cycles = [chart.engine.cycle(spec, c) for c in spec.cycles]
+    monkeypatch.setattr(native, "core_version", lambda: (1, 1, 0))
+    monkeypatch.setenv("COOLPLOT_NATIVE", "1")
+    with pytest.warns(native.CoreFallbackWarning, match="older than 1.2"):
+        items, _ = compose(spec, domain, curves, cycles=cycles)
+    assert any(getattr(i, "text", "") == "2: coil" for i in items)   # drawn by the Python composer
+
+
+@needs_core
 def test_labels_in_the_colour_of_their_lines_compose_the_same_through_the_port():
     pytest.importorskip("CoolProp")
     from coolplot import PropertyDiagram

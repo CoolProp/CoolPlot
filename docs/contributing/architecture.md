@@ -324,7 +324,8 @@ diagram.add_cycle("measured", p=[...], h=[...])                           # from
   state before it in the cycle: "isenthalpic", "isentropic", "isobaric",
   "isothermal", "isochoric", or "compression" and "expansion" with an
   isentropic efficiency `eta_is` (the outlet pressure is the given
-  property). The proposal used "polytropic" here; a pressure alone does
+  property); since 1.2 also "sensible", which keeps the humidity ratio of
+  humid air. The proposal used "polytropic" here; a pressure alone does
   not fix a compressor outlet, so "polytropic" is a path shape only.
 * Paths between states follow the physics ("auto"): equal pressure gives
   an isobar (with the saturation states inserted, so heat exchangers bend

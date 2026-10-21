@@ -20,6 +20,7 @@ before it in the cycle:
 | `"isenthalpic"` | the enthalpy (a throttling valve) |
 | `"isentropic"`, `"isobaric"`, `"isothermal"`, `"isochoric"` | entropy, pressure, temperature or density |
 | `"compression"`, `"expansion"` | the outlet pressure with the isentropic efficiency `eta_is` |
+| `"sensible"` | the humidity ratio, humid air only (since 1.2) |
 
 States can also be `StatePoint` values, or arrays of two properties:
 `diagram.add_cycle("measured", p=[...], h=[...])`. `units="SI"` reads
@@ -73,6 +74,14 @@ follow it with `"via"` move along), `remove_cycle(name)` removes it.
 Without a zoom window the axes grow so that every state is inside the
 frame. `numbers=False` hides the state numbers; `line_style` and
 `marker_style` override the theme.
+
+`labels={2: "discharge", 4: "after the valve"}` (since 1.2) writes a text
+next to a state, after its number ("2: discharge"), or alone with
+`numbers=False`. Labels are placed clear of the markers like the numbers.
+A label that depends on computed states (a duty, a temperature) comes
+from `cycle_states`; add the cycle again under its name with the labels.
+`chart.state({"p": 3.0, "T": 0.0})` gives a single state in the chart's
+units.
 
 States you computed yourself, for example with
 `coolplot.thermo.process_path`, go into `add_cycle` as `StatePoint`

@@ -9,6 +9,7 @@ units
 isolines
 labels
 cycles
+psychrometric
 blends
 pdf_print
 themes

@@ -126,6 +126,11 @@ def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycle
         # right, lines labelled by their saturation state would not
         raise CoreRefusal("this coolplot_core ({0}) is older than 1.1 and cannot label lines by their saturation "
                           "states".format(".".join(str(v) for v in core_version())))
+    if any(c.labels for c in spec.cycles) and core_version() < (1, 2):
+        # An older core ignores the "labels" of a cycle record: the state
+        # labels would be missing from the scene without an error
+        raise CoreRefusal("this coolplot_core ({0}) is older than 1.2 and cannot label the states of a "
+                          "cycle".format(".".join(str(v) for v in core_version())))
     record = compose_record(spec, domain, curves, plot_size_pt, previous_labels, cycles)
     if core_version() < (1, 1):
         # A core older than 1.1 refuses theme fields it does not know; the
