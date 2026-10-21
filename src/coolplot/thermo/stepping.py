@@ -166,11 +166,16 @@ class _Walk:
         self.last_outside_u = None  # where the line was last seen outside (scan mode)
 
     # Evaluation --------------------------------------------------------
-    def sample_at(self, u: float, careful: bool = True) -> Optional[Sample]:
-        """The sample at ``u``: a known end, or one evaluation."""
-        if self.start is not None and u == self.u_lo:
+    def sample_at(self, u: float, careful: bool = True, at_start: bool = False,
+                  at_end: bool = False) -> Optional[Sample]:
+        """The sample at ``u``: a known end, or one evaluation.
+
+        The caller says whether ``u`` is the start or the end of the range;
+        there the sample given to :func:`trace`, if any, is used.
+        """
+        if self.start is not None and at_start:
             return self.start
-        if self.end is not None and u == self.u_hi:
+        if self.end is not None and at_end:
             return self.end
         self.trace.n_evaluated += 1
         sample = self.evaluate(u, careful)
@@ -233,7 +238,7 @@ class _Walk:
     def run(self):
         """Alternate between fine steps inside the domain and scanning outside until the end."""
         u = self.u_lo
-        sample = self.sample_at(u)
+        sample = self.sample_at(u, at_start=True)
         inside = sample is not None and sample.inside
         if inside:
             self.accept(u, sample, self.normalised(sample))
@@ -250,8 +255,9 @@ class _Walk:
         du = self.span / self.points
         min_du = self.span * MIN_STEP
         while u < self.u_hi and not self.over_budget():
-            u_try = min(u + du, self.u_hi)
-            sample = self.sample_at(u_try)
+            at_end = not u + du < self.u_hi
+            u_try = self.u_hi if at_end else u + du
+            sample = self.sample_at(u_try, at_end=at_end)
             if sample is None:
                 if self.skip_failures:
                     # Leave the point out; a stretch of failures is crossed
@@ -317,8 +323,9 @@ class _Walk:
         """Growing steps while the line is outside the domain or cannot be computed; returns (u, inside)."""
         du = self.span * SCAN_STEP
         while u < self.u_hi and not self.over_budget():
-            u_try = min(u + du, self.u_hi)
-            sample = self.sample_at(u_try, careful=False)
+            at_end = not u + du < self.u_hi
+            u_try = self.u_hi if at_end else u + du
+            sample = self.sample_at(u_try, careful=False, at_end=at_end)
             if sample is not None and sample.inside:
                 self.enter_domain(u, u_try, sample)
                 return u_try, True
@@ -330,7 +337,8 @@ class _Walk:
         """The line came back between u_out and u_in: start the piece on the edge."""
         self.previous = None
         self.direction = None
+        # bisect_edge returns a sample only when it moved away from u_in
         u_edge, edge_sample = self.bisect_edge(u_in, u_out)
-        if edge_sample is not None and u_edge != u_in:
+        if edge_sample is not None:
             self.accept(u_edge, edge_sample, self.normalised(edge_sample))
         self.accept(u_in, sample, self.normalised(sample))
