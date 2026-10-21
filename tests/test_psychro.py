@@ -249,6 +249,28 @@ def test_mixing_refuses_fog_bad_flows_and_two_pressures(chart):
         mixed_air(air_state("T", 293.15, "RH", 0.5, P), air_state("T", 293.15, "RH", 0.5, 0.9 * P), 1.0, 1.0)
 
 
+def test_a_zone_follows_its_humidity_lines_without_markers_or_numbers(chart):
+    assert chart.add_zone("Comfort", T_range=(26, 20), RH_range=(60, 30), label="comfort", segments=6) == "Comfort"
+    states = chart.cycle_states("Comfort", units="engineering")
+    assert len(states) == 14 and chart.spec.cycles[-1].loops == (tuple(range(1, 15)) + (1,),)
+    assert [states[n]["RH"] for n in range(1, 8)] == pytest.approx([30.0] * 7)   # the dry edge, given in %
+    assert [states[n]["RH"] for n in range(8, 15)] == pytest.approx([60.0] * 7)
+    assert states[1]["T"] == pytest.approx(20.0) and states[7]["T"] == pytest.approx(26.0)
+    scene = chart.update_scene()
+    assert [t.text for t in scene.group("cycle/Comfort/numbers")] == ["comfort"]   # at (20 deg C, 60 %)
+    assert scene["cycle/Comfort/number/14"].x == pytest.approx(20.0)
+    assert is_zero(scene["cycle/Comfort/states"].style.size_pt)
+    chart.remove_cycle("Comfort")
+    assert all(c.name != "Comfort" for c in chart.spec.cycles)
+
+
+@pytest.mark.parametrize("T_range, RH_range, segments", [((20, 20), (30, 60), 12), ((20, 26), (60, 60), 12),
+                                                         ((20, 26), (30, 60), 0)])
+def test_a_zone_needs_an_area_and_a_segment(chart, T_range, RH_range, segments):
+    with pytest.raises(ValueError):
+        chart.add_zone("bad", T_range, RH_range, segments=segments)
+
+
 def test_a_state_from_two_properties_in_the_chart_units(chart):
     state = chart.state({"T": 13.0, "RH": 95.0})
     assert state.T == pytest.approx(286.15) and state.RH == pytest.approx(0.95)

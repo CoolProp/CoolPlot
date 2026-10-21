@@ -18,6 +18,8 @@ Example
 """
 from __future__ import annotations
 
+import numpy as np
+
 from .chart import REMOVED_NAMES, Chart
 from .core.diagram_type import DiagramType
 from .core.limits import Region
@@ -27,6 +29,7 @@ from .spec import DiagramSpec, HumidAirSpec, get_settings
 from .core.limits import within
 from .core.errors import PropertyError
 from .core.state import StatePoint
+from .style.values import LineStyle, MarkerStyle
 from .thermo.humid_air import mixed_air
 
 
@@ -94,6 +97,38 @@ class PsychrometricChart(Chart):
     @points.setter
     def points(self, value):
         self.settings = self.spec.settings.with_(calc={"points": int(value)})
+
+    def add_zone(self, name: str, T_range, RH_range, label: str = None, line_style: LineStyle = None,
+                 units=None, segments: int = 12) -> str:
+        """Outline a region of dry-bulb temperature and relative humidity, e.g. a comfort zone.
+
+        ``T_range`` and ``RH_range`` are (min, max) in the chart's units or
+        in ``units`` (deg C and % with "engineering"). The outline is a
+        closed cycle without markers or state numbers: straight edges at
+        the two temperatures, and two edges that follow the lines of
+        constant relative humidity, each drawn with ``segments`` straight
+        pieces. ``label``, if given, is written at the corner of the
+        lowest temperature and highest humidity. Returns the name; the
+        zone is removed with :meth:`remove_cycle`.
+
+        >>> chart = PsychrometricChart()
+        >>> chart.add_zone("Comfort", T_range=(20, 26), RH_range=(30, 60), label="comfort")
+        'Comfort'
+        """
+        T_lo, T_hi = sorted(float(t) for t in T_range)
+        RH_lo, RH_hi = sorted(float(rh) for rh in RH_range)
+        if not T_lo < T_hi or not RH_lo < RH_hi:
+            raise ValueError("A zone needs two different temperatures and two different humidities, not {0} "
+                             "and {1}.".format(tuple(T_range), tuple(RH_range)))
+        if int(segments) < 1:
+            raise ValueError("segments has to be at least 1, not {0}.".format(segments))
+        T_edge = np.linspace(T_lo, T_hi, int(segments) + 1)
+        # Along the lower humidity edge to the warm side, back along the upper edge
+        states = [{"T": T, "RH": RH_lo} for T in T_edge] + [{"T": T, "RH": RH_hi} for T in T_edge[::-1]]
+        labels = {len(states): label} if label else None   # the last state is (T_lo, RH_hi)
+        return self.add_cycle(name, states, numbers=False, units=units, line_style=line_style,
+                              marker_style=MarkerStyle(size_pt=0.0, face_color="none", edge_color="none"),
+                              labels=labels)
 
     def mix(self, a, b, m_dot_a_kg_s: float = 1.0, m_dot_b_kg_s: float = 1.0, units=None) -> StatePoint:
         """The state (SI units) after two streams of air mix adiabatically.

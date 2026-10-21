@@ -47,6 +47,25 @@ def test_psychrometric(tmp_path):
     assert (tmp_path / "psychrometric.svg").stat().st_size > 10000
 
 
+def test_psychrometric_processes(tmp_path):
+    out = _run("psychrometric_processes.py", tmp_path)
+    assert "Desiccant dehumidification" in out
+    svg = (tmp_path / "psychrometric_processes.svg").read_text()
+    assert "+14.3 kJ/kg" in svg and "Steam humidification" in svg and len(svg) > 10000   # labels and legend
+
+
+def test_psychrometric_air_handling(tmp_path):
+    assert "Cooling coil" in _run("psychrometric_air_handling.py", tmp_path)
+    svg = (tmp_path / "psychrometric_air_handling.svg").read_text()
+    assert "comfort zone" in svg and "SHR" in svg and "steam" in svg and len(svg) > 10000
+
+
+def test_psychrometric_evaporative_cooling(tmp_path):
+    assert "Indirect, then direct" in _run("psychrometric_evaporative_cooling.py", tmp_path)
+    svg = (tmp_path / "psychrometric_evaporative_cooling.svg").read_text()
+    assert "outdoor air" in svg and "supply" in svg and len(svg) > 10000
+
+
 def _ports_installed() -> bool:
     from coolplot import corelib
     from coolplot.thermo import native
@@ -117,7 +136,8 @@ def _same(a, b, path="", rel=1e-9):
 #: The examples run in both modes: every script in examples/ (the web_app
 #: folder is a server, tested by tests/test_web_server.py).
 BOTH_PATHS = ["quickstart.py", "two_stage_cycles.py", "refrigerant_blend.py", "psychrometric.py",
-              "interactive_cycle.py", "saturation_lines.py"]
+              "interactive_cycle.py", "saturation_lines.py", "psychrometric_processes.py",
+              "psychrometric_air_handling.py", "psychrometric_evaporative_cooling.py"]
 
 
 def test_the_list_of_examples_is_complete():
