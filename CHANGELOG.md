@@ -6,9 +6,9 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
-### 1.2.0
+## [1.2.0] - 2026-10-22
 
-#### Added
+### Added
 - Air processes on psychrometric charts:
   - `"via": "sensible"` keeps the humidity ratio of the state before
     (a heating coil, or a cooling coil above the dew point). Charts of a
@@ -88,7 +88,7 @@ guide in the documentation says what to change in your code.
 - `SvgRenderer(unit="pt" | "mm")` writes the document size with a unit,
   and the size may be fractional.
 
-#### Changed
+### Changed
 - New charts lay out their labels on rails and put the legend inside the
   plot area ("rails" and "auto" are the new defaults of
   `LabelSettings.mode` and `LegendStyle.location`). Specs saved by 1.1
@@ -115,9 +115,9 @@ guide in the documentation says what to change in your code.
   warning per missing line of constant quality.
 - CI also tests Python 3.14.
 
-### 1.1.0
+## [1.1.0] - 2026-10-22
 
-#### Added
+### Added
 - Lines placed through saturation states:
   `set_lines("s", at_saturation={"T": 10})` draws the isentropes through
   the saturated vapour every 10 K of saturation temperature (round values
@@ -152,7 +152,7 @@ guide in the documentation says what to change in your code.
   older core, which would label them by value, and the Python composer
   draws it.
 
-#### Fixed
+### Fixed
 - The fingerprint of a fluid (part of every cache key) used Python's
   salted `hash()` of CoolProp's configuration, which differs between
   processes; it is a SHA-256 digest now, so keys mean the same in every
