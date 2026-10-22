@@ -46,6 +46,11 @@ number for a unit system. A range (`range=` of `set_lines`, `"range"` of
 `at_saturation`, `T_range` and `W_range` of a psychrometric chart) that
 is not two values is refused with a ValueError that says so.
 
+`set_line_style("Q", ...)` (or `"RH"`) restyles the quality (humidity)
+lines now; it was ignored before, so a chart or a saved spec that set it
+draws those lines differently. `set_line_style("saturation", ...)` is
+new, for the saturation curve.
+
 ## From 1.1 to 1.2
 
 1.2 needs Python 3.11 or later; on Python 3.10, pip keeps installing

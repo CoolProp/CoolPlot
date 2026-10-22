@@ -381,8 +381,11 @@ class Chart:
         """Override the theme for one family of lines in this chart.
 
         Accepts any LineStyle field, e.g. set_line_style("T",
-        color="blue", width_pt=1.0). Call without changes to go back to
-        the theme. Only the affected lines are restyled; nothing is
+        color="blue", width_pt=1.0). ``key`` "saturation" restyles the
+        saturation curve, e.g. set_line_style("saturation",
+        casing_width_pt=0) draws it without the border (casing) the
+        screen themes give it. Call without changes to go back to the
+        theme. Only the affected lines are restyled; nothing is
         recalculated.
         """
         if changes:

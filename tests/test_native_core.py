@@ -403,6 +403,41 @@ def test_an_older_core_refuses_state_labels(monkeypatch):
     assert any(getattr(i, "text", "") == "2: coil" for i in items)   # drawn by the Python composer
 
 
+@needs_core
+def test_a_restyled_saturation_curve_composes_the_same_through_the_port():
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    chart = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    chart.set_default_lines(labels=True)
+    chart.set_line_style("saturation", casing_width_pt=0.0, width_pt=1.0)
+    chart.set_line_style("Q", color="#7a3cc8")
+    python, ported = _both_scenes(chart)
+    difference = _same(python.to_dict(), ported.to_dict())
+    assert difference == "", difference
+    assert {i.style.casing_width_pt for i in ported if i.role == "saturation"} == {0.0}
+    assert {i.style.color for i in ported if i.role == "quality"} == {"#7a3cc8"}
+
+
+@needs_core
+def test_an_older_core_refuses_a_restyled_saturation_curve(monkeypatch):
+    """A core from before 1.3 would ignore the overrides and draw the dome with the theme's casing."""
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    from coolplot.compose import compose
+    from coolplot.engine import plan
+    chart = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    chart.set_lines("Q", num=5)
+    chart.set_line_style("saturation", casing_width_pt=0.0)
+    spec = chart.spec
+    domain = chart.engine.domain(spec)
+    curves = chart.engine.curves(spec, domain, plan(spec, domain))
+    monkeypatch.setattr(native, "core_version", lambda: (1, 2, 0))
+    monkeypatch.setenv("COOLPLOT_NATIVE", "1")
+    with pytest.warns(native.CoreFallbackWarning, match="older than 1.3"):
+        items, _ = compose(spec, domain, curves)
+    assert {i.style.casing_width_pt for i in items if i.role == "saturation"} == {0.0}   # drawn by Python
+
+
 def _before_12(chart):
     """The chart with the label mode and legend of 1.1, which an older core understands."""
     chart.settings = chart.settings.with_(labels={"mode": "edge"})

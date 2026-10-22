@@ -51,6 +51,31 @@ diagram.theme = Theme.from_dict(json.load(open("report-theme.json")))
 `Theme.from_dict` rejects unknown keys, so a misspelt option in a saved
 theme is reported instead of silently ignored.
 
+## The saturation curve
+
+The `default` and `dark` themes draw the saturation curve heavier than
+the isolines, in ink, with a casing: a band in the background colour on
+both sides that keeps it apart from the lines crossing it. Where that
+band does not look good, for example on a crowded chart or one printed
+small, draw the curve without it:
+
+```python
+diagram.set_line_style("saturation", casing_width_pt=0)          # this chart only
+diagram.set_line_style("saturation", casing_width_pt=0, width_pt=1.0, color="#52514e")
+diagram.set_line_style("Q", color="#7a3cc8")                     # the lines of constant quality
+diagram.set_line_style("saturation")                             # back to the theme
+
+# In a theme of your own, for every chart drawn with it
+mine = DEFAULT.with_(saturation=DEFAULT.saturation.with_(casing_width_pt=0))
+```
+
+`"saturation"` names the saturation curve (quality 0 and 1 of a fluid,
+100 % relative humidity of air); `"Q"` (or `"RH"` on a psychrometric
+chart) the lines inside the dome. The cycles have a casing too; they take
+`line_style=` in `add_cycle`. A coolplot-core older than 1.3 cannot
+restyle the curve; the Python composer then draws the chart, with a
+warning.
+
 ## Style values
 
 The style classes live in `coolplot.style`. They cannot be changed in

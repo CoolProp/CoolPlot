@@ -25,7 +25,7 @@ import numpy as np
 
 from ..core.quantities import get_quantity
 from ..scene import AxesSpec, SceneItem, Line, Markers, Text, drawable_limits
-from ..spec.diagram import CycleSpec, DiagramSpec, ProcessSpec
+from ..spec.diagram import SATURATION_KEY, CycleSpec, DiagramSpec, ProcessSpec
 from ..style.theme import Theme
 from ..style.values import Font
 from .branding import branding
@@ -116,9 +116,13 @@ def isoline_look(spec: DiagramSpec, theme: Theme, key: str, value_SI: float):
     """(style, role, legend text, z order) of one isoline, from the theme and overrides."""
     family = spec.diagram.require_family(key)
     if family.on_boundary:
+        # The saturation curve and the quality (or humidity) lines take the
+        # changes of set_line_style("saturation", ...) and set_line_style("Q", ...)
         if any(same_number(value_SI, b) for b in family.boundary):
-            return theme.saturation, "saturation", "Saturation", Z_SATURATION
-        return theme.quality, "quality", spec.diagram.quantity_label(key), Z_ISOLINE
+            saturation = theme.saturation.with_(**spec.style_override(SATURATION_KEY))
+            return saturation, "saturation", "Saturation", Z_SATURATION
+        quality = theme.quality.with_(**spec.style_override(key))
+        return quality, "quality", spec.diagram.quantity_label(key), Z_ISOLINE
     families = [f.key for f in spec.diagram.families if not f.on_boundary]
     style = theme.isoline_style(key, families)
     overrides = spec.style_override(key)

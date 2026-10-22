@@ -36,6 +36,7 @@ def property_diagram() -> None:
     assert_type(diagram.set_lines("s", at_saturation={"T": 10}, range=None), str)
     diagram.set_default_lines(num=7)
     diagram.set_line_style("T", color="blue", width_pt=1.0)
+    diagram.set_line_style("saturation", casing_width_pt=0)
     diagram.set_view(x_limits=(200.0, 700.0), y_limits=None)
     diagram.remove_lines("u")
 

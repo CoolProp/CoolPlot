@@ -168,6 +168,14 @@ def main():
     coloured.set_default_lines(labels=True)
     compose_case("compose_r290_ph_line_labels", coloured)
 
+    # The saturation curve without its casing, and the quality lines restyled (1.3)
+    restyled = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    restyled.set_lines("Q", num=6, labels=True)
+    restyled.set_lines("T", num=5, labels=True)
+    restyled.set_line_style("saturation", casing_width_pt=0.0, width_pt=1.0)
+    restyled.set_line_style("Q", color="#7a3cc8", dash="dotted")
+    compose_case("compose_r290_ph_restyled_dome", restyled)
+
     rails_cases()
 
 

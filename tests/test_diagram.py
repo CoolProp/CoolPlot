@@ -7,7 +7,7 @@ import pytest
 
 pytest.importorskip("CoolProp")
 
-from coolplot import ProcessSpec, PropertyDiagram  # noqa: E402
+from coolplot import DiagramSpec, ProcessSpec, PropertyDiagram  # noqa: E402
 from coolplot.core.floats import same_numbers  # noqa: E402
 from coolplot.render.svg import SvgRenderer  # noqa: E402
 from coolplot.scene import Line, Markers, Text  # noqa: E402
@@ -55,6 +55,34 @@ def test_style_change_redraws_only_that_family(diagram):
     assert diagram.cache.misses == misses
     assert sorted(report.updated) == sorted(i.id for i in diagram.scene.group("iso/T"))
     assert report.unchanged == 3 and not report.axes_changed
+
+
+def test_the_saturation_curve_can_lose_its_casing():
+    """set_line_style("saturation", ...) restyles the dome only, set_line_style("Q", ...) the quality lines."""
+    chart = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP", settings="interactive")
+    chart.set_lines("Q", num=5)
+    chart.set_lines("T", num=4)
+    scene = chart.update_scene()
+    assert {i.style.casing_width_pt for i in scene if i.role == "saturation"} == {1.0}   # the default theme's casing
+    renderer = SvgRenderer()
+    renderer.sync(scene)
+    misses = chart.cache.misses
+    chart.set_line_style("Saturation", casing_width_pt=0)   # the key in any case
+    chart.set_line_style("Q", color="#7a3cc8")
+    report = renderer.sync(chart.update_scene())
+    assert chart.cache.misses == misses   # restyled, nothing computed
+    dome = [i for i in chart.scene if i.role == "saturation"]
+    assert dome and all(i.style.casing_width_pt == 0.0 and i.style.color == "#0b0b0b" for i in dome)
+    assert {i.style.color for i in chart.scene if i.role == "quality"} == {"#7a3cc8"}
+    assert {i.style.color for i in chart.scene if i.id.startswith("iso/T/")} != {"#7a3cc8"}
+    assert sorted(report.updated) == sorted(i.id for i in chart.scene if i.role in ("saturation", "quality"))
+    svg = renderer.to_svg()
+    dome_elements = svg.split('data-item="iso/Q/0"')[1].split("</g>")[0]
+    assert "cp-casing" not in dome_elements and "cp-casing" not in svg   # no casing, also not in the legend
+    # Saved and read back with the chart; without changes the theme's look returns
+    assert DiagramSpec.from_dict(chart.spec.to_dict()).style_override("saturation") == {"casing_width_pt": 0}
+    chart.set_line_style("saturation")
+    assert {i.style.casing_width_pt for i in chart.update_scene() if i.role == "saturation"} == {1.0}
 
 
 def test_adding_a_line_computes_only_that_line(diagram):

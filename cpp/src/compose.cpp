@@ -107,8 +107,16 @@ Look isoline_look(const DiagramSpec& spec, const Theme& theme, const std::string
     const Family* family = spec.diagram.family(key);
     if (!family) throw Error("Lines of constant '" + key + "' cannot be drawn in a " + spec.diagram.name() + " diagram.");
     if (family->on_boundary()) {
-        if (family->is_boundary_value(value_SI)) return {theme.saturation, "saturation", "Saturation", Z_SATURATION};
-        return {theme.quality, "quality", spec.diagram.quantity_label(key), Z_ISOLINE};
+        // The saturation curve and the quality (or humidity) lines take the changes of
+        // set_line_style("saturation", ...) and set_line_style("Q", ...)
+        if (family->is_boundary_value(value_SI)) {
+            json overrides = spec.style_override("saturation");
+            LineStyle style = overrides.empty() ? theme.saturation : with_overrides(theme.saturation, overrides);
+            return {style, "saturation", "Saturation", Z_SATURATION};
+        }
+        json overrides = spec.style_override(key);
+        LineStyle style = overrides.empty() ? theme.quality : with_overrides(theme.quality, overrides);
+        return {style, "quality", spec.diagram.quantity_label(key), Z_ISOLINE};
     }
     std::vector<std::string> families;
     for (const Family& f : spec.diagram.families())

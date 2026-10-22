@@ -39,6 +39,12 @@ The 1.3 releases are about type safety.
   four themes, the four label modes, and a chart with a logo, references
   and a watermark. The how-to guides point to them.
 - `Unit.label_value`: the value a label shows for an SI value.
+- The saturation curve can be restyled per chart:
+  `set_line_style("saturation", casing_width_pt=0)` draws it without the
+  casing (the band in the background colour along it) of the screen
+  themes. Spec records take the key `"saturation"` in `style_overrides`.
+  coolplot-core 1.3 draws it; with an older core, such a chart falls back
+  to the Python composer with a warning.
 
 #### Changed
 - A range that is not two values (`range=` of `set_lines`, `"range"` of
@@ -53,6 +59,9 @@ The 1.3 releases are about type safety.
   helpers. None of them changes what a chart draws.
 - `add_cycle` numbers states given in a mapping other than a dict by its
   keys, as it does for a dict.
+- `set_line_style("Q", ...)` (and `"RH"` on a psychrometric chart) was
+  kept in the spec but not drawn; it restyles the lines of constant
+  quality (relative humidity) now.
 - A line at 0 in a unit with an offset other than deg C, such as the
   isotherm at 0 deg F, was labelled "-4e-10" (the noise of converting
   back from kelvin); it is labelled 0, by the Python composer and by

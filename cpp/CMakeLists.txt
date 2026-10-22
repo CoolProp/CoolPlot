@@ -10,7 +10,7 @@
 # Catch2 is fetched for the tests; set FETCHCONTENT_SOURCE_DIR_CATCH2 to a
 # local checkout to build offline.
 cmake_minimum_required(VERSION 3.16)
-project(coolplot_core VERSION 1.2.0 LANGUAGES CXX)
+project(coolplot_core VERSION 1.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

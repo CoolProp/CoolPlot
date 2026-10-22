@@ -129,6 +129,42 @@ def _drop_mollier_scale(record: dict) -> None:
         units.get("units", {}).pop("Thx", None)
 
 
+def _restyles_the_dome(spec) -> bool:
+    """Whether ``set_line_style`` changed the saturation curve or the quality (humidity) lines, which
+    coolplot-core draws from 1.3 on."""
+    for key, _ in spec.style_overrides:
+        if key == "saturation":   # coolplot.spec.diagram.SATURATION_KEY, not imported here (layers)
+            return True
+        family = spec.diagram.family(key)
+        if family is not None and family.on_boundary:
+            return True
+    return False
+
+
+# What a core older than a version would ignore (and draw the chart without)
+# or refuse without saying why: (the first version that can, whether the spec
+# asks for it, what it is). Such a spec is refused here, and the Python
+# composer draws the chart, with a warning.
+_NEEDS_A_NEWER_CORE = (
+    ((1, 1), lambda spec: any(s.anchor is not None and s.anchor.label == "saturation" for s in spec.isolines),
+     "label lines by their saturation states"),
+    ((1, 2), lambda spec: any(c.labels for c in spec.cycles), "label the states of a cycle"),
+    ((1, 2), lambda spec: spec.settings.labels.mode == "rails" or spec.settings.look.axes.legend.location == "auto",
+     "lay out labels on rails or place a legend by itself"),
+    ((1, 2), lambda spec: spec.diagram.is_mollier, "compose the Mollier h,x chart"),
+    ((1, 3), lambda spec: _restyles_the_dome(spec), "restyle the saturation curve or the quality lines"),
+)
+
+
+def _check_core_version(spec):
+    """Raise CoreRefusal when the installed core is too old for something the spec asks for."""
+    version = core_version()
+    for needed, asks_for_it, what in _NEEDS_A_NEWER_CORE:
+        if version < needed and asks_for_it(spec):
+            raise CoreRefusal("this coolplot_core ({0}) is older than {1} and cannot {2}".format(
+                ".".join(str(v) for v in version), ".".join(str(v) for v in needed), what))
+
+
 def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycles=None):
     """(items, axes) of a chart from coolplot-core, or None when the module is absent.
 
@@ -138,25 +174,7 @@ def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycle
     """
     if not available():
         return None
-    if any(s.anchor is not None and s.anchor.label == "saturation" for s in spec.isolines) \
-            and core_version() < (1, 1):
-        # An older core ignores the anchor: lines labelled by value come out
-        # right, lines labelled by their saturation state would not
-        raise CoreRefusal("this coolplot_core ({0}) is older than 1.1 and cannot label lines by their saturation "
-                          "states".format(".".join(str(v) for v in core_version())))
-    if any(c.labels for c in spec.cycles) and core_version() < (1, 2):
-        # An older core ignores the "labels" of a cycle record: the state
-        # labels would be missing from the scene without an error
-        raise CoreRefusal("this coolplot_core ({0}) is older than 1.2 and cannot label the states of a "
-                          "cycle".format(".".join(str(v) for v in core_version())))
-    if core_version() < (1, 2) and (spec.settings.labels.mode == "rails"
-                                    or spec.settings.look.axes.legend.location == "auto"):
-        # An older core refuses the mode and the location by name; say why
-        raise CoreRefusal("this coolplot_core ({0}) is older than 1.2 and cannot lay out labels on rails or "
-                          "place a legend by itself".format(".".join(str(v) for v in core_version())))
-    if spec.diagram.is_mollier and core_version() < (1, 2):
-        raise CoreRefusal("this coolplot_core ({0}) is older than 1.2 and cannot compose the Mollier h,x "
-                          "chart".format(".".join(str(v) for v in core_version())))
+    _check_core_version(spec)
     record = compose_record(spec, domain, curves, plot_size_pt, previous_labels, cycles)
     if core_version() < (1, 2):
         _drop_mollier_scale(record)
