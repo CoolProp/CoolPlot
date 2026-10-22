@@ -719,13 +719,17 @@ class Chart:
         self.spec = self.spec.without_cycle(name)
 
     # cycle_states() returns StatePoints, or plain dicts of values when
-    # ``units`` is given. The two @overload lines tell type checkers which
-    # one a call gets; only the definition after them runs.
+    # ``units`` is given. The @overload lines tell type checkers which one a
+    # call gets; only the definition after them runs.
     @overload
     def cycle_states(self, name: str, units: None = None) -> Dict[int, StatePoint]: ...
 
     @overload
     def cycle_states(self, name: str, units: UnitsLike) -> Dict[int, Dict[str, float]]: ...
+
+    @overload   # units in a variable that may be None: either kind
+    def cycle_states(self, name: str, units: Optional[UnitsLike]
+                     ) -> Union[Dict[int, StatePoint], Dict[int, Dict[str, float]]]: ...
 
     def cycle_states(self, name: str,
                      units: Optional[UnitsLike] = None) -> Union[Dict[int, StatePoint], Dict[int, Dict[str, float]]]:
@@ -778,7 +782,14 @@ class Chart:
         except PropertyError as e:
             raise self._in_units(e) from None
 
-    def to_display(self, key: str, value_SI: Union[float, Numbers]) -> np.ndarray:
+    # A number gives a number, a list or an array an array (see Unit.from_SI)
+    @overload
+    def to_display(self, key: str, value_SI: float) -> float: ...
+
+    @overload
+    def to_display(self, key: str, value_SI: Numbers) -> np.ndarray: ...
+
+    def to_display(self, key: str, value_SI: Union[float, Numbers]) -> Union[float, np.ndarray]:
         """Convert an SI value of quantity ``key`` to the chart's units."""
         return self.spec.units[key].from_SI(value_SI)
 

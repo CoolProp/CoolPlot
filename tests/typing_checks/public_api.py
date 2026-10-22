@@ -13,7 +13,7 @@ fails the check (``warn_unused_ignores``).
 
 The file is only read by mypy, never run; it needs no CoolProp states.
 """
-from typing import Dict, Tuple, assert_type
+from typing import Dict, Optional, Tuple, Union, assert_type
 
 import numpy as np
 
@@ -55,6 +55,11 @@ def property_diagram() -> None:
     assert_type(diagram.add_cycle("Measured", p=[3.0, 15.0], h=np.array([400.0, 450.0])), str)
     assert_type(diagram.cycle_states("Heat pump"), Dict[int, StatePoint])
     assert_type(diagram.cycle_states("Heat pump", units="SI"), Dict[int, Dict[str, float]])
+    maybe_units: Optional[str] = None
+    assert_type(diagram.cycle_states("Heat pump", units=maybe_units),
+                Union[Dict[int, StatePoint], Dict[int, Dict[str, float]]])
+    assert_type(diagram.to_display("T", 273.15), float)
+    assert_type(diagram.to_display("T", [273.15, 300.0]), np.ndarray)
     diagram.move_cycle_state("Heat pump", 2, 450.0, 15.0)
     diagram.remove_cycle("Measured")
 
@@ -62,6 +67,7 @@ def property_diagram() -> None:
     diagram.units = "SI"
     assert_type(diagram.units, UnitSystem)
     diagram.settings = "paper"
+    diagram.settings = diagram.settings.with_(calc="interactive", labels={"mode": "edge"})
     assert_type(diagram.settings, Settings)
     diagram.theme = "dark"
     assert_type(diagram.theme, Theme)

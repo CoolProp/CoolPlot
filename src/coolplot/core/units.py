@@ -20,7 +20,7 @@ from __future__ import annotations
 import warnings
 
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Mapping, Optional, Union
+from typing import TYPE_CHECKING, Mapping, Optional, Sequence, Union, overload
 
 import numpy as np
 
@@ -42,11 +42,25 @@ class Unit:
     offset: float = 0.0
     difference_label: str = ""
 
-    def from_SI(self, value_SI) -> np.ndarray:
+    # A number gives a number, a list or an array an array. The @overload
+    # lines tell type checkers which; only the definition after them runs.
+    @overload
+    def from_SI(self, value_SI: float) -> float: ...
+
+    @overload
+    def from_SI(self, value_SI: Union[Sequence[float], np.ndarray]) -> np.ndarray: ...
+
+    def from_SI(self, value_SI: Union[float, Sequence[float], np.ndarray]) -> Union[float, np.ndarray]:
         """Convert a scalar or array from SI to this unit."""
         return np.asarray(value_SI, dtype=float) * self.scale + self.offset
 
-    def to_SI(self, value) -> np.ndarray:
+    @overload
+    def to_SI(self, value: float) -> float: ...
+
+    @overload
+    def to_SI(self, value: Union[Sequence[float], np.ndarray]) -> np.ndarray: ...
+
+    def to_SI(self, value: Union[float, Sequence[float], np.ndarray]) -> Union[float, np.ndarray]:
         """Convert a scalar or array from this unit to SI."""
         return (np.asarray(value, dtype=float) - self.offset) / self.scale
 

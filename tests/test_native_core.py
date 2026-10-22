@@ -406,6 +406,8 @@ def test_an_older_core_refuses_state_labels(monkeypatch):
 @needs_core
 def test_a_restyled_saturation_curve_composes_the_same_through_the_port():
     pytest.importorskip("CoolProp")
+    if native.core_version() < (1, 3):
+        pytest.skip("coolplot-core 1.3 restyles the saturation curve; an older one is refused (next test)")
     from coolplot import PropertyDiagram
     chart = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
     chart.set_default_lines(labels=True)

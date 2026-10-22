@@ -348,8 +348,8 @@ class Settings:
             if not isinstance(getattr(self, name), cls):
                 raise TypeError("Settings.{0} has to be a {1}.".format(name, cls.__name__))
 
-    def with_(self, calc: Optional[dict] = None, look=None, labels: Optional[dict] = None, page: Optional[dict] = None,
-              branding: Optional[dict] = None) -> "Settings":
+    def with_(self, calc: Union[str, CalcSettings, dict, None] = None, look=None, labels: Optional[dict] = None,
+              page: Optional[dict] = None, branding: Union[BrandingSettings, dict, None] = None) -> "Settings":
         """Copy with some values changed.
 
         ``calc``, ``labels``, ``page`` and ``branding`` take dicts of the
