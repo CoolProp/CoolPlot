@@ -6,6 +6,15 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### Fixed
+- `draw()` and `save()` with a background engine could stop waiting
+  too early, with "Background work makes no progress, the drawing may
+  be incomplete", when a line failed while the scene was being built:
+  a worker process that crashes fails every job of its pool at once, and
+  the retries queued next were taken for no progress. The lines they
+  would have drawn were missing, and the line that crashed was not
+  reported. Progress is now counted over the scene and the wait after it.
+
 ## [1.0.0] - 2026-10-22
 
 The first release on PyPI since 0.1.7. It also holds the development
