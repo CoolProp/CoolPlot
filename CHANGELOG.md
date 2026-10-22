@@ -8,6 +8,11 @@ guide in the documentation says what to change in your code.
 
 ## [1.2.0] - 2026-10-22
 
+### Removed
+- Python 3.10, which reaches its end of life in October 2026:
+  `requires-python` is ">=3.11", so pip on Python 3.10 keeps
+  installing 1.1. coolplot-core's Python module also needs 3.11.
+
 ### Added
 - Air processes on psychrometric charts:
   - `"via": "sensible"` keeps the humidity ratio of the state before
@@ -89,6 +94,7 @@ guide in the documentation says what to change in your code.
   and the size may be fractional.
 
 ### Changed
+- Python 3.15 is supported and tested in CI (Python 3.11 to 3.15).
 - New charts lay out their labels on rails and put the legend inside the
   plot area ("rails" and "auto" are the new defaults of
   `LabelSettings.mode` and `LegendStyle.location`). Specs saved by 1.1

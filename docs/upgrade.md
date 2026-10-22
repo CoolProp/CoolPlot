@@ -11,7 +11,8 @@ not concern you. What changes for you:
   classes are gone: the table in
   [From 0.1 to 0.2](#from-01-the-legacy-api-to-02-and-later) gives the
   equivalent of each call;
-* CoolPlot 1.0 needs Python 3.10 or later and CoolProp 8.0 or later.
+* CoolPlot needs Python 3.11 or later (1.0 and 1.1: 3.10) and CoolProp
+  8.0 or later.
 
 To stay on the legacy API, pin it: `pip install "coolplot<0.2"`.
 
@@ -36,7 +37,8 @@ chart (better numerics may move points).
 
 ## From 1.1 to 1.2
 
-Nothing to change. 1.2 adds `"via": "sensible"`, `PsychrometricChart.mix`,
+1.2 needs Python 3.11 or later; on Python 3.10, pip keeps installing
+1.1. Nothing to change in your code. 1.2 adds `"via": "sensible"`, `PsychrometricChart.mix`,
 `PsychrometricChart.add_zone`, `Chart.state`, state labels
 (`add_cycle(..., labels=...)`) and the Mollier h,x chart
 (`PsychrometricChart(..., style="mollier")`). Humid-air states gain the
