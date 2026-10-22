@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
-from typing import Mapping, Optional, Sequence, Tuple
+from typing import Mapping, Optional, Sequence, Tuple, Union
 
 from ..core.quantities import quantity_key
 from .values import (AxesStyle, Dash, Font, LegendStyle, LineStyle, MarkerStyle, TextStyle,
@@ -277,7 +277,7 @@ CLASSIC = Theme(
 THEMES = {t.name: t for t in (DEFAULT, DARK, PRINT, CLASSIC)}
 
 
-def get_theme(theme) -> Theme:
+def get_theme(theme: Union[str, Theme, None]) -> Theme:
     """Accept a Theme or the name of a preset: 'default', 'dark', 'print', 'classic'."""
     if isinstance(theme, Theme):
         return theme

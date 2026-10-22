@@ -35,6 +35,17 @@ starting with an underscore, the helpers in `coolplot.core`,
 `coolplot.testing`, the scene item ids, and the exact coordinates of a
 chart (better numerics may move points).
 
+## From 1.2 to 1.3
+
+Nothing to change in your code to run it. CoolPlot now ships its type
+annotations (the package carries `py.typed`), so a type checker such as
+mypy or pyright checks your calls to CoolPlot instead of taking every
+CoolPlot name as unknown. Code that passed the checker before may now
+get reports where it passes a value of the wrong kind, for example a
+number for a unit system. A range (`range=` of `set_lines`, `"range"` of
+`at_saturation`, `T_range` and `W_range` of a psychrometric chart) that
+is not two values is refused with a ValueError that says so.
+
 ## From 1.1 to 1.2
 
 1.2 needs Python 3.11 or later; on Python 3.10, pip keeps installing

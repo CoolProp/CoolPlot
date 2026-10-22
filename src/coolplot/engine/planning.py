@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 
+from ..core.diagram_type import Family
 from ..core.floats import same_number
 from ..core.quantities import get_quantity
 from ..spec.diagram import DiagramSpec, IsolineSet, SaturationAnchor
@@ -199,18 +200,18 @@ def plan(spec: DiagramSpec, domain: Domain) -> Tuple[CurveRequest, ...]:
     add_saturation = show is True and domain.saturation and boundary_family is not None
     requests = []
 
-    def saturation_requests(planned_values):
+    def saturation_requests(boundary: Family, planned_values):
         """The lines of the saturation curve the family did not plan itself."""
-        key = boundary_family.key
+        key = boundary.key
         points = calc.saturation_points if key == "Q" else calc.points
         return [CurveRequest(isoline_id(key, b), key, float(b), points, False)
-                for b in boundary_family.boundary if not any(same_number(b, v) for v in planned_values)]
+                for b in boundary.boundary if not any(same_number(b, v) for v in planned_values)]
 
     for iso_set in spec.isolines:
-        family = spec.diagram.family(iso_set.key)
+        family = spec.diagram.require_family(iso_set.key)
         default_points = calc.saturation_points if iso_set.key == "Q" else calc.points
         points = iso_set.points or default_points
-        saturation = {}
+        saturation: Dict[float, float] = {}   # line value -> the saturation state that names it
         if iso_set.anchor is not None:
             # The first saturation state that gives a value names its line
             for saturation_SI, value_SI in domain.anchor_pairs(iso_set.key, iso_set.anchor):
@@ -224,9 +225,9 @@ def plan(spec: DiagramSpec, domain: Domain) -> Tuple[CurveRequest, ...]:
             planned.append(float(value_SI))
             requests.append(CurveRequest(isoline_id(iso_set.key, value_SI), iso_set.key, float(value_SI),
                                          points, iso_set.labels, saturation.get(float(value_SI))))
-        if add_saturation and family.key == boundary_family.key:
-            requests.extend(saturation_requests(planned))   # next to the family's own lines
+        if add_saturation and boundary_family is not None and family.key == boundary_family.key:
+            requests.extend(saturation_requests(boundary_family, planned))   # next to the family's own lines
             add_saturation = False
-    if add_saturation:   # the family is not drawn: the saturation curve comes last
-        requests.extend(saturation_requests([]))
+    if add_saturation and boundary_family is not None:   # the family is not drawn: the saturation curve comes last
+        requests.extend(saturation_requests(boundary_family, []))
     return tuple(requests)

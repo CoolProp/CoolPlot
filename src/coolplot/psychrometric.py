@@ -19,18 +19,20 @@ Example
 from __future__ import annotations
 
 from numbers import Integral
+from typing import Callable, Optional, Union
 
 import numpy as np
 
-from .chart import REMOVED_NAMES, Chart
+from .chart import REMOVED_NAMES, Chart, Numbers, StateEntry, range_in_SI
 from .core.diagram_type import DiagramType
 from .core.limits import Region
-from .core.units import get_unit_system
+from .core.units import UnitsLike, get_unit_system
 from .engine import CurveCache, Engine
-from .spec import DiagramSpec, HumidAirSpec, get_settings
+from .spec import DiagramSpec, HumidAirSpec, Settings, get_settings
 from .core.limits import within
 from .core.errors import PropertyError
 from .core.state import StatePoint
+from .style.theme import Theme
 from .style.values import LineStyle, MarkerStyle
 from .thermo.humid_air import mixed_air
 
@@ -75,9 +77,12 @@ class PsychrometricChart(Chart):
                           move_process_state="use move_cycle_state", remove_process="use remove_cycle",
                           process_states="use cycle_states, which lists the states by number")
 
-    def __init__(self, p: float = None, T_range=(-10.0, 50.0), W_range=(0.0, 30.0), units="engineering",
-                 theme=None, settings=None, points: int = None, engine: Engine = None, cache: CurveCache = None,
-                 background: str = None, on_ready=None, workers: int = None, style: str = "psychrometric"):
+    def __init__(self, p: Optional[float] = None, T_range: Numbers = (-10.0, 50.0), W_range: Numbers = (0.0, 30.0),
+                 units: UnitsLike = "engineering", theme: Union[str, Theme, None] = None,
+                 settings: Union[str, Settings, None] = None, points: Optional[int] = None,
+                 engine: Optional[Engine] = None, cache: Optional[CurveCache] = None, background: Optional[str] = None,
+                 on_ready: Optional[Callable[[Chart], None]] = None, workers: Optional[int] = None,
+                 style: str = "psychrometric") -> None:
         if style not in STYLES:
             raise ValueError("Unknown style {0!r}, expected one of {1}.".format(style, sorted(STYLES)))
         units = get_unit_system(units, stacklevel=3)
@@ -89,17 +94,18 @@ class PsychrometricChart(Chart):
         p_Pa = 101325.0 if p is None else float(units["p"].to_SI(p))
         diagram = DiagramType.parse(STYLES[style])
         temperature = "Thx" if diagram.is_mollier else "T"   # the Mollier chart is bounded by its temperature scale
-        T_range_K = tuple(units[temperature].to_SI(T_range).tolist())
+        T_range_K = range_in_SI(units[temperature], T_range)
+        W_range_SI = range_in_SI(units["W"], W_range)
+        assert T_range_K is not None and W_range_SI is not None   # both were given
         for T_K in T_range_K:
             if not within(T_K, HumidAirSpec.T_LIMITS_K):
                 raise ValueError("Temperatures have to lie between {0} and {1} K for HAPropsSI, got {2} K "
                                  "(deg C with units='engineering', K with 'SI').".format(
                                      HumidAirSpec.T_LIMITS_K[0], HumidAirSpec.T_LIMITS_K[1], T_range_K))
-        W_range = tuple(units["W"].to_SI(W_range).tolist())
-        if min(W_range) < 0.0:
-            raise ValueError("Humidity ratios have to be at least 0, got {0}.".format(W_range))
+        if min(W_range_SI) < 0.0:
+            raise ValueError("Humidity ratios have to be at least 0, got {0}.".format(W_range_SI))
         spec = DiagramSpec(fluid=HumidAirSpec(p_Pa), diagram=diagram, units=units,
-                           limits=Region(((temperature, T_range_K), ("W", W_range))), settings=settings)
+                           limits=Region(((temperature, T_range_K), ("W", W_range_SI))), settings=settings)
         Chart.__init__(self, spec, engine, cache, background, on_ready, workers)
 
     @property
@@ -118,11 +124,11 @@ class PsychrometricChart(Chart):
         return self.spec.settings.calc.points
 
     @points.setter
-    def points(self, value):
+    def points(self, value: int) -> None:
         self.settings = self.spec.settings.with_(calc={"points": int(value)})
 
-    def add_zone(self, name: str, T_range, RH_range, label: str = None, line_style: LineStyle = None,
-                 units=None, segments: int = 12) -> str:
+    def add_zone(self, name: str, T_range: Numbers, RH_range: Numbers, label: Optional[str] = None,
+                 line_style: Optional[LineStyle] = None, units: Optional[UnitsLike] = None, segments: int = 12) -> str:
         """Outline a region of dry-bulb temperature and relative humidity, e.g. a comfort zone.
 
         ``T_range`` and ``RH_range`` are (min, max) in the chart's units or
@@ -156,7 +162,8 @@ class PsychrometricChart(Chart):
                               marker_style=MarkerStyle(size_pt=0.0, face_color="none", edge_color="none"),
                               labels=labels)
 
-    def mix(self, a, b, m_dot_a_kg_s: float = 1.0, m_dot_b_kg_s: float = 1.0, units=None) -> StatePoint:
+    def mix(self, a: StateEntry, b: StateEntry, m_dot_a_kg_s: float = 1.0, m_dot_b_kg_s: float = 1.0,
+            units: Optional[UnitsLike] = None) -> StatePoint:
         """The state (SI units) after two streams of air mix adiabatically.
 
         ``a`` and ``b`` are StatePoints or dicts of two properties in the

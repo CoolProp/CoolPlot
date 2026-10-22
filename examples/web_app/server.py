@@ -20,9 +20,17 @@ from __future__ import annotations
 import queue
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import List
+from typing import List, Optional, Set
 
 from coolplot.render.web import WebRenderer
+
+
+class _Client(queue.Queue):
+    """The messages waiting for one browser; ``dropped`` once it fell too far behind."""
+
+    def __init__(self, maxsize: int):
+        super().__init__(maxsize=maxsize)
+        self.dropped = False
 
 
 class WebServer:
@@ -50,7 +58,7 @@ class WebServer:
     def __init__(self, renderer: WebRenderer, host: str = "127.0.0.1", port: int = 0, title: str = "CoolPlot"):
         self.renderer = renderer
         self.title = title
-        self._clients: List[queue.Queue] = []
+        self._clients: List[_Client] = []
         self._clients_lock = threading.Lock()
         self._started = False
         server = self
@@ -129,8 +137,7 @@ class WebServer:
                 self.send_header("Content-Type", "text/event-stream")
                 self.send_header("Cache-Control", "no-cache")
                 self.end_headers()
-                client = queue.Queue(maxsize=server.MAX_QUEUED)
-                client.dropped = False
+                client = _Client(maxsize=server.MAX_QUEUED)
                 # Under the renderer's lock no patch can be sent between
                 # the snapshot and the registration of this browser
                 with server.renderer.lock:
@@ -159,11 +166,10 @@ class WebServer:
         # Host headers that name this server; None when it is bound to a
         # public address, where the name it is reached by is not known
         bound = self._httpd.server_address[1]
+        self._hosts: Optional[Set[str]] = None
         if host in ("127.0.0.1", "localhost"):
             self._hosts = {"127.0.0.1:{0}".format(bound), "localhost:{0}".format(bound)}
-        else:
-            self._hosts = None
-        self._thread = None
+        self._thread: Optional[threading.Thread] = None
         renderer.listen(self._broadcast)
 
     def _broadcast(self, message: str):
@@ -177,6 +183,8 @@ class WebServer:
     @property
     def url(self) -> str:
         host, port = self._httpd.server_address[:2]
+        if isinstance(host, bytes):   # only for a Unix socket, which this server never binds
+            host = host.decode()
         return "http://{0}:{1}/".format(host, port)
 
     def start(self) -> "WebServer":

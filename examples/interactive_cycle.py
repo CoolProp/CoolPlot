@@ -40,8 +40,8 @@ def main():
     status = fig.text(0.01, 0.01, "", family="monospace", fontsize=8)
     readout = fig.text(0.01, 0.97, "", family="monospace", fontsize=8)
 
-    ax_evap = fig.add_axes([0.15, 0.10, 0.7, 0.03])
-    ax_cond = fig.add_axes([0.15, 0.05, 0.7, 0.03])
+    ax_evap = fig.add_axes((0.15, 0.10, 0.7, 0.03))
+    ax_cond = fig.add_axes((0.15, 0.05, 0.7, 0.03))
     T_evap = Slider(ax_evap, "T_evap / deg C", -40.0, 15.0, valinit=-5.0)
     T_cond = Slider(ax_cond, "T_cond / deg C", 20.0, 70.0, valinit=40.0)
 

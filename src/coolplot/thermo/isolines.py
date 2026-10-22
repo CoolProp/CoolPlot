@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, replace
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -104,7 +104,8 @@ class Curve:
     def from_dict(cls, data: dict) -> "Curve":
         """A curve from its record, see :meth:`to_dict`."""
         nan = float("nan")
-        return cls([nan if v is None else v for v in data["x"]], [nan if v is None else v for v in data["y"]],
+        return cls(np.array([nan if v is None else v for v in data["x"]], dtype=float),
+                   np.array([nan if v is None else v for v in data["y"]], dtype=float),
                    data.get("n_failed", 0), data.get("n_fallback", 0), data.get("n_inserted", 0),
                    data.get("method", "flash"), data.get("reason", ""),
                    data.get("n_evaluated", 0), data.get("n_outside", 0))
@@ -345,7 +346,7 @@ class _Line:
     def _evaluate(self, u: float, careful: bool) -> Optional[Sample]:
         return self.solver.sample(self.sweep.value(u), careful)
 
-    def _part(self, u_lo: float, u_hi: float, start: Sample = None, end: Sample = None):
+    def _part(self, u_lo: float, u_hi: float, start: Optional[Sample] = None, end: Optional[Sample] = None):
         """Step the single-phase part of the line between two parameters and keep its points."""
         if u_hi <= u_lo:
             return
@@ -432,7 +433,7 @@ class _Line:
             return []
         # The first crossing on each side of the envelope, keyed by side
         # (False: bubble, flag Q = 0; True: dew, flag Q = 1)
-        found = {}
+        found: Dict[bool, Tuple[float, float, Sample]] = {}
         for w, q, sample in _envelope_crossings(envelope, self.diagram, self.iso_key, self.value_SI,
                                                 self.sweep.key, self.metric):
             found.setdefault(bool(q > 0.5), (w, q, sample))
@@ -444,10 +445,10 @@ class _Line:
             q = q_a + (q_b - q_a) * u
             return self._in_sweep_range(_saturation_sample(self.fluid, self.iso_key, self.value_SI, q, self.diagram,
                                                            self.metric, self.sweep.key))
-        sample_a, sample_b = self._in_sweep_range(sample_a), self._in_sweep_range(sample_b)
-        found = trace(evaluate, self.metric, self.points, 0.0, 1.0, sample_a, sample_b, skip_failures=True)
+        start, end = self._in_sweep_range(sample_a), self._in_sweep_range(sample_b)
+        found = trace(evaluate, self.metric, self.points, 0.0, 1.0, start, end, skip_failures=True)
         self._count(found)
-        self.n_inserted += sum(1 for s in found.samples if s is sample_a or s is sample_b)
+        self.n_inserted += sum(1 for s in found.samples if s is start or s is end)
         self._extend(found.samples)
 
     def across_the_dome(self):

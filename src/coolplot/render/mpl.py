@@ -49,6 +49,7 @@ import math
 import os
 import re
 import warnings
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 import matplotlib
@@ -61,7 +62,7 @@ from matplotlib.markers import MarkerStyle as _MplMarker
 from ..core.events import Click, Drag, DragEnd, DragStart, Hover, Resized, ViewChanged
 from ..core.numbers import format_number
 from ..core.images import PNG
-from ..scene import BADGE_BASELINE, AxesSpec, Item, Line, Markers, Text, drawable_limits, first_picture
+from ..scene import BADGE_BASELINE, AxesSpec, SceneItem, Line, Markers, Text, drawable_limits, first_picture
 from ..style.values import AxesStyle, dash_pattern_pt
 from .base import Renderer, SyncReport
 from ..core.floats import is_zero, same_number, same_numbers
@@ -76,8 +77,8 @@ _WATERMARK_Z = 0.25   # above the plot background, below the grid (0.5) and the 
 _BADGE_Z = _LEGEND_Z - 1.0   # above the items and the frame, below the legend
 _GENERIC = {"sans-serif", "serif", "monospace", "cursive", "fantasy"}
 _installed = None
-_registered = set()   # font files given in Font.files, registered once per process
-_outlines = {}        # font file -> True if it has TrueType outlines
+_registered: Set[str] = set()      # font files given in Font.files, registered once per process
+_outlines: Dict[Tuple[str, int], bool] = {}   # (font file, face) -> True if it has TrueType outlines
 #: File formats with embedded fonts, and the rcParam saying how they are embedded.
 _FONTTYPE_RC = {"pdf": "pdf.fonttype", "ps": "ps.fonttype", "eps": "ps.fonttype"}
 #: Fonts that ship with matplotlib as TrueType: the last resort for embedding.
@@ -194,7 +195,8 @@ def _legend_frame_kwargs(style) -> dict:
                 facecolor=style.background or "none", edgecolor=style.frame_color or "none", framealpha=1.0)
 
 
-_png_arrays = {}   # id of the picture bytes -> (bytes, decoded array); a logo is decoded once per process
+# id of the picture bytes -> (bytes, decoded array); a logo is decoded once per process
+_png_arrays: Dict[int, Tuple[bytes, np.ndarray]] = {}
 
 
 def _png_array(picture):
@@ -240,7 +242,7 @@ class _UnsampledBboxImage(BboxImage):
         return self.get_interpolation() == "none"
 
 
-def _full_resolution_image(array, zoom: float, alpha: float = None):
+def _full_resolution_image(array, zoom: float, alpha: Optional[float] = None):
     """An OffsetImage whose image is an :class:`_UnsampledBboxImage`.
 
     OffsetImage creates its BboxImage itself; swapping the class of that
@@ -317,7 +319,7 @@ def _reproducible_metadata(fmt: str, metadata: dict, title: str) -> dict:
 
 def _save_rc(fmt: str, pdf_fonts: str) -> dict:
     """matplotlib settings for one save: fixed SVG ids instead of random ones, and the font type."""
-    rc = {"svg.hashsalt": "coolplot"} if fmt == "svg" else {}
+    rc: Dict[str, Any] = {"svg.hashsalt": "coolplot"} if fmt == "svg" else {}
     if fmt in _FONTTYPE_RC:
         rc[_FONTTYPE_RC[fmt]] = _fonttype(pdf_fonts)
     return rc
@@ -390,7 +392,8 @@ def _embeddable(families, weight, style):
     Matplotlib falls back through the whole family list glyph by glyph, so
     every family of the list counts, not just the first one.
     """
-    keep, dropped = [], []
+    keep: List[str] = []
+    dropped: List[str] = []
     for name in families:
         found = _font_file(name, weight, style)
         if found is not None:
@@ -451,7 +454,7 @@ class MatplotlibRenderer(Renderer):
         super().__init__()
         self.strict_fonts = bool(strict_fonts)
         self._tick_families = ["sans-serif"]   # set with the axes
-        self._font_warnings = set()            # font messages already given when saving
+        self._font_warnings: Set[str] = set()   # font messages already given when saving
         self.owns_canvas = ax is None
         if ax is None:
             if use_pyplot:
@@ -463,18 +466,20 @@ class MatplotlibRenderer(Renderer):
             ax = figure.add_subplot()
         self.ax = ax
         self.figure = ax.figure
-        self._artists = {}
-        self._branding = []   # the badge and watermark artists, replaced with the axes
-        self._badge_logo = None   # (OffsetImage, RGBA pixels, background RGB) of the badge logo, for PostScript
-        self._halos = {}   # item id -> the text artist drawing its halo
-        self._text_angles = {}   # item id -> the data angle its text was given
+        # Matplotlib artists are typed Any here: each item has artists of its own kind
+        self._artists: Dict[str, Any] = {}
+        self._branding: List[Any] = []   # the badge and watermark artists, replaced with the axes
+        # (OffsetImage, RGBA pixels, background RGB) of the badge logo, for PostScript
+        self._badge_logo: Optional[Tuple[Any, np.ndarray, Tuple[float, ...]]] = None
+        self._halos: Dict[str, Any] = {}   # item id -> the text artist drawing its halo
+        self._text_angles: Dict[str, float] = {}   # item id -> the data angle its text was given
         # item id -> (x, y, dx, dy) of the labels whose screen angle is
         # computed here instead of by matplotlib (see _apply_text); a zoom,
         # pan or resize changes that angle, so it is computed again then.
-        self._screen_angle_texts = {}
+        self._screen_angle_texts: Dict[str, Tuple[float, float, float, float]] = {}
         ax.callbacks.connect("xlim_changed", self._refresh_screen_angles)
         ax.callbacks.connect("ylim_changed", self._refresh_screen_angles)
-        self._rank = {}
+        self._rank: Dict[str, int] = {}
         # The frame goes above all items. Matplotlib draws grid lines as part
         # of the axis artists, so the axes (with their ticks) stay below the
         # items to keep the grid there.
@@ -522,7 +527,7 @@ class MatplotlibRenderer(Renderer):
         self._badge_logo = None
         mark = axes.watermark
         picture = _png_or_warn(mark.picture, "watermark") if mark is not None else None
-        if picture is not None:
+        if mark is not None and picture is not None:
             image = _full_resolution_image(_png_array(picture), mark.width_pt / picture.width_px, mark.opacity)
             box = AnchoredOffsetbox(loc="center", child=image, frameon=False, pad=0.0, borderpad=0.0)
             box.set_zorder(_WATERMARK_Z)
@@ -564,7 +569,7 @@ class MatplotlibRenderer(Renderer):
         packed = VPacker(children=children, align="left", pad=0.0, sep=badge.gap_pt)
         # pad and borderpad are fractions of the font size of ``prop``
         box = AnchoredOffsetbox(loc=badge.location, child=packed, pad=badge.padding_pt / size,
-                                borderpad=badge.inset_pt / size, prop=dict(size=size), frameon=True)
+                                borderpad=badge.inset_pt / size, prop=FontProperties(size=size), frameon=True)
         box.patch.set_boxstyle("square", pad=0.0)
         box.patch.set_facecolor(to_rgba(badge.background, badge.background_alpha) if badge.background else "none")
         box.patch.set_edgecolor(badge.frame_color or "none")
@@ -621,7 +626,7 @@ class MatplotlibRenderer(Renderer):
                     solid_capstyle=_CAPS[grid.cap], dash_capstyle=_CAPS[grid.cap],
                     solid_joinstyle=grid.join, dash_joinstyle=grid.join)
 
-    def _add(self, item: Item):
+    def _add(self, item: SceneItem):
         if isinstance(item, Line):
             (artist,) = self.ax.plot([], [])
         elif isinstance(item, Markers):
@@ -634,7 +639,7 @@ class MatplotlibRenderer(Renderer):
         self._rank.setdefault(item.id, len(self._rank))
         self._apply(artist, item)
 
-    def _update(self, old: Item, new: Item):
+    def _update(self, old: SceneItem, new: SceneItem):
         if type(old) is not type(new):
             # A new artist replaces the old one in the same place in the stack
             rank = self._rank.get(old.id)
@@ -645,7 +650,7 @@ class MatplotlibRenderer(Renderer):
             return
         self._apply(self._artists[new.id], new)
 
-    def _remove(self, item: Item):
+    def _remove(self, item: SceneItem):
         artist = self._artists.pop(item.id, None)
         self._rank.pop(item.id, None)
         if artist is not None:
@@ -696,7 +701,7 @@ class MatplotlibRenderer(Renderer):
             self.figure.canvas.draw_idle()
 
     # Applying item properties -------------------------------------------
-    def _apply(self, artist, item: Item):
+    def _apply(self, artist, item: SceneItem):
         """Copy every property of an item onto its artist."""
         artist.set_zorder(_ITEM_BASE + self._rank.get(item.id, len(self._rank)) * _RANK_STEP)
         if isinstance(item, Line):
@@ -810,7 +815,7 @@ class MatplotlibRenderer(Renderer):
         if getattr(self, "_event_ids", None) is not None:
             return
         canvas = self.figure.canvas
-        self._press = None      # dict describing the pressed button, see _on_press
+        self._press: Optional[Dict[str, Any]] = None   # the pressed button, see _on_press
         self._buttons_reported = False
         self._last_view = self._view()
         # The view is reported when the figure is drawn, not on every limit
@@ -905,6 +910,8 @@ class MatplotlibRenderer(Renderer):
 
     def _end_press(self, x, y):
         press, self._press = self._press, None
+        if press is None:   # no button is held
+            return
         if press["dragging"]:
             self._emit(DragEnd(press["item_id"], press["index"], x, y))
         elif not press["moved"]:
@@ -961,7 +968,7 @@ class MatplotlibRenderer(Renderer):
     # Simulated input, for tests and the conformance kit
     def simulate_pointer(self, kind: str, x: float, y: float, button: int = 1):
         """Feed a pointer event at (x, y) in data units: "move", "press" or "release"."""
-        from matplotlib.backend_bases import MouseEvent
+        from matplotlib.backend_bases import MouseButton, MouseEvent
         self._start_events()
         if self.figure.stale:
             self.figure.draw_without_rendering()
@@ -972,7 +979,7 @@ class MatplotlibRenderer(Renderer):
             held = [self._press["button"]] if self._press is not None else None
             event = MouseEvent(name, self.figure.canvas, x_px, y_px, buttons=held)
         else:
-            event = MouseEvent(name, self.figure.canvas, x_px, y_px, button=button)
+            event = MouseEvent(name, self.figure.canvas, x_px, y_px, button=MouseButton(button))
         self.figure.canvas.callbacks.process(name, event)
 
     def simulate_view(self, x_limits, y_limits):
@@ -991,7 +998,7 @@ class MatplotlibRenderer(Renderer):
         """Read back the item as drawn, from its artists."""
         artist = self._artists[item_id]   # KeyError for unknown ids, as required
         item = self._drawn[item_id]
-        out = {"visible": bool(artist.get_visible()), "clip": bool(artist.get_clip_on())}
+        out: Dict[str, Any] = {"visible": bool(artist.get_visible()), "clip": bool(artist.get_clip_on())}
         if isinstance(item, Line):
             out.update(self._describe_line(artist))
         elif isinstance(item, Markers):
@@ -1146,7 +1153,7 @@ class MatplotlibRenderer(Renderer):
     def _extra_axes_description(self, x_tick, spine) -> dict:
         """y-axis ticks, all frame sides, legend style, grid per axis, stacking."""
         ax = self.ax
-        out = {}
+        out: Dict[str, Any] = {}
         y_tick = ax.yaxis.get_major_ticks()[0]
         out.update(y_tick_direction=getattr(y_tick, "_tickdir", None),   # private: no public getter
                    y_tick_color=_hex_or_none(y_tick.tick1line.get_color()),
@@ -1297,7 +1304,7 @@ class MatplotlibRenderer(Renderer):
             _strip_postscript_date(path)
 
     @staticmethod
-    def save_pages(path, renderers, pdf_fonts: str = "truetype", metadata: dict = None):
+    def save_pages(path, renderers, pdf_fonts: str = "truetype", metadata: Optional[dict] = None):
         """Write the figures of several renderers into one PDF, one per page.
 
         Fonts and metadata as for :meth:`save`; the title is that of the

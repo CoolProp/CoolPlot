@@ -10,19 +10,25 @@ units, styling, drawing) is what every chart offers. See
 from __future__ import annotations
 
 import warnings
+from typing import Callable, Optional, Union
 
 from CoolProp import AbstractState
 
 from .chart import REMOVED_NAMES, Chart, check_fluid
 from .core.diagram_type import DiagramType
-from .core.limits import get_tp_limits
-from .core.units import get_unit_system
+from .core.limits import TpLimits, TpLimitsLike, get_tp_limits
+from .core.units import UnitsLike, get_unit_system
 from .engine import CurveCache, Engine
-from .spec import DiagramSpec, FluidSpec, get_settings
+from .spec import DiagramSpec, FluidSpec, Settings, get_settings
+from .style.theme import Theme
 from .thermo.fluid import Fluid
 
+# A fluid as a property diagram takes it, for the annotations: a CoolProp
+# fluid string such as "HEOS::R290", a FluidSpec, a Fluid or a CoolProp.AbstractState.
+FluidLike = Union[str, FluidSpec, Fluid, AbstractState]
 
-def fluid_spec(fluid) -> FluidSpec:
+
+def fluid_spec(fluid: FluidLike) -> FluidSpec:
     """A FluidSpec from a FluidSpec, a fluid string, a Fluid or a CoolProp.AbstractState.
 
     An AbstractState is copied (fluid, fractions and interaction
@@ -80,9 +86,11 @@ class PropertyDiagram(Chart):
     _removed_names = dict(REMOVED_NAMES, set_process="use add_cycle, which computes the paths between the "
                           "states itself", remove_process="use remove_cycle")
 
-    def __init__(self, fluid, diagram_type="ph", units="engineering", tp_limits="DEF", theme=None,
-                 settings=None, engine: Engine = None, cache: CurveCache = None, background: str = None,
-                 on_ready=None, workers: int = None):
+    def __init__(self, fluid: FluidLike, diagram_type: Union[str, DiagramType] = "ph",
+                 units: UnitsLike = "engineering", tp_limits: TpLimitsLike = "DEF",
+                 theme: Union[str, Theme, None] = None, settings: Union[str, Settings, None] = None,
+                 engine: Optional[Engine] = None, cache: Optional[CurveCache] = None, background: Optional[str] = None,
+                 on_ready: Optional[Callable[[Chart], None]] = None, workers: Optional[int] = None) -> None:
         settings = get_settings(settings)
         if theme is not None:
             settings = settings.with_(look=theme)
@@ -97,10 +105,12 @@ class PropertyDiagram(Chart):
     @property
     def fluid(self) -> Fluid:
         """The working Fluid of the engine, e.g. for :func:`coolplot.thermo.state_point`."""
-        return self.engine.fluid(self.spec.fluid)
+        fluid = self.engine.fluid(self.spec.fluid)
+        assert isinstance(fluid, Fluid)   # the spec of a property diagram names a fluid, not humid air
+        return fluid
 
     @fluid.setter
-    def fluid(self, value):
+    def fluid(self, value: FluidLike) -> None:
         new = fluid_spec(value)
         check_fluid(self.engine, new)   # before anything changes: a bad name leaves the diagram as it was
         fixed = [c.name for c in self.spec.cycles if any(given.state is not None for _, given in c.states)]
@@ -115,14 +125,14 @@ class PropertyDiagram(Chart):
         return self.spec.diagram
 
     @diagram_type.setter
-    def diagram_type(self, value):
+    def diagram_type(self, value: Union[str, DiagramType]) -> None:
         diagram = DiagramType.parse(value)
         # Families that cannot be drawn in the new diagram are dropped
         kept = tuple(s for s in self.spec.isolines if diagram.supports(s.key))
         self.spec = self.spec.with_(diagram=diagram, isolines=kept, view_SI=(None, None))
 
     @property
-    def tp_limits(self):
+    def tp_limits(self) -> TpLimits:
         """The temperature and pressure region the isolines cover.
 
         A preset name, a list of four SI values or a TpLimits.
@@ -130,5 +140,5 @@ class PropertyDiagram(Chart):
         return self.spec.limits
 
     @tp_limits.setter
-    def tp_limits(self, value):
+    def tp_limits(self, value: TpLimitsLike) -> None:
         self.spec = self.spec.with_(limits=get_tp_limits(value))

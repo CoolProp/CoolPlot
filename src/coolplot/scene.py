@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field, fields, replace
-from typing import Dict, Iterable, Iterator, Optional, Tuple
+from typing import Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -157,6 +157,12 @@ class Text(Item):
                 raise ValueError("Text {0!r}: direction has to be two finite numbers, not both zero, or None; "
                                  "got {1}.".format(self.id, self.direction))
             object.__setattr__(self, "direction", direction)
+
+
+# The kinds of item a scene holds, for the annotations. Code that reads x,
+# y or style of an item takes this union rather than Item, which has only
+# the fields the three share.
+SceneItem = Union[Line, Markers, Text]
 
 
 def _finite_pair(values) -> bool:
@@ -455,9 +461,9 @@ class Scene:
     an application can cheaply check whether anything happened at all.
     """
 
-    def __init__(self, axes: AxesSpec = None, items: Iterable[Item] = ()):
+    def __init__(self, axes: Optional[AxesSpec] = None, items: Iterable[SceneItem] = ()):
         self._axes = axes or AxesSpec()
-        self._items: Dict[str, Item] = {}
+        self._items: Dict[str, SceneItem] = {}
         self.revision = 0
         for item in items:
             self.put(item)
@@ -471,13 +477,13 @@ class Scene:
     def __len__(self) -> int:
         return len(self._items)
 
-    def __iter__(self) -> Iterator[Item]:
+    def __iter__(self) -> Iterator[SceneItem]:
         return iter(list(self._items.values()))
 
     def __contains__(self, item_id: str) -> bool:
         return item_id in self._items
 
-    def __getitem__(self, item_id: str) -> Item:
+    def __getitem__(self, item_id: str) -> SceneItem:
         return self._items[item_id]
 
     def ids(self):
@@ -495,7 +501,7 @@ class Scene:
         Items that share a legend text form one entry whose sample shows all
         of them, e.g. the line and the markers of a cycle.
         """
-        entries = {}
+        entries: Dict[str, List[SceneItem]] = {}
         for item in self._items.values():
             if item.legend and item.visible:
                 entries.setdefault(item.legend, []).append(item)
@@ -514,7 +520,7 @@ class Scene:
         self.revision += 1
         return True
 
-    def put(self, item: Item) -> bool:
+    def put(self, item: SceneItem) -> bool:
         """Add or replace one item; returns True if the scene changed.
 
         An item equal to the stored one is ignored and the stored object is
@@ -535,7 +541,7 @@ class Scene:
         self.revision += 1
         return True
 
-    def replace_all(self, items: Iterable[Item], axes: AxesSpec = None) -> bool:
+    def replace_all(self, items: Iterable[SceneItem], axes: Optional[AxesSpec] = None) -> bool:
         """Make the scene contain exactly ``items`` and nothing else.
 
         This is the declarative way to update a scene: describe the complete
@@ -546,7 +552,7 @@ class Scene:
         changed = False
         if axes is not None:
             changed = self.set_axes(axes)
-        new_items: Dict[str, Item] = {}
+        new_items: Dict[str, SceneItem] = {}
         for item in items:
             if item.id in new_items:
                 raise ValueError("Duplicate item id '{0}' in scene.".format(item.id))
@@ -611,7 +617,7 @@ def _float(value) -> float:
     return float("nan") if value is None else float(value)
 
 
-def item_to_dict(item: Item) -> dict:
+def item_to_dict(item: SceneItem) -> dict:
     """An item as plain data; ``"type"`` says which kind it is."""
     out = {"type": next(name for name, cls in _ITEM_TYPES.items() if cls is type(item)),
            "id": item.id, "group": item.group, "role": item.role, "legend": item.legend,
@@ -624,7 +630,7 @@ def item_to_dict(item: Item) -> dict:
     return out
 
 
-def item_from_dict(data: dict) -> Item:
+def item_from_dict(data: dict) -> SceneItem:
     """The inverse of :func:`item_to_dict`."""
     try:
         cls = _ITEM_TYPES[data["type"]]

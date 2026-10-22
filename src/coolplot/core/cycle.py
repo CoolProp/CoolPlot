@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Dict, Optional, Sequence, Tuple
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 from .quantities import quantity_key
 from .state import StatePoint
@@ -76,7 +76,7 @@ class StateInput:
         """The record of docs/reference/contracts.md for this state input."""
         if self.state is not None:
             return {"state": self.state.to_dict()}
-        out = {"props": [list(p) for p in self.props]}
+        out: Dict[str, Any] = {"props": [list(p) for p in self.props]}
         if self.via is not None:
             out["via"] = self.via
             if self.via in ("compression", "expansion"):

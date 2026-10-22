@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import asdict, dataclass, field, fields, replace
-from typing import Tuple
+from typing import Optional, Tuple, Union
 
 from ..core.numbers import format_number
 from ..style.theme import Theme, get_theme
@@ -348,8 +348,8 @@ class Settings:
             if not isinstance(getattr(self, name), cls):
                 raise TypeError("Settings.{0} has to be a {1}.".format(name, cls.__name__))
 
-    def with_(self, calc: dict = None, look=None, labels: dict = None, page: dict = None,
-              branding: dict = None) -> "Settings":
+    def with_(self, calc: Optional[dict] = None, look=None, labels: Optional[dict] = None, page: Optional[dict] = None,
+              branding: Optional[dict] = None) -> "Settings":
         """Copy with some values changed.
 
         ``calc``, ``labels``, ``page`` and ``branding`` take dicts of the
@@ -412,7 +412,7 @@ PRESETS = {
 }
 
 
-def get_settings(settings) -> Settings:
+def get_settings(settings: Union[str, Settings, None]) -> Settings:
     """Accept a Settings value, a preset name or None (the "screen" preset)."""
     if settings is None:
         return PRESETS["screen"]

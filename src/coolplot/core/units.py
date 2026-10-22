@@ -20,7 +20,7 @@ from __future__ import annotations
 import warnings
 
 from dataclasses import dataclass, field, replace
-from typing import Mapping
+from typing import TYPE_CHECKING, Mapping, Optional, Union
 
 import numpy as np
 
@@ -42,11 +42,11 @@ class Unit:
     offset: float = 0.0
     difference_label: str = ""
 
-    def from_SI(self, value_SI):
+    def from_SI(self, value_SI) -> np.ndarray:
         """Convert a scalar or array from SI to this unit."""
         return np.asarray(value_SI, dtype=float) * self.scale + self.offset
 
-    def to_SI(self, value):
+    def to_SI(self, value) -> np.ndarray:
         """Convert a scalar or array from this unit to SI."""
         return (np.asarray(value, dtype=float) - self.offset) / self.scale
 
@@ -104,7 +104,7 @@ class UnitSystem:
         """A difference in this system's unit, e.g. "5 K" for a superheat."""
         return _describe(self.difference(key), value_SI, digits)
 
-    def with_unit(self, key: str, unit: Unit, name: str = None) -> "UnitSystem":
+    def with_unit(self, key: str, unit: Unit, name: Optional[str] = None) -> "UnitSystem":
         """Return a copy where one quantity uses a different unit."""
         units = dict(self.units)
         key = quantity_key(key)
@@ -185,6 +185,10 @@ ENGINEERING = UnitSystem("engineering", _ENGINEERING)
 IP = UnitSystem("IP", _IP)
 UNIT_SYSTEMS = {u.name.upper(): u for u in (SI, KSI, ENGINEERING, IP)}
 
+# A unit system as the public functions take it, for the annotations: a
+# UnitSystem or the name of a preset ("SI", "KSI", "engineering", "IP").
+UnitsLike = Union[str, UnitSystem]
+
 
 def _old_eur(stacklevel: int) -> UnitSystem:
     """ENGINEERING, with a warning: the constant EUR is its old name.
@@ -197,18 +201,20 @@ def _old_eur(stacklevel: int) -> UnitSystem:
     return ENGINEERING
 
 
-def __getattr__(name):
-    # Only called for names the module does not define (PEP 562)
-    if name == "EUR":
-        return _old_eur(2)
-    raise AttributeError("module {0!r} has no attribute {1!r}".format(__name__, name))
+if not TYPE_CHECKING:
+    # Hidden from type checkers, which would otherwise accept any name of this module
+    def __getattr__(name):
+        # Only called for names the module does not define (PEP 562)
+        if name == "EUR":
+            return _old_eur(2)
+        raise AttributeError("module {0!r} has no attribute {1!r}".format(__name__, name))
 
 
 # Names removed in 1.0, with the name to use instead
 _REMOVED_NAMES = {"EUR": "engineering"}
 
 
-def get_unit_system(units, stacklevel: int = 2) -> UnitSystem:
+def get_unit_system(units: UnitsLike, stacklevel: int = 2) -> UnitSystem:
     """Accept a UnitSystem or the name of a preset: "SI", "KSI", "engineering" or "IP".
 
     ``stacklevel`` is kept for callers of 0.x, where it placed the warning

@@ -423,9 +423,9 @@ def chart_ranges(p_Pa: float, T_range_K: Tuple[float, float], W_range: Tuple[flo
     # Where saturation crosses the bottom and top edges: the corners of the
     # visible region when an edge of the chart is fog
     for W in (W_lo, W_hi):
-        T = _saturation_T(W, T_lo, T_hi, p_Pa)
-        if T is not None:
-            corners.append((T, W))
+        T_sat = _saturation_T(W, T_lo, T_hi, p_Pa)
+        if T_sat is not None:
+            corners.append((T_sat, W))
     out = {}
     for key in ("Twb", "h", "v"):
         values = []

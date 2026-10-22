@@ -89,7 +89,7 @@ def corner_counts(frame: Frame, width: float, height: float, inset: float, lines
 
 
 def auto_legend(frame: Frame, width: float, height: float, lines, overlays, taken: Sequence[str] = (),
-                page_area_pt2: float = None) -> str:
+                page_area_pt2: Optional[float] = None) -> str:
     """The corner of an automatic legend, or "outside right" when it is too large; see the module docstring.
 
     ``page_area_pt2`` is the area of the page's plot area; None uses the frame.
@@ -124,7 +124,7 @@ def auto_badge(frame: Frame, width: float, height: float, inset: float, lines, o
 
 def place_corners(frame: Frame, lines, overlays, legend: Optional[Tuple[str, float, float]],
                   badge: Optional[Tuple[str, float, float, float]],
-                  page_area_pt2: float = None) -> Tuple[Optional[str], Optional[str], List[Box]]:
+                  page_area_pt2: Optional[float] = None) -> Tuple[Optional[str], Optional[str], List[Box]]:
     """(legend location, badge corner, boxes) for a legend inside the plot area and a badge.
 
     ``lines`` are (x, y) display-unit isolines; ``overlays`` the cycles and
@@ -142,15 +142,15 @@ def place_corners(frame: Frame, lines, overlays, legend: Optional[Tuple[str, flo
     overlay_points = keep_out_points(frame, overlays) if frame.usable else (np.array([]), np.array([]))
     legend_at = legend[0] if legend is not None else None
     badge_at = badge[0] if badge is not None else None
-    if legend_at == "auto":
+    if legend is not None and legend_at == "auto":
         legend_at = auto_legend(frame, legend[1], legend[2], line_points, overlay_points,
                                 () if badge_at in (None, "auto") else (badge_at,), page_area_pt2)
-    if badge_at == "auto":
+    if badge is not None and badge_at == "auto":
         badge_at = auto_badge(frame, badge[1], badge[2], badge[3], line_points, overlay_points,
                               () if legend_at in (None, "outside right") else (legend_at,))
     boxes = []
-    if legend_at not in (None, "outside right") and legend[1] > 0.0:
+    if legend is not None and legend_at is not None and legend_at != "outside right" and legend[1] > 0.0:
         boxes.append(corner_box(frame, legend_at, legend[1], legend[2], LEGEND_INSET_PT))
-    if badge_at is not None:
+    if badge is not None and badge_at is not None:
         boxes.append(corner_box(frame, badge_at, badge[1], badge[2], badge[3]))
     return legend_at, badge_at, boxes

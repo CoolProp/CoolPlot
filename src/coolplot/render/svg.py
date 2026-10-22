@@ -18,16 +18,16 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from xml.etree import ElementTree
 from xml.sax.saxutils import escape, quoteattr
 
 import numpy as np
 
 from ..core.numbers import format_number
-from ..scene import BADGE_BASELINE, AxesSpec, Item, Line, Markers, Text, drawable_limits
+from ..scene import BADGE_BASELINE, AxesSpec, SceneItem, Line, Markers, Text, drawable_limits
 from .ticks import ticks as _ticks
-from ..style.values import AxesStyle, TextStyle, dash_pattern_pt
+from ..style.values import AxesStyle, LegendStyle, TextStyle, dash_pattern_pt
 from .base import Renderer, SyncReport, kept_margins, margin_reach
 from ..core.floats import is_zero, same_number, same_numbers
 
@@ -172,7 +172,7 @@ class SvgRenderer(Renderer):
     owns_canvas = True
 
     def __init__(self, width: int = 800, height: int = 600, margins=(80, 20, 40, 60),
-                 id_prefix: str = "coolplot", native: bool = None, unit: str = "px"):
+                 id_prefix: str = "coolplot", native: Optional[bool] = None, unit: str = "px"):
         super().__init__()
         if unit not in SIZE_UNITS:
             raise ValueError("SvgRenderer: unit has to be one of {0}, not {1!r}.".format(sorted(SIZE_UNITS), unit))
@@ -184,13 +184,13 @@ class SvgRenderer(Renderer):
         prefix = re.sub(r"[^A-Za-z0-9_-]+", "-", id_prefix).strip("-")
         # An XML id has to start with a letter or underscore
         self.id_prefix = prefix if re.match(r"[A-Za-z_]", prefix or "") else "cp-" + prefix
-        self._items: Dict[str, Item] = {}
+        self._items: Dict[str, SceneItem] = {}
         self._scene_ids: List[str] = []
         self._elements: Dict[str, str] = {}
         self._mapping_key = None
         self._legend_entries: List = []
-        self._legend_style = None
-        self._parsed = None
+        self._legend_style: Optional[LegendStyle] = None
+        self._parsed: Optional[ElementTree.Element] = None   # the SVG read back, see _document
         self._extra_margins = (0.0, 0.0, 0.0, 0.0)   # room for unclipped text, see _finish
         self.elements_built = 0  # element strings generated, for tests
 
@@ -203,14 +203,14 @@ class SvgRenderer(Renderer):
     def _set_axes(self, axes: AxesSpec):
         self._parsed = None
 
-    def _add(self, item: Item):
+    def _add(self, item: SceneItem):
         self._items[item.id] = item
         self._elements.pop(item.id, None)
 
-    def _update(self, old: Item, new: Item):
+    def _update(self, old: SceneItem, new: SceneItem):
         self._add(new)
 
-    def _remove(self, item: Item):
+    def _remove(self, item: SceneItem):
         self._items.pop(item.id, None)
         self._elements.pop(item.id, None)
 
@@ -235,7 +235,7 @@ class SvgRenderer(Renderer):
 
     def _legend_chars(self) -> int:
         """Longest legend text that fits: the legend may take at most 40 % of the width."""
-        size_px = self._legend_style.text.font.size_pt * PX_PER_PT
+        size_px = (self._legend_style or LegendStyle()).text.font.size_pt * PX_PER_PT
         return max(4, int((0.4 * self.width - 44.0) / (0.6 * size_px)))
 
     def _legend_text(self, text: str) -> str:
@@ -296,12 +296,12 @@ class SvgRenderer(Renderer):
 
     def _data_limits(self, key: str, log: bool):
         """The span of the visible lines and markers on one axis (autoscale), or a default."""
-        values = []
+        parts = []
         for item in self._items.values():
             if item.visible and isinstance(item, (Line, Markers)):
                 v = np.asarray(getattr(item, key), dtype=float)
-                values.append(v[np.isfinite(v) & ((v > 0.0) if log else True)])
-        values = np.concatenate(values) if values else np.array([])
+                parts.append(v[np.isfinite(v) & ((v > 0.0) if log else True)])
+        values = np.concatenate(parts) if parts else np.array([])
         if values.size == 0:
             return (1.0, 10.0) if log else (0.0, 1.0)
         return float(values.min()), float(values.max())
@@ -442,9 +442,9 @@ class SvgRenderer(Renderer):
     def _badge_elements(self, axes: AxesSpec) -> List[str]:
         """The badge: its box, the logo and the text lines, left aligned."""
         box = self.badge_box_px()
-        if box is None:
-            return []
         badge = axes.badge
+        if box is None or badge is None:
+            return []
         x, y, width, height = box
         pad = badge.padding_pt * PX_PER_PT
         out = ['<g class="cp-badge">',
@@ -481,14 +481,14 @@ class SvgRenderer(Renderer):
             f.write(self.to_svg())
 
     # Item elements -----------------------------------------------------
-    def _open(self, item: Item, extra: str = "") -> str:
+    def _open(self, item: SceneItem, extra: str = "") -> str:
         classes = " ".join(c for c in ("cp-item", _css_class("cp-role-", item.role) if item.role else "",
                                        _css_class("cp-group-", item.group) if item.group else "") if c)
         if getattr(item, "clip", True):
             extra = ' clip-path="url(#{0}-plot-area)"'.format(self.id_prefix) + extra
         return '<g data-item={0} class="{1}"{2}>'.format(_attr(item.id), classes, extra)
 
-    def _element(self, item: Item, to_px) -> str:
+    def _element(self, item: SceneItem, to_px) -> str:
         """SVG text for one item; empty for hidden items, which are not drawn."""
         if not item.visible:
             return ""
@@ -618,7 +618,7 @@ class SvgRenderer(Renderer):
     def _legend_elements(self) -> List[str]:
         st = self._legend_style
         width, height = self._legend_size()
-        if is_zero(width):
+        if st is None or is_zero(width):
             return []
         bx, by, bw, bh = self._box
         pad = 8.0
@@ -641,11 +641,11 @@ class SvgRenderer(Renderer):
         out.append('</g>')
         return out
 
-    def _legend_sample(self, item: Item, x: float, cy: float) -> List[str]:
+    def _legend_sample(self, item: SceneItem, x: float, cy: float) -> List[str]:
         """A short line or one marker at the start of a legend row."""
         out = []
-        s = item.style
         if isinstance(item, Line):
+            s = item.style
             if s.casing_color is not None and s.casing_width_pt > 0.0:
                 out.append('<line class="cp-casing" x1="{0}" y1="{1}" x2="{2}" y2="{1}" {3}/>'.format(
                     _num(x + 6.0), _num(cy), _num(x + 28.0), _stroke_attrs(
@@ -655,11 +655,12 @@ class SvgRenderer(Renderer):
                 _num(x + 6.0), _num(cy), _num(x + 28.0), _stroke_attrs(
                     s.color, s.width_pt, dash_pattern_pt(s.dash, s.width_pt), s.alpha, s.cap, s.join)))
         elif isinstance(item, Markers):
-            face = "none" if s.shape in ("x", "+") or s.face_color is None else s.face_color
+            marker = item.style
+            face = "none" if marker.shape in ("x", "+") or marker.face_color is None else marker.face_color
             out.append('<g class="cp-legend-marker" fill="{0}" stroke="{1}" stroke-width="{2}" '
                        'opacity="{3}">{4}</g>'.format(
-                           face, s.edge_color or "none", _px(s.edge_width_pt), _num(s.alpha),
-                           _marker_shape(s.shape, x + 17.0, cy, s.size_pt * PX_PER_PT / 2.0)))
+                           face, marker.edge_color or "none", _px(marker.edge_width_pt), _num(marker.alpha),
+                           _marker_shape(marker.shape, x + 17.0, cy, marker.size_pt * PX_PER_PT / 2.0)))
         return out
 
     # Read back ---------------------------------------------------------
@@ -705,7 +706,7 @@ class SvgRenderer(Renderer):
     def describe_axes(self) -> dict:
         """Read back the axes as drawn, from the SVG elements."""
         root = self._document()
-        by_class = {}
+        by_class: Dict[str, list] = {}   # class -> elements
         order = {}
         for index, el in enumerate(root.iter()):
             order[id(el)] = index
@@ -829,7 +830,9 @@ def _describe_marker_element(element, frac) -> dict:
 
 
 def _describe_text_element(text) -> dict:
-    angle = float(re.match(r"rotate\(([-0-9.e]+)", text.get("transform")).group(1))
+    rotation = re.match(r"rotate\(([-0-9.e]+)", text.get("transform", ""))
+    assert rotation is not None, "every text is written with a rotation"
+    angle = float(rotation.group(1))
     halo = text.get("stroke")
     out = _text_description("", text)
     out.update(text=text.text or "",
@@ -869,7 +872,7 @@ def _describe_texts(first, by_class) -> dict:
 
 
 def _describe_ticks(x_tick, y_tick) -> dict:
-    out = {}
+    out: Dict[str, Any] = {}
     if x_tick is not None:
         length = float(x_tick.get("y2")) - float(x_tick.get("y1"))
         out.update(tick_direction="out" if length > 0 else "in", tick_color=_color(x_tick.get("stroke")),
@@ -885,8 +888,8 @@ def _describe_ticks(x_tick, y_tick) -> dict:
 
 def _describe_grid(by_class, order, item_positions) -> dict:
     major, minor = by_class.get("cp-grid-major"), by_class.get("cp-grid-minor")
-    out = dict(grid_color=_color(major[0].get("stroke")) if major else None,
-               grid_minor_color=_color(minor[0].get("stroke")) if minor else None)
+    out: Dict[str, Any] = dict(grid_color=_color(major[0].get("stroke")) if major else None,
+                               grid_minor_color=_color(minor[0].get("stroke")) if minor else None)
     if major:
         grid = _stroke_description(major[0])
         vertical = [g for g in major if g.get("x1") == g.get("x2")]

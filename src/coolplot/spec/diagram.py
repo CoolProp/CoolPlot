@@ -289,8 +289,8 @@ class CycleSpec:
     @classmethod
     def from_cycle(cls, cycle: Cycle, **changes) -> "CycleSpec":
         """A spec that draws a computed :class:`coolplot.core.cycle.Cycle` as it is."""
-        values = dict(name=cycle.name, states=tuple((n, StateInput(state=s)) for n, s in cycle.states),
-                      loops=cycle.loops, paths=cycle.paths)
+        values: Dict[str, Any] = dict(name=cycle.name, loops=cycle.loops, paths=cycle.paths,
+                                      states=tuple((n, StateInput(state=s)) for n, s in cycle.states))
         values.update({k: v for k, v in changes.items() if v is not None})
         return cls(**values)
 
@@ -460,7 +460,7 @@ class DiagramSpec:
                    processes=tuple(ProcessSpec.from_dict(p) for p in data.get("processes", ())),
                    cycles=tuple(CycleSpec.from_dict(c) for c in data.get("cycles", ())),
                    style_overrides=overrides,
-                   view_SI=tuple(None if lim is None else tuple(lim) for lim in data.get("view_SI", (None, None))),
+                   view_SI=_checked_view(data.get("view_SI", (None, None))),
                    title=data.get("title", ""),
                    # A record saved before 1.2 has no such field: its family values decide, as they did
                    show_saturation=data.get("show_saturation"))
@@ -484,11 +484,11 @@ def _unique(names, message: str):
         raise ValueError("{0}, got {1}.".format(message, names))
 
 
-def _checked_view(view_SI):
+def _checked_view(view_SI) -> Tuple[Limits, Limits]:
     view = tuple(None if lim is None else tuple(float(v) for v in lim) for lim in view_SI)
     if len(view) != 2 or any(lim is not None and len(lim) != 2 for lim in view):
         raise ValueError("view_SI has to be (x_limits, y_limits), each None or (min, max).")
-    return view
+    return view   # type: ignore[return-value]   # the lengths are checked above
 
 
 # JSON helpers ----------------------------------------------------------------

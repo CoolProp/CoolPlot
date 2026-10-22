@@ -40,14 +40,14 @@ import math
 import os
 import re
 import shutil
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 import plotly.graph_objects as go
 
-from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
+from ..scene import AxesSpec, SceneItem, Line, Markers, Text, drawable_limits
 from ..core.numbers import format_number
-from ..style.values import AxesStyle, LineStyle, TextStyle, dash_pattern_pt
+from ..style.values import AxesStyle, LegendStyle, LineStyle, TextStyle, dash_pattern_pt
 from .base import Renderer, SyncReport, kept_margins, margin_reach, warn_without_branding
 from .ticks import ticks
 from ..core.floats import is_zero, same_number, same_numbers
@@ -193,15 +193,16 @@ class PlotlyRenderer(Renderer):
         self.width, self.height, self.margins = int(width), int(height), tuple(margins)
         self.div_id = re.sub(r"[^A-Za-z0-9_-]+", "-", div_id) or "coolplot"
         self.figure = figure if figure is not None else go.Figure()
-        self._traces: Dict[str, object] = {}      # item id -> main trace
-        self._casings: Dict[str, object] = {}     # item id -> casing trace (lines with a casing)
+        # Traces are plotly objects; plotly has no type information, so they are Any
+        self._traces: Dict[str, Any] = {}      # item id -> main trace
+        self._casings: Dict[str, Any] = {}     # item id -> casing trace (lines with a casing)
         self._texts: Dict[str, Text] = {}
-        self._samples: List[object] = []          # legend sample traces
+        self._samples: List[Any] = []          # legend sample traces
         self._rank: Dict[str, int] = {}
-        self._ranges = ((0.0, 1.0), (0.0, 1.0))
-        self._legend_style = None
-        self._applied_log = None       # (x_log, y_log) the trace data was prepared for
-        self._clipped = set()          # texts hidden because their anchor is outside
+        self._ranges: Tuple[Tuple[float, float], ...] = ((0.0, 1.0), (0.0, 1.0))
+        self._legend_style: Optional[LegendStyle] = None
+        self._applied_log: Optional[Tuple[bool, bool]] = None   # (x_log, y_log) the trace data was prepared for
+        self._clipped: Set[str] = set()   # texts hidden because their anchor is outside
         self._extra_margins = (0.0, 0.0, 0.0, 0.0)   # room for texts outside the frame, see _annotate
         self.figure.update_layout(width=self.width, height=self.height, autosize=False,
                                   showlegend=False, hovermode="closest")
@@ -255,7 +256,7 @@ class PlotlyRenderer(Renderer):
                 ticklen=st.tick_length_pt * PX_PER_PT, tickwidth=st.tick_width_pt * PX_PER_PT,
                 tickfont=_font(st.tick_label), tickmode="array",
                 showgrid=grid is not None and grid.color is not None)
-            if settings["showgrid"]:
+            if grid is not None and grid.color is not None:   # the test of showgrid
                 settings.update(gridcolor=grid.color, gridwidth=grid.width_pt * PX_PER_PT, griddash=_dash(grid))
             if minor is not None and minor.color is not None:
                 settings["minor"] = dict(showgrid=True, gridcolor=minor.color, gridwidth=minor.width_pt * PX_PER_PT,
@@ -265,7 +266,7 @@ class PlotlyRenderer(Renderer):
             layout[name].update(settings)
         self._legend_style = axes.style.legend
 
-    def _add(self, item: Item):
+    def _add(self, item: SceneItem):
         if isinstance(item, Text):
             self._texts[item.id] = item
             return
@@ -276,7 +277,7 @@ class PlotlyRenderer(Renderer):
         self._traces[item.id] = self.figure.data[-1]
         self._apply(item)
 
-    def _update(self, old: Item, new: Item):
+    def _update(self, old: SceneItem, new: SceneItem):
         cased_before = old.id in self._casings
         cased_now = isinstance(new, Line) and new.style.casing_color is not None and new.style.casing_width_pt > 0
         if type(old) is not type(new) or cased_before != cased_now:
@@ -287,7 +288,7 @@ class PlotlyRenderer(Renderer):
             return
         self._apply(new)
 
-    def _remove(self, item: Item):
+    def _remove(self, item: SceneItem):
         self._texts.pop(item.id, None)
         gone = {id(t) for t in (self._traces.pop(item.id, None), self._casings.pop(item.id, None)) if t is not None}
         if gone:
@@ -304,14 +305,14 @@ class PlotlyRenderer(Renderer):
         if item_id in self._casings:
             self._casings[item_id].zorder = 2 * rank
 
-    def _apply(self, item: Item):
+    def _apply(self, item: Union[Line, Markers]):
         trace = self._traces[item.id]
         x_log, y_log = self._log()
-        s = item.style
         data = dict(x=self._shown(item.x, x_log), y=self._shown(item.y, y_log), visible=item.visible,
-                    opacity=s.alpha, name=_escape(item.legend or item.id), cliponaxis=True, connectgaps=False,
-                    meta=dict(item=item.id))
+                    opacity=item.style.alpha, name=_escape(item.legend or item.id), cliponaxis=True,
+                    connectgaps=False, meta=dict(item=item.id))
         if isinstance(item, Line):
+            s = item.style
             trace.update(mode="lines", line=dict(color=_color(s.color), width=s.width_pt * PX_PER_PT,
                                                  dash=_dash(s)), **data)
             casing = self._casings.get(item.id)
@@ -320,12 +321,13 @@ class PlotlyRenderer(Renderer):
                                         dash=_dash(s)), x=data["x"], y=data["y"], visible=item.visible,
                               opacity=s.alpha, cliponaxis=True, connectgaps=False, meta=dict(casing=item.id))
         else:
-            symbol = _SYMBOLS[s.shape]
-            line_only = s.shape in ("x", "+")
+            marker = item.style
+            symbol = _SYMBOLS[marker.shape]
+            line_only = marker.shape in ("x", "+")
             trace.update(mode="markers", marker=dict(
-                symbol=symbol, size=s.size_pt * PX_PER_PT / SYMBOL_WIDTH[symbol],
-                color=TRANSPARENT if line_only or s.face_color is None else s.face_color,
-                line=dict(color=_color(s.edge_color), width=s.edge_width_pt * PX_PER_PT)), **data)
+                symbol=symbol, size=marker.size_pt * PX_PER_PT / SYMBOL_WIDTH[symbol],
+                color=TRANSPARENT if line_only or marker.face_color is None else marker.face_color,
+                line=dict(color=_color(marker.edge_color), width=marker.edge_width_pt * PX_PER_PT)), **data)
         self._stack(item.id)
 
     def _set_legend(self, entries, style):
@@ -354,7 +356,9 @@ class PlotlyRenderer(Renderer):
             # Values a log axis cannot show become gaps; redo them for new scales
             self._applied_log = (axes.x_log, axes.y_log)
             for item_id in self._traces:
-                self._apply(self._drawn[item_id])
+                item = self._drawn[item_id]
+                if not isinstance(item, Text):   # always true: texts are annotations, not traces
+                    self._apply(item)
         ranges = []
         for limits, key, log, name in ((axes.x_limits, "x", axes.x_log, "xaxis"),
                                        (axes.y_limits, "y", axes.y_log, "yaxis")):
@@ -377,12 +381,12 @@ class PlotlyRenderer(Renderer):
             self.figure.layout[name].minor.tickvals = ticks(lo, hi, log, minor=True)
 
     def _autoscale(self, key: str, log: bool):
-        values = []
+        parts = []
         for item in self._drawn.values():
             if item.visible and isinstance(item, (Line, Markers)):
                 v = np.asarray(getattr(item, key), dtype=float)
-                values.append(v[np.isfinite(v) & ((v > 0.0) if log else True)])
-        values = np.concatenate(values) if values else np.array([])
+                parts.append(v[np.isfinite(v) & ((v > 0.0) if log else True)])
+        values = np.concatenate(parts) if parts else np.array([])
         if values.size == 0:
             return (1.0, 10.0) if log else (0.0, 1.0)
         return float(values.min()), float(values.max())
@@ -563,7 +567,7 @@ class PlotlyRenderer(Renderer):
         """Read back the item as drawn, from its trace or annotation."""
         item = self._drawn[item_id]   # KeyError for unknown ids, as required
         if isinstance(item, Text):
-            return self._describe_text(item_id)
+            return self._describe_text(item)
         trace = self._traces[item_id]
         kind = "line" if trace.mode == "lines" else "markers"
         out = {"visible": trace.visible is not False, "kind": kind, "clip": bool(trace.cliponaxis),
@@ -583,7 +587,8 @@ class PlotlyRenderer(Renderer):
             out.update(_describe_trace_markers(trace))
         return out
 
-    def _describe_text(self, item_id: str) -> dict:
+    def _describe_text(self, item: Text) -> dict:
+        item_id = item.id
         annotation = self._annotation(item_id)
         # A text hidden because it lies outside the plot area is clipped,
         # not hidden: it is described like any other clipped text
@@ -599,7 +604,7 @@ class PlotlyRenderer(Renderer):
                "h_align": annotation.xanchor, "v_align": _V_BACK[annotation.yanchor],
                "screen_angle_deg": -_angle_or_zero(annotation.textangle), "offset_pt": (dx, dy),
                # Clipping is emulated by hiding texts outside the plot area
-               "clip": self._drawn[item_id].clip,
+               "clip": item.clip,
                "drawn_points": [(fx + dx / width, fy + dy / height)]}
         out.update(_font_description("", annotation.font))
         out.update(_halo_from_shadow(annotation.font.shadow))
@@ -643,7 +648,7 @@ class PlotlyRenderer(Renderer):
                 colors.add(_color_back(sample.line.color))
             if "markers" in sample.mode:
                 colors.add(_color_back(sample.marker.line.color) or _color_back(sample.marker.color))
-            rows.append((_unescape(sample.name), tuple(sorted(colors - {None}))))
+            rows.append((_unescape(sample.name), tuple(sorted(c for c in colors if c is not None))))
         return rows
 
 

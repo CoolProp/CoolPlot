@@ -22,6 +22,7 @@ Conventions
 from __future__ import annotations
 
 import math
+from typing import Optional
 
 from ...core.cycle import Cycle
 from ..fluid import Fluid
@@ -96,17 +97,18 @@ def simple_compression(fluid, T_evap_C: float, T_cond_C: float, dT_sh_K: float =
     s3 = _liquid_out(fluid, p_cond_Pa, dT_sc_K)
     s4 = state_point(fluid, "p", p_evap_Pa, "h", s3.h)
     q_evap_J_kg, q_cond_J_kg, w_comp_J_kg = s1.h - s4.h, s2.h - s3.h, s2.h - s1.h
-    return Cycle(name, {1: s1, 2: s2, 3: s3, 4: s4}, paths={(1, 2): "polytropic"},
-                 results={"p_evap_Pa": p_evap_Pa, "p_cond_Pa": p_cond_Pa, "q_evap_J_kg": q_evap_J_kg,
-                          "q_cond_J_kg": q_cond_J_kg, "w_comp_J_kg": w_comp_J_kg,
-                          "COP_cooling": q_evap_J_kg / w_comp_J_kg, "COP_heating": q_cond_J_kg / w_comp_J_kg,
-                          "T_comp_out_K": s2.T},
+    results = {"p_evap_Pa": p_evap_Pa, "p_cond_Pa": p_cond_Pa, "q_evap_J_kg": q_evap_J_kg,
+               "q_cond_J_kg": q_cond_J_kg, "w_comp_J_kg": w_comp_J_kg,
+               "COP_cooling": q_evap_J_kg / w_comp_J_kg, "COP_heating": q_cond_J_kg / w_comp_J_kg,
+               "T_comp_out_K": s2.T}
+    return Cycle(name, ((1, s1), (2, s2), (3, s3), (4, s4)), paths=(((1, 2), "polytropic"),),
+                 results=tuple(results.items()),
                  fluid=fluid.name)
 
 
-def two_stage(fluid, T_evap_C: float, T_cond_C: float, intermediate: str = "flash_tank", p_mid_Pa: float = None,
-              dT_sh_K: float = 5.0, dT_sc_K: float = 2.0, eta_is: float = 0.7, dT_econ_K: float = 5.0,
-              name: str = None) -> Cycle:
+def two_stage(fluid, T_evap_C: float, T_cond_C: float, intermediate: str = "flash_tank",
+              p_mid_Pa: Optional[float] = None, dT_sh_K: float = 5.0, dT_sc_K: float = 2.0, eta_is: float = 0.7,
+              dT_econ_K: float = 5.0, name: Optional[str] = None) -> Cycle:
     """Two-stage vapour compression with a flash tank or an economizer
 
     The intermediate pressure is the geometric mean of the evaporating and
@@ -185,11 +187,13 @@ def two_stage(fluid, T_evap_C: float, T_cond_C: float, intermediate: str = "flas
                    w_comp_J_kg=w_comp_J_kg, COP_cooling=q_evap_J_kg / w_comp_J_kg,
                    COP_heating=q_cond_J_kg / w_comp_J_kg)
     default_name = "Two-stage, " + ("flash tank" if intermediate == "flash_tank" else "economizer")
-    return Cycle(name or default_name, states, loops, paths, results, fluid.name)
+    return Cycle(name or default_name, tuple(states.items()), tuple(tuple(chain) for chain in loops),
+                 tuple(paths.items()), tuple(results.items()), fluid.name)
 
 
-def rankine(fluid, p_high_Pa: float, p_low_Pa: float, T_live_C: float = None, eta_is_turbine: float = None,
-            eta_is_pump: float = None, name: str = "Rankine", **removed) -> Cycle:
+def rankine(fluid, p_high_Pa: float, p_low_Pa: float, T_live_C: Optional[float] = None,
+            eta_is_turbine: Optional[float] = None, eta_is_pump: Optional[float] = None, name: str = "Rankine",
+            **removed) -> Cycle:
     """Simple Rankine cycle (steam or organic)
 
     States: 1 condenser outlet = pump inlet (saturated liquid), 2 pump
@@ -230,7 +234,8 @@ def rankine(fluid, p_high_Pa: float, p_low_Pa: float, T_live_C: float = None, et
     s4 = _expand(fluid, s3, p_low_Pa, eta_turbine)
     w_turbine_J_kg, w_pump_J_kg = s3.h - s4.h, s2.h - s1.h
     q_in_J_kg, q_out_J_kg = s3.h - s2.h, s4.h - s1.h
-    return Cycle(name, {1: s1, 2: s2, 3: s3, 4: s4}, paths={(1, 2): "polytropic", (3, 4): "polytropic"},
-                 results={"q_in_J_kg": q_in_J_kg, "q_out_J_kg": q_out_J_kg, "w_turbine_J_kg": w_turbine_J_kg,
-                          "w_pump_J_kg": w_pump_J_kg, "eta_th": (w_turbine_J_kg - w_pump_J_kg) / q_in_J_kg},
+    results = {"q_in_J_kg": q_in_J_kg, "q_out_J_kg": q_out_J_kg, "w_turbine_J_kg": w_turbine_J_kg,
+               "w_pump_J_kg": w_pump_J_kg, "eta_th": (w_turbine_J_kg - w_pump_J_kg) / q_in_J_kg}
+    return Cycle(name, ((1, s1), (2, s2), (3, s3), (4, s4)), paths=(((1, 2), "polytropic"), ((3, 4), "polytropic")),
+                 results=tuple(results.items()),
                  fluid=fluid.name)

@@ -177,7 +177,9 @@ def _literal(data: bytes, i: int):
             if c in escapes:
                 out.append(escapes[c])
             elif 0x30 <= c <= 0x37:   # up to three octal digits
-                digits = re.match(rb"[0-7]{1,3}", data[i:i + 3]).group(0)
+                octal = re.match(rb"[0-7]{1,3}", data[i:i + 3])
+                assert octal is not None   # data[i] is an octal digit
+                digits = octal.group(0)
                 out.append(int(digits, 8) & 0xFF)
                 i += len(digits) - 1
             elif c in (0x0A, 0x0D):
@@ -249,10 +251,10 @@ def _program_kind(program: bytes) -> Optional[str]:
 
 def _font(pdf: _Pdf, number: int) -> PdfFont:
     body = pdf.dictionary(number)
-    subtype = re.search(rb"/Subtype\s*/(\w+)", body)
-    subtype = subtype.group(1).decode() if subtype else "?"
-    name = re.search(rb"/BaseFont\s*/(?:[A-Z]{6}\+)?([^\s/<>\[\]()]+)", body)
-    name = name.group(1).decode() if name else "?"
+    found_subtype = re.search(rb"/Subtype\s*/(\w+)", body)
+    subtype = found_subtype.group(1).decode() if found_subtype else "?"
+    found_name = re.search(rb"/BaseFont\s*/(?:[A-Z]{6}\+)?([^\s/<>\[\]()]+)", body)
+    name = found_name.group(1).decode() if found_name else "?"
     descendant = None
     described = body
     if subtype == "Type0":
@@ -269,8 +271,8 @@ def _font(pdf: _Pdf, number: int) -> PdfFont:
     if subtype == "Type3":
         font.problems.append("Type 3 font (print checks expect TrueType or Type 1)")
         return font
-    descriptor = pdf.ref(described, "FontDescriptor")
-    descriptor = pdf.dictionary(descriptor) if descriptor is not None else b""
+    descriptor_ref = pdf.ref(described, "FontDescriptor")
+    descriptor = pdf.dictionary(descriptor_ref) if descriptor_ref is not None else b""
     for key in ("FontFile2", "FontFile3", "FontFile"):
         program_ref = pdf.ref(descriptor, key)
         if program_ref is not None:
@@ -397,7 +399,7 @@ class _Found:
 
 class _Resources:
     """Fonts, forms and colour spaces of a page or form."""
-    def __init__(self, pdf: _Pdf, resources: bytes, inherited: "_Resources" = None):
+    def __init__(self, pdf: _Pdf, resources: bytes, inherited: Optional["_Resources"] = None):
         self.fonts = {n: _to_unicode(pdf, r) for n, r in _names(pdf, pdf.sub_dictionary(resources, "Font")).items()}
         self.xobjects = _names(pdf, pdf.sub_dictionary(resources, "XObject"))
         table = pdf.sub_dictionary(resources, "ColorSpace")
@@ -414,8 +416,8 @@ class _Resources:
 
 def _space_kind(pdf: _Pdf, definition: bytes) -> str:
     """"rgb", "gray", "cmyk" or the name of a colour space whose values are not read."""
-    family = re.search(rb"/(\w+)", definition)
-    family = family.group(1).decode() if family else "?"
+    found_family = re.search(rb"/(\w+)", definition)
+    family = found_family.group(1).decode() if found_family else "?"
     if family in _SPACES:
         return _SPACES[family]
     if family == "ICCBased":
@@ -436,12 +438,12 @@ def _read_content(pdf: _Pdf, data: bytes, res: _Resources, found: _Found, state=
     is noted in ``found.unchecked``.
     """
     state = dict(state or {"stroke": "#000000", "fill": "#000000", "stroke_space": "gray", "fill_space": "gray"})
-    saved = []
+    saved: List[dict] = []   # graphics states pushed by q, popped by Q
     stack: list = []
     block: List[str] = []
     in_text = False
-    current = (1, {})
-    array = None
+    current: tuple = (1, {})   # the font: (bytes per code, widths)
+    array: Optional[list] = None
 
     def set_color(which: str, numbers, names):
         space = state[which + "_space"]
@@ -532,7 +534,7 @@ def _read_content(pdf: _Pdf, data: bytes, res: _Resources, found: _Found, state=
             form = pdf.dictionary(number) if number is not None else b""
             if re.search(rb"/Subtype\s*/Image\b", form):
                 found.note("image")
-            elif re.search(rb"/Subtype\s*/Form\b", form):
+            elif number is not None and re.search(rb"/Subtype\s*/Form\b", form):
                 # A form (a marker symbol, a transparency group) may bring its own fonts and forms
                 inner = _Resources(pdf, pdf.sub_dictionary(form, "Resources"), res)
                 _read_content(pdf, pdf.stream(number), inner, found, state, depth + 1)

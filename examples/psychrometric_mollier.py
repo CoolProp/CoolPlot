@@ -44,13 +44,13 @@ summer = {
     5: {"T": 17, "via": "sensible"},     # after the reheater, the supply air
 }
 loops = [[1, 3], [2, 3, 4, 5, 2]]        # outdoor and return air into the mixing box, then on
-style = dict(line_style=LineStyle(color="#c0392b", width_pt=2.0, casing_color="white", casing_width_pt=1.5),
-             marker_style=MarkerStyle(size_pt=6.0, face_color="#c0392b", edge_color="white"))
-chart.add_cycle("Summer", summer, loops=loops, **style)
+line_style = LineStyle(color="#c0392b", width_pt=2.0, casing_color="white", casing_width_pt=1.5)
+marker_style = MarkerStyle(size_pt=6.0, face_color="#c0392b", edge_color="white")
+chart.add_cycle("Summer", summer, loops=loops, line_style=line_style, marker_style=marker_style)
 states = chart.cycle_states("Summer")
 Q_dot_coil_kW = m_dot_supply_kg_s * (states[4].h - states[3].h) * 1e-3
 Q_dot_reheat_kW = m_dot_supply_kg_s * (states[5].h - states[4].h) * 1e-3
-chart.add_cycle("Summer", summer, loops=loops, **style, labels={
+chart.add_cycle("Summer", summer, loops=loops, line_style=line_style, marker_style=marker_style, labels={
     3: "mixed, {0:.0f} % outdoor air".format(outdoor_share * 100),
     4: "cooling coil {0:.1f} kW".format(Q_dot_coil_kW),
     5: "reheat {0:+.1f} kW".format(Q_dot_reheat_kW)})

@@ -123,6 +123,7 @@ def _bibtex_value(text: str, pos: int) -> Tuple[str, int]:
         end = len(text) if end < 0 else end
         return text[pos + 1:end], end + 1
     match = re.match(r"[^,}\s]*", text[pos:])
+    assert match is not None   # the pattern also matches an empty string
     return match.group(0), pos + match.end()
 
 
@@ -284,9 +285,9 @@ def _fluid_lines(backend: str, components: Tuple[str, ...], style: str) -> Tuple
     if len(components) > 1:
         keys = []
         for a, b in combinations(components, 2):
-            key = _pair_key(a, b)
-            if key and key not in keys:
-                keys.append(key)
+            pair = _pair_key(a, b)
+            if pair and pair not in keys:
+                keys.append(pair)
         if keys:
             lines.append("Mixture model: " + _join_citations(keys, style))
     return tuple(lines)

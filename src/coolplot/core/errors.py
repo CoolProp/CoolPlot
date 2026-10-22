@@ -114,7 +114,7 @@ def deprecated(replacement: str, since: str, removal: str = "2.0"):
                 func.__name__, since, removal, replacement), DeprecationWarning, stacklevel=2)
             return func(*args, **kwargs)
         wrapper.__doc__ = "Old name: {0}.\n\n{1}".format(replacement, func.__doc__ or "")
-        wrapper.deprecated = True
+        setattr(wrapper, "deprecated", True)   # a mark on the function, read by the tests
         return wrapper
     return decorate
 

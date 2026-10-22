@@ -45,7 +45,7 @@ class Interaction:
         Take over zoom and pan from the backend.
     """
 
-    def __init__(self, diagram, renderer, on_hover: Callable = None, on_click: Callable = None,
+    def __init__(self, diagram, renderer, on_hover: Optional[Callable] = None, on_click: Optional[Callable] = None,
                  drag_states: bool = True, follow_view: bool = True):
         if "events" not in getattr(renderer, "capabilities", ()):
             raise ValueError("{0} does not produce events.".format(type(renderer).__name__))

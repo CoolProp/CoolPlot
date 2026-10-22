@@ -47,7 +47,7 @@ import tempfile
 import threading
 import warnings
 import zlib
-from typing import Any, Hashable, Optional
+from typing import Any, Hashable, Optional, Set
 
 from ..__version__ import __version__ as COOLPLOT_VERSION
 from ..thermo.fluid import coolprop_home_dir, coolprop_revision, coolprop_table_limit_GB
@@ -161,9 +161,9 @@ class CurveStore:
         self.loaded = 0      # lines read from disk
         self.saved = 0       # lines written
         self.rejected = 0    # files that were there but could not be used
-        self._size_bytes = None   # measured on the first write
+        self._size_bytes: Optional[int] = None   # measured on the first write
         self._lock = threading.Lock()
-        self._warned = set()
+        self._warned: Set[str] = set()
         self._writable = True
 
     def __repr__(self):
@@ -245,7 +245,8 @@ class CurveStore:
             return False
         with self._lock:
             self.saved += 1
-            self._size_bytes += len(data)
+            if self._size_bytes is not None:   # else measured when first asked for
+                self._size_bytes += len(data)
         return True
 
     def size_bytes(self) -> int:

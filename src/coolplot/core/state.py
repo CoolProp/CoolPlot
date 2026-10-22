@@ -47,6 +47,7 @@ class StatePoint:
     whatever order the quantities were given.
     """
     __slots__ = ("_values",)
+    _values: Tuple[Tuple[str, float], ...]   # (key, SI value) pairs in the canonical order
 
     def __init__(self, **values):
         items = [(quantity_key(k), float(v)) for k, v in values.items()]

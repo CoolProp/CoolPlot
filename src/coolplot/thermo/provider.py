@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import math
 import warnings
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 from ..core.floats import same_result
 from ..core.quantities import quantity_key
@@ -36,8 +36,11 @@ from . import native
 from .isolines import Curve, compute_isoline, compute_quality_line
 from .limits import property_range_SI, resolve_tp_box
 
+# The two property providers (see the module docstring), for the annotations
+PropertyProvider = Union[Fluid, HumidAir]
 
-def make_provider(spec):
+
+def make_provider(spec) -> PropertyProvider:
     """The provider for a :class:`coolplot.spec.FluidSpec` or :class:`coolplot.spec.HumidAirSpec`."""
     if getattr(spec, "kind", "fluid") == "humid_air":
         return HumidAir(spec.p_Pa)
@@ -81,7 +84,7 @@ def chart_domain(provider, limits, margin: float) -> Tuple[Tuple[float, float, f
             ranges.append((key, property_range_SI(provider, key, tp_box)))
         except ValueError:
             continue   # not defined for this fluid, e.g. u for some backends
-    return tuple(tp_box), tuple(ranges)
+    return tp_box, tuple(ranges)
 
 
 #: More lines than this from one saturation anchor is a step that is too small.

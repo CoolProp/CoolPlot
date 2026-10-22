@@ -23,6 +23,8 @@ def load_server_module():
     """The server next to this file, loaded by path so no other module named 'server' gets in the way."""
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "server.py")
     spec = importlib.util.spec_from_file_location("coolplot_web_app_server", path)
+    if spec is None or spec.loader is None:
+        raise ImportError("Cannot load the server from {0}.".format(path))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
