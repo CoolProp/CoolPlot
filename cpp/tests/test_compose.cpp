@@ -82,6 +82,8 @@ TEST_CASE("Inline labels, a style override, a scaled theme and a title", "[compo
 
 TEST_CASE("A psychrometric chart with an air process", "[compose]") {
     check_case("compose_psychrometric.json");
+    check_case("compose_r290_ph_anchored.json");
+    check_case("compose_r290_ph_line_labels.json");
 }
 
 TEST_CASE("Label texts and axis titles", "[compose]") {
@@ -97,4 +99,29 @@ TEST_CASE("Label texts and axis titles", "[compose]") {
     CHECK_THROWS_AS(compose_json(R"({"spec": {"diagram": "ph"}, "domain": {"ranges_SI": {}},
                                      "cycles": [{"states": {"one": {}}}]})"), Error);   // state number not a number
     CHECK_THROWS_AS(compose(json{{"spec", {{"diagram", "ph"}}}, {"domain", {{"ranges_SI", json::object()}}}}), Error);
+}
+
+TEST_CASE("Labels of lines placed by saturation states, as in Python", "[compose]") {
+    // The expected texts come from coolplot.compose.label_text for the same record
+    json data = load("compose_r290_ph.json").at("input").at("spec");
+    data["units"] = "IP";
+    for (json& iso : data["isolines"]) {
+        std::string key = iso.at("key").get<std::string>();
+        if (key == "s") iso["anchor"] = {{"by", "T"}, {"step_SI", 10.0}, {"Q", 0.25}, {"range_SI", nullptr}, {"label", "saturation"}};
+        if (key == "rho") iso["anchor"] = {{"by", "p"}, {"step_SI", 1e5}, {"Q", 0.0}, {"range_SI", nullptr}, {"label", "saturation"}};
+        if (key == "T") iso["anchor"] = {{"by", "p"}, {"step_SI", 1e5}, {"Q", 1.0}, {"range_SI", nullptr}};   // label: the default
+    }
+    DiagramSpec spec = DiagramSpec::from_json(data);
+    for (const IsolineSet& set : spec.isolines)
+        if (set.key == "T") CHECK(set.anchor_label == "value");
+    CHECK(label_text(spec, "s", 1000.0, true, 273.15) == "T(x=0.25)=32 deg F");
+    CHECK(label_text(spec, "rho", 10.0, true, 2e5) == "p_sat,liq=29.01 psi");
+    CHECK(label_text(spec, "T", 300.0, true, 2e5) == "T=80.33 deg F");   // labelled by value, the default
+    CHECK(label_text(spec, "s", 1000.0) == "s=0.2388 Btu/lb/R");          // no saturation value given
+    data["settings"]["labels"]["show_units"] = false;
+    spec = DiagramSpec::from_json(data);
+    CHECK(label_text(spec, "s", 1000.0, true, 273.15) == "T(x=0.25)=32");
+    CHECK(label_text(spec, "rho", 10.0, true, 2e5) == "p_sat,liq=29.01");
+    data["isolines"][0]["anchor"]["label"] = "both";
+    CHECK_THROWS_AS(DiagramSpec::from_json(data), Error);
 }

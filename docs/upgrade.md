@@ -34,6 +34,17 @@ starting with an underscore, the helpers in `coolplot.core`,
 `coolplot.testing`, the scene item ids, and the exact coordinates of a
 chart (better numerics may move points).
 
+## From 1.0 to 1.1
+
+Nothing to change. 1.1 adds `set_lines(..., at_saturation=...)` and a
+cache of traced lines on disk (off unless asked for, see the how-to on
+caching). Spec records gain an `anchor` field per family and theme
+records an `isoline_label_color` field (labels in the colour of their
+lines); records of 1.0 read unchanged. A coolplot-core older than 1.1
+still composes a 1.1 chart unless it uses lines labelled by their
+saturation state or labels in line colours; then the Python composer
+draws it, with a warning.
+
 ## From 0.9 to 1.0
 
 The names deprecated since 0.5 are removed (the table under "From 0.4 to

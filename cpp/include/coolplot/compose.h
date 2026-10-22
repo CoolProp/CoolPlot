@@ -9,7 +9,9 @@
 //
 //   {"spec": <chart spec>,
 //    "domain": {"tp_box": [T_min, T_max, p_min, p_max], "ranges_SI": {key: [min, max]}},
-//    "curves": [{"request": {"item_id", "key", "value_SI", "points", "labels"}, "curve": <curve record>}],
+//    "curves": [{"request": {"item_id", "key", "value_SI", "points", "labels", "anchor_SI"}, "curve": <curve record>}],
+//    (anchor_SI, since 1.1: the saturation temperature or pressure the line passes through when its
+//    family is placed by saturation states, null otherwise; the label shows it)
 //    "cycles": [{"states": {"1": {key: value}}, "chains": [[{key: value}, ...]]}],
 //    "plot_size_pt": [width, height] or null,
 //    "previous_labels": [<text item>] or null}
@@ -35,7 +37,7 @@ std::string compose_json(const std::string& input_text);
 std::string axis_label(const DiagramSpec& spec, const std::string& key);
 
 /// Text of an isoline label, e.g. "T=0 deg C" or "x=0.4".
-std::string label_text(const DiagramSpec& spec, const std::string& key, double value_SI);
+std::string label_text(const DiagramSpec& spec, const std::string& key, double value_SI, bool has_anchor = false, double anchor_SI = 0.0);
 
 /// Estimated size of the plot area before a renderer reports the real one.
 std::pair<double, double> default_plot_size_pt(const DiagramSpec& spec);

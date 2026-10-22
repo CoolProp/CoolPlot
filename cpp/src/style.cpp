@@ -524,6 +524,8 @@ void Theme::validate() const {
     saturation.validate();
     quality.validate();
     isoline_label.validate();
+    if (isoline_label_color != "text" && isoline_label_color != "line")
+        throw Error("Theme '" + name + "': isoline_label_color is \"text\" or \"line\", not '" + isoline_label_color + "'.");
     for (const LineStyle& p : processes) p.validate();
     for (const MarkerStyle& m : state_points) m.validate();
     state_number.validate();
@@ -591,6 +593,7 @@ json Theme::to_json() const {
                 {"saturation", saturation.to_json()},
                 {"quality", quality.to_json()},
                 {"isoline_label", isoline_label.to_json()},
+                {"isoline_label_color", isoline_label_color},
                 {"processes", process_list},
                 {"state_points", marker_list},
                 {"state_number", state_number.to_json()},
@@ -599,8 +602,8 @@ json Theme::to_json() const {
 
 Theme Theme::from_json(const json& data) {
     check_keys(data,
-               {"name", "categorical", "slot_dashes", "isoline_colors", "isoline", "saturation", "quality", "isoline_label", "processes",
-                "state_points", "state_number", "axes"},
+               {"name", "categorical", "slot_dashes", "isoline_colors", "isoline", "saturation", "quality", "isoline_label",
+                "isoline_label_color", "processes", "state_points", "state_number", "axes"},
                "Theme");
     Theme t;
     t.name = string_field(data, "name", "custom");
@@ -627,6 +630,7 @@ Theme Theme::from_json(const json& data) {
     if (data.contains("saturation")) t.saturation = LineStyle::from_json(data.at("saturation"));
     if (data.contains("quality")) t.quality = LineStyle::from_json(data.at("quality"));
     if (data.contains("isoline_label")) t.isoline_label = TextStyle::from_json(data.at("isoline_label"));
+    t.isoline_label_color = string_field(data, "isoline_label_color", "text");
     if (data.contains("processes")) {
         t.processes.clear();
         for (const json& p : data.at("processes")) t.processes.push_back(LineStyle::from_json(p));

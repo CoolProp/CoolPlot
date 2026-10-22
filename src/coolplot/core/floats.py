@@ -10,6 +10,8 @@ they ask a sharper question instead:
 * :func:`same_bits` -- is this the same input as before (a cache key)?
 * :func:`same_number` / :func:`same_numbers` -- is this the very number (or
   numbers) set or copied earlier: a user setting, a limit, a position?
+* :func:`same_result` -- is this what one computation, repeated, gives
+  again (NaN both times included)?
 * :func:`is_zero_array` -- :func:`is_zero` for every element of an array.
 * :func:`same_arrays` -- is this array a copy of that one, bit for bit
   (round trips in the tests; NaN gaps included)?
@@ -71,6 +73,16 @@ def same_number(a: float, b: float) -> bool:
     if math.isnan(a) or math.isnan(b):
         return False
     return same_bits(a, b) or (is_zero(a) and is_zero(b))
+
+
+def same_result(a: float, b: float) -> bool:
+    """Whether a and b are what one computation gives each time it runs: the same number, or NaN both times
+
+    For a probe that is computed again and compared with the value kept
+    from the first run. A computation that failed gives NaN, and gives NaN
+    again, so here NaN matches NaN.
+    """
+    return same_number(a, b) or (math.isnan(a) and math.isnan(b))
 
 
 def same_numbers(a, b) -> bool:

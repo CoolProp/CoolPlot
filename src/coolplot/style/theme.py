@@ -36,6 +36,11 @@ from ..core.quantities import quantity_key
 from .values import (AxesStyle, Dash, Font, LegendStyle, LineStyle, MarkerStyle, TextStyle,
                     opaque_color, style_from_dict, style_to_dict)
 
+#: Where isoline labels take their colour from: "text" the colour of
+#: Theme.isoline_label (ink, the default), "line" the colour of the line
+#: each label belongs to.
+ISOLINE_LABEL_COLORS = ("text", "line")
+
 
 def _check_slot_dashes(isoline, dashes):
     """Building the styles once validates every slot dash."""
@@ -76,6 +81,12 @@ class Theme:
         Lines of constant quality inside the dome.
     isoline_label : TextStyle
         Value labels on isolines.
+    isoline_label_color : str
+        "text" (the default) draws every label in the colour of
+        ``isoline_label``; "line" draws each label in the colour of its
+        line, so a label is easy to match to its family. The label keeps
+        its halo and its own transparency (only the colour is taken from
+        the line). Light line colours (a yellow) read worse as text.
     processes : tuple of LineStyle
         Process number i (in the order they were added) uses entry i.
         After the last entry the list starts again, so give a theme at
@@ -95,6 +106,7 @@ class Theme:
     saturation: LineStyle = LineStyle(width_pt=1.5)
     quality: LineStyle = LineStyle(width_pt=0.5)
     isoline_label: TextStyle = TextStyle(font=Font(size_pt=7.5))
+    isoline_label_color: str = "text"
     processes: Tuple[LineStyle, ...] = (LineStyle(width_pt=2.0),)
     state_points: Tuple[MarkerStyle, ...] = (MarkerStyle(),)
     state_number: TextStyle = TextStyle(font=Font(size_pt=8.0, weight="bold"))
@@ -116,6 +128,9 @@ class Theme:
         object.__setattr__(self, "processes", tuple(self.processes))
         object.__setattr__(self, "state_points", tuple(self.state_points))
         _check_slot_dashes(self.isoline, self.slot_dashes)
+        if self.isoline_label_color not in ISOLINE_LABEL_COLORS:
+            raise ValueError("{0}: isoline_label_color is one of {1}, not {2!r}.".format(
+                owner, ISOLINE_LABEL_COLORS, self.isoline_label_color))
 
     # Resolution -------------------------------------------------------------
     def isoline_style(self, key: str, families: Sequence[str]) -> LineStyle:
@@ -177,7 +192,8 @@ def _screen_theme(name, surface, ink, ink_secondary, ink_muted, gridline, baseli
     Isolines are thin reference lines in the categorical colours. The
     saturation dome and cycles are drawn in ink, made heavier and given a
     casing in the surface colour, so they read as the subject of the chart.
-    Text always uses ink colours, never a series colour.
+    Text uses ink colours, not series colours (isoline_label_color="line"
+    in a derived theme gives labels the colours of their lines).
     """
     label = TextStyle(font=_sans(7.5), color=ink_secondary, halo_color=surface, halo_width_pt=2.0)
     return Theme(

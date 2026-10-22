@@ -21,6 +21,17 @@ family, e.g. `{"T": ("top", "right")}`), `fallback` (allow positions
 further along the line when the edge is taken), `every` (label every
 n-th line), `digits`, `show_units`, `tick_digits`.
 
+Labels are drawn in the theme's label colour (ink). To match each label
+to its family at a glance, draw it in the colour of its line instead:
+
+```python
+diagram.theme = diagram.theme.with_(isoline_label_color="line")
+```
+
+The label keeps its halo, and a colour set with `set_line_style` carries
+over to the labels of that family. Light line colours, such as the yellow
+of the fourth family in the default theme, are harder to read as text.
+
 Labels are laid out for the size of the plot area. `diagram.draw()` and
 `save()` take it from the plotting library; if you drive a renderer
 yourself, pass it: `renderer.sync(diagram.update_scene(renderer.plot_size_pt()))`.

@@ -123,11 +123,31 @@ def isoline_look(spec: DiagramSpec, theme: Theme, key: str, value_SI: float):
     return style, "isoline", spec.diagram.quantity_label(key), Z_ISOLINE
 
 
-def label_text(spec: DiagramSpec, key: str, value_SI: float) -> str:
-    """Text of an isoline label, e.g. "T=0 deg C" or "x=0.4"."""
+def label_text(spec: DiagramSpec, key: str, value_SI: float, anchor_SI: float = None) -> str:
+    """Text of an isoline label, e.g. "T=0 deg C" or "x=0.4".
+
+    A line placed by saturation states (``anchor_SI`` given) is labelled
+    with its own value as well, unless its family asks for the saturation
+    state ("label": "saturation"): "T_sat=0 deg C" (the saturated vapour),
+    "T_sat,liq=0 deg C" (the saturated liquid) or "T(x=0.5)=0 deg C".
+    """
     labels = spec.settings.labels
+    anchor = None
+    if anchor_SI is not None:
+        anchor = next((s.anchor for s in spec.isolines if s.key == key and s.anchor is not None), None)
+    if anchor is not None and anchor.label == "saturation":
+        key, value_SI = anchor.by, anchor_SI
+        symbol = get_quantity(key).symbol
+        if same_number(anchor.Q, 1.0):
+            symbol += "_sat"
+        elif is_zero(anchor.Q):
+            symbol += "_sat,liq"
+        else:
+            symbol += "({0}={1})".format(get_quantity("Q").symbol, labels.format_value(anchor.Q))
+    else:
+        symbol = get_quantity(key).symbol
     unit = spec.units[key]
-    text = "{0}={1}".format(get_quantity(key).symbol, labels.format_value(float(unit.from_SI(value_SI))))
+    text = "{0}={1}".format(symbol, labels.format_value(float(unit.from_SI(value_SI))))
     if labels.show_units and unit.label not in ("-", ""):
         text += " " + unit.label
     return text
@@ -174,9 +194,12 @@ def label_requests(spec: DiagramSpec, theme: Theme, curves, lines: Sequence[Line
     requests = []
     for key in order:
         for request, line in by_family[key][::every]:
+            style = theme.isoline_label
+            if theme.isoline_label_color == "line" and line.style.color is not None:
+                style = style.with_(color=line.style.color)   # the label in its line's colour
             requests.append(LabelRequest(id=line.id + "/label", group=line.group + "/label", family=key,
-                                         text=label_text(spec, key, request.value_SI),
-                                         style=theme.isoline_label, x=line.x, y=line.y))
+                                         text=label_text(spec, key, request.value_SI, request.anchor_SI),
+                                         style=style, x=line.x, y=line.y))
     return requests
 
 

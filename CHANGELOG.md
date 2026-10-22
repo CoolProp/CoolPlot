@@ -6,7 +6,48 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-22
+
+### Added
+- Lines placed through saturation states:
+  `set_lines("s", at_saturation={"T": 10})` draws the isentropes through
+  the saturated vapour every 10 K of saturation temperature (round values
+  in the chart's units, up to the critical point), each labelled with its
+  own value ("s=2.321 kJ/kg/K"). `"Q": 0` uses the saturated liquid (the
+  bubble point of a blend), `"p": 2` steps the saturation pressure,
+  `"range"` limits the states, `"label": "saturation"` labels the lines by
+  their saturation state instead ("T_sat=0 deg C"). Stored
+  as `IsolineSet.anchor` (`coolplot.spec.SaturationAnchor`); coolplot-core
+  composes it the same way. Example `examples/saturation_lines.py`.
+- Traced lines kept on disk between runs, the way CoolProp keeps its
+  TTSE and BICUBIC tables: `CurveCache(directory=True)` (or the
+  environment variable `COOLPLOT_CACHE_DIR`) writes one compressed file
+  per line under `~/.CoolProp/CoolPlot/Curves`, one folder per fluid,
+  with a revision and the full key in each file, a rebuild of anything
+  unreadable, CoolProp's `ALTERNATIVE_TABLES_DIRECTORY` and
+  `MAXIMUM_TABLE_DIRECTORY_SIZE_IN_GB`, and atomic writes so processes can
+  share the folder (`coolplot.engine.store`). Off unless asked for. The
+  stored key also holds CoolPlot's version and CoolProp's git revision,
+  and with a disk cache the engine notices a changed reference state by
+  itself before anything is written; background workers report the
+  fingerprint they computed under, and a line from a worker that differs
+  stays off disk. The source of the numerics modules is part of the stored
+  key too, so development builds that share a version do not share lines.
+- Labels in the colour of their lines:
+  `diagram.theme = diagram.theme.with_(isoline_label_color="line")` draws
+  each isoline label in its line's colour (with its halo), following
+  `set_line_style` colours too; the default `"text"` keeps the ink colour.
+  The same option in coolplot-core.
+- coolplot-core reports its version from CMake (1.1.0); the bridge
+  refuses a chart whose lines are labelled by their saturation state on an
+  older core, which would label them by value, and the Python composer
+  draws it.
+
 ### Fixed
+- The fingerprint of a fluid (part of every cache key) used Python's
+  salted `hash()` of CoolProp's configuration, which differs between
+  processes; it is a SHA-256 digest now, so keys mean the same in every
+  run.
 - `draw()` and `save()` with a background engine could stop waiting
   too early, with "Background work makes no progress, the drawing may
   be incomplete", when a line failed while the scene was being built:

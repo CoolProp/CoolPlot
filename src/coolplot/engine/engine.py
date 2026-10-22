@@ -15,13 +15,14 @@ from __future__ import annotations
 
 import warnings
 from collections import OrderedDict
+from dataclasses import replace
 from typing import List, Tuple
 
 from ..spec.diagram import CycleSpec, DiagramSpec
 from ..thermo.cycles import cycle_paths, resolve_states
 from ..thermo.isolines import Curve
 from ..thermo import native
-from ..thermo.provider import chart_domain, compute_curve, make_provider
+from ..thermo.provider import chart_domain, compute_curve, make_provider, saturation_anchor_values
 from .cache import CurveCache
 from .planning import CurveRequest, Domain
 
@@ -42,6 +43,7 @@ class Engine:
         self.max_fluids = max_fluids
         self._fluids: "OrderedDict[object, object]" = OrderedDict()
         self._domains: "OrderedDict[Tuple, Domain]" = OrderedDict()
+        self._anchors: "OrderedDict[Tuple, Tuple]" = OrderedDict()   # values of lines placed by saturation states
         self._cycles: "OrderedDict[Tuple, Tuple]" = OrderedDict()
         self._warned = set()
 
@@ -57,6 +59,7 @@ class Engine:
         self._fluids.pop(spec, None)
         # Everything computed with the old fluid goes with it
         self._domains = OrderedDict((k, v) for k, v in self._domains.items() if k[0] != spec)
+        self._anchors = OrderedDict((k, v) for k, v in self._anchors.items() if k[0] != spec)
         self._cycles = OrderedDict((k, v) for k, v in self._cycles.items() if k[0] != spec)
         fluid = make_provider(spec)
         self._fluids[spec] = fluid
@@ -73,10 +76,20 @@ class Engine:
         and are not served again."""
         self._fluids.clear()
         self._domains.clear()
+        self._anchors.clear()
         self._cycles.clear()
 
     def domain(self, spec: DiagramSpec) -> Domain:
-        """The calculation region of a diagram: the T-p box and the range of every quantity."""
+        """The calculation region of a diagram: the T-p box, the range of every
+        quantity and the values of the families placed by saturation states."""
+        if self.cache.disk is not None:
+            # Lines on disk outlive the process: a reference state changed
+            # without refresh() would put new lines (and enthalpy and entropy
+            # ranges) under the old fingerprint. One new state per update, so
+            # only when lines can go to disk.
+            changed = getattr(self.fluid(spec.fluid), "reference_state_changed", None)
+            if changed is not None and changed():
+                self.refresh()
         margin = spec.settings.calc.critical_margin
         key = (spec.fluid, spec.limits, margin)
         if key not in self._domains:
@@ -85,7 +98,25 @@ class Engine:
             if len(self._domains) > 64:
                 self._domains.popitem(last=False)
         self._domains.move_to_end(key)
-        return self._domains[key]
+        domain = self._domains[key]
+        anchored = tuple(((s.key, s.anchor), self._anchor_values(spec, domain, s))
+                         for s in spec.isolines if s.anchor is not None)
+        return replace(domain, anchored=anchored) if anchored else domain
+
+    def _anchor_values(self, spec: DiagramSpec, domain: Domain, iso_set) -> Tuple[float, ...]:
+        """The values of one family placed by saturation states, computed once per fluid, region and unit."""
+        anchor = iso_set.anchor
+        unit = spec.units[anchor.by]   # the round steps are round in the units shown
+        margin = spec.settings.calc.critical_margin
+        key = (spec.fluid, spec.limits, margin, iso_set.key, anchor, unit)
+        if key not in self._anchors:
+            self._anchors[key] = saturation_anchor_values(
+                self.fluid(spec.fluid), iso_set.key, anchor.by, anchor.step_SI, anchor.Q, anchor.range_SI,
+                domain.tp_box, margin, unit)
+            if len(self._anchors) > 256:
+                self._anchors.popitem(last=False)
+        self._anchors.move_to_end(key)
+        return self._anchors[key]
 
     # Position of the "computed by CoolProp's port" flag in a cache key. The
     # flag is decided once, when the key is made, and handed to the code that

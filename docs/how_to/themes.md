@@ -21,9 +21,10 @@ diagram.set_line_style("T", width_pt=1.0)              # one family, this chart 
 
 In `default` and `dark`, isolines are thin reference lines in colour.
 The saturation dome and cycles are drawn in ink, heavier and with a
-casing, so they read as the subject of the chart. Text always uses ink
-colours, never a series colour. Why the colours are what they are is in
-{doc}`../explanation/colours`.
+casing, so they read as the subject of the chart. Text uses ink colours,
+not series colours, unless a theme asks for labels in the colour of their
+lines (`isoline_label_color`, below). Why the colours are what they are is
+in {doc}`../explanation/colours`.
 
 ## Customise
 
@@ -38,6 +39,7 @@ diagram.set_line_style("s")                          # back to the theme
 from coolplot.style.theme import DEFAULT, Theme
 mine = DEFAULT.with_(name="report", isoline=DEFAULT.isoline.with_(width_pt=0.5))
 mine = mine.with_isoline_color("T", "darkred")       # pin a colour to a quantity
+mine = mine.with_(isoline_label_color="line")        # each label in its line's colour
 diagram.theme = mine
 
 # Saved and loaded as JSON

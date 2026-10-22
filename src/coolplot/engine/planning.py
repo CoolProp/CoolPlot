@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 
 from ..core.quantities import get_quantity
-from ..spec.diagram import DiagramSpec, IsolineSet
+from ..spec.diagram import DiagramSpec, IsolineSet, SaturationAnchor
 
 # Mantissas for round values on a logarithmic scale, from coarse to fine.
 # For each family the set whose number of values is closest to the
@@ -38,10 +38,15 @@ class Domain:
 
     ``tp_box`` is (T_min_K, T_max_K, p_min_Pa, p_max_Pa). ``ranges_SI``
     holds (min, max) of every quantity over that region, as pairs
-    (key, (min, max)) so the value stays hashable.
+    (key, (min, max)) so the value stays hashable. ``anchored`` holds the
+    values of the families placed by saturation states, as pairs
+    ((key, SaturationAnchor), ((saturation_SI, value_SI), ...)); the
+    engine computes them with the region, because they need property calls
+    and :func:`plan` makes none.
     """
     tp_box: Tuple[float, float, float, float]
     ranges_SI: Tuple[Tuple[str, Tuple[float, float]], ...]
+    anchored: Tuple[Tuple[Tuple[str, SaturationAnchor], Tuple[Tuple[float, float], ...]], ...] = ()
 
     def range_SI(self, key: str) -> Tuple[float, float]:
         """(min, max) of quantity ``key`` over the region, in SI units."""
@@ -51,15 +56,28 @@ class Domain:
                              "give the isoline values or a range explicitly.".format(key))
         return ranges[key]
 
+    def anchor_pairs(self, key: str, anchor: SaturationAnchor) -> Tuple[Tuple[float, float], ...]:
+        """(saturation value, line value) of every line of the family ``key`` placed by ``anchor``, in SI units."""
+        for (k, a), pairs in self.anchored:
+            if k == key and a == anchor:
+                return pairs
+        raise ValueError("The calculation region has no values for the lines of constant '{0}' placed by "
+                         "saturation states; it was made for another spec.".format(key))
+
 
 @dataclass(frozen=True)
 class CurveRequest:
-    """One isoline to compute: constant ``key`` at ``value_SI`` with ``points`` points"""
+    """One isoline to compute: constant ``key`` at ``value_SI`` with ``points`` points
+
+    ``anchor_SI`` is the saturation temperature or pressure the line passes
+    through when its family is placed by saturation states, else None.
+    """
     item_id: str
     key: str
     value_SI: float
     points: int
     labels: bool = False
+    anchor_SI: Optional[float] = None
 
 
 def snap(value: float) -> float:
@@ -139,6 +157,8 @@ def isoline_values_SI(spec: DiagramSpec, iso_set: IsolineSet, domain: Domain) ->
     key = iso_set.key
     if iso_set.values_SI is not None:
         values = np.asarray(iso_set.values_SI, dtype=float)
+    elif iso_set.anchor is not None:
+        values = np.asarray([v for _, v in domain.anchor_pairs(key, iso_set.anchor)], dtype=float)
     else:
         lo, hi = iso_set.range_SI or domain.range_SI(key)
         log = get_quantity(key).log_scale and lo > 0.0
@@ -168,9 +188,14 @@ def plan(spec: DiagramSpec, domain: Domain) -> Tuple[CurveRequest, ...]:
         family = spec.diagram.family(iso_set.key)
         default_points = calc.saturation_points if iso_set.key == "Q" else calc.points
         points = iso_set.points or default_points
+        saturation = {}
+        if iso_set.anchor is not None:
+            # The first saturation state that gives a value names its line
+            for saturation_SI, value_SI in domain.anchor_pairs(iso_set.key, iso_set.anchor):
+                saturation.setdefault(snap(value_SI), saturation_SI)
         for value_SI in isoline_values_SI(spec, iso_set, domain):
             if not family.has_line(value_SI):
                 continue   # a quality outside 0 to 1, or a relative humidity of 0, has no line
             requests.append(CurveRequest(isoline_id(iso_set.key, value_SI), iso_set.key, float(value_SI),
-                                         points, iso_set.labels))
+                                         points, iso_set.labels, saturation.get(float(value_SI))))
     return tuple(requests)

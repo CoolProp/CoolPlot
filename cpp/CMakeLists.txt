@@ -10,7 +10,7 @@
 # Catch2 is fetched for the tests; set FETCHCONTENT_SOURCE_DIR_CATCH2 to a
 # local checkout to build offline.
 cmake_minimum_required(VERSION 3.16)
-project(coolplot_core VERSION 0.1.0 LANGUAGES CXX)
+project(coolplot_core VERSION 1.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -47,6 +47,9 @@ target_include_directories(coolplot_core
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>
 )
 set_target_properties(coolplot_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# coolplot_version() reports the project version; the Python bridge refuses
+# features a core older than the CoolPlot release does not know
+target_compile_definitions(coolplot_core PRIVATE COOLPLOT_CORE_VERSION="${PROJECT_VERSION}")
 if(MSVC)
     target_compile_options(coolplot_core PRIVATE /W4)
 else()

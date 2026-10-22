@@ -88,6 +88,16 @@ DiagramSpec DiagramSpec::from_json(const json& data) {
         IsolineSet set;
         set.key = quantity_key(iso.at("key").get<std::string>());
         set.labels = iso.value("labels", false);
+        if (iso.contains("anchor") && !iso.at("anchor").is_null()) {
+            const json& anchor = iso.at("anchor");
+            set.has_anchor = true;
+            set.anchor_by = quantity_key(anchor.value("by", "T"));
+            if (set.anchor_by != "T" && set.anchor_by != "p") throw Error("Lines are placed by saturation 'T' or 'p', not '" + set.anchor_by + "'.");
+            set.anchor_Q = anchor.value("Q", 1.0);
+            set.anchor_label = anchor.value("label", "value");
+            if (set.anchor_label != "saturation" && set.anchor_label != "value")
+                throw Error("Unknown label '" + set.anchor_label + "' for lines placed by saturation states.");
+        }
         spec.isolines.push_back(set);
     }
     for (const json& p : data.value("processes", json::array())) {

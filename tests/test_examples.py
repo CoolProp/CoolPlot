@@ -36,6 +36,12 @@ def test_refrigerant_blend(tmp_path):
     assert (tmp_path / "R32_R125_ph.svg").stat().st_size > 10000
 
 
+def test_saturation_lines(tmp_path):
+    assert "s: through the saturated vapour every 10 K" in _run("saturation_lines.py", tmp_path)
+    svg = (tmp_path / "R290_saturation.svg").read_text()
+    assert "s=" in svg and "kJ/kg/K" in svg and "T_sat=" not in svg and len(svg) > 10000   # labelled by value
+
+
 def test_psychrometric(tmp_path):
     assert "RH =" in _run("psychrometric.py", tmp_path)
     assert (tmp_path / "psychrometric.svg").stat().st_size > 10000
@@ -111,7 +117,7 @@ def _same(a, b, path="", rel=1e-9):
 #: The examples run in both modes: every script in examples/ (the web_app
 #: folder is a server, tested by tests/test_web_server.py).
 BOTH_PATHS = ["quickstart.py", "two_stage_cycles.py", "refrigerant_blend.py", "psychrometric.py",
-              "interactive_cycle.py"]
+              "interactive_cycle.py", "saturation_lines.py"]
 
 
 def test_the_list_of_examples_is_complete():

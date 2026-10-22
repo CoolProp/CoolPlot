@@ -13,6 +13,7 @@ from coolplot.compose.builder import compose
 from coolplot.engine import plan
 from coolplot.render.svg import SvgRenderer
 from coolplot.scene import Scene, item_to_dict
+from coolplot.style.theme import get_theme
 from coolplot.testing import conformance_scene
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -33,7 +34,7 @@ def dump_svg(name, scene, **options):
 
 def curve_record(request, curve):
     return {"request": {"item_id": request.item_id, "key": request.key, "value_SI": request.value_SI,
-                        "points": request.points, "labels": request.labels},
+                        "points": request.points, "labels": request.labels, "anchor_SI": request.anchor_SI},
             "curve": curve.to_dict()}
 
 
@@ -114,6 +115,24 @@ def main():
     chart.set_default_lines()
     chart.add_cycle("Air conditioning", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}, {"T": 20, "W": 8.9}], closed=False)
     compose_case("compose_psychrometric", chart)
+
+    # Isentropes through the saturated vapour every 10 K and isochores through
+    # wet states every 20 K, labelled by their saturation temperature;
+    # isotherms through the saturated vapour every 2 bar, labelled by their
+    # own values (the default)
+    anchored = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    anchored.set_lines("Q", num=6, labels=True)
+    anchored.set_lines("s", at_saturation={"T": 10, "range": (-40, 60), "label": "saturation"}, labels=True)
+    anchored.set_lines("rho", at_saturation={"T": 20, "Q": 0.5, "label": "saturation"}, labels=True)
+    anchored.set_lines("T", at_saturation={"p": 2}, labels=True)
+    compose_case("compose_r290_ph_anchored", anchored)
+
+    # Labels in the colour of their lines, on the dark theme (the halo in the
+    # dark surface colour)
+    coloured = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    coloured.theme = get_theme("dark").with_(isoline_label_color="line")
+    coloured.set_default_lines(labels=True)
+    compose_case("compose_r290_ph_line_labels", coloured)
 
 
 if __name__ == "__main__":
