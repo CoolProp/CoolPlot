@@ -152,7 +152,7 @@ _NEEDS_A_NEWER_CORE = (
     ((1, 2), lambda spec: spec.settings.labels.mode == "rails" or spec.settings.look.axes.legend.location == "auto",
      "lay out labels on rails or place a legend by itself"),
     ((1, 2), lambda spec: spec.diagram.is_mollier, "compose the Mollier h,x chart"),
-    ((1, 3), lambda spec: _restyles_the_dome(spec), "restyle the saturation curve or the quality lines"),
+    ((1, 3), _restyles_the_dome, "restyle the saturation curve or the quality lines"),
 )
 
 

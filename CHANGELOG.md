@@ -64,8 +64,8 @@ The 1.3 releases are about type safety.
   quality (relative humidity) now.
 - A line at 0 in a unit with an offset other than deg C, such as the
   isotherm at 0 deg F, was labelled "-4e-10" (the noise of converting
-  back from kelvin); it is labelled 0, by the Python composer and by
-  coolplot-core alike.
+  back from kelvin); it is labelled 0 by the Python composer and by
+  coolplot-core 1.3. An older coolplot-core still writes the noise.
 
 ## [1.2.0] - 2026-10-22
 

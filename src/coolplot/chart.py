@@ -107,7 +107,7 @@ def state_input(entry: StateEntry, units: UnitSystem, provider: PropertyProvider
         return entry
     if isinstance(entry, StatePoint):
         return StateInput(state=check_state(entry, provider))
-    if not isinstance(entry, dict):
+    if not isinstance(entry, Mapping):
         raise TypeError("A state is a StatePoint or a dict of properties, not {0}.".format(type(entry).__name__))
     entry = dict(entry)
     via = entry.pop("via", None)
@@ -153,7 +153,7 @@ def range_in_SI(unit: Unit, given: Optional[Numbers]) -> Optional[Tuple[float, f
     """A range (min, max) given in ``unit``, in SI units; None stays None."""
     if given is None:
         return None
-    values = [float(v) for v in unit.to_SI(given)]
+    values = [float(v) for v in np.ravel(unit.to_SI(given))]   # a single number is one value, not two
     if len(values) != 2:
         raise ValueError("A range is two values (min, max), not {0}.".format(given))
     return values[0], values[1]

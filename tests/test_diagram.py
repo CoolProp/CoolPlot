@@ -276,3 +276,22 @@ def test_a_psychrometric_chart_draws_saturated_air():
     c = PsychrometricChart()
     c.set_lines("h", num=5)
     assert _saturation_ids(c) == ["iso/RH/1"]
+
+
+def test_a_range_is_two_values():
+    """A single number or three numbers are refused with a message, not a numpy error."""
+    from coolplot import PsychrometricChart
+    chart = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP", settings="interactive")
+    for bad in (50, [0, 10, 20]):
+        with pytest.raises(ValueError, match="A range is two values"):
+            chart.set_lines("T", num=5, range=bad)
+    with pytest.raises(ValueError, match="A range is two values"):
+        PsychrometricChart(T_range=20)
+
+
+def test_states_may_come_in_any_mapping():
+    from types import MappingProxyType
+    chart = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP", settings="interactive")
+    chart.add_cycle("c", MappingProxyType({1: MappingProxyType({"p": 3.0, "T": 0.0}),
+                                           2: {"p": 15.0, "via": "compression", "eta_is": 0.7}}), closed=False)
+    assert sorted(chart.cycle_states("c")) == [1, 2]
