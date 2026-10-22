@@ -1,5 +1,20 @@
 # Upgrade guide
 
+## Coming from 0.1.7 on PyPI
+
+The release before 1.0 on PyPI is 0.1.7, the legacy API. The versions 0.2
+to 0.9 in between were development versions and were not published, so
+the sections for them below (deprecated names, the native numerics) do
+not concern you. What changes for you:
+
+* the package is imported as `coolplot`, not `CoolPlot`, and the legacy
+  classes are gone: the table in
+  [From 0.1 to 0.2](#from-01-the-legacy-api-to-02-and-later) gives the
+  equivalent of each call;
+* CoolPlot 1.0 needs Python 3.10 or later and CoolProp 8.0 or later.
+
+To stay on the legacy API, pin it: `pip install "coolplot<0.2"`.
+
 ## Stability from 1.0
 
 From 1.0 to 2.0 the public API is stable. It is:

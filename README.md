@@ -15,7 +15,7 @@ log(p)-h, T-s, h-s, p-s, p-rho, T-rho and p-T diagrams for pure fluids
 and refrigerant blends, cycles drawn on top of them, and psychrometric
 charts for humid air.
 
-![A log(p)-h chart of propane with a heat pump cycle](docs/_static/R290_ph.png)
+![A log(p)-h chart of propane with a heat pump cycle](https://raw.githubusercontent.com/CoolProp/CoolPlot/master/docs/_static/R290_ph.png)
 
 ```python
 from coolplot import PropertyDiagram
@@ -62,7 +62,7 @@ The code was forked from the main [CoolProp repository] at v6.3.0 with
 its history preserved, hence the old commits. Version 0.2 replaced the
 legacy API (`from CoolPlot.Plot import PropertyPlot`); the upgrade guide
 in the documentation gives the equivalents, and `pip install "coolplot<0.2"`
-keeps the last legacy release. Expect some breaking changes until 1.0.
+keeps the last legacy release. From 1.0 to 2.0 the public API is stable.
 
 Pull requests are encouraged!
 
