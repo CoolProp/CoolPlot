@@ -6,11 +6,9 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
-### 1.3.0
+## [1.3.0] - 2026-10-22
 
-The 1.3 releases are about type safety.
-
-#### Added
+### Added
 - Type information: the package ships its annotations (the PEP 561
   marker `py.typed`), so type checkers such as mypy and pyright check the
   calls an application makes to CoolPlot. The chart API is fully
@@ -46,14 +44,14 @@ The 1.3 releases are about type safety.
   coolplot-core 1.3 draws it; with an older core, such a chart falls back
   to the Python composer with a warning.
 
-#### Changed
+### Changed
 - A range that is not two values (`range=` of `set_lines`, `"range"` of
   `at_saturation`, `T_range` and `W_range` of `PsychrometricChart`) is
   refused with a ValueError that says so.
 - The examples pass `line_style` and `marker_style` by name instead of
   unpacking a dict of both, so that they pass the type checker.
 
-#### Fixed
+### Fixed
 - About 390 places where mypy found the annotations and the code at odds,
   most of them values that may be None and return types of internal
   helpers. None of them changes what a chart draws.
