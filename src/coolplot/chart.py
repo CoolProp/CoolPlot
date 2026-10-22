@@ -717,18 +717,20 @@ class Chart:
         """Let background work finish before a script draws: previews first,
         then the final curves they make room for. Warns, instead of waiting
         for ever, when nothing finishes any more."""
-        last = None
         for _ in range(10):
+            # Counted from before the scene: a job can end while the scene is
+            # built (a crashed process pool fails all of its jobs at once), and
+            # the retries it queues next only end in the wait after that scene
+            finished = self.engine.finished_jobs
             self.update_scene()
             ready, needed = self.engine.progress
             if not self.engine.busy and ready >= needed:   # a failed line may still be due a retry
                 return
-            if self.engine.finished_jobs == last:   # the last wait finished no job at all
+            self.wait()
+            if self.engine.finished_jobs == finished:   # neither the scene nor the wait finished a job
                 warnings.warn("Background work makes no progress, the drawing may be incomplete.",
                               UserWarning, stacklevel=3)
                 return
-            last = self.engine.finished_jobs
-            self.wait()
         warnings.warn("Background work did not finish, the drawing may be incomplete (is the cache "
                       "smaller than the number of lines?).", UserWarning, stacklevel=3)
 

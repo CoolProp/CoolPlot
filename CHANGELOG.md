@@ -48,6 +48,13 @@ guide in the documentation says what to change in your code.
   salted `hash()` of CoolProp's configuration, which differs between
   processes; it is a SHA-256 digest now, so keys mean the same in every
   run.
+- `draw()` and `save()` with a background engine could stop waiting
+  too early, with "Background work makes no progress, the drawing may
+  be incomplete", when a line failed while the scene was being built:
+  a worker process that crashes fails every job of its pool at once, and
+  the retries queued next were taken for no progress. The lines they
+  would have drawn were missing, and the line that crashed was not
+  reported. Progress is now counted over the scene and the wait after it.
 
 ## [1.0.0] - 2026-10-22
 

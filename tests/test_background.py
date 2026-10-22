@@ -202,6 +202,61 @@ def test_failures_are_retried_then_reported(monkeypatch):
         d.close()
 
 
+def test_draw_waits_for_a_retry_after_a_quick_failure():
+    import warnings
+    from concurrent.futures import Future, ThreadPoolExecutor
+
+    retrying, released = threading.Event(), threading.Event()
+
+    class QuickFailurePool:
+        """The first attempt of a line fails at once, while the scene is
+        still being built (as every job of a crashed process pool does);
+        its retry fails too, but only once the diagram waits for it."""
+        def __init__(self):
+            self.tried = set()
+            self.pool = ThreadPoolExecutor(max_workers=4)
+
+        def submit(self, fn, *args):
+            line = (args[2], args[3])   # key, value_SI
+            if line not in self.tried:
+                self.tried.add(line)
+                future = Future()
+                future.set_exception(RuntimeError("first attempt"))
+                return future
+
+            def retry():
+                assert released.wait(30.0)
+                raise RuntimeError("second attempt")
+            retrying.set()
+            return self.pool.submit(retry)
+
+        def shutdown(self, **kwargs):
+            self.pool.shutdown(**kwargs)
+
+    d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP", background="threads")
+    d.set_lines("T", values=[0.0], points=40)
+    d.spec = d.spec.with_(settings=d.spec.settings.with_(calc=replace(d.spec.settings.calc, preview_points=0)))
+    d.engine._pool = QuickFailurePool()
+    engine_wait = d.engine.wait
+
+    def wait(timeout=None):
+        if retrying.is_set():
+            released.set()   # a retry ends only when the diagram waits for it
+        return engine_wait(timeout)
+
+    d.engine.wait = wait
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            d.draw(SvgRenderer())
+        messages = [str(w.message) for w in caught]
+        # Both attempts ran: the line is given up, the drawing is not cut short
+        assert not [m for m in messages if "no progress" in m]
+        assert [m for m in messages if "Skipping the line T=273.15" in m and "second attempt" in m]
+    finally:
+        d.close()
+
+
 def test_a_background_engine_serves_one_diagram():
     a = _diagram(background="threads")
     try:
