@@ -17,19 +17,25 @@ Nothing is uploaded unless every step before it passed.
 ## Make a release
 
 ```bash
-# 1. Set the version and date the changelog
+# 1. Set the version and date the changelog in a pull request
+#    "Release 1.1.0", and merge it into master once CI is green
 #    src/coolplot/__version__.py:  VERSION = (1, 1, 0, '')
 #    CHANGELOG.md:                 the section of this version
-git commit -am "Release 1.1.0"
-git push origin master
 
-# 2. Tag the commit; the tag starts the release
+# 2. Tag the merge commit on master; the tag starts the release
+git switch master && git pull --ff-only
 git tag -a v1.1.0 -m "CoolPlot 1.1.0"
 git push origin v1.1.0
 ```
 
-Follow the run on the Actions tab. A release candidate works the same
-way with `VERSION = (1, 1, 0, 'rc1')` and the tag `v1.1.0rc1`.
+Push the one tag by name, never `git push --tags`: that also pushes any
+other tag in your clone, and a stray `v*` tag starts a release. Follow the
+run on the Actions tab. A release candidate works the same way with
+`VERSION = (1, 1, 0, 'rc1')` and the tag `v1.1.0rc1`.
+
+After the release: `pip install coolplot==1.1.0` installs it, and the
+version shows on Read the Docs (a new tag is built there once it is
+activated, by hand or by an automation rule for `v*` tags).
 
 To rehearse without publishing, start the workflow by hand: Actions tab,
 "release", "Run workflow", on the branch to try. It runs the same steps
