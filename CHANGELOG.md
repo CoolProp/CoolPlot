@@ -157,10 +157,21 @@ guide in the documentation says what to change in your code.
   salted `hash()` of CoolProp's configuration, which differs between
   processes; it is a SHA-256 digest now, so keys mean the same in every
   run.
+- `draw()` and `save()` with a background engine could stop waiting
+  too early, with "Background work makes no progress, the drawing may
+  be incomplete", when a line failed while the scene was being built:
+  a worker process that crashes fails every job of its pool at once, and
+  the retries queued next were taken for no progress. The lines they
+  would have drawn were missing, and the line that crashed was not
+  reported. Progress is now counted over the scene and the wait after it.
 
-### 1.0.0rc1
+## [1.0.0] - 2026-10-22
 
-#### Removed
+The first release on PyPI since 0.1.7. It also holds the development
+versions 0.2.0 to 0.9.0 below, which were not published on PyPI; coming
+from 0.1.7, see the upgrade guide.
+
+### Removed
 - The names deprecated since 0.5: the chart methods `set_isolines`,
   `set_default_isolines`, `remove_isolines`, `isoline_sets`,
   `set_isoline_style`, `savefig`, `set_process`, `remove_process`, the
@@ -172,11 +183,11 @@ guide in the documentation says what to change in your code.
   A spec saved by 0.4 with "EUR" still reads, in Python and in
   coolplot-core. See the upgrade guide.
 
-#### Deprecated
+### Deprecated
 - The constant `coolplot.EUR` (an old name of `coolplot.ENGINEERING`,
   silent before 1.0) warns and goes in 2.0.
 
-#### Changed
+### Changed
 - Python 3.14 is supported and tested in CI (Python 3.10 to 3.14).
 - The public API is stable from 1.0 to 2.0 (upgrade guide, "Stability
   from 1.0"); deprecations in 1.x go in 2.0.
@@ -185,8 +196,17 @@ guide in the documentation says what to change in your code.
   CoolProp yet, and coolplot-core is slower from Python than the Python
   composer (plan, 1.0: they go only when the C++ passes the full suite as
   the default).
+- No equality tests between floats in the numerics, the drawing code,
+  the scene renderers and coolplot-core: exact zeros, settings and copied
+  values are tested with the helpers of `coolplot.core.floats` (in C++,
+  `core.h`; the core compiles clean with `-Wfloat-equal`). Every chart
+  checked is bit-identical before and after. The same rewrite as in
+  CoolProp's port of the numerics.
+- The GitHub workflows run the Node 24 releases of the actions
+  (checkout, setup-python and setup-node v7, upload-artifact v7,
+  download-artifact v8); the runners warned about Node 20.
 
-#### Fixed
+### Fixed
 - A line where no state at all could be computed said nothing: failed
   looks while the stepping scans outside the axes count as outside, so
   the curve had no points, `n_outside` > 0 and an empty `reason`. It now
@@ -217,6 +237,8 @@ guide in the documentation says what to change in your code.
   `reason`.
 - All found in the review of CoolProp's port of these numerics; the
   port has the same fixes.
+
+## Development versions, not published on PyPI
 
 ### 0.9.0
 
