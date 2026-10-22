@@ -48,6 +48,7 @@ panels = [
 for diagram, ax in zip(panels, axes):
     diagram.draw(MatplotlibRenderer(ax=ax))
 fig.savefig("two_stage_cycles.png", dpi=110)
+plt.close(fig)   # the file is the result; the gallery shows it once
 
 for name, cycle in (("flash tank", flash), ("economizer", economizer)):
     r = cycle.result

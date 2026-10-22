@@ -139,6 +139,14 @@ struct Unit
     double to_SI(double value) const {
         return (value - offset) / scale;
     }
+    /// The value a label shows: from_SI without the noise of the offset. A line at 0 deg F is
+    /// kept as 255.372222222 K (12 significant digits) and comes back as -4e-10; a result that
+    /// small next to the two terms it is the difference of is zero (coolplot.core.units.Unit.label_value).
+    double label_value(double value_SI) const {
+        double term = value_SI * scale;
+        double shown = term + offset;
+        return std::fabs(shown) <= 1e-9 * std::fmax(std::fabs(term), std::fabs(offset)) ? 0.0 : shown;
+    }
 };
 
 /// A named set of units, one per quantity key.

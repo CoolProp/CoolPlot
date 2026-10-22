@@ -97,3 +97,7 @@ The first line of each family, the saturation dome, the quality lines
 and each cycle carry a legend text. The legend sits outside the plot on
 the right by default, so it never covers data; `LegendStyle(location=...)`
 moves it and `LegendStyle(visible=False)` hides it.
+
+## In the gallery
+
+The same chart in the four themes: {doc}`../gallery/themes`.

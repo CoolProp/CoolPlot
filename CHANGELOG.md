@@ -32,6 +32,13 @@ The 1.3 releases are about type safety.
   tests workflow runs them in a `typing` job and checks that the wheel and
   the sdist carry `py.typed`. The optional dependencies gain `typing`
   (mypy). The contributing guide has a page on type annotations.
+- Gallery examples: a steam Rankine cycle on a T-s chart, a steam turbine
+  on the h-s (Mollier) chart of water, an organic Rankine cycle with
+  R245fa, a transcritical CO2 heat pump, one heat pump with R290, R32 and
+  R1234yf side by side, an air conditioner in IP units, one chart in the
+  four themes, the four label modes, and a chart with a logo, references
+  and a watermark. The how-to guides point to them.
+- `Unit.label_value`: the value a label shows for an SI value.
 
 #### Changed
 - A range that is not two values (`range=` of `set_lines`, `"range"` of
@@ -46,6 +53,10 @@ The 1.3 releases are about type safety.
   helpers. None of them changes what a chart draws.
 - `add_cycle` numbers states given in a mapping other than a dict by its
   keys, as it does for a dict.
+- A line at 0 in a unit with an offset other than deg C, such as the
+  isotherm at 0 deg F, was labelled "-4e-10" (the noise of converting
+  back from kelvin); it is labelled 0, by the Python composer and by
+  coolplot-core alike.
 
 ## [1.2.0] - 2026-10-22
 

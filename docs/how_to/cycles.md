@@ -86,3 +86,12 @@ properties in the chart's units (the StatePoint it returns is in SI units).
 States you computed yourself, for example with
 `coolplot.thermo.process_path`, go into `add_cycle` as `StatePoint`
 values.
+
+## In the gallery
+
+Cycles on other charts and with other fluids: a steam Rankine cycle on a
+T-s chart ({doc}`../gallery/steam_rankine_ts`), a steam turbine on the
+h-s chart ({doc}`../gallery/steam_turbine_hs`), an organic Rankine cycle
+({doc}`../gallery/orc_ts`), a transcritical CO2 heat pump
+({doc}`../gallery/co2_transcritical`) and one heat pump with three
+refrigerants ({doc}`../gallery/refrigerant_comparison`).

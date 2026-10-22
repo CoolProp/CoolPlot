@@ -50,6 +50,20 @@ class Unit:
         """Convert a scalar or array from this unit to SI."""
         return (np.asarray(value, dtype=float) - self.offset) / self.scale
 
+    def label_value(self, value_SI: float) -> float:
+        """The value a label shows for ``value_SI``: :meth:`from_SI` without the noise of the offset.
+
+        The value of a line is kept in SI units to 12 significant digits
+        (:func:`coolplot.engine.planning.snap`). A line at 0 deg F is kept
+        as 255.372222222 K, and converting it back cancels against the
+        offset of 459.67 and leaves -4e-10 instead of 0. A result that
+        small next to the two terms it is the difference of is zero.
+        coolplot-core does the same (``Unit::label_value``).
+        """
+        term = float(value_SI) * self.scale
+        shown = term + self.offset
+        return 0.0 if abs(shown) <= 1e-9 * max(abs(term), abs(self.offset)) else shown
+
     @property
     def difference(self) -> "Unit":
         """The unit of a difference of two values: the same scale, no offset."""

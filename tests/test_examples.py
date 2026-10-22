@@ -73,6 +73,62 @@ def test_psychrometric_mollier(tmp_path):
         and len(svg) > 10000
 
 
+def test_steam_rankine_ts(tmp_path):
+    out = _run("steam_rankine_ts.py", tmp_path)
+    assert "Efficiency   34.0 %" in out and "quality 0.874" in out
+    svg = (tmp_path / "steam_rankine_ts.svg").read_text()
+    assert "live steam" in svg and "Specific entropy s / kJ/kg/K" in svg and len(svg) > 10000
+
+
+def test_steam_turbine_hs(tmp_path):
+    assert "Loss" in _run("steam_turbine_hs.py", tmp_path)
+    svg = (tmp_path / "steam_turbine_hs.svg").read_text()
+    assert "2s" in svg and "x = 0.874" in svg and "Specific enthalpy h / kJ/kg" in svg and len(svg) > 10000
+
+
+def test_co2_transcritical(tmp_path):
+    assert "COP heating 3.00" in _run("co2_transcritical.py", tmp_path)
+    svg = (tmp_path / "co2_transcritical.svg").read_text()
+    assert "gas cooler 11.5 kW" in svg and len(svg) > 10000
+
+
+def test_orc_ts(tmp_path):
+    assert "Efficiency 14.2 %" in _run("orc_ts.py", tmp_path)
+    svg = (tmp_path / "orc_ts.svg").read_text()
+    assert "exhaust 54 deg C" in svg and len(svg) > 10000
+
+
+def test_refrigerant_comparison(tmp_path):
+    out = _run("refrigerant_comparison.py", tmp_path)
+    assert "R290" in out and "R32" in out and "R1234yf" in out
+    assert (tmp_path / "refrigerant_comparison.png").stat().st_size > 10000
+
+
+def test_ip_units(tmp_path):
+    assert "EER" in _run("ip_units.py", tmp_path)
+    svg = (tmp_path / "ip_units.svg").read_text()
+    assert "Temperature T / deg F" in svg and "Btu/lb" in svg and len(svg) > 10000
+    # The isotherm at 0 deg F is labelled 0, not with the noise of the conversion (-4e-10)
+    assert ">-40</text>" in svg and ">0</text>" in svg and "e-10</text>" not in svg
+
+
+def test_themes(tmp_path):
+    assert "Lines computed for the last theme: 0" in _run("themes.py", tmp_path)
+    for theme in ("default", "dark", "print", "classic"):
+        assert (tmp_path / "theme_{0}.svg".format(theme)).stat().st_size > 10000
+
+
+def test_label_modes(tmp_path):
+    _run("label_modes.py", tmp_path)
+    assert (tmp_path / "label_modes.png").stat().st_size > 10000
+
+
+def test_branding(tmp_path):
+    assert "Tillner-Roth and Yokozeki" in _run("branding.py", tmp_path)
+    svg = (tmp_path / "branding.svg").read_text()
+    assert "cp-badge" in svg and "Example Engineering" in svg and "data:image/svg+xml;base64," in svg
+
+
 def _ports_installed() -> bool:
     from coolplot import corelib
     from coolplot.thermo import native
@@ -146,7 +202,13 @@ def _same(a, b, path="", rel=1e-9):
 #: folder is a server, tested by tests/test_web_server.py).
 BOTH_PATHS = ["quickstart.py", "two_stage_cycles.py", "refrigerant_blend.py", "psychrometric.py",
               "interactive_cycle.py", "saturation_lines.py", "psychrometric_processes.py",
-              "psychrometric_air_handling.py", "psychrometric_evaporative_cooling.py", "psychrometric_mollier.py"]
+              "psychrometric_air_handling.py", "psychrometric_evaporative_cooling.py", "psychrometric_mollier.py",
+              "steam_rankine_ts.py", "steam_turbine_hs.py", "co2_transcritical.py", "orc_ts.py",
+              "refrigerant_comparison.py", "ip_units.py", "themes.py", "label_modes.py", "branding.py"]
+
+#: Examples whose charts are all composed by Python also with coolplot-core:
+#: coolplot-core does not compose the branding (see coolplot.compose.compose).
+PYTHON_COMPOSER = {"branding.py"}
 
 
 def test_the_list_of_examples_is_complete():
@@ -198,7 +260,7 @@ def test_every_example_draws_the_same_from_both_paths(name, tmp_path):
         if mode == "0":
             assert answered == {"compose": 0, "svg": 0, "numerics": 0}, answered
         else:
-            if record["core"]:
+            if record["core"] and name not in PYTHON_COMPOSER:
                 assert answered["compose"] > 0, answered
             # Humid air is not part of CoolProp's port: an example without a chart of a fluid computes
             # nothing there

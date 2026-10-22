@@ -65,6 +65,12 @@ TEST_CASE("Unit systems", "[core]") {
     CHECK_THROWS_AS(get_unit_system("EUR"), Error);                       // removed in 1.0
     CHECK(UnitSystem::from_json(json("EUR")).name == "engineering");     // a record saved by 0.4 still reads
     CHECK(get_unit_system("IP").at("T").from_SI(273.15) == Catch::Approx(32.0));
+    // A line at 0 deg F, kept in K to 12 significant digits, is labelled 0, not -4e-10
+    const Unit& fahrenheit = get_unit_system("IP").at("T");
+    CHECK(fahrenheit.from_SI(255.372222222) != 0.0);
+    CHECK(fahrenheit.label_value(255.372222222) == 0.0);
+    CHECK(fahrenheit.label_value(273.15) == Catch::Approx(32.0));
+    CHECK(eng.at("p").label_value(1e-12) > 0.0);   // no offset: a small value stays
     CHECK(eng.to_json() == json("engineering"));
     UnitSystem custom = eng;
     custom.name = "mine";

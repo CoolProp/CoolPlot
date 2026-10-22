@@ -177,7 +177,7 @@ def label_text(spec: DiagramSpec, key: str, value_SI: float, anchor_SI: Optional
     else:
         symbol = spec.diagram.symbol(key)
     unit = spec.units[key]
-    text = "{0}={1}".format(symbol, labels.format_value(float(unit.from_SI(value_SI))))
+    text = "{0}={1}".format(symbol, labels.format_value(unit.label_value(value_SI)))
     if labels.show_units and unit.label not in ("-", ""):
         text += " " + unit.label
     return text
@@ -232,10 +232,10 @@ def label_requests(spec: DiagramSpec, theme: Theme, curves, lines: Sequence[Line
             if theme.isoline_label_color == "line" and line.style.color is not None:
                 style = style.with_(color=line.style.color)   # the label in its line's colour
             text = label_text(spec, key, request.value_SI, request.anchor_SI)
-            value = float(spec.units[key].from_SI(request.value_SI))
+            value = spec.units[key].label_value(request.value_SI)
             anchor = _saturation_anchor(spec, key)
             if anchor is not None and request.anchor_SI is not None:
-                value = float(spec.units[anchor.by].from_SI(request.anchor_SI))   # the saturation state shown
+                value = spec.units[anchor.by].label_value(request.anchor_SI)   # the saturation state shown
             if labels.mode == "rails":
                 text = labels.format_value(value)   # the bare value; symbol and unit are in the legend
             requests.append(LabelRequest(id=line.id + "/label", group=line.group + "/label", family=key,
