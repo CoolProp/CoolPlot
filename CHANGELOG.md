@@ -113,7 +113,6 @@ guide in the documentation says what to change in your code.
 - CoolProp's pseudo-pure models of blends ("R407C", "R410A", "Air") give
   one warning that names the mixture to use ("R407C.mix") instead of one
   warning per missing line of constant quality.
-- CI also tests Python 3.14.
 
 ## [1.1.0] - 2026-10-22
 
