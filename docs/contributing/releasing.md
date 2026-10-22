@@ -34,8 +34,9 @@ run on the Actions tab. A release candidate works the same way with
 `VERSION = (1, 1, 0, 'rc1')` and the tag `v1.1.0rc1`.
 
 After the release: `pip install coolplot==1.1.0` installs it, and the
-version shows on Read the Docs (a new tag is built there once it is
-activated, by hand or by an automation rule for `v*` tags).
+version shows on Read the Docs. The repository's webhook tells Read the
+Docs about the new tag, which builds it without a step by hand
+(`https://coolplot.readthedocs.io/en/v1.1.0/`).
 
 To rehearse without publishing, start the workflow by hand: Actions tab,
 "release", "Run workflow", on the branch to try. It runs the same steps
