@@ -20,7 +20,7 @@ from __future__ import annotations
 import warnings
 
 from dataclasses import dataclass, field, replace
-from typing import Mapping
+from typing import TYPE_CHECKING, Mapping, Optional, Sequence, Union, overload
 
 import numpy as np
 
@@ -42,13 +42,41 @@ class Unit:
     offset: float = 0.0
     difference_label: str = ""
 
-    def from_SI(self, value_SI):
+    # A number gives a number, a list or an array an array. The @overload
+    # lines tell type checkers which; only the definition after them runs.
+    @overload
+    def from_SI(self, value_SI: float) -> float: ...
+
+    @overload
+    def from_SI(self, value_SI: Union[Sequence[float], np.ndarray]) -> np.ndarray: ...
+
+    def from_SI(self, value_SI: Union[float, Sequence[float], np.ndarray]) -> Union[float, np.ndarray]:
         """Convert a scalar or array from SI to this unit."""
         return np.asarray(value_SI, dtype=float) * self.scale + self.offset
 
-    def to_SI(self, value):
+    @overload
+    def to_SI(self, value: float) -> float: ...
+
+    @overload
+    def to_SI(self, value: Union[Sequence[float], np.ndarray]) -> np.ndarray: ...
+
+    def to_SI(self, value: Union[float, Sequence[float], np.ndarray]) -> Union[float, np.ndarray]:
         """Convert a scalar or array from this unit to SI."""
         return (np.asarray(value, dtype=float) - self.offset) / self.scale
+
+    def label_value(self, value_SI: float) -> float:
+        """The value a label shows for ``value_SI``: :meth:`from_SI` without the noise of the offset.
+
+        The value of a line is kept in SI units to 12 significant digits
+        (:func:`coolplot.engine.planning.snap`). A line at 0 deg F is kept
+        as 255.372222222 K, and converting it back cancels against the
+        offset of 459.67 and leaves -4e-10 instead of 0. A result that
+        small next to the two terms it is the difference of is zero.
+        coolplot-core does the same (``Unit::label_value``).
+        """
+        term = float(value_SI) * self.scale
+        shown = term + self.offset
+        return 0.0 if abs(shown) <= 1e-9 * max(abs(term), abs(self.offset)) else shown
 
     @property
     def difference(self) -> "Unit":
@@ -104,7 +132,7 @@ class UnitSystem:
         """A difference in this system's unit, e.g. "5 K" for a superheat."""
         return _describe(self.difference(key), value_SI, digits)
 
-    def with_unit(self, key: str, unit: Unit, name: str = None) -> "UnitSystem":
+    def with_unit(self, key: str, unit: Unit, name: Optional[str] = None) -> "UnitSystem":
         """Return a copy where one quantity uses a different unit."""
         units = dict(self.units)
         key = quantity_key(key)
@@ -185,6 +213,10 @@ ENGINEERING = UnitSystem("engineering", _ENGINEERING)
 IP = UnitSystem("IP", _IP)
 UNIT_SYSTEMS = {u.name.upper(): u for u in (SI, KSI, ENGINEERING, IP)}
 
+# A unit system as the public functions take it, for the annotations: a
+# UnitSystem or the name of a preset ("SI", "KSI", "engineering", "IP").
+UnitsLike = Union[str, UnitSystem]
+
 
 def _old_eur(stacklevel: int) -> UnitSystem:
     """ENGINEERING, with a warning: the constant EUR is its old name.
@@ -197,18 +229,20 @@ def _old_eur(stacklevel: int) -> UnitSystem:
     return ENGINEERING
 
 
-def __getattr__(name):
-    # Only called for names the module does not define (PEP 562)
-    if name == "EUR":
-        return _old_eur(2)
-    raise AttributeError("module {0!r} has no attribute {1!r}".format(__name__, name))
+if not TYPE_CHECKING:
+    # Hidden from type checkers, which would otherwise accept any name of this module
+    def __getattr__(name):
+        # Only called for names the module does not define (PEP 562)
+        if name == "EUR":
+            return _old_eur(2)
+        raise AttributeError("module {0!r} has no attribute {1!r}".format(__name__, name))
 
 
 # Names removed in 1.0, with the name to use instead
 _REMOVED_NAMES = {"EUR": "engineering"}
 
 
-def get_unit_system(units, stacklevel: int = 2) -> UnitSystem:
+def get_unit_system(units: UnitsLike, stacklevel: int = 2) -> UnitSystem:
     """Accept a UnitSystem or the name of a preset: "SI", "KSI", "engineering" or "IP".
 
     ``stacklevel`` is kept for callers of 0.x, where it placed the warning

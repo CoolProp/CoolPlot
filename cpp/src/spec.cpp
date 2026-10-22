@@ -1,10 +1,19 @@
 #include "coolplot/spec.h"
 
 #include <algorithm>
+#include <cctype>
 
 namespace coolplot {
 
 namespace {
+
+// The key of a style override: "saturation" for the saturation curve, else a quantity key
+// (coolplot.spec.diagram.override_key).
+std::string override_key(const std::string& key) {
+    std::string lower = key;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return std::tolower(c); });
+    return lower == "saturation" ? lower : quantity_key(key);
+}
 
 const std::vector<std::string> EDGE_NAMES = {"top", "right", "bottom", "left"};
 
@@ -75,7 +84,7 @@ Settings Settings::from_json(const json& data) {
 }
 
 json DiagramSpec::style_override(const std::string& key) const {
-    auto found = style_overrides.find(quantity_key(key));
+    auto found = style_overrides.find(override_key(key));
     return found == style_overrides.end() ? json::object() : found->second;
 }
 
@@ -140,7 +149,7 @@ DiagramSpec DiagramSpec::from_json(const json& data) {
         spec.cycles.push_back(cycle);
     }
     json overrides = data.value("style_overrides", json::object());
-    for (auto it = overrides.begin(); it != overrides.end(); ++it) spec.style_overrides[quantity_key(it.key())] = it.value();
+    for (auto it = overrides.begin(); it != overrides.end(); ++it) spec.style_overrides[override_key(it.key())] = it.value();
     if (data.contains("view_SI")) {
         const json& view = data.at("view_SI");
         if (view.size() > 0 && !view.at(0).is_null()) {

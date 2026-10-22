@@ -89,6 +89,8 @@ RULES = {
 ALLOWED = {
     ("coolplot.chart", "coolplot.render.mpl"):
         "Chart.draw/show/save create a MatplotlibRenderer on demand for scripts",
+    ("coolplot.chart", "coolplot.render.base"):
+        "Chart.draw returns the renderer it was given; imported for type checkers only (TYPE_CHECKING)",
     ("coolplot.chart", "coolplot.render.svg"):
         "Chart.save writes an .svg file with the SVG writer on demand, without matplotlib",
     ("coolplot.chart", "coolplot.render.web"):

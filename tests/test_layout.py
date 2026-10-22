@@ -170,3 +170,18 @@ def test_a_long_state_label_turns_to_the_side_where_it_stays_inside_the_frame():
                  style=TextStyle(font=Font(size_pt=8.0), h_align="left", v_align="bottom"))
     placed = place_state_numbers([label], frame, [9.5], [5.0])
     assert placed[0].style.h_align == "right" and same_numbers(placed[0].offset_pt, (-4.5, 4.5))
+
+
+def test_a_line_at_zero_in_a_unit_with_an_offset_is_labelled_zero():
+    """0 deg F is kept in K to 12 digits; back in deg F it is -4e-10, and the label says 0."""
+    from coolplot import PropertyDiagram
+    from coolplot.core.units import IP
+    assert float(IP["T"].from_SI(255.372222222)) != 0.0
+    assert IP["T"].label_value(255.372222222) == 0.0
+    assert IP["T"].label_value(273.15) == pytest.approx(32.0)
+    diagram = PropertyDiagram("HEOS::R134a", "ph", units="IP", tp_limits="ACHP")
+    diagram.set_lines("T", values=[-40, 0, 40], labels=True)
+    for mode, label in (("rails", "0"), ("edge", "T=0 deg F")):
+        diagram.settings = diagram.settings.with_(labels={"mode": mode})
+        texts = {item.text for item in diagram.update_scene() if item.role == "isoline_label"}
+        assert label in texts, texts

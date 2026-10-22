@@ -28,13 +28,14 @@ import re
 import tempfile
 import time
 from dataclasses import replace
-from typing import Callable, List
+from typing import Any, Callable, List
 
 import numpy as np
 
 from ..core.floats import same_number
 from ..core.numbers import format_number
-from ..scene import AxesSpec, Line, Markers, Scene, Text, drawable_limits
+from ..render.base import Renderer
+from ..scene import AxesSpec, Line, Markers, Scene, SceneItem, Text, drawable_limits
 from ..style.values import (AxesStyle, Font, GENERIC_FONTS, LegendStyle, LineStyle, MarkerStyle, MARKER_SHAPES,
                      TextStyle, dash_pattern_pt, style_to_dict)
 
@@ -85,7 +86,7 @@ def conformance_axes(x_log=False, y_log=True) -> AxesSpec:
 def conformance_scene() -> Scene:
     """Items covering every style option, plus awkward data."""
     x = np.linspace(0.5, 9.5, 20)
-    items = [
+    items: List[SceneItem] = [
         Line(id="line/solid", role="isoline", group="lines", x=x, y=np.geomspace(0.2, 50.0, 20),
              legend="Solid <$1>", style=LineStyle(color="#2a78d6", width_pt=0.75)),
         Line(id="line/dashed", role="isoline", group="lines", x=x, y=np.geomspace(0.3, 60.0, 20),
@@ -98,11 +99,11 @@ def conformance_scene() -> Scene:
              style=LineStyle(color="#0b0b0b", width_pt=2.0, dash=(5.0, 2.0, 1.0, 2.0), alpha=0.7,
                              casing_color="#fcfcfb", casing_width_pt=1.5)),
         # NaN splits a line; non-positive values cannot be shown on a log axis
-        Line(id="line/gaps", role="saturation", x=[1.0, 2.0, np.nan, 4.0, 5.0, 6.0, 7.0],
-             y=[1.0, 2.0, 3.0, 4.0, -1.0, 0.0, 6.0], z_order=2.0,
+        Line(id="line/gaps", role="saturation", x=np.array([1.0, 2.0, np.nan, 4.0, 5.0, 6.0, 7.0]),
+             y=np.array([1.0, 2.0, 3.0, 4.0, -1.0, 0.0, 6.0]), z_order=2.0,
              style=LineStyle(color="#52514e", width_pt=1.0)),
-        Line(id="line/empty", x=[], y=[]),
-        Line(id="line/all-missing", x=[np.nan, np.nan], y=[np.nan, np.nan]),
+        Line(id="line/empty", x=np.array([]), y=np.array([])),
+        Line(id="line/all-missing", x=np.array([np.nan, np.nan]), y=np.array([np.nan, np.nan])),
         Line(id="line/hidden", visible=False, x=x, y=x, style=LineStyle(color="red")),
     ]
     for i, shape in enumerate(sorted(MARKER_SHAPES)):
@@ -110,7 +111,7 @@ def conformance_scene() -> Scene:
         items.append(Markers(
             id="markers/" + shape, role="state_points", group="markers", z_order=3.0,
             legend="Dashed" if shape == "o" else None,
-            x=[1.0 + i, 1.5 + i], y=[5.0, 8.0],
+            x=np.array([1.0 + i, 1.5 + i]), y=np.array([5.0, 8.0]),
             style=MarkerStyle(shape=shape, size_pt=6.0 + i, face_color=None if hollow else "#0b0b0b",
                               edge_color="#4a3aa7", edge_width_pt=1.0 + 0.25 * i, alpha=0.9)))
     items += [
@@ -135,7 +136,7 @@ def conformance_scene() -> Scene:
         Text(id="text/vertical-down", x=9.0, y=2.0, text="down", z_order=4.0, direction=(0.0, -1.0)),
         Text(id="text/vertical-up", x=9.5, y=2.0, text="up", z_order=4.0, direction=(0.0, 1.0)),
         # A huge z order still stays below the frame and the legend
-        Line(id="line/on-top", role="process", x=[0.2, 9.8], y=[0.15, 95.0], z_order=1e12,
+        Line(id="line/on-top", role="process", x=np.array([0.2, 9.8]), y=np.array([0.15, 95.0]), z_order=1e12,
              style=LineStyle(color="#4a3aa7", width_pt=1.0)),
     ]
     return Scene(conformance_axes(), items)
@@ -362,10 +363,10 @@ def _check_scene(renderer, scene: Scene, failures: List[str], label: str):
             failures.append("{0}: no {1} tick labels [number format]".format(label, name))
         else:
             for value, text in labels:
-                want = format_number(value, scene.axes.tick_digits)
-                if text != want:
+                expected_text = format_number(value, scene.axes.tick_digits)
+                if text != expected_text:
                     failures.append("{0}: {1} tick label {2!r} at {3!r}, expected {4!r} [number format]".format(
-                        label, name, text, value, want))
+                        label, name, text, value, expected_text))
                     break
 
     limitations = set(getattr(renderer, "limitations", ()))
@@ -401,7 +402,7 @@ def _check_scene(renderer, scene: Scene, failures: List[str], label: str):
         if "plot_size_pt" not in axes_actual:
             continue
         limits = (axes_actual.get("x_limits"), axes_actual.get("y_limits"))
-        if want["kind"] == "text":
+        if want["kind"] == "text" and isinstance(item, Text):
             angle = actual.get("screen_angle_deg")
             target = expected_screen_angle(item, scene.axes, axes_actual["plot_size_pt"], limits)
             if angle is None or not math.isfinite(angle) or abs(angle - target) > ANGLE_TOL:
@@ -430,7 +431,7 @@ def _check_positions(where, item, axes, plot_size_pt, limits, actual, failures):
 # ---------------------------------------------------------------------------
 # The kit
 # ---------------------------------------------------------------------------
-def run_conformance(factory: Callable[[], object]) -> List[str]:
+def run_conformance(factory: Callable[[], Renderer]) -> List[str]:
     """Run every check against fresh renderers from ``factory``; returns failures."""
     failures: List[str] = []
     renderer = factory()
@@ -468,7 +469,9 @@ def run_conformance(factory: Callable[[], object]) -> List[str]:
     # 4. Hide, restack, move data, minor grid
     scene.put(replace(scene["markers/o"], visible=False))
     scene.put(replace(scene["line/dotted"], z_order=10.0))
-    scene.put(replace(scene["line/dashed"], y=np.geomspace(1.0, 99.0, 20)))
+    dashed = scene["line/dashed"]
+    assert isinstance(dashed, Line)
+    scene.put(replace(dashed, y=np.geomspace(1.0, 99.0, 20)))
     scene.set_axes(replace(scene.axes, style=replace(
         scene.axes.style, grid_minor=LineStyle(color="#f0efec", width_pt=0.3))))
     renderer.sync(scene)
@@ -484,7 +487,7 @@ def run_conformance(factory: Callable[[], object]) -> List[str]:
 
     # 6. An item changes its type under the same id
     first = list(scene)[0]
-    scene.put(Markers(id=first.id, x=[2.0, 3.0], y=[2.0, 3.0], z_order=first.z_order))
+    scene.put(Markers(id=first.id, x=np.array([2.0, 3.0]), y=np.array([2.0, 3.0]), z_order=first.z_order))
     renderer.sync(scene)
     _check_scene(renderer, scene, failures, "type change")
 
@@ -566,7 +569,7 @@ def _backend_object(renderer, item_id):
 
 
 def _check_limits(factory) -> List[str]:
-    failures = []
+    failures: List[str] = []
     # A log axis cannot start at zero: the backend uses upper / 1000
     scene = conformance_scene()
     scene.set_axes(replace(scene.axes, y_limits=(0.0, 100.0)))
@@ -576,9 +579,9 @@ def _check_limits(factory) -> List[str]:
 
     # Autoscale covers visible data only
     scene = Scene(AxesSpec(y_log=True), [
-        Line(id="a", x=[1.0, 2.0, 3.0], y=[0.5, 5.0, 50.0]),
-        Markers(id="b", x=[4.0], y=[np.nan]),
-        Line(id="hidden", visible=False, x=[-100.0, 1000.0], y=[1e-6, 1e9]),
+        Line(id="a", x=np.array([1.0, 2.0, 3.0]), y=np.array([0.5, 5.0, 50.0])),
+        Markers(id="b", x=np.array([4.0]), y=np.array([np.nan])),
+        Line(id="hidden", visible=False, x=np.array([-100.0, 1000.0]), y=np.array([1e-6, 1e9])),
     ])
     renderer = factory()
     renderer.sync(scene)
@@ -590,7 +593,7 @@ def _check_limits(factory) -> List[str]:
         failures.append("autoscaled limits {0} include hidden items or non-positive log values "
                         "[robustness]".format(((x_lo, x_hi), (y_lo, y_hi))))
     # A single point: the span is padded, never zero
-    scene = Scene(AxesSpec(), [Markers(id="p", x=[2.0], y=[3.0])])
+    scene = Scene(AxesSpec(), [Markers(id="p", x=np.array([2.0]), y=np.array([3.0]))])
     renderer = factory()
     renderer.sync(scene)
     (x_lo, x_hi), (y_lo, y_hi) = renderer.describe_axes()["x_limits"], renderer.describe_axes()["y_limits"]
@@ -600,7 +603,7 @@ def _check_limits(factory) -> List[str]:
 
 
 def _check_file_output(factory) -> List[str]:
-    failures = []
+    failures: List[str] = []
     outputs = []
     for _ in range(2):
         renderer = factory()
@@ -686,11 +689,11 @@ def check_pdf(factory) -> List[str]:
     the document title, and the same scene gives the same file.
     """
     from .pdf_reader import read_pdf
-    failures = []
+    failures: List[str] = []
     scene = conformance_scene()
     folder = tempfile.mkdtemp()
     try:
-        outputs = []
+        outputs: List[Any] = []
         for name in ("a.pdf", "b.pdf"):
             if outputs:
                 time.sleep(1.1)   # a date with one-second resolution has to change between the two files
@@ -740,8 +743,8 @@ def check_pdf(factory) -> List[str]:
 
 def _events_scene() -> Scene:
     return Scene(AxesSpec(x_limits=(0.0, 10.0), y_limits=(0.0, 10.0)), [
-        Line(id="line", x=[0.0, 10.0], y=[5.0, 5.0], z_order=1.0),
-        Markers(id="states", x=[2.0, 8.0], y=[5.0, 5.0], z_order=6.0),
+        Line(id="line", x=np.array([0.0, 10.0]), y=np.array([5.0, 5.0]), z_order=1.0),
+        Markers(id="states", x=np.array([2.0, 8.0]), y=np.array([5.0, 5.0]), z_order=6.0),
     ])
 
 
@@ -761,7 +764,7 @@ def check_events(factory) -> List[str]:
             return ["a backend with events has to provide {0}() [events]".format(name)]
     scene = _events_scene()
     renderer.sync(scene)
-    events = []
+    events: List[Any] = []
     token = renderer.connect(events.append)
     tol = 0.02   # in data units on a 0 to 10 axis: about a pixel
 

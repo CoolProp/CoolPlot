@@ -20,7 +20,7 @@ This module has no CoolProp dependency; it only knows quantity keys.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 from .quantities import get_quantity, quantity_key
 
@@ -75,7 +75,7 @@ class Family:
     def check_values(self, values_SI, label: str):
         """Raise ValueError if one of the values has no line."""
         bad = [v for v in values_SI if not self.has_line(v)]
-        if bad:
+        if bad and self.bounds is not None:   # without bounds every value has a line
             low, high = self.bounds
             span = "between {0:g} and {1:g}" if self.low_included else "above {0:g} and up to {1:g}"
             raise ValueError("{0} has to lie {1} (as an SI value), not {2}.".format(
@@ -184,7 +184,7 @@ class DiagramType:
         object.__setattr__(self, "x", x)
 
     @classmethod
-    def parse(cls, name) -> "DiagramType":
+    def parse(cls, name: Union[str, "DiagramType"]) -> "DiagramType":
         """Build from a name like "ph", "Ts", "PH", "WT" or an existing DiagramType."""
         if isinstance(name, DiagramType):
             return name
@@ -233,6 +233,17 @@ class DiagramType:
         """
         iso_key = quantity_key(iso_key)
         return next((f for f in self.families if f.key == iso_key), None)
+
+    def require_family(self, iso_key: str) -> Family:
+        """The family of lines of constant ``iso_key``; KeyError if the diagram does not offer it.
+
+        For keys that are known to be supported, such as those of the
+        isolines of a spec, where :meth:`family` would never give None.
+        """
+        family = self.family(iso_key)
+        if family is None:
+            raise KeyError("The {0}-{1} diagram has no lines of constant {2}.".format(self.y, self.x, iso_key))
+        return family
 
     def sweep_quantity(self, iso_key: str) -> Optional[str]:
         """Quantity stepped through to compute an isoline, or None if unsupported."""

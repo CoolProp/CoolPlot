@@ -17,9 +17,9 @@ from __future__ import annotations
 import warnings
 
 from dataclasses import dataclass, field
-from typing import Callable, Dict, FrozenSet, List, Optional, Tuple
+from typing import Callable, Dict, FrozenSet, List, Optional, Set, Tuple
 
-from ..scene import AxesSpec, Item, Scene, Text, items_equal
+from ..scene import AxesSpec, SceneItem, Scene, Text, items_equal
 
 #: Optional abilities a backend can declare in ``Renderer.capabilities``.
 CAPABILITIES = {
@@ -32,10 +32,10 @@ CAPABILITIES = {
 }
 
 
-_branding_warned = set()   # renderer classes that already said they leave the branding out
+_branding_warned: Set[str] = set()   # renderer classes that already said they leave the branding out
 
 
-def warn_without_branding(renderer, axes: AxesSpec):
+def warn_without_branding(renderer, axes: Optional[AxesSpec]):
     """Warn once per renderer (a renderer object, or a name) when the axes carry a badge or
     watermark it does not draw."""
     if axes is None or (axes.badge is None and axes.watermark is None):
@@ -73,7 +73,7 @@ class Renderer:
     capabilities: FrozenSet[str] = frozenset()
 
     def __init__(self):
-        self._drawn: Dict[str, Item] = {}
+        self._drawn: Dict[str, SceneItem] = {}
         self._order: List[str] = []
         self._axes: Optional[AxesSpec] = None
         self._legend: Tuple = ()
@@ -170,17 +170,17 @@ class Renderer:
         """Apply labels, scales, limits and the complete AxesStyle."""
         raise NotImplementedError
 
-    def _add(self, item: Item):
+    def _add(self, item: SceneItem):
         """Create the backend object for a new item, fully styled."""
         raise NotImplementedError
 
-    def _update(self, old: Item, new: Item):
+    def _update(self, old: SceneItem, new: SceneItem):
         """Change an existing backend object. Override for in-place updates;
         the default removes the old object and adds a new one."""
         self._remove(old)
         self._add(new)
 
-    def _remove(self, item: Item):
+    def _remove(self, item: SceneItem):
         """Delete the backend object of an item."""
         raise NotImplementedError
 

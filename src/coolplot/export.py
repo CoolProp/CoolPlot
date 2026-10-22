@@ -8,10 +8,16 @@ chart's ``settings.page`` and the fonts are embedded as for a single PDF
 """
 from __future__ import annotations
 
-from typing import Sequence
+import os
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Union
+
+if TYPE_CHECKING:   # only for the type checker: matplotlib is imported when the file is written
+    from .chart import Chart
+    from .render.mpl import MatplotlibRenderer
 
 
-def save_pdf(path, charts: Sequence, pdf_fonts: str = "truetype", metadata: dict = None):
+def save_pdf(path: Union[str, os.PathLike], charts: Sequence[Chart], pdf_fonts: str = "truetype",
+             metadata: Optional[Dict[str, str]] = None) -> List[MatplotlibRenderer]:
     """Write ``charts`` (PropertyDiagram, PsychrometricChart) into one PDF.
 
     ``metadata`` adds PDF fields such as {"Author": ..., "Subject": ...};

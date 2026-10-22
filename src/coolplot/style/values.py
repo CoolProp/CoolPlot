@@ -22,7 +22,7 @@ import math
 import os
 import re
 from dataclasses import dataclass, field, fields, replace
-from typing import Optional, Tuple, Union
+from typing import Any, ClassVar, Dict, Optional, Tuple, Union
 from ..core.floats import is_zero
 
 # ---------------------------------------------------------------------------
@@ -142,6 +142,8 @@ class _Normalising:
     "#rrggbb". Other colour fields have no alpha of their own and accept
     only opaque colours or "none" (see :func:`opaque_color`).
     """
+    # Declared so that type checkers know the mixin only goes on dataclasses
+    __dataclass_fields__: ClassVar[Dict[str, Any]]
 
     def _normalise_colors(self, owner: str):
         for f in fields(self):
@@ -301,11 +303,12 @@ class Font:
     files: Tuple[str, ...] = ()
 
     def __post_init__(self):
-        family = (self.family,) if isinstance(self.family, str) else tuple(self.family)
+        given: Any = self.family   # one family may be given as a str
+        family = (given,) if isinstance(given, str) else tuple(given)
         if not family:
             raise ValueError("Font: give at least one family.")
         object.__setattr__(self, "family", family)
-        files = self.files
+        files: Any = self.files   # one file may be given as a str or a path
         if isinstance(files, (str, bytes)) or hasattr(files, "__fspath__"):
             files = (files,)   # one file, also as a pathlib.Path
         object.__setattr__(self, "files", tuple(os.fsdecode(os.fspath(f)) for f in files))
@@ -501,4 +504,4 @@ def _convert_scalar(hint, value):
     number_but_bool = hint in (int, float) and isinstance(value, bool)
     if number_but_bool or not isinstance(value, types):
         raise TypeError("Expected {0}, not {1!r}.".format(words, value))
-    return float(value) if hint is float else value
+    return float(value) if hint is float else value   # type: ignore[arg-type]   # checked above

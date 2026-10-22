@@ -232,7 +232,7 @@ def _segment_distances(xs, ys, px, py):
 
 
 def _checked_view_message(message: dict, number) -> dict:
-    limits = [message.get("x_limits"), message.get("y_limits")]
+    limits = [message.get("x_limits", ()), message.get("y_limits", ())]
     if not all(isinstance(v, (list, tuple)) and len(v) == 2 for v in limits):
         raise ValueError("A view message needs x_limits and y_limits, two numbers each.")
     return {"type": "view", "x_limits": tuple(number(v) for v in limits[0]),

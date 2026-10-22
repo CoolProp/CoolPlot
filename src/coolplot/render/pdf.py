@@ -71,8 +71,11 @@ class PdfRenderer(SvgRenderer):
             for f in getattr(getattr(style, "font", None), "files", ()):
                 if f not in font_files:
                     font_files.append(f)
-        return corelib.scene_to_pdf(self._axes, items, self.width_pt, self.height_pt, self.margins_pt,
-                                    self.font_dirs, font_files)
+        pdf = corelib.scene_to_pdf(self._axes, items, self.width_pt, self.height_pt, self.margins_pt,
+                                   self.font_dirs, font_files)
+        if pdf is None:   # the constructor made sure the module is there
+            raise ValueError("PdfRenderer needs the coolplot_core module (cpp/).")
+        return pdf
 
     def save(self, path):
         """Write the PDF file; the file name has to end in ".pdf"."""

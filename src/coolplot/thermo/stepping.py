@@ -124,7 +124,7 @@ EDGE_TOLERANCE = 1e-3
 
 
 def trace(evaluate: Callable, metric: Metric, points: int, u_lo: float = 0.0, u_hi: float = 1.0,
-          start: Sample = None, end: Sample = None, max_angle_deg: float = MAX_ANGLE_DEG,
+          start: Optional[Sample] = None, end: Optional[Sample] = None, max_angle_deg: float = MAX_ANGLE_DEG,
           skip_failures: bool = False) -> Trace:
     """Walk the parameter from ``u_lo`` to ``u_hi``, see the module docstring.
 
@@ -240,7 +240,7 @@ class _Walk:
         u = self.u_lo
         sample = self.sample_at(u, at_start=True)
         inside = sample is not None and sample.inside
-        if inside:
+        if sample is not None and inside:
             self.accept(u, sample, self.normalised(sample))
         else:
             self.last_outside_u = u

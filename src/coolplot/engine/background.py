@@ -43,7 +43,7 @@ import warnings
 import weakref
 from concurrent.futures import BrokenExecutor, Future, ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import replace
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from ..spec.diagram import DiagramSpec
 from ..thermo.provider import compute_curve as _compute_curve, make_provider, same_fingerprint
@@ -121,8 +121,8 @@ class BackgroundEngine(Engine):
     #: Attempts per curve before it is skipped with a warning.
     MAX_TRIES = 2
 
-    def __init__(self, mode: str = "threads", workers: int = None, on_ready: Callable = None,
-                 cache: CurveCache = None):
+    def __init__(self, mode: str = "threads", workers: Optional[int] = None, on_ready: Optional[Callable] = None,
+                 cache: Optional[CurveCache] = None):
         super().__init__(cache)
         if mode not in MODES:
             raise ValueError("Unknown background mode '{0}', expected one of {1}.".format(mode, MODES))
@@ -135,17 +135,17 @@ class BackgroundEngine(Engine):
         self._broken = False
         self._closed = False
         self._failed: Dict[Tuple, Tuple[int, str]] = {}   # key -> (attempts, last error)
-        self._suspects = set()    # keys lost with a crashed pool, retried alone
+        self._suspects: Set[Tuple] = set()    # keys lost with a crashed pool, retried alone
         self._planning = False    # True while curves() works out a new plan
         self.finished_jobs = 0    # jobs that ran to the end, successful or not
-        self._submitting = None   # the thread that is queueing work right now
+        self._submitting: Optional[int] = None   # the thread that is queueing work right now
         self.claimed = False      # set by the diagram this engine serves
         # Re-entrant: a job that is already done when it is submitted runs
         # its callback right away, in the submitting thread.
         self._lock = threading.RLock()
-        self._needed = set()
-        self._needed_final = set()
-        self._to_submit = []
+        self._needed: Set[Tuple] = set()          # cache keys of the current plan
+        self._needed_final: Set[Tuple] = set()    # the same, without the quick previews
+        self._to_submit: List[Tuple] = []         # (spec, domain, request, key) waiting to be queued
         self._jobs: Dict[Tuple, Future] = {}
         self._generation = 0
         self._notified = False

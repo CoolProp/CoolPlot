@@ -16,14 +16,15 @@ from __future__ import annotations
 import warnings
 from collections import OrderedDict
 from dataclasses import replace
-from typing import List, Tuple
+from typing import List, Optional, Set, Tuple
 
 from ..spec.diagram import CycleSpec, DiagramSpec
 from ..thermo.cycles import cycle_paths, resolve_states
 from ..thermo.isolines import Curve
 from ..thermo import native
 from ..thermo.references import fluid_references, versions_line
-from ..thermo.provider import chart_domain, compute_curve, make_provider, saturation_anchor_values
+from ..thermo.provider import (PropertyProvider, chart_domain, compute_curve, make_provider,
+                               saturation_anchor_values)
 from .cache import CurveCache
 from .planning import CurveRequest, Domain
 
@@ -39,16 +40,16 @@ class Engine:
         Number of property providers (fluid models) that are kept.
     """
 
-    def __init__(self, cache: CurveCache = None, max_fluids: int = 16):
+    def __init__(self, cache: Optional[CurveCache] = None, max_fluids: int = 16):
         self.cache = cache if cache is not None else CurveCache()
         self.max_fluids = max_fluids
-        self._fluids: "OrderedDict[object, object]" = OrderedDict()
+        self._fluids: "OrderedDict[object, PropertyProvider]" = OrderedDict()
         self._domains: "OrderedDict[Tuple, Domain]" = OrderedDict()
         self._anchors: "OrderedDict[Tuple, Tuple]" = OrderedDict()   # values of lines placed by saturation states
         self._cycles: "OrderedDict[Tuple, Tuple]" = OrderedDict()
-        self._warned = set()
+        self._warned: Set[Tuple] = set()
 
-    def fluid(self, spec):
+    def fluid(self, spec) -> PropertyProvider:
         """The property provider for a FluidSpec or HumidAirSpec, created once and reused.
 
         A fluid made under another CoolProp configuration (``set_config_*``)
@@ -106,7 +107,7 @@ class Engine:
                          for s in spec.isolines if s.anchor is not None)
         return replace(domain, anchored=anchored) if anchored else domain
 
-    def _anchor_values(self, spec: DiagramSpec, domain: Domain, iso_set) -> Tuple[float, ...]:
+    def _anchor_values(self, spec: DiagramSpec, domain: Domain, iso_set) -> Tuple[Tuple[float, float], ...]:
         """The values of one family placed by saturation states, computed once per fluid, region and unit."""
         anchor = iso_set.anchor
         unit = spec.units[anchor.by]   # the round steps are round in the units shown
@@ -144,7 +145,7 @@ class Engine:
         if request.key == "Q":
             return base + (calc.critical_margin, calc.saturation_spacing)
         # The margin decides where saturation states are inserted
-        key = base + (domain.tp_box, calc.solver, calc.critical_margin)
+        key: Tuple = base + (domain.tp_box, calc.solver, calc.critical_margin)
         if request.key == "T" and spec.diagram.is_mollier:
             # An isotherm of the Mollier chart ends a little beyond the top of
             # the humidity ratio range, which the T-p box does not hold
@@ -230,7 +231,7 @@ class Engine:
         (:func:`coolplot.thermo.references.fluid_references`) and the
         versions of CoolProp and CoolPlot. Empty when it asks for neither."""
         settings = spec.settings.branding
-        lines = []
+        lines: List[str] = []
         if settings.references != "none":
             lines.extend(fluid_references(spec.fluid, settings.references))
         if settings.versions:

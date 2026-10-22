@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Optional, Tuple
 
 from ..core.limits import HUMID_AIR_P_LIMITS_PA, HUMID_AIR_T_LIMITS_K, within
 
@@ -65,7 +65,7 @@ class FluidSpec:
         object.__setattr__(self, "interactions", _checked_interactions(components, self.interactions))
 
     @classmethod
-    def parse(cls, text: str, basis: str = None) -> "FluidSpec":
+    def parse(cls, text: str, basis: Optional[str] = None) -> "FluidSpec":
         """Read a CoolProp fluid string.
 
         Examples: "R290", "HEOS::R290", "HEOS::R32[0.7]&R125[0.3]",

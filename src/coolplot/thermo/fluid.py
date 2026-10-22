@@ -16,7 +16,7 @@ import hashlib
 import json
 import os
 from functools import lru_cache
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import numpy as np
 
@@ -31,7 +31,7 @@ from ..core.floats import is_zero, same_result
 
 
 @lru_cache(maxsize=None)
-def parameter_index(key: str) -> int:
+def parameter_index(key: str) -> CP.parameters:
     """CoolProp parameter index for a CoolPlot quantity key, e.g. "p" -> iP."""
     name = get_quantity(key).coolprop_name
     if name is None:
@@ -72,7 +72,7 @@ def model_from_state(state: AbstractState) -> Tuple:
     except Exception:
         raise ValueError("CoolProp cannot report the fluid of this {0} state; pass a fluid string "
                          "such as 'INCOMP::MEG[0.3]' instead.".format(backend))
-    fractions = ()
+    fractions: Tuple[float, ...] = ()
     interactions = []
     if len(components) > 1:
         fractions = tuple(float(x) for x in state.get_mole_fractions())
@@ -86,7 +86,7 @@ def model_from_state(state: AbstractState) -> Tuple:
     return backend, components, fractions, "mole", tuple(interactions)
 
 
-def model_from_string(text: str, basis: str = None) -> Tuple:
+def model_from_string(text: str, basis: Optional[str] = None) -> Tuple:
     """Fluid model from a CoolProp fluid string, using CoolProp's own parser.
 
     Fractions are mole fractions, except for the INCOMP backend, where
@@ -143,7 +143,7 @@ class Fluid:
     quantities = STATE_KEYS
     inputs = STATE_KEYS
 
-    def __init__(self, fluid, fractions: str = None):
+    def __init__(self, fluid, fractions: Optional[str] = None):
         if isinstance(fluid, AbstractState):
             model = model_from_state(fluid)
             name = "&".join(model[1])
@@ -175,8 +175,9 @@ class Fluid:
     def _reset_caches(self):
         self._critical = None
         self._has_critical = None
-        self._envelope = None
-        self._guide = None         # scratch state for difficult saturation states, see update()
+        # The next two are None until computed and False when that failed, so a failure is not retried
+        self._envelope: Union[None, bool, PhaseEnvelope] = None
+        self._guide: Union[None, bool, AbstractState] = None   # scratch state for difficult states, see update()
         self._components = None    # pure states of the components of a mixture, see _component_states()
         self._fingerprint = None
         self._current = self._state   # the state the last update() set; get() reads it
@@ -387,7 +388,7 @@ class Fluid:
                 self._guide = guide
             except Exception:
                 pass
-        return self._guide or None
+        return self._guide if isinstance(self._guide, AbstractState) else None
 
     def get(self, key: str) -> float:
         """Read one quantity of the state set by the last :meth:`update`, in SI units."""
@@ -562,14 +563,14 @@ class Fluid:
     def phase_envelope(self) -> Optional[PhaseEnvelope]:
         """The phase envelope of a mixture, computed once; None for pure fluids or on failure."""
         if self._envelope is None:
-            envelope = False   # remembers a failure, so it is not retried
+            envelope: Union[bool, PhaseEnvelope] = False   # remembers a failure, so it is not retried
             if not self.is_pure:
                 try:
                     envelope = PhaseEnvelope(self)
                 except Exception:
                     envelope = False
             self._envelope = envelope
-        return self._envelope or None
+        return self._envelope if isinstance(self._envelope, PhaseEnvelope) else None
 
     def saturation_range(self, key: str, margin: float = 1e-7) -> Tuple[float, float]:
         """Lowest and highest saturation temperature or pressure in SI units.

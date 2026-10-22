@@ -289,8 +289,8 @@ class CycleSpec:
     @classmethod
     def from_cycle(cls, cycle: Cycle, **changes) -> "CycleSpec":
         """A spec that draws a computed :class:`coolplot.core.cycle.Cycle` as it is."""
-        values = dict(name=cycle.name, states=tuple((n, StateInput(state=s)) for n, s in cycle.states),
-                      loops=cycle.loops, paths=cycle.paths)
+        values: Dict[str, Any] = dict(name=cycle.name, loops=cycle.loops, paths=cycle.paths,
+                                      states=tuple((n, StateInput(state=s)) for n, s in cycle.states))
         values.update({k: v for k, v in changes.items() if v is not None})
         return cls(**values)
 
@@ -316,6 +316,16 @@ class CycleSpec:
                    data.get("steps", 20), tuple((n, text) for n, text in (data.get("labels") or ())))
 
 
+#: The key of the saturation curve in ``style_overrides``, next to the
+#: quantity keys of the line families.
+SATURATION_KEY = "saturation"
+
+
+def override_key(key: str) -> str:
+    """The key of a style override: "saturation" for the saturation curve, else a quantity key."""
+    return SATURATION_KEY if str(key).lower() == SATURATION_KEY else quantity_key(key)
+
+
 @dataclass(frozen=True)
 class DiagramSpec:
     """Everything a chart shows, see the module docstring
@@ -324,8 +334,9 @@ class DiagramSpec:
     :class:`HumidAirSpec` for a psychrometric chart, and ``limits`` a
     :class:`TpLimits` (fluid) or a :class:`Region` with bounds on T and W
     (humid air); the chart kind of ``diagram`` has to match.
-    ``style_overrides`` maps an isoline quantity to LineStyle field changes
-    on top of the theme, stored as sorted pairs so the spec stays hashable.
+    ``style_overrides`` maps an isoline quantity, or "saturation" for the
+    saturation curve, to LineStyle field changes on top of the theme,
+    stored as sorted pairs so the spec stays hashable.
     ``view_SI`` is the zoom window ((x_min, x_max), (y_min, y_max)) in SI
     units, None for the full calculation region. ``show_saturation`` draws
     the saturation curve (quality 0 and 1, or 100 % relative humidity)
@@ -374,7 +385,7 @@ class DiagramSpec:
         object.__setattr__(self, "isolines", tuple(self.isolines))
         object.__setattr__(self, "processes", tuple(self.processes))
         object.__setattr__(self, "style_overrides", tuple(sorted(
-            (quantity_key(k), tuple(sorted(dict(v).items()))) for k, v in self.style_overrides)))
+            (override_key(k), tuple(sorted(dict(v).items()))) for k, v in self.style_overrides)))
 
     # Reading ------------------------------------------------------------------
     def isoline_set(self, key: str) -> Optional[IsolineSet]:
@@ -383,8 +394,8 @@ class DiagramSpec:
         return next((s for s in self.isolines if s.key == key), None)
 
     def style_override(self, key: str) -> Dict[str, Any]:
-        """LineStyle changes for one isoline family, empty if none."""
-        return dict(dict(self.style_overrides).get(quantity_key(key), ()))
+        """LineStyle changes for one isoline family or the saturation curve, empty if none."""
+        return dict(dict(self.style_overrides).get(override_key(key), ()))
 
     # Deriving -----------------------------------------------------------------
     def with_(self, **changes) -> "DiagramSpec":
@@ -423,8 +434,8 @@ class DiagramSpec:
         return replace(self, cycles=tuple(c for c in self.cycles if c.name != name))
 
     def with_style_override(self, key: str, **changes) -> "DiagramSpec":
-        """Add LineStyle changes for one family; without changes, remove its overrides."""
-        key = quantity_key(key)
+        """Add LineStyle changes for one family or the saturation curve; without changes, remove its overrides."""
+        key = override_key(key)
         overrides = dict(self.style_overrides)
         if changes:
             overrides[key] = tuple(dict(dict(overrides.get(key, ())), **changes).items())
@@ -460,7 +471,7 @@ class DiagramSpec:
                    processes=tuple(ProcessSpec.from_dict(p) for p in data.get("processes", ())),
                    cycles=tuple(CycleSpec.from_dict(c) for c in data.get("cycles", ())),
                    style_overrides=overrides,
-                   view_SI=tuple(None if lim is None else tuple(lim) for lim in data.get("view_SI", (None, None))),
+                   view_SI=_checked_view(data.get("view_SI", (None, None))),
                    title=data.get("title", ""),
                    # A record saved before 1.2 has no such field: its family values decide, as they did
                    show_saturation=data.get("show_saturation"))
@@ -484,11 +495,11 @@ def _unique(names, message: str):
         raise ValueError("{0}, got {1}.".format(message, names))
 
 
-def _checked_view(view_SI):
+def _checked_view(view_SI) -> Tuple[Limits, Limits]:
     view = tuple(None if lim is None else tuple(float(v) for v in lim) for lim in view_SI)
     if len(view) != 2 or any(lim is not None and len(lim) != 2 for lim in view):
         raise ValueError("view_SI has to be (x_limits, y_limits), each None or (min, max).")
-    return view
+    return view   # type: ignore[return-value]   # the lengths are checked above
 
 
 # JSON helpers ----------------------------------------------------------------

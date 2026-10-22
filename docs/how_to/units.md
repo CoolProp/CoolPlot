@@ -57,3 +57,7 @@ diagram.cycle_states("Heat pump", units="engineering")   # every state of a cycl
 ```
 
 A state can be given by v as well: `{"T": 20, "v": 0.05}`.
+
+## In the gallery
+
+A chart and a cycle in IP units: {doc}`../gallery/ip_units`.

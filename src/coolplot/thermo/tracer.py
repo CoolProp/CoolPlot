@@ -16,6 +16,7 @@ falls back to a plain flash for that point.
 from __future__ import annotations
 
 import sys
+from typing import ClassVar, Dict, Optional, Tuple
 
 import numpy as np
 
@@ -173,7 +174,7 @@ class IsoLineTracer(object):
     #: the critical point, and a shared limit that came out too low would send
     #: :func:`_check_outside_the_dome` down its no-dome path over a range where
     #: there is one.
-    _CRITICAL_T = {}
+    _CRITICAL_T: ClassVar[Dict[Tuple, Optional[float]]] = {}
 
     @classmethod
     def supports(cls, index1, index2):
@@ -649,6 +650,7 @@ class IsoLineTracer(object):
 
     def _quality_residual(self, quality, bracket):
         """How far the two-phase state at this quality is from the target, in the scale of _quality_scale"""
+        assert self._sat_value is not None   # set together with the bracket
         if self._sat_index == CoolProp.iT:
             self._sat.update(CoolProp.QT_INPUTS, quality, self._sat_value)
         else:
@@ -917,7 +919,7 @@ class IsoLineTracer(object):
         densities are used. Only for closed envelopes, which run up to the
         critical point.
         """
-        if self._dome_densities is None:
+        if self._dome_densities is None or self._envelope_top is None:   # both are set together
             return False
         rho_liq_top, rho_vap_top = self._envelope_top[2], self._envelope_top[3]
         top_is_critical = abs(rho_liq_top - rho_vap_top) <= self.TOP_GAP_RTOL * max(rho_liq_top, rho_vap_top)

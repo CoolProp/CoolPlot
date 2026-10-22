@@ -10,7 +10,7 @@ the saturation dome instead of cutting straight across.
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -40,7 +40,7 @@ def predecessors(loops: Sequence[Sequence[int]]) -> Dict[int, int]:
     return before
 
 
-def resolve_state(fluid, given: StateInput, previous: StatePoint = None) -> StatePoint:
+def resolve_state(fluid, given: StateInput, previous: Optional[StatePoint] = None) -> StatePoint:
     """One state from how it was given; ``previous`` is needed for a via."""
     if given.state is not None:
         return with_mollier_temperature(given.state)   # a humid-air state made before 1.2 lacks Thx

@@ -36,6 +36,8 @@ plotly = ["plotly>=5.22"]
 # PDF and images from the plotly backend; kaleido also needs Chrome
 images = ["plotly>=5.22", "kaleido>=1.0"]
 test = ["pytest>=7", "matplotlib>=3.8", "plotly>=5.22"]
+# Type checking: tests/test_typing.py runs mypy (skipped without it)
+typing = ["mypy>=2.4", "matplotlib>=3.8"]
 
 [project.urls]
 Homepage = "https://github.com/CoolProp/CoolPlot"
@@ -47,7 +49,31 @@ version = {attr = "coolplot.__version__.__version__"}
 where = ["src"]
 
 [tool.setuptools.package-data]
+"coolplot" = ["py.typed"]   # the package ships its type annotations (PEP 561)
 "coolplot.render" = ["static/*.js"]
+
+[tool.mypy]
+# The package ships its annotations (src/coolplot/py.typed); tests/test_typing.py
+# runs mypy with this configuration over the package and over the typing checks
+# in tests/typing. Unannotated functions are checked too.
+files = ["src/coolplot"]
+python_version = "3.11"
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+strict_equality = true
+
+# The modules applications work with are fully annotated, and stay so. More
+# modules join this list during 1.x (docs/contributing/typing.md).
+[[tool.mypy.overrides]]
+module = ["coolplot", "coolplot.chart", "coolplot.diagram", "coolplot.psychrometric", "coolplot.export"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+# Imported only when installed; none of them ships type information
+[[tool.mypy.overrides]]
+module = ["plotly", "plotly.*", "choreographer.*", "kaleido", "kaleido.*", "coolplot_core"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

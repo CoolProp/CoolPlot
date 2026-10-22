@@ -83,6 +83,25 @@ jobs:
           # here that is an error, so the suite really runs through the port
           python -m pytest -v -W error::coolplot.corelib.CoreFallbackWarning
 
+  typing:
+    # mypy over the package, over the public API as an application sees it
+    # and over the examples (tests/test_typing.py); pinned, so that a new
+    # mypy release cannot turn the check red by itself
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "coolprop==8.0.0" "mypy==2.4.0" -e ".[test,typing]"
+      - name: Type check
+        run: python -m pytest -v tests/test_typing.py
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -96,6 +115,16 @@ jobs:
         run: |
           python -m pip install build
           python -m build
+      - name: Both carry the py.typed marker (the package's type information)
+        shell: python
+        run: |
+          import glob, sys, tarfile, zipfile
+          (wheel,), (sdist,) = glob.glob("dist/*.whl"), glob.glob("dist/*.tar.gz")
+          names = zipfile.ZipFile(wheel).namelist() + tarfile.open(sdist).getnames()
+          found = [n for n in names if n.endswith("coolplot/py.typed")]
+          if len(found) != 2:
+              sys.exit("py.typed is missing from the wheel or the sdist: {0}".format(found))
+          print("py.typed in", found)
 
   docs:
     runs-on: ubuntu-latest

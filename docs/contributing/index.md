@@ -10,11 +10,12 @@ to them in {doc}`v1_review`.
 ```bash
 git clone https://github.com/CoolProp/CoolPlot
 cd CoolPlot
-pip install -e ".[test,matplotlib,plotly]"
+pip install -e ".[test,typing,matplotlib,plotly]"
 pip install -r docs/requirements.txt    # Sphinx and its extensions, for make docs
 make test                      # about four minutes
 make test-all                  # also the browser and Kaleido tests
 make test-slow                 # the numerics sweeps, minutes per fluid
+make typecheck                 # mypy: the package, the public API, the examples
 make docs                      # sphinx-build -W, runs the examples
 ```
 
@@ -50,6 +51,8 @@ one fails there first.
   thermodynamicists. An advanced construct gets a comment that says why.
 * Every public name has a docstring; the docs build checks it
   (`numpydoc`).
+* The package ships its type annotations and mypy checks them
+  ({doc}`typing`): new code is annotated, and `make typecheck` passes.
 * Behaviour changes are listed in the changelog under *Unreleased*.
 * Every function stays below a cyclomatic complexity of 15
   (`radon cc -n C src/coolplot`).
@@ -61,6 +64,11 @@ A change to `coolplot.thermo` runs the sweeps in `tests/numerics`
 type for R290, CO2, R410A and R32/R125, checking that every point is a
 state at the line's constant, that lines have no gaps or reversals, and
 that almost nothing is computed outside the chart.
+
+## Types
+
+{doc}`typing` says what mypy checks (the package, the public API as an
+application sees it, the examples) and how annotations are written.
 
 ## Writing a backend
 
@@ -76,6 +84,7 @@ steps and the one-time setup are in {doc}`releasing`.
 :maxdepth: 1
 :hidden:
 
+typing
 writing_a_backend
 core
 releasing

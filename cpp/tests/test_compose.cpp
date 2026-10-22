@@ -98,6 +98,10 @@ TEST_CASE("The saturation curve without lines of constant quality", "[compose]")
     check_case("compose_r290_ts_saturation_only.json");
 }
 
+TEST_CASE("The saturation curve without its casing, and restyled quality lines", "[compose]") {
+    check_case("compose_r290_ph_restyled_dome.json");
+}
+
 TEST_CASE("Labels on rails, with the legend in the emptiest corner", "[compose][rails]") {
     check_case("compose_rails_r290_ph.json");
     check_case("compose_rails_r290_ph_narrow.json");

@@ -96,14 +96,15 @@ struct DiagramSpec
     std::vector<IsolineSet> isolines;
     std::vector<ProcessSpec> processes;
     std::vector<CycleSpec> cycles;
-    std::map<std::string, json> style_overrides;  ///< LineStyle field changes per family
+    std::map<std::string, json> style_overrides;  ///< LineStyle field changes per family, and for "saturation"
     bool has_x_view = false;
     Range x_view_SI;
     bool has_y_view = false;
     Range y_view_SI;
     std::string title;
 
-    /// LineStyle changes for one family, an empty object if none.
+    /// LineStyle changes for one family (a quantity key) or the saturation curve ("saturation"),
+    /// an empty object if none.
     json style_override(const std::string& key) const;
     static DiagramSpec from_json(const json& data);
 };

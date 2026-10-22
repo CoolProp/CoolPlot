@@ -36,7 +36,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from ..scene import Text
+from ..scene import AxesSpec, Text
 from ..style.values import TextStyle
 from ..core.floats import is_zero, is_zero_array
 
@@ -88,7 +88,7 @@ class Frame:
     width_pt: float
     height_pt: float
 
-    def _axis(self, values, limits, log, size):
+    def _axis(self, values, limits, log, size) -> np.ndarray:
         values = np.asarray(values, dtype=float)
         lo, hi = limits
         if log:
@@ -97,19 +97,26 @@ class Frame:
             lo, hi = math.log10(lo), math.log10(hi)
         return (values - lo) / (hi - lo) * size
 
-    def _inverse(self, values, limits, log, size):
+    def _inverse(self, values, limits, log, size) -> np.ndarray:
         lo, hi = limits
         if log:
             lo, hi = math.log10(lo), math.log10(hi)
         out = lo + np.asarray(values, dtype=float) / size * (hi - lo)
         return 10.0 ** out if log else out
 
-    def to_pt(self, x, y):
+    @classmethod
+    def from_axes(cls, axes: AxesSpec, size_pt: Tuple[float, float]) -> "Frame":
+        """The frame of axes with limits (the composer always sets them) and a plot area of ``size_pt``."""
+        if axes.x_limits is None or axes.y_limits is None:
+            raise ValueError("Labels can only be placed on axes with limits.")
+        return cls(axes.x_limits, axes.y_limits, axes.x_log, axes.y_log, size_pt[0], size_pt[1])
+
+    def to_pt(self, x, y) -> Tuple[np.ndarray, np.ndarray]:
         """Data coordinates (display units) to points from the lower left corner of the plot area."""
         return (self._axis(x, self.x_limits, self.x_log, self.width_pt),
                 self._axis(y, self.y_limits, self.y_log, self.height_pt))
 
-    def to_data(self, px, py):
+    def to_data(self, px, py) -> Tuple[np.ndarray, np.ndarray]:
         """Points from the lower left corner of the plot area to data coordinates."""
         return (self._inverse(px, self.x_limits, self.x_log, self.width_pt),
                 self._inverse(py, self.y_limits, self.y_log, self.height_pt))
@@ -447,7 +454,7 @@ def place_edge_labels(requests: Sequence[LabelRequest], frame: Frame, keep_out_l
                 continue
             placed.append(c.box)
             new = _text(request, frame, c.box, c.direction)
-            labels.append(old if _same_label(old, old_pt, new, c.box) else new)
+            labels.append(old if old is not None and _same_label(old, old_pt, new, c.box) else new)
             break
     return labels
 
@@ -483,9 +490,8 @@ def _text(request: LabelRequest, frame: Frame, box: Box, direction_pt) -> Text:
     (x0, x1), (y0, y1) = frame.to_data([box.cx - 0.5 * direction_pt[0], box.cx + 0.5 * direction_pt[0]],
                                        [box.cy - 0.5 * direction_pt[1], box.cy + 0.5 * direction_pt[1]])
     cx, cy = frame.to_data([box.cx], [box.cy])
-    direction = (float(x1 - x0), float(y1 - y0))
-    if not all(math.isfinite(v) for v in direction):
-        direction = None
+    dx, dy = float(x1 - x0), float(y1 - y0)
+    direction = (dx, dy) if math.isfinite(dx) and math.isfinite(dy) else None
     return Text(id=request.id, group=request.group, role="isoline_label", x=float(cx[0]), y=float(cy[0]),
                 text=request.text, direction=direction,
                 style=request.style.with_(h_align="center", v_align="center"), z_order=4.0)

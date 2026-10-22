@@ -36,28 +36,57 @@ warn (see the CHANGELOG for 0.5).
 from __future__ import annotations
 
 import inspect
+import os
 import warnings
 import weakref
 from dataclasses import replace
+from typing import (TYPE_CHECKING, Any, Callable, Dict, Mapping, Optional, Sequence, Tuple, TypeVar, Union,
+                    overload)
 
 import numpy as np
 
 from .compose import compose
 from .core.cycle import Cycle, StateInput
+from .core.diagram_type import DiagramType, Family
 from .core.errors import PropertyError
 from .core.quantities import quantity_key
 from .core.state import StatePoint, with_mollier_temperature
-from .core.units import get_unit_system
+from .core.units import Unit, UnitsLike, UnitSystem, get_unit_system
 from .engine import BackgroundEngine, CurveCache, Engine, plan
 from .scene import Scene
-from .spec import CycleSpec, DiagramSpec, IsolineSet, SaturationAnchor, get_settings
+from .spec import (CycleSpec, DiagramSpec, FluidSpec, HumidAirSpec, IsolineSet, SaturationAnchor, Settings,
+                   get_settings)
 from .spec.diagram import ANCHOR_KEYS
 from .style.theme import Theme, get_theme
 from .style.values import LineStyle, MarkerStyle
 from .thermo.cycles.paths import resolve_state
+from .thermo.provider import PropertyProvider
+
+if TYPE_CHECKING:   # only for the type checker: the renderers are imported when a chart is drawn
+    from .render.base import Renderer
+    from .render.mpl import MatplotlibRenderer
+
+# Type aliases for the annotations (docs/contributing/typing.md).
+# Numbers given in a unit system: a sequence such as (0, 50) or a numpy array.
+Numbers = Union[Sequence[float], np.ndarray]
+
+# A state as the methods of a chart take it: a StatePoint, or a dict of two
+# properties such as {"p": 3.0, "T": 0.0}, or of one property and "via"
+# (see Chart.add_cycle). Typed as Any on purpose: to a type checker a dict
+# that mixes numbers and texts, or a list that mixes dicts and StatePoints,
+# holds plain objects, and the chart checks every state itself.
+StateEntry = Any
+
+# The chains, path kinds and state labels of a cycle as Chart.add_cycle takes them.
+Loops = Optional[Sequence[Sequence[int]]]
+Paths = Union[Mapping[Tuple[int, int], str], Sequence[Tuple[Tuple[int, int], str]], None]
+Labels = Union[Mapping[int, str], Sequence[Tuple[int, str]], None]
+
+# Any renderer; Chart.draw returns the one it was given, with its type.
+_RendererT = TypeVar("_RendererT", bound="Renderer")
 
 
-def _known_key(name, inputs):
+def _known_key(name: Any, inputs: Sequence[str]) -> Optional[str]:
     """The quantity key for a name a state may be given by, else None."""
     try:
         key = quantity_key(name)
@@ -66,7 +95,7 @@ def _known_key(name, inputs):
     return key if key in inputs else None
 
 
-def state_input(entry, units, provider) -> StateInput:
+def state_input(entry: StateEntry, units: UnitSystem, provider: PropertyProvider) -> StateInput:
     """A StateInput from a StatePoint, a StateInput or a dict in ``units``.
 
     ``provider`` says which quantities a state may be given by
@@ -78,7 +107,7 @@ def state_input(entry, units, provider) -> StateInput:
         return entry
     if isinstance(entry, StatePoint):
         return StateInput(state=check_state(entry, provider))
-    if not isinstance(entry, dict):
+    if not isinstance(entry, Mapping):
         raise TypeError("A state is a StatePoint or a dict of properties, not {0}.".format(type(entry).__name__))
     entry = dict(entry)
     via = entry.pop("via", None)
@@ -88,11 +117,11 @@ def state_input(entry, units, provider) -> StateInput:
     if unknown:
         raise ValueError("A state has unknown properties {0}, expected two of {1}.".format(
             unknown, list(provider.inputs)))
-    props = tuple((keys[name], float(units[keys[name]].to_SI(v))) for name, v in entry.items())
+    props = tuple((key, float(units[key].to_SI(entry[name]))) for name, key in keys.items() if key is not None)
     return StateInput(props, via, eta_is)
 
 
-def check_fluid(engine: Engine, fluid_spec):
+def check_fluid(engine: Engine, fluid_spec: Union[FluidSpec, HumidAirSpec]) -> PropertyProvider:
     """Build the property provider of ``fluid_spec`` on ``engine`` now, so
     that a fluid CoolProp does not know fails with a clear message."""
     try:
@@ -101,7 +130,7 @@ def check_fluid(engine: Engine, fluid_spec):
         raise ValueError("CoolProp cannot make the fluid '{0}': {1}".format(fluid_spec, e)) from None
 
 
-def _states_from_arrays(states, arrays: dict):
+def _states_from_arrays(states: object, arrays: Mapping[str, Numbers]) -> list:
     """Rows of two property arrays as a list of dicts, one state each."""
     if states is not None:
         raise ValueError("Give the states either as 'states' or as arrays, not both.")
@@ -113,14 +142,24 @@ def _states_from_arrays(states, arrays: dict):
     return [dict(zip(columns, row)) for row in zip(*columns.values())]
 
 
-def _default_loops(inputs, closed: bool):
+def _default_loops(inputs: Sequence[Tuple[int, StateInput]], closed: bool) -> Sequence[Sequence[int]]:
     """No loops (CycleSpec closes the chain itself), or one open chain through the states in order."""
     if closed or len(inputs) < 2:
         return ()
     return [sorted(n for n, _ in inputs)]
 
 
-def _checked_range(family, label: str, range_SI):
+def range_in_SI(unit: Unit, given: Optional[Numbers]) -> Optional[Tuple[float, float]]:
+    """A range (min, max) given in ``unit``, in SI units; None stays None."""
+    if given is None:
+        return None
+    values = [float(v) for v in np.ravel(unit.to_SI(given))]   # a single number is one value, not two
+    if len(values) != 2:
+        raise ValueError("A range is two values (min, max), not {0}.".format(given))
+    return values[0], values[1]
+
+
+def _checked_range(family: Family, label: str, range_SI: Tuple[float, float]) -> Tuple[float, float]:
     """A range for ``num`` lines; it may touch an excluded bound (0 to 100 % RH), the
     line without a value is simply left out."""
     if family.bounds is not None and any(not family.bounds[0] <= v <= family.bounds[1] for v in range_SI):
@@ -129,7 +168,7 @@ def _checked_range(family, label: str, range_SI):
     return range_SI
 
 
-def check_state(state: StatePoint, provider) -> StatePoint:
+def check_state(state: StatePoint, provider: PropertyProvider) -> StatePoint:
     """The complete state, or ValueError if it does not belong to ``provider``.
 
     A fluid state saved before 0.7 lacks the specific volume; it is
@@ -184,8 +223,9 @@ class Chart:
         With ``background``: number of workers.
     """
 
-    def __init__(self, spec: DiagramSpec, engine: Engine = None, cache: CurveCache = None, background: str = None,
-                 on_ready=None, workers: int = None):
+    def __init__(self, spec: DiagramSpec, engine: Optional[Engine] = None, cache: Optional[CurveCache] = None,
+                 background: Optional[str] = None, on_ready: Optional[Callable[[Chart], None]] = None,
+                 workers: Optional[int] = None) -> None:
         self.spec = spec
         owned = engine is None
         if engine is not None:
@@ -201,7 +241,7 @@ class Chart:
                 # must not keep this chart alive through its callback
                 chart_ref = weakref.ref(self)
 
-                def callback(_engine):
+                def callback(_engine: Engine) -> None:
                     chart = chart_ref()
                     if chart is not None:
                         on_ready(chart)
@@ -209,9 +249,9 @@ class Chart:
         else:
             self.engine = Engine(cache)
         self.scene = Scene()
-        self._default_renderer = None
-        self._file_renderer = None   # the matplotlib renderer of save(), outside pyplot
-        self._plot_size_pt = None
+        self._default_renderer: Optional[MatplotlibRenderer] = None
+        self._file_renderer: Optional[MatplotlibRenderer] = None   # the matplotlib renderer of save(), outside pyplot
+        self._plot_size_pt: Optional[Tuple[float, ...]] = None
         try:
             check_fluid(self.engine, spec.fluid)   # a misspelt fluid fails here, not at the first draw
         except ValueError:
@@ -225,10 +265,10 @@ class Chart:
             weakref.finalize(self, setattr, self.engine, "claimed", False)
 
     #: The chart kind a subclass is made for; None accepts every kind.
-    kind = None
+    kind: Optional[str] = None
 
     @classmethod
-    def from_spec(cls, spec: DiagramSpec, **engine_options) -> "Chart":
+    def from_spec(cls, spec: DiagramSpec, **engine_options: Any) -> "Chart":
         """A chart for a saved spec, e.g. DiagramSpec.from_dict(json.load(f))."""
         if cls.kind is not None and spec.diagram.kind != cls.kind:
             raise ValueError("{0} shows {1} charts, not a {2} spec.".format(cls.__name__, cls.kind, spec.diagram.name))
@@ -246,7 +286,7 @@ class Chart:
 
     # Background work -------------------------------------------------------
     @property
-    def progress(self):
+    def progress(self) -> Tuple[int, int]:
         """(curves ready, curves needed) after the last update_scene; always
         complete without a background engine."""
         if isinstance(self.engine, BackgroundEngine):
@@ -254,13 +294,13 @@ class Chart:
         n = sum(len(s.values_SI or ()) or s.num for s in self.spec.isolines)
         return n, n
 
-    def wait(self, timeout: float = None) -> bool:
+    def wait(self, timeout: Optional[float] = None) -> bool:
         """Block until background work is done (True), or until the timeout (False)."""
         if isinstance(self.engine, BackgroundEngine):
             return self.engine.wait(timeout)
         return True
 
-    def refresh(self):
+    def refresh(self) -> None:
         """Make the engine forget its CoolProp states, after a change CoolProp does not report.
 
         Call it after ``CoolProp.CoolProp.set_reference_state``; changes made
@@ -268,39 +308,39 @@ class Chart:
         computes every line again."""
         self.engine.refresh()
 
-    def close(self):
+    def close(self) -> None:
         """Stop background workers, if any."""
         if isinstance(self.engine, BackgroundEngine):
             self.engine.close()
 
     @property
-    def fluid(self):
+    def fluid(self) -> PropertyProvider:
         """The property provider of the engine: a :class:`coolplot.thermo.Fluid`
         or a :class:`coolplot.thermo.humid_air.HumidAir`, e.g. for
         :func:`coolplot.thermo.state_point`."""
         return self.engine.fluid(self.spec.fluid)
 
     @property
-    def diagram_type(self):
+    def diagram_type(self) -> DiagramType:
         """The :class:`~coolplot.core.diagram_type.DiagramType` of the chart (its two axes)."""
         return self.spec.diagram
 
     @property
-    def units(self):
+    def units(self) -> UnitSystem:
         """The unit system of the chart: a name ("SI", "KSI", "engineering", "IP") or a UnitSystem."""
         return self.spec.units
 
     @units.setter
-    def units(self, value):
+    def units(self, value: UnitsLike) -> None:
         self.spec = self.spec.with_(units=get_unit_system(value, stacklevel=3))
 
     @property
-    def settings(self):
+    def settings(self) -> Settings:
         """The :class:`~coolplot.spec.settings.Settings` of the chart, or a preset name to assign."""
         return self.spec.settings
 
     @settings.setter
-    def settings(self, value):
+    def settings(self, value: Union[str, Settings]) -> None:
         self.spec = self.spec.with_(settings=get_settings(value))
 
     @property
@@ -309,11 +349,11 @@ class Chart:
         return self.spec.settings.look
 
     @theme.setter
-    def theme(self, value):
+    def theme(self, value: Union[str, Theme]) -> None:
         self.settings = self.spec.settings.with_(look=get_theme(value))
 
     @property
-    def show_saturation(self):
+    def show_saturation(self) -> Optional[bool]:
         """Whether the saturation curve is drawn whatever lines are set.
 
         True by default: the quality lines 0 and 1 of a fluid with a
@@ -325,7 +365,7 @@ class Chart:
         return self.spec.show_saturation
 
     @show_saturation.setter
-    def show_saturation(self, value):
+    def show_saturation(self, value: Optional[bool]) -> None:
         self.spec = self.spec.with_(show_saturation=value)
 
     @property
@@ -334,22 +374,26 @@ class Chart:
         return self.spec.title
 
     @title.setter
-    def title(self, value: str):
+    def title(self, value: str) -> None:
         self.spec = self.spec.with_(title=str(value))
 
-    def set_line_style(self, key: str, **changes):
+    def set_line_style(self, key: str, **changes: Any) -> None:
         """Override the theme for one family of lines in this chart.
 
         Accepts any LineStyle field, e.g. set_line_style("T",
-        color="blue", width_pt=1.0). Call without changes to go back to
-        the theme. Only the affected lines are restyled; nothing is
+        color="blue", width_pt=1.0). ``key`` "saturation" restyles the
+        saturation curve, e.g. set_line_style("saturation",
+        casing_width_pt=0) draws it without the border (casing) the
+        screen themes give it. Call without changes to go back to the
+        theme. Only the affected lines are restyled; nothing is
         recalculated.
         """
         if changes:
             LineStyle().with_(**changes)   # validate now, not at the next update
         self.spec = self.spec.with_style_override(key, **changes)
 
-    def set_view(self, x_limits=None, y_limits=None, units=None):
+    def set_view(self, x_limits: Optional[Numbers] = None, y_limits: Optional[Numbers] = None,
+                 units: Optional[UnitsLike] = None) -> None:
         """Show only part of the chart (zoom). None resets.
 
         Limits are in the chart's units, or in ``units`` if given. This
@@ -358,29 +402,32 @@ class Chart:
         """
         unit_system = self._units(units)
 
-        def to_SI(key, limits):
+        def to_SI(key: str, limits: Optional[Numbers]) -> Optional[Tuple[float, float]]:
             if limits is None:
                 return None
             values = [float(v) for v in unit_system[key].to_SI(limits).ravel()]
             if len(values) != 2 or not all(np.isfinite(values)):
                 raise ValueError("A view needs two finite limits for '{0}', not {1}.".format(key, limits))
-            return tuple(sorted(values))
+            low, high = sorted(values)
+            return low, high
         self.spec = self.spec.with_(view_SI=(to_SI(self.spec.diagram.x, x_limits),
                                              to_SI(self.spec.diagram.y, y_limits)))
 
-    def _units(self, units):
+    def _units(self, units: Optional[UnitsLike]) -> UnitSystem:
         """The unit system of a call: the chart's, or the one named by ``units``."""
         return self.spec.units if units is None else get_unit_system(units, stacklevel=4)
 
-    def _in_units(self, error: PropertyError):
+    def _in_units(self, error: PropertyError) -> PropertyError:
         """A PropertyError of the thermo layer, written in the chart's units."""
         return error.with_units(self.spec.units)
 
     # ------------------------------------------------------------------
     # Content
     # ------------------------------------------------------------------
-    def set_lines(self, key: str, values=None, num: int = None, range=None, rounding: bool = None,
-                  labels: bool = None, points: int = None, units=None, at_saturation=None):
+    def set_lines(self, key: str, values: Optional[Numbers] = None, num: Optional[int] = None,
+                  range: Optional[Numbers] = None, rounding: Optional[bool] = None, labels: Optional[bool] = None,
+                  points: Optional[int] = None, units: Optional[UnitsLike] = None,
+                  at_saturation: Union[Mapping[str, Any], SaturationAnchor, None] = None) -> str:
         """Add or replace the family of lines of constant ``key``.
 
         Parameters
@@ -441,7 +488,7 @@ class Chart:
         unit = self._units(units)[key]
         label = self.spec.diagram.quantity_label(key)
         values_SI = None if values is None else tuple(float(v) for v in unit.to_SI(values).ravel())
-        range_SI = None if range is None else tuple(float(v) for v in unit.to_SI(range))
+        range_SI = range_in_SI(unit, range)
         family.check_values(values_SI or (), label)
         if range_SI is not None:
             _checked_range(family, label, range_SI)
@@ -461,7 +508,8 @@ class Chart:
         self.spec = spec
         return key
 
-    def _saturation_anchor(self, at_saturation, units) -> SaturationAnchor:
+    def _saturation_anchor(self, at_saturation: Union[Mapping[str, Any], SaturationAnchor],
+                           units: Optional[UnitsLike]) -> SaturationAnchor:
         """A SaturationAnchor from set_lines(at_saturation=...), converted from ``units`` to SI."""
         if isinstance(at_saturation, SaturationAnchor):
             return at_saturation
@@ -481,10 +529,10 @@ class Chart:
             raise ValueError("Lines are placed by saturation temperature 'T' or pressure 'p', not '{0}'.".format(by))
         unit = self._units(units)[by]
         step_SI = float(step) / abs(unit.scale)   # a difference: the scale only, no offset
-        span_SI = None if span is None else tuple(float(v) for v in unit.to_SI(span))
+        span_SI = range_in_SI(unit, span)
         return SaturationAnchor(by, step_SI, Q, span_SI, label)
 
-    def _family(self, key: str):
+    def _family(self, key: str) -> Family:
         """The line family of a quantity in this chart, or ValueError."""
         family = self.spec.diagram.family(key)
         if family is None:
@@ -492,7 +540,7 @@ class Chart:
                 key, self.spec.diagram.name))
         return family
 
-    def set_default_lines(self, num: int = None, **kwargs):
+    def set_default_lines(self, num: Optional[int] = None, **kwargs: Any) -> None:
         """Lines of every family that makes sense in this chart.
 
         In a property diagram the internal energy is left out to keep the
@@ -503,35 +551,40 @@ class Chart:
             if key != "u":
                 self.set_lines(key, num=num, **kwargs)
 
-    def remove_lines(self, key: str):
+    def remove_lines(self, key: str) -> None:
         """Remove the family of lines of constant ``key``; nothing happens if there is none."""
         self.spec = self.spec.without_isolines(key)
 
-    def line_sets(self):
+    def line_sets(self) -> Dict[str, IsolineSet]:
         """The families of lines by quantity key, as :class:`coolplot.spec.IsolineSet` values."""
         return {s.key: s for s in self.spec.isolines}
 
     # Names removed in 1.0 for this kind of chart, see REMOVED_NAMES
     _removed_names = REMOVED_NAMES
 
-    def __getattr__(self, name):
-        # Only called when normal lookup fails: a name removed in 1.0 gets a
-        # message that says what to write instead (docs/upgrade.md).
-        # Python also lands here when a property's getter raises
-        # AttributeError itself; run the getter again so that its own error,
-        # not a misleading "no attribute", reaches the user.
-        found = inspect.getattr_static(type(self), name, None)
-        if isinstance(found, property):
-            return found.__get__(self, type(self))
-        replacement = type(self)._removed_names.get(name)
-        if replacement is not None:
-            raise AttributeError("{0}.{1}() was removed in CoolPlot 1.0; {2} (see the upgrade guide).".format(
-                type(self).__name__, name, replacement))
-        raise AttributeError("'{0}' object has no attribute '{1}'".format(type(self).__name__, name))
+    if not TYPE_CHECKING:
+        # Hidden from type checkers: for them a class with __getattr__ has
+        # every attribute, and a misspelt method name would pass unnoticed.
+        def __getattr__(self, name):
+            # Only called when normal lookup fails: a name removed in 1.0 gets a
+            # message that says what to write instead (docs/upgrade.md).
+            # Python also lands here when a property's getter raises
+            # AttributeError itself; run the getter again so that its own error,
+            # not a misleading "no attribute", reaches the user.
+            found = inspect.getattr_static(type(self), name, None)
+            if isinstance(found, property):
+                return found.__get__(self, type(self))
+            replacement = type(self)._removed_names.get(name)
+            if replacement is not None:
+                raise AttributeError("{0}.{1}() was removed in CoolPlot 1.0; {2} (see the upgrade guide).".format(
+                    type(self).__name__, name, replacement))
+            raise AttributeError("'{0}' object has no attribute '{1}'".format(type(self).__name__, name))
 
-    def add_cycle(self, name, states=None, loops=None, paths=None, numbers: bool = True, units=None,
-                  line_style: LineStyle = None, marker_style: MarkerStyle = None, steps: int = 20,
-                  closed: bool = True, labels=None, **arrays):
+    def add_cycle(self, name: Union[str, Cycle],
+                  states: Union[Sequence[StateEntry], Mapping[int, StateEntry], Cycle, None] = None,
+                  loops: Loops = None, paths: Paths = None, numbers: bool = True, units: Optional[UnitsLike] = None,
+                  line_style: Optional[LineStyle] = None, marker_style: Optional[MarkerStyle] = None,
+                  steps: int = 20, closed: bool = True, labels: Labels = None, **arrays: Numbers) -> str:
         """Add or replace a cycle, drawn on top of the chart.
 
         Parameters
@@ -582,21 +635,26 @@ class Chart:
         Raises :class:`coolplot.core.errors.PropertyError`, in the chart's
         units, if a state cannot be computed. Returns the name.
         """
-        cycle = name if isinstance(name, Cycle) else (states if isinstance(states, Cycle) else None)
-        if cycle is not None:
-            spec = self._spec_from_model(cycle, None if isinstance(name, Cycle) else name, loops, paths, numbers,
-                                         line_style, marker_style, steps, labels)
+        if isinstance(name, Cycle):
+            spec = self._spec_from_model(name, None, loops, paths, numbers, line_style, marker_style, steps, labels)
+        elif isinstance(states, Cycle):
+            spec = self._spec_from_model(states, name, loops, paths, numbers, line_style, marker_style, steps,
+                                         labels)
         else:
             unit_system = self._units(units)
             inputs = self._state_inputs(_states_from_arrays(states, arrays) if arrays else states, name, unit_system)
-            spec = CycleSpec(str(name), inputs, loops or _default_loops(inputs, closed), paths or (), numbers,
-                             line_style, marker_style, steps, () if labels is None else labels)
+            # As given (lists, dicts): CycleSpec checks them and keeps them as tuples
+            given: Dict[str, Any] = dict(loops=loops or _default_loops(inputs, closed), paths=paths or (),
+                                         labels=() if labels is None else labels)
+            spec = CycleSpec(str(name), inputs, numbers=numbers, line_style=line_style, marker_style=marker_style,
+                             steps=steps, **given)
         self._compute_cycle(spec)   # compute now, so that errors show up here
         self.spec = self.spec.with_cycle(spec)
         return spec.name
 
-    def _spec_from_model(self, cycle: Cycle, name, loops, paths, numbers, line_style, marker_style, steps,
-                         labels=None):
+    def _spec_from_model(self, cycle: Cycle, name: Optional[str], loops: Loops, paths: Paths, numbers: bool,
+                         line_style: Optional[LineStyle], marker_style: Optional[MarkerStyle], steps: int,
+                         labels: Labels = None) -> CycleSpec:
         """A CycleSpec for a computed Cycle, after checking that it belongs to this chart's fluid."""
         if cycle.fluid and self._other_fluid(cycle.fluid):
             raise ValueError("Cycle '{0}' was computed for {1}, but this chart shows {2}.".format(
@@ -607,15 +665,16 @@ class Chart:
                                     line_style=line_style, marker_style=marker_style, steps=steps,
                                     labels=labels)
 
-    def _state_inputs(self, states, name, unit_system):
+    def _state_inputs(self, states: Union[Sequence[StateEntry], Mapping[int, StateEntry], None], name: object,
+                      unit_system: UnitSystem) -> Tuple[Tuple[int, StateInput], ...]:
         """(number, StateInput) pairs from a list (numbered from 1) or a dict of given states."""
         if states is None:
             raise ValueError("Give the states of cycle '{0}'.".format(name))
-        items = states.items() if isinstance(states, dict) else enumerate(states, start=1)
+        items = states.items() if isinstance(states, Mapping) else enumerate(states, start=1)
         provider = self.fluid
         return tuple((int(n), state_input(entry, unit_system, provider)) for n, entry in items)
 
-    def _compute_cycle(self, cycle: CycleSpec):
+    def _compute_cycle(self, cycle: CycleSpec) -> Tuple[Dict[int, StatePoint], Any]:
         try:
             return self.engine.cycle(self.spec, cycle)
         except PropertyError as e:
@@ -629,7 +688,8 @@ class Chart:
             return True
         return Fluid(fluid_name).model_key != self.fluid.model_key
 
-    def move_cycle_state(self, name: str, number: int, x: float, y: float, units=None):
+    def move_cycle_state(self, name: str, number: int, x: float, y: float,
+                         units: Optional[UnitsLike] = None) -> None:
         """Put state ``number`` of a cycle at (x, y), in the chart's units or in ``units``.
 
         The state is then given by the two axis quantities, for example
@@ -654,11 +714,25 @@ class Chart:
         self._compute_cycle(new)   # raises if it cannot be computed; spec unchanged
         self.spec = self.spec.with_cycle(new)
 
-    def remove_cycle(self, name: str):
+    def remove_cycle(self, name: str) -> None:
         """Remove the cycle called ``name``; nothing happens if there is none."""
         self.spec = self.spec.without_cycle(name)
 
-    def cycle_states(self, name: str, units=None):
+    # cycle_states() returns StatePoints, or plain dicts of values when
+    # ``units`` is given. The @overload lines tell type checkers which one a
+    # call gets; only the definition after them runs.
+    @overload
+    def cycle_states(self, name: str, units: None = None) -> Dict[int, StatePoint]: ...
+
+    @overload
+    def cycle_states(self, name: str, units: UnitsLike) -> Dict[int, Dict[str, float]]: ...
+
+    @overload   # units in a variable that may be None: either kind
+    def cycle_states(self, name: str, units: Optional[UnitsLike]
+                     ) -> Union[Dict[int, StatePoint], Dict[int, Dict[str, float]]]: ...
+
+    def cycle_states(self, name: str,
+                     units: Optional[UnitsLike] = None) -> Union[Dict[int, StatePoint], Dict[int, Dict[str, float]]]:
         """The states of a cycle by state number in ascending order.
 
         StatePoints in SI units, or with ``units`` dicts of values in that
@@ -676,7 +750,7 @@ class Chart:
             return {n: states[n].in_units(unit_system) for n in sorted(states)}
         return {n: states[n] for n in sorted(states)}
 
-    def state(self, entry, units=None) -> StatePoint:
+    def state(self, entry: StateEntry, units: Optional[UnitsLike] = None) -> StatePoint:
         """The full state (SI units) from two properties in the chart's units or in ``units``.
 
         ``entry`` is a dict as for a state of :meth:`add_cycle`, e.g.
@@ -697,7 +771,7 @@ class Chart:
     # ------------------------------------------------------------------
     # Interaction helpers
     # ------------------------------------------------------------------
-    def state_at(self, x: float, y: float, units=None) -> StatePoint:
+    def state_at(self, x: float, y: float, units: Optional[UnitsLike] = None) -> StatePoint:
         """The full state (SI units) at a point given in the chart's units or
         in ``units``, e.g. under the mouse."""
         diagram, unit_system = self.spec.diagram, self._units(units)
@@ -708,14 +782,21 @@ class Chart:
         except PropertyError as e:
             raise self._in_units(e) from None
 
-    def to_display(self, key: str, value_SI):
+    # A number gives a number, a list or an array an array (see Unit.from_SI)
+    @overload
+    def to_display(self, key: str, value_SI: float) -> float: ...
+
+    @overload
+    def to_display(self, key: str, value_SI: Numbers) -> np.ndarray: ...
+
+    def to_display(self, key: str, value_SI: Union[float, Numbers]) -> Union[float, np.ndarray]:
         """Convert an SI value of quantity ``key`` to the chart's units."""
         return self.spec.units[key].from_SI(value_SI)
 
     # ------------------------------------------------------------------
     # Scene building
     # ------------------------------------------------------------------
-    def update_scene(self, plot_size_pt=None) -> "Scene":
+    def update_scene(self, plot_size_pt: Optional[Tuple[float, float]] = None) -> "Scene":
         """Bring :attr:`scene` up to date with the spec and return it.
 
         ``plot_size_pt`` is the (width, height) of the plot area in points,
@@ -739,13 +820,23 @@ class Chart:
     # ------------------------------------------------------------------
     # Convenience for scripts. Imports matplotlib only when called.
     # ------------------------------------------------------------------
-    def draw(self, renderer=None):
+    # draw() returns the renderer it was given, with its own type, so that
+    # chart.draw(SvgRenderer()).to_svg() is checked too; without one it makes
+    # a MatplotlibRenderer. The two @overload lines tell type checkers this;
+    # only the definition after them runs.
+    @overload
+    def draw(self, renderer: None = None) -> MatplotlibRenderer: ...
+
+    @overload
+    def draw(self, renderer: _RendererT) -> _RendererT: ...
+
+    def draw(self, renderer: Optional[Renderer] = None) -> Renderer:
         """Synchronise a renderer with the chart; creates a MatplotlibRenderer if none is given.
 
         A renderer created here uses the canvas size of ``settings.page``.
         """
         if isinstance(self.engine, BackgroundEngine):
-            self._finish_background_work()
+            self._finish_background_work(self.engine)
         if renderer is None:
             renderer = self._default_renderer
             if renderer is None:
@@ -761,7 +852,7 @@ class Chart:
             renderer.sync(self.update_scene(size))
         return renderer
 
-    def _finish_background_work(self):
+    def _finish_background_work(self, engine: BackgroundEngine) -> None:
         """Let background work finish before a script draws: previews first,
         then the final curves they make room for. Warns, instead of waiting
         for ever, when nothing finishes any more."""
@@ -769,24 +860,24 @@ class Chart:
             # Counted from before the scene: a job can end while the scene is
             # built (a crashed process pool fails all of its jobs at once), and
             # the retries it queues next only end in the wait after that scene
-            finished = self.engine.finished_jobs
+            finished = engine.finished_jobs
             self.update_scene()
-            ready, needed = self.engine.progress
-            if not self.engine.busy and ready >= needed:   # a failed line may still be due a retry
+            ready, needed = engine.progress
+            if not engine.busy and ready >= needed:   # a failed line may still be due a retry
                 return
             self.wait()
-            if self.engine.finished_jobs == finished:   # neither the scene nor the wait finished a job
+            if engine.finished_jobs == finished:   # neither the scene nor the wait finished a job
                 warnings.warn("Background work makes no progress, the drawing may be incomplete.",
                               UserWarning, stacklevel=3)
                 return
         warnings.warn("Background work did not finish, the drawing may be incomplete (is the cache "
                       "smaller than the number of lines?).", UserWarning, stacklevel=3)
 
-    def show(self):
+    def show(self) -> None:
         """Draw the chart with matplotlib and show the window."""
         self.draw().show()
 
-    def save(self, path, **kwargs):
+    def save(self, path: Union[str, os.PathLike], **kwargs: Any) -> None:
         """Draw and write the chart to a file, choosing the writer by the extension.
 
         ``.svg`` is written by the SVG writer and ``.html`` by the web
@@ -807,7 +898,8 @@ class Chart:
         page = self.spec.settings.page
         if extension == "svg":
             from .render.svg import PX_PER_PT, SvgRenderer
-            options = dict(width=page.width_pt * PX_PER_PT, height=page.height_pt * PX_PER_PT, unit="pt")
+            options: Dict[str, Any] = dict(width=page.width_pt * PX_PER_PT, height=page.height_pt * PX_PER_PT,
+                                           unit="pt")
             options.update(kwargs)
             self.draw(SvgRenderer(**options)).save(path)
         elif extension in ("html", "htm"):
@@ -821,7 +913,7 @@ class Chart:
         else:
             self.draw(self._matplotlib_file_renderer()).save(path, **kwargs)
 
-    def _matplotlib_file_renderer(self):
+    def _matplotlib_file_renderer(self) -> MatplotlibRenderer:
         """The renderer of :meth:`save` for matplotlib formats: a figure outside pyplot, sized by settings.page."""
         size = self.spec.settings.page.size_in
         if self._file_renderer is None:

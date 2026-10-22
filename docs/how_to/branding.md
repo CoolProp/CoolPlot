@@ -85,3 +85,7 @@ background works best.
 | SVG writer, web renderer (`WebRenderer`) | drawn |
 | coolplot-core | a branded chart is composed and written by Python instead |
 | plotly, coolplot-core PDF writer (`PdfRenderer`), JavaScript writer (`scene_page`) | not yet; they warn once and leave them out |
+
+## In the gallery
+
+A chart with a logo, the full references and a watermark: {doc}`../gallery/branding`.

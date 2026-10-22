@@ -47,15 +47,15 @@ colors = ["#c0392b", "#1b2631", "#7d3c98", "#b9770e", "#d81b60", "#6e2c00"]
 
 print("{0:30s} {1:>8s} {2:>6s} {3:>8s} {4:>10s}".format("Process", "T/degC", "RH/%", "W/g/kg", "dh/kJ/kg"))
 for (name, end), color in zip(end_states.items(), colors):
-    style = dict(line_style=LineStyle(color=color, width_pt=2.0, casing_color="white", casing_width_pt=1.5),
-                 marker_style=MarkerStyle(size_pt=6.0, face_color=color, edge_color="white"))
+    line_style = LineStyle(color=color, width_pt=2.0, casing_color="white", casing_width_pt=1.5)
+    marker_style = MarkerStyle(size_pt=6.0, face_color=color, edge_color="white")
     # add_cycle computes the states; the change of enthalpy then labels the
     # end state, and adding the process again under its name replaces it
-    chart.add_cycle(name, [room, end], closed=False, numbers=False, **style)
+    chart.add_cycle(name, [room, end], closed=False, numbers=False, line_style=line_style, marker_style=marker_style)
     start_state, end_state = chart.cycle_states(name).values()
     dh_kJ_kg = (end_state.h - start_state.h) * 1e-3
     chart.add_cycle(name, [room, end], closed=False, numbers=False, labels={2: "{0:+.1f} kJ/kg".format(dh_kJ_kg)},
-                    **style)
+                    line_style=line_style, marker_style=marker_style)
     print("{0:30s} {1:8.1f} {2:6.1f} {3:8.2f} {4:+10.1f}".format(
         name, end_state.T - 273.15, end_state.RH * 100, end_state.W * 1e3, dh_kJ_kg))
 

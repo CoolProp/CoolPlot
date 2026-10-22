@@ -107,8 +107,16 @@ Look isoline_look(const DiagramSpec& spec, const Theme& theme, const std::string
     const Family* family = spec.diagram.family(key);
     if (!family) throw Error("Lines of constant '" + key + "' cannot be drawn in a " + spec.diagram.name() + " diagram.");
     if (family->on_boundary()) {
-        if (family->is_boundary_value(value_SI)) return {theme.saturation, "saturation", "Saturation", Z_SATURATION};
-        return {theme.quality, "quality", spec.diagram.quantity_label(key), Z_ISOLINE};
+        // The saturation curve and the quality (or humidity) lines take the changes of
+        // set_line_style("saturation", ...) and set_line_style("Q", ...)
+        if (family->is_boundary_value(value_SI)) {
+            json overrides = spec.style_override("saturation");
+            LineStyle style = overrides.empty() ? theme.saturation : with_overrides(theme.saturation, overrides);
+            return {style, "saturation", "Saturation", Z_SATURATION};
+        }
+        json overrides = spec.style_override(key);
+        LineStyle style = overrides.empty() ? theme.quality : with_overrides(theme.quality, overrides);
+        return {style, "quality", spec.diagram.quantity_label(key), Z_ISOLINE};
     }
     std::vector<std::string> families;
     for (const Family& f : spec.diagram.families())
@@ -205,7 +213,7 @@ std::string label_text(const DiagramSpec& spec, const std::string& key, double v
         symbol = saturation_symbol(spec, *anchored);
     }
     const Unit& unit = spec.units.at(shown_key);
-    std::string text = symbol + "=" + labels.format_value(unit.from_SI(shown));
+    std::string text = symbol + "=" + labels.format_value(unit.label_value(shown));
     if (labels.show_units && unit.label != "-" && !unit.label.empty()) text += " " + unit.label;
     return text;
 }
@@ -311,10 +319,10 @@ std::vector<LabelRequest> label_requests(const DiagramSpec& spec, const Theme& t
             r.group = line->group + "/label";
             r.family = key;
             r.text = label_text(spec, key, c->request.value_SI, c->request.has_anchor, c->request.anchor_SI);
-            r.value = spec.units.at(key).from_SI(c->request.value_SI);
+            r.value = spec.units.at(key).label_value(c->request.value_SI);
             const IsolineSet* anchored = saturation_anchor(spec, key);
             if (anchored && c->request.has_anchor)
-                r.value = spec.units.at(anchored->anchor_by).from_SI(c->request.anchor_SI);  // the saturation state shown
+                r.value = spec.units.at(anchored->anchor_by).label_value(c->request.anchor_SI);  // the saturation state shown
             if (spec.settings.labels.mode == "rails")
                 r.text = spec.settings.labels.format_value(r.value);  // the bare value; symbol and unit are in the legend
             r.line_color = line->line_style.color;

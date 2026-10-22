@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Tuple, Union
+from typing import Sequence, Tuple, Union
 
 from .quantities import quantity_key
 
@@ -54,7 +54,12 @@ TP_LIMITS = {
 }
 
 
-def get_tp_limits(limits) -> TpLimits:
+# Limits as the public functions take them, for the annotations: a preset
+# name ("DEF", "ACHP", ...), a TpLimits, or four bounds [T_min, T_max, p_min, p_max] in SI.
+TpLimitsLike = Union[str, TpLimits, Sequence[Bound]]
+
+
+def get_tp_limits(limits: TpLimitsLike) -> TpLimits:
     """Accept a TpLimits, a preset name, or a sequence [T_min, T_max, p_min, p_max] in SI."""
     if isinstance(limits, TpLimits):
         return limits

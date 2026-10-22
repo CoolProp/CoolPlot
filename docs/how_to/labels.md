@@ -58,3 +58,7 @@ Labels are laid out for the size of the plot area. `diagram.draw()` and
 `save()` take it from the plotting library; if you drive a renderer
 yourself, pass it: `renderer.sync(diagram.update_scene(renderer.plot_size_pt()))`.
 How positions are chosen is in {doc}`../explanation/label_placement`.
+
+## In the gallery
+
+The same chart in the four label modes: {doc}`../gallery/label_modes`.

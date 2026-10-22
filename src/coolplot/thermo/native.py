@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import threading
 from collections import OrderedDict
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 
@@ -44,7 +44,7 @@ from .isolines import Curve, _base_backend_fluid
 
 try:
     import CoolProp
-    from CoolProp.CoolProp import Plot as _Plot
+    from CoolProp.CoolProp import Plot as _Plot   # type: ignore[attr-defined]   # not in CoolProp's type stubs
 except Exception:   # CoolProp without the port, or no CoolProp at all
     _Plot = None
 
@@ -68,7 +68,8 @@ def enabled() -> bool:
     return available() and native_mode() != "off"
 
 
-_DEFAULT_INTERACTIONS = {}
+# The default binary interaction parameters of a mixture: (i, j, name) -> value, by (backend, components)
+_DEFAULT_INTERACTIONS: Dict[Tuple[str, Tuple[str, ...]], Dict[Tuple[int, int, str], float]] = {}
 
 
 def _interactions_are_default(backend: str, components, interactions) -> bool:

@@ -107,7 +107,10 @@ One record describes a property diagram and a psychrometric chart alike;
   `set_process`, which wrote them, was removed in 1.0; specs that hold
   processes still read and draw, and `DiagramSpec.with_process` adds one.
 * `style_overrides`: `LineStyle` field changes per family, on top of
-  the theme.
+  the theme, keyed by the quantity of the family; the key `"saturation"`
+  (since 1.3) restyles the saturation curve. The overrides of the family
+  of the curve (`"Q"`, `"RH"`) apply to its other lines since 1.3; before,
+  they were kept but not drawn.
 * `view_SI`: `[x_limits, y_limits]`, each `null` or `[min, max]`.
 * `show_saturation` (since 1.2): `true` draws the saturation curve (quality
   0 and 1, or 100 % relative humidity) whatever lines are set, `false`

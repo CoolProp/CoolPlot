@@ -53,7 +53,7 @@ import numpy as np
 from ..core.floats import same_numbers
 from ..scene import Line, Text
 from ..style.values import LineStyle
-from .layout import (EDGES, PAD_PT, Box, Frame, LabelRequest, Piece, _candidate, _text, keep_out_points,
+from .layout import (EDGES, PAD_PT, Box, Candidate, Frame, LabelRequest, Piece, _candidate, _text, keep_out_points,
                      text_size_pt, visible_pieces, LINE_HEIGHT)
 
 #: Length of the tick on the frame where a line with an outer label leaves it, in pt.
@@ -201,7 +201,7 @@ def inner_candidate(piece: Piece, edge: str, bound: float, half_w: float, half_h
     if piece.length < 2.0 * half_w:
         return None
     depth = bound + half_h
-    c = None
+    c: Optional[Candidate] = None
     for _ in range(3):
         hit = crossing(piece, edge, depth, frame)
         if hit is None:
@@ -211,7 +211,7 @@ def inner_candidate(piece: Piece, edge: str, bound: float, half_w: float, half_h
             return None
         # The next centre: where this one is, moved by what its box is off the rail
         depth = _depth(edge, c.box.cx, c.box.cy, frame) + (bound - _nearest_depth(c.box, edge, frame))
-    if abs(_nearest_depth(c.box, edge, frame) - bound) > 0.5:
+    if c is None or abs(_nearest_depth(c.box, edge, frame) - bound) > 0.5:
         return None
     return c.box, c.direction
 
@@ -384,7 +384,9 @@ def _kept(old: Optional[Text], new: Text, frame: Frame) -> Text:
 
 
 def frame_direction(frame: Frame, text: Text) -> Tuple[float, float]:
-    """The direction of a text on screen, in points."""
+    """The direction of a text on screen, in points. Only for a text with a direction."""
+    if text.direction is None:
+        raise ValueError("The text {0!r} has no direction.".format(text.id))
     (x0, x1), (y0, y1) = frame.to_pt([text.x, text.x + text.direction[0]], [text.y, text.y + text.direction[1]])
     return float(x1 - x0), float(y1 - y0)
 

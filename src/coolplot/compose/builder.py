@@ -16,15 +16,16 @@ every other family takes the next palette slot.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import fields, is_dataclass, replace
 from functools import lru_cache
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
 from ..core.quantities import get_quantity
-from ..scene import AxesSpec, Item, Line, Markers, Text, drawable_limits
-from ..spec.diagram import CycleSpec, DiagramSpec, ProcessSpec
+from ..scene import AxesSpec, SceneItem, Line, Markers, Text, drawable_limits
+from ..spec.diagram import SATURATION_KEY, CycleSpec, DiagramSpec, ProcessSpec
 from ..style.theme import Theme
 from ..style.values import Font
 from .branding import branding
@@ -113,11 +114,15 @@ def axis_scales(spec: DiagramSpec):
 
 def isoline_look(spec: DiagramSpec, theme: Theme, key: str, value_SI: float):
     """(style, role, legend text, z order) of one isoline, from the theme and overrides."""
-    family = spec.diagram.family(key)
+    family = spec.diagram.require_family(key)
     if family.on_boundary:
+        # The saturation curve and the quality (or humidity) lines take the
+        # changes of set_line_style("saturation", ...) and set_line_style("Q", ...)
         if any(same_number(value_SI, b) for b in family.boundary):
-            return theme.saturation, "saturation", "Saturation", Z_SATURATION
-        return theme.quality, "quality", spec.diagram.quantity_label(key), Z_ISOLINE
+            saturation = theme.saturation.with_(**spec.style_override(SATURATION_KEY))
+            return saturation, "saturation", "Saturation", Z_SATURATION
+        quality = theme.quality.with_(**spec.style_override(key))
+        return quality, "quality", spec.diagram.quantity_label(key), Z_ISOLINE
     families = [f.key for f in spec.diagram.families if not f.on_boundary]
     style = theme.isoline_style(key, families)
     overrides = spec.style_override(key)
@@ -158,7 +163,7 @@ def _saturation_anchor(spec: DiagramSpec, key: str):
                  and s.anchor.label == "saturation"), None)
 
 
-def label_text(spec: DiagramSpec, key: str, value_SI: float, anchor_SI: float = None) -> str:
+def label_text(spec: DiagramSpec, key: str, value_SI: float, anchor_SI: Optional[float] = None) -> str:
     """Text of an isoline label, e.g. "T=0 deg C" or "x=0.4".
 
     A line placed by saturation states (``anchor_SI`` given) is labelled
@@ -170,13 +175,13 @@ def label_text(spec: DiagramSpec, key: str, value_SI: float, anchor_SI: float = 
     anchor = None
     if anchor_SI is not None:
         anchor = next((s.anchor for s in spec.isolines if s.key == key and s.anchor is not None), None)
-    if anchor is not None and anchor.label == "saturation":
+    if anchor is not None and anchor_SI is not None and anchor.label == "saturation":
         key, value_SI = anchor.by, anchor_SI
         symbol = saturation_symbol(spec, anchor)
     else:
         symbol = spec.diagram.symbol(key)
     unit = spec.units[key]
-    text = "{0}={1}".format(symbol, labels.format_value(float(unit.from_SI(value_SI))))
+    text = "{0}={1}".format(symbol, labels.format_value(unit.label_value(value_SI)))
     if labels.show_units and unit.label not in ("-", ""):
         text += " " + unit.label
     return text
@@ -216,13 +221,13 @@ def label_requests(spec: DiagramSpec, theme: Theme, curves, lines: Sequence[Line
     """
     labels = spec.settings.labels
     every = labels.every
-    by_family = {}
+    by_family: Dict[str, list] = {}   # family -> (request, line) pairs
     for (request, _), line in zip(curves, lines):
-        boundary = spec.diagram.family(request.key).boundary
+        boundary = spec.diagram.require_family(request.key).boundary
         if not request.labels or any(same_number(request.value_SI, b) for b in boundary):
             continue
         by_family.setdefault(request.key, []).append((request, line))
-    order = sorted(by_family, key=lambda k: (not spec.diagram.family(k).on_boundary,
+    order = sorted(by_family, key=lambda k: (not spec.diagram.require_family(k).on_boundary,
                                              [s.key for s in spec.isolines].index(k)))
     requests = []
     for key in order:
@@ -231,10 +236,10 @@ def label_requests(spec: DiagramSpec, theme: Theme, curves, lines: Sequence[Line
             if theme.isoline_label_color == "line" and line.style.color is not None:
                 style = style.with_(color=line.style.color)   # the label in its line's colour
             text = label_text(spec, key, request.value_SI, request.anchor_SI)
-            value = float(spec.units[key].from_SI(request.value_SI))
+            value = spec.units[key].label_value(request.value_SI)
             anchor = _saturation_anchor(spec, key)
             if anchor is not None and request.anchor_SI is not None:
-                value = float(spec.units[anchor.by].from_SI(request.anchor_SI))   # the saturation state shown
+                value = spec.units[anchor.by].label_value(request.anchor_SI)   # the saturation state shown
             if labels.mode == "rails":
                 text = labels.format_value(value)   # the bare value; symbol and unit are in the legend
             requests.append(LabelRequest(id=line.id + "/label", group=line.group + "/label", family=key,
@@ -243,9 +248,9 @@ def label_requests(spec: DiagramSpec, theme: Theme, curves, lines: Sequence[Line
     return requests
 
 
-def inline_labels(spec: DiagramSpec, requests: Sequence[LabelRequest], axes: AxesSpec) -> List[Text]:
+def inline_labels(spec: DiagramSpec, requests: Sequence[LabelRequest], frame: Frame) -> List[Text]:
     """Labels at ``Settings.labels.position`` along the visible part of each line."""
-    (x_lo, x_hi), (y_lo, y_hi) = axes.x_limits, axes.y_limits
+    (x_lo, x_hi), (y_lo, y_hi) = frame.x_limits, frame.y_limits
     position = spec.settings.labels.position
     labels = []
     for r in requests:
@@ -256,9 +261,8 @@ def inline_labels(spec: DiagramSpec, requests: Sequence[LabelRequest], axes: Axe
             continue
         i = int(inside[min(int(position * len(inside)), len(inside) - 1)])
         i0, i1 = max(i - 1, 0), min(i + 1, len(x) - 1)
-        direction = (float(x[i1] - x[i0]), float(y[i1] - y[i0]))
-        if not all(np.isfinite(direction)):
-            direction = None
+        dx, dy = float(x[i1] - x[i0]), float(y[i1] - y[i0])
+        direction = (dx, dy) if math.isfinite(dx) and math.isfinite(dy) else None
         labels.append(Text(id=r.id, group=r.group, role="isoline_label", x=float(x[i]), y=float(y[i]),
                            text=r.text, direction=direction, style=r.style, z_order=Z_LABEL))
     return labels
@@ -282,9 +286,9 @@ def labels_for(spec: DiagramSpec, requests, axes: AxesSpec, keep_out_lines, plot
     that edge labels keep clear of, such as the badge.
     """
     settings = spec.settings.labels
+    frame = Frame.from_axes(axes, plot_size_pt)
     if settings.mode == "inline":
-        return inline_labels(spec, requests, axes)
-    frame = Frame(axes.x_limits, axes.y_limits, axes.x_log, axes.y_log, *plot_size_pt)
+        return inline_labels(spec, requests, frame)
     if settings.mode == "rails":
         legend = axes.style.legend
         outer_right = not (legend.visible and legend.location == "outside right")
@@ -292,18 +296,18 @@ def labels_for(spec: DiagramSpec, requests, axes: AxesSpec, keep_out_lines, plot
                                  outer_right)
     if settings.mode == "margin":
         return place_margin_labels(requests, frame, settings.margin_edges)
-    edges = {family: settings.preferred_edges(family, spec.diagram.family(family).edges)
+    edges = {family: settings.preferred_edges(family, spec.diagram.require_family(family).edges)
              for family in {r.family for r in requests}}
     return place_edge_labels(requests, frame, keep_out_lines, settings.keep_out_pt, edges, previous,
                              settings.fallback, occupied)
 
 
-def process_items(spec: DiagramSpec, theme: Theme, process: ProcessSpec, index: int) -> List[Item]:
+def process_items(spec: DiagramSpec, theme: Theme, process: ProcessSpec, index: int) -> List[SceneItem]:
     """The line and the state markers of one process."""
     ux, uy = spec.units[spec.diagram.x], spec.units[spec.diagram.y]
     kx, ky = spec.diagram.x, spec.diagram.y
     group = "process/" + process.name
-    items = []
+    items: List[SceneItem] = []
     if process.line_states:
         items.append(Line(id=group + "/line", group=group, role="process", legend=process.name,
                           x=ux.from_SI([s[kx] for s in process.line_states]),
@@ -317,7 +321,7 @@ def process_items(spec: DiagramSpec, theme: Theme, process: ProcessSpec, index: 
     return items
 
 
-def cycle_items(spec: DiagramSpec, theme: Theme, cycle: CycleSpec, states, chains, index: int) -> List[Item]:
+def cycle_items(spec: DiagramSpec, theme: Theme, cycle: CycleSpec, states, chains, index: int) -> List[SceneItem]:
     """One line per chain, the state markers and the state numbers of a cycle.
 
     All items share the group "cycle/<name>", so that a change to the
@@ -329,7 +333,7 @@ def cycle_items(spec: DiagramSpec, theme: Theme, cycle: CycleSpec, states, chain
     group = "cycle/" + cycle.name
     line_style = cycle.line_style or theme.process_style(index)
     marker_style = cycle.marker_style or theme.state_point_style(index)
-    items: List[Item] = []
+    items: List[SceneItem] = []
     for i, chain in enumerate(chains):
         items.append(Line(id="{0}/loop/{1}".format(group, i), group=group, role="cycle",
                           legend=cycle.name if i == 0 else None,
@@ -369,9 +373,9 @@ def state_numbers(group: str, theme: Theme, marker_style, numbers, x, y, labels=
     return texts
 
 
-def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Tuple[float, float] = None,
-            previous_labels: Dict[str, Text] = None, cycles: Sequence = None,
-            sources: Sequence[str] = ()) -> Tuple[List[Item], AxesSpec]:
+def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Optional[Tuple[float, float]] = None,
+            previous_labels: Optional[Dict[str, Text]] = None, cycles: Optional[Sequence] = None,
+            sources: Sequence[str] = ()) -> Tuple[List[SceneItem], AxesSpec]:
     """All scene items and the axes for a diagram.
 
     ``curves`` are (CurveRequest, Curve) pairs as returned by
@@ -390,14 +394,14 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Tuple[flo
     drawn = [(p.x, p.y, isinstance(p, Line)) for p in process_parts if not isinstance(p, Text)]
     axes = axes_spec(spec, domain, theme, drawn)
     size = plot_size_pt or default_plot_size_pt(spec)
-    frame = Frame(axes.x_limits, axes.y_limits, axes.x_log, axes.y_log, *size)
+    frame = Frame.from_axes(axes, size)
     process_parts = placed_state_numbers(process_parts, frame)
     lines = isoline_items(spec, theme, curves)
     badge, watermark = branding(spec, theme, frame, sources)
     axes, badge, boxes = corners_for(spec, theme, axes, frame, badge, lines, process_parts, drawn)
     if badge is not None or watermark is not None:
         axes = replace(axes, badge=badge, watermark=watermark)
-    items: List[Item] = list(lines)
+    items: List[SceneItem] = list(lines)
     requests = label_requests(spec, theme, curves, lines)
     if requests:
         # Rail and edge labels keep clear of a legend inside the plot area and of the badge
@@ -427,16 +431,16 @@ def corners_for(spec: DiagramSpec, theme: Theme, axes: AxesSpec, frame: Frame, b
     shown = [(line.x, line.y) for line in lines if line.visible]
     page_width, page_height = default_plot_size_pt(spec)
     legend_at, badge_at, boxes = place_corners(frame, shown, drawn, legend, badge_spec, page_width * page_height)
-    if legend is not None:
+    if legend is not None and legend_at is not None:
         axes = replace(axes, style=replace(axes.style, legend=replace(axes.style.legend, location=legend_at)))
     if badge is not None:
         badge = replace(badge, location=badge_at)
     return axes, badge, boxes
 
 
-def overlay_items(spec: DiagramSpec, theme: Theme, cycles) -> List[Item]:
+def overlay_items(spec: DiagramSpec, theme: Theme, cycles) -> List[SceneItem]:
     """The items of every process and cycle, each with its own palette slot."""
-    parts: List[Item] = []
+    parts: List[SceneItem] = []
     for index, process in enumerate(spec.processes):
         parts.extend(process_items(spec, theme, process, index))
     for index, (cycle, (states, chains)) in enumerate(zip(spec.cycles, cycles)):
@@ -444,7 +448,7 @@ def overlay_items(spec: DiagramSpec, theme: Theme, cycles) -> List[Item]:
     return parts
 
 
-def placed_state_numbers(parts: List[Item], frame: Frame) -> List[Item]:
+def placed_state_numbers(parts: List[SceneItem], frame: Frame) -> List[SceneItem]:
     """The same items, with the state numbers moved clear of the markers."""
     numbers = [p for p in parts if isinstance(p, Text)]
     if not numbers:

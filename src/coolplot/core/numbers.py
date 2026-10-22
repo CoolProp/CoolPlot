@@ -43,7 +43,7 @@ def format_number(value: float, digits: int = 6) -> str:
         if "." in text:
             text = text.rstrip("0").rstrip(".")
         return "0" if text in ("-0", "") else text
-    mantissa, exponent = "{0:.{1}e}".format(rounded, digits - 1).split("e")
+    mantissa, power = "{0:.{1}e}".format(rounded, digits - 1).split("e")
     if "." in mantissa:
         mantissa = mantissa.rstrip("0").rstrip(".")
-    return "{0}e{1}".format(mantissa, int(exponent))
+    return "{0}e{1}".format(mantissa, int(power))

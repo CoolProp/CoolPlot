@@ -6,6 +6,67 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### 1.3.0
+
+The 1.3 releases are about type safety.
+
+#### Added
+- Type information: the package ships its annotations (the PEP 561
+  marker `py.typed`), so type checkers such as mypy and pyright check the
+  calls an application makes to CoolPlot. The chart API is fully
+  annotated: `Chart`, `PropertyDiagram`, `PsychrometricChart`, `save_pdf`
+  and the names importable from `coolplot`, which type checkers now see
+  behind the lazy loading. `Chart.draw(renderer)` returns the renderer
+  with its own type, and `Chart.cycle_states` returns StatePoints, or
+  dicts of values when `units` is given. A misspelt name of a chart or of
+  the package is reported by the checker; running code still gets the
+  messages for the names removed in 1.0.
+- Names for what the public functions take in several forms:
+  `coolplot.core.units.UnitsLike`, `coolplot.core.limits.TpLimitsLike`,
+  `coolplot.chart.Numbers`, `coolplot.chart.StateEntry` and
+  `coolplot.diagram.FluidLike`; `coolplot.scene.SceneItem` for the three
+  kinds of scene item; `DiagramType.require_family`.
+- Type checks (`tests/test_typing.py`, `make typecheck`): mypy over the
+  whole package, over the public API as an application sees it (strict
+  mode, `tests/typing_checks/public_api.py`) and over the examples. The
+  tests workflow runs them in a `typing` job and checks that the wheel and
+  the sdist carry `py.typed`. The optional dependencies gain `typing`
+  (mypy). The contributing guide has a page on type annotations.
+- Gallery examples: a steam Rankine cycle on a T-s chart, a steam turbine
+  on the h-s (Mollier) chart of water, an organic Rankine cycle with
+  R245fa, a transcritical CO2 heat pump, one heat pump with R290, R32 and
+  R1234yf side by side, an air conditioner in IP units, one chart in the
+  four themes, the four label modes, and a chart with a logo, references
+  and a watermark. The how-to guides point to them.
+- `Unit.label_value`: the value a label shows for an SI value.
+- The saturation curve can be restyled per chart:
+  `set_line_style("saturation", casing_width_pt=0)` draws it without the
+  casing (the band in the background colour along it) of the screen
+  themes. Spec records take the key `"saturation"` in `style_overrides`.
+  coolplot-core 1.3 draws it; with an older core, such a chart falls back
+  to the Python composer with a warning.
+
+#### Changed
+- A range that is not two values (`range=` of `set_lines`, `"range"` of
+  `at_saturation`, `T_range` and `W_range` of `PsychrometricChart`) is
+  refused with a ValueError that says so.
+- The examples pass `line_style` and `marker_style` by name instead of
+  unpacking a dict of both, so that they pass the type checker.
+
+#### Fixed
+- About 390 places where mypy found the annotations and the code at odds,
+  most of them values that may be None and return types of internal
+  helpers. None of them changes what a chart draws.
+- `add_cycle` numbers states given in a mapping other than a dict by its
+  keys, as it does for a dict.
+- `set_line_style("Q", ...)` (and `"RH"` on a psychrometric chart) was
+  kept in the spec but not drawn; it restyles the lines of constant
+  quality (relative humidity) now.
+- A line at 0 in a unit with an offset other than deg C, such as the
+  isotherm at 0 deg F, was labelled "-4e-10" (the noise of converting
+  back from kelvin); it is labelled 0 by the Python composer and by
+  coolplot-core 1.3. An older coolplot-core still writes the noise.
+
 ## [1.2.0] - 2026-10-22
 
 ### Removed
