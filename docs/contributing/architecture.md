@@ -253,6 +253,7 @@ change costs, because that decides what is recomputed:
 | `look` | the theme: every colour, line, marker and font | restyling only |
 | `labels` | mode (edge, margin, inline), keep-out margin around processes, density, number format and rounding of all values shown | new label layout only |
 | `page` | hints for the backends: preferred canvas size, font scale (the legend position is part of the theme) | backend layout only |
+| `branding` | badge (logo, references, versions, own lines, corner) and watermark (1.2) | layout only (the references are looked up once per fluid) |
 
 Defaults come from presets (`screen`, `print`, `publication`,
 `interactive`). An application that wants few points while the user drags
@@ -269,7 +270,7 @@ Implemented in step 2 (`coolplot.spec.settings`):
   `warn_failed_fraction` (warn once per curve with more failed points
   inside the line than this).
 * `look`: a `Theme`.
-* `labels`: `mode` ("edge", "margin" or "inline"), `keep_out_pt`,
+* `labels`: `mode` ("rails", "edge", "margin" or "inline"), `keep_out_pt`,
   preferred `edges` per family, `margin_edges`, `fallback`, `every`
   (label every n-th line), `position` (inline mode), `digits` of the
   values shown, `show_units` and `tick_digits` (step 4).
@@ -324,7 +325,8 @@ diagram.add_cycle("measured", p=[...], h=[...])                           # from
   state before it in the cycle: "isenthalpic", "isentropic", "isobaric",
   "isothermal", "isochoric", or "compression" and "expansion" with an
   isentropic efficiency `eta_is` (the outlet pressure is the given
-  property). The proposal used "polytropic" here; a pressure alone does
+  property); since 1.2 also "sensible", which keeps the humidity ratio of
+  humid air. The proposal used "polytropic" here; a pressure alone does
   not fix a compressor outlet, so "polytropic" is a path shape only.
 * Paths between states follow the physics ("auto"): equal pressure gives
   an isobar (with the saturation states inserted, so heat exchangers bend

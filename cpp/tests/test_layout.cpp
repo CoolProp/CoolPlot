@@ -160,3 +160,19 @@ TEST_CASE("State numbers move clear of each other and of other markers", "[layou
     CHECK_THAT(placed[0].offset_x_pt, WithinULP(4.5, 0));
     CHECK(placed[0].text_style.h_align == "left");
 }
+
+TEST_CASE("A long state label turns to the side where it stays inside the frame", "[layout]") {
+    Frame f = frame();  // 400 x 300 pt for 0..10 on both axes
+    Item t;
+    t.type = ItemType::Text;
+    t.id = "n1";
+    t.text = "1: a label far too long to fit to the right of its state";
+    t.text_x = 9.5;  // 20 pt from the right edge
+    t.text_y = 5.0;
+    t.offset_x_pt = t.offset_y_pt = 4.5;
+    t.text_style.font.size_pt = 8.0;
+    std::vector<Item> placed = place_state_numbers({t}, f, {9.5}, {5.0});
+    REQUIRE(placed.size() == 1);
+    CHECK(placed[0].text_style.h_align == "right");
+    CHECK_THAT(placed[0].offset_x_pt, WithinULP(-4.5, 0));
+}

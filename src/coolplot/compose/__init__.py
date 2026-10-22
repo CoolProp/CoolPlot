@@ -14,14 +14,17 @@ from .builder import compose as compose_python, label_text, scaled_theme
 __all__ = ["compose", "compose_python", "label_text", "scaled_theme"]
 
 
-def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycles=None):
+def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycles=None, sources=()):
     """All scene items and the axes for a diagram, see :func:`coolplot.compose.builder.compose`.
 
     Composed by coolplot-core when it is installed and the native mode is
     "on" (see :func:`coolplot.corelib.enabled`), by the Python composer
-    otherwise; both give the same scene.
+    otherwise; both give the same scene. coolplot-core does not compose
+    the branding (badge and watermark), so a branded chart always takes
+    the Python composer.
     """
-    if corelib.enabled():
+    branding = spec.settings.branding
+    if corelib.enabled() and not (branding.has_badge or branding.watermark):
         try:
             result = corelib.compose(spec, domain, curves, plot_size_pt, previous_labels, cycles)
         except corelib.CoreRefusal as error:
@@ -32,4 +35,4 @@ def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycle
             result = None
         if result is not None:
             return result
-    return compose_python(spec, domain, curves, plot_size_pt, previous_labels, cycles)
+    return compose_python(spec, domain, curves, plot_size_pt, previous_labels, cycles, sources)

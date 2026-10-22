@@ -164,6 +164,7 @@ const std::vector<Quantity>& quantities() {
       {"Twb", "Twb", "Wet-bulb temperature", false},
       {"Tdp", "Tdp", "Dew-point temperature", false},
       {"v", "v", "Specific volume", false},
+      {"Thx", "T", "Temperature", false},  // the temperature scale of the Mollier h,x chart
     };
     return table;
 }
@@ -229,7 +230,8 @@ Unit unit(const std::string& label, double scale = 1.0, double offset = 0.0, con
 
 std::map<std::string, Unit> si_units() {
     return {{"T", unit("K")},     {"p", unit("Pa")},    {"h", unit("J/kg")}, {"s", unit("J/kg/K")}, {"rho", unit("kg/m3")}, {"u", unit("J/kg")},
-            {"Q", unit("-")},     {"W", unit("kg/kg")}, {"RH", unit("-")},   {"Twb", unit("K")},    {"Tdp", unit("K")},     {"v", unit("m3/kg")}};
+            {"Q", unit("-")},     {"W", unit("kg/kg")}, {"RH", unit("-")},   {"Twb", unit("K")},    {"Tdp", unit("K")},     {"v", unit("m3/kg")},
+            {"Thx", unit("K")}};
 }
 
 std::map<std::string, Unit> ksi_units() {
@@ -249,6 +251,7 @@ std::map<std::string, Unit> engineering_units() {
     units["RH"] = unit("%", 100.0);
     units["Twb"] = unit("deg C", 1.0, -273.15, "K");
     units["Tdp"] = unit("deg C", 1.0, -273.15, "K");
+    units["Thx"] = unit("deg C", 1.0, -273.15, "K");
     return units;
 }
 
@@ -267,7 +270,8 @@ std::map<std::string, Unit> ip_units() {
             {"RH", unit("%", 100.0)},
             {"Twb", unit("deg F", 1.8, -459.67, "R")},
             {"Tdp", unit("deg F", 1.8, -459.67, "R")},
-            {"v", unit("ft3/lb", FT3_PER_M3 / LB_PER_KG)}};
+            {"v", unit("ft3/lb", FT3_PER_M3 / LB_PER_KG)},
+            {"Thx", unit("deg F", 1.8, -459.67, "R")}};
 }
 
 const std::map<std::string, UnitSystem>& unit_systems() {
@@ -335,6 +339,8 @@ UnitSystem UnitSystem::from_json(const json& data) {
         if (u.size() > 3) unit.difference_label = u.at(3).get<std::string>();
         out.units[quantity_key(it.key())] = unit;
     }
+    // The temperature scale of the Mollier chart is shown like the temperature, unless the record says otherwise
+    if (out.units.count("T") && !out.units.count("Thx")) out.units["Thx"] = out.units.at("T");
     return out;
 }
 
@@ -375,7 +381,8 @@ const std::map<std::string, std::vector<Family>>& all_families() {
         make_family("s", "p", {"top", "right"}), make_family("rho", "T", {"right", "top"}), make_family("u", "p", {"top", "bottom"}),
         make_family("Q", "T", {"bottom", "top"}, 11, true, {0.0, 1.0}, true, {0.0, 1.0})}},
       {"humid_air",
-       {make_family("RH", "T", {"right", "top"}, 11, true, {0.0, 1.0}, false, {1.0}), make_family("Twb", "T", {"bottom", "left"}, 9),
+       {make_family("T", "W", {"right", "left"}, 12),  // isotherms, only where T is no axis (the Mollier chart)
+        make_family("RH", "T", {"right", "top"}, 11, true, {0.0, 1.0}, false, {1.0}), make_family("Twb", "T", {"bottom", "left"}, 9),
         make_family("h", "T", {"bottom", "left"}, 13), make_family("v", "T", {"bottom", "right"}, 10)}},
     };
     return table;
@@ -384,7 +391,7 @@ const std::map<std::string, std::vector<Family>>& all_families() {
 const std::map<std::string, std::vector<std::string>>& axes_of_kind() {
     static const std::map<std::string, std::vector<std::string>> table = {
       {"fluid", {"T", "p", "h", "s", "rho", "u"}},
-      {"humid_air", {"T", "W"}},
+      {"humid_air", {"T", "W", "Thx"}},
     };
     return table;
 }
@@ -402,6 +409,7 @@ const std::vector<NamedType>& named_types() {
       {"TS", "T", "s", "fluid"},   {"PH", "p", "h", "fluid"},     {"HS", "h", "s", "fluid"},          {"PS", "p", "s", "fluid"},
       {"PD", "p", "rho", "fluid"}, {"PRHO", "p", "rho", "fluid"}, {"TD", "T", "rho", "fluid"},        {"TRHO", "T", "rho", "fluid"},
       {"PT", "p", "T", "fluid"},   {"WT", "W", "T", "humid_air"}, {"PSYCHROMETRIC", "W", "T", "humid_air"},
+      {"THXW", "Thx", "W", "humid_air"}, {"MOLLIER", "Thx", "W", "humid_air"}, {"HX", "Thx", "W", "humid_air"},
     };
     return table;
 }
@@ -456,6 +464,15 @@ const Family* DiagramType::family(const std::string& iso_key) const {
     for (const Family& f : found->second)
         if (f.key == key) return &f;
     return nullptr;
+}
+
+std::string DiagramType::symbol(const std::string& key) const {
+    std::string k = quantity_key(key);
+    if (kind == "humid_air" && y == "Thx" && x == "W") {  // the Mollier chart writes x and phi
+        if (k == "W") return "x";
+        if (k == "RH") return "phi";
+    }
+    return get_quantity(k).symbol;
 }
 
 std::string DiagramType::quantity_label(const std::string& key) const {

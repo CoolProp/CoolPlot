@@ -26,8 +26,11 @@ from .state import StatePoint
 #: * "isobaric": same pressure, "isothermal": same temperature,
 #:   "isochoric": same density,
 #: * "compression" and "expansion": to the given pressure with the
-#:   isentropic efficiency ``eta_is`` (1 means isentropic).
-VIA_KINDS = ("isenthalpic", "isentropic", "isobaric", "isothermal", "isochoric", "compression", "expansion")
+#:   isentropic efficiency ``eta_is`` (1 means isentropic),
+#: * "sensible": same humidity ratio, for humid air only (a heating coil,
+#:   or a cooling coil that stays above the dew point).
+VIA_KINDS = ("isenthalpic", "isentropic", "isobaric", "isothermal", "isochoric", "compression", "expansion",
+             "sensible")
 
 #: How the path between two consecutive states is drawn. "auto" picks the
 #: process from the two states: equal pressure gives an isobar (which bends

@@ -227,7 +227,7 @@ def _screen_theme(name, surface, ink, ink_secondary, ink_muted, gridline, baseli
             title=TextStyle(font=_sans(11.0, weight="bold"), color=ink),
             grid_major=LineStyle(color=gridline, width_pt=0.5),
             grid_minor=None,
-            legend=LegendStyle(location="outside right", background=surface,
+            legend=LegendStyle(location="auto", background=surface,
                                text=TextStyle(font=_sans(8.0), color=ink_secondary)),
         ),
     )

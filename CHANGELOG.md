@@ -6,6 +6,120 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-22
+
+### Removed
+- Python 3.10, which reaches its end of life in October 2026:
+  `requires-python` is ">=3.11", so pip on Python 3.10 keeps
+  installing 1.1. coolplot-core's Python module also needs 3.11.
+
+### Added
+- Air processes on psychrometric charts:
+  - `"via": "sensible"` keeps the humidity ratio of the state before
+    (a heating coil, or a cooling coil above the dew point). Charts of a
+    fluid refuse it.
+  - `PsychrometricChart.mix(a, b, m_dot_a_kg_s, m_dot_b_kg_s)` gives the
+    state after two air streams mix adiabatically, from the water and
+    energy balances per kg of dry air; a mix that would form fog is refused.
+  - `PsychrometricChart.add_zone(name, T_range, RH_range, label=...)`
+    outlines a region of temperature and relative humidity, such as a
+    comfort zone. Its humidity edges follow the lines of constant relative
+    humidity.
+- State labels: `add_cycle(..., labels={2: "ADP 11.2 deg C"})` writes a
+  text next to a state, after its number, or alone with `numbers=False`.
+  The cycle record gains an optional `labels` list; records of 1.1 read and
+  write as before. coolplot-core 1.2 draws them. With an older core, a chart
+  with labels falls back to the Python composer with a warning.
+- The Mollier h,x chart of humid air (DIN 1946, VDI 4670):
+  `PsychrometricChart(..., style="mollier")` draws the humidity ratio x
+  across and the temperature scale Thx, linear in the enthalpy, up, with
+  isotherms, lines of constant enthalpy falling to the right and the
+  symbols x and phi. Diagram name `ThxW` (or `mollier`, `hx`). Humid-air
+  states gain `Thx`; states saved by 1.1 get it computed when they are
+  read. coolplot-core 1.2 composes it; with an older core, a Mollier
+  chart falls back to the Python composer with a warning. Gallery example
+  "An air handling unit on the Mollier h,x chart".
+- `Chart.state(entry)` gives a full state from two properties in the
+  chart's units.
+- Label mode "rails" (`coolplot.compose.rails`): the bare values of each
+  family in a row along one edge, outside the frame at the top and on
+  the right with a tick where the line leaves, or just inside it on any
+  edge, turned along the lines with the label boxes on a common rail.
+  Each family takes the rail that fits the most labels, a second rail
+  for lines that do not reach the first, and labels at the ends of lines
+  that end inside the chart; whole levels of values are dropped when not
+  all fit, so a row stays regular. The legend gives
+  the symbol and unit of each family ("Temperature T / deg C"; for lines
+  labelled by their saturation states "Specific entropy s at T_sat /
+  deg C"). The scene
+  gains the role `label_tick`. coolplot-core 1.2 lays rails out the same
+  way.
+- Legend location "auto": inside the plot area, in the corner where the
+  legend covers the fewest points of cycles and processes, then of the
+  isolines; outside on the right when it would cover more than a quarter
+  of the page's plot area. The legend
+  and the badge are given their corners together
+  (`coolplot.compose.corners`), so an automatic one never takes the
+  corner of the other, and rail and edge labels keep clear of both.
+- Gallery examples: the basic air processes from one state; summer and
+  winter operation of an air handling unit, with duties, the room's sensible
+  heat ratio and a comfort zone; evaporative cooling in a dry climate. The
+  how-to guide "Draw air processes on a psychrometric chart" explains the
+  pieces.
+- Branding: `Settings.branding` (`coolplot.BrandingSettings`) puts a badge
+  in a corner of the plot area, with a logo (PNG or SVG), the references
+  of the equation of state of the fluid ("short": "R290: Lemmon et al.
+  (2009)", or "full" with journal, volume and pages), the CoolProp and
+  CoolPlot versions and lines of your own, and a faint watermark picture
+  behind the lines. The references come from CoolProp's BibTeX keys and
+  the bibliography in its package: every component of a mixture plus the
+  references of its mixture model, ASHRAE RP-1485 for humid air, the
+  backend's name for REFPROP and cubic equations. `location="auto"` takes
+  the corner where the badge covers the fewest points of the drawn
+  lines; edge labels (the default label mode) keep clear of the badge.
+  Drawn by the matplotlib and SVG writers, which give the badge the same
+  size, the size the label layout keeps clear (logos in PDF keep all
+  their pixels; PS and EPS leave the watermark out, with a warning, as
+  PostScript has no transparent images); the web renderer draws it as
+  the SVG writer does. The scene record carries it as `axes.badge` and
+  `axes.watermark`. coolplot-core does not compose or draw it, so a
+  branded chart uses the Python composer and SVG writer; the plotly
+  backend, the coolplot-core PDF writer and the JavaScript writer of
+  `scene_page` warn and leave it out.
+  How-to page "Logo, references and watermark".
+- `Chart.uncached_curves()`: how many lines the next update would
+  calculate, counting the curve cache in memory and on disk; an
+  application can tell a cheap request from an expensive one first.
+- `SvgRenderer(unit="pt" | "mm")` writes the document size with a unit,
+  and the size may be fractional.
+
+### Changed
+- Python 3.15 is supported and tested in CI (Python 3.11 to 3.15).
+- New charts lay out their labels on rails and put the legend inside the
+  plot area ("rails" and "auto" are the new defaults of
+  `LabelSettings.mode` and `LegendStyle.location`). Specs saved by 1.1
+  hold their label mode and their theme, so they draw as before.
+  `labels={"mode": "edge"}` and the legend location "outside right" give
+  the look of 1.1 (the how-to on labels).
+- The saturation curve is drawn whatever lines are set: a chart of a fluid
+  with a critical point shows the dome also when the quality values leave
+  out 0 and 1 or no quality lines are set, and a psychrometric chart the
+  line of 100 % relative humidity. `chart.show_saturation = False` hides
+  it. Spec records gain a `show_saturation` field; a record of 1.1 reads
+  without it and draws as before.
+- `save("chart.svg")` writes the size of `settings.page` (in points)
+  instead of 800 x 600 pixels; `width`, `height` and `unit` still
+  override it. A size in points is not a whole number of pixels, so this
+  document is written by the Python SVG writer, also with the native
+  mode on; `SvgRenderer(native=True)` with whole pixels still uses
+  coolplot-core.
+- `save()` to PNG, PDF and other matplotlib formats draws into a figure
+  outside pyplot unless `draw()` or `show()` made one before, so saving
+  charts in a server or a loop no longer collects pyplot figures.
+- CoolProp's pseudo-pure models of blends ("R407C", "R410A", "Air") give
+  one warning that names the mixture to use ("R407C.mix") instead of one
+  warning per missing line of constant quality.
+
 ## [1.1.0] - 2026-10-22
 
 ### Added

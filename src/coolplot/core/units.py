@@ -71,6 +71,10 @@ class UnitSystem:
         for key, unit in units.items():
             if not isinstance(unit, Unit):
                 raise TypeError("The unit of '{0}' has to be a Unit, not {1!r}.".format(key, unit))
+        # The temperature scale of the Mollier chart is shown like the
+        # temperature, unless the system says otherwise
+        if "T" in units and "Thx" not in units:
+            units["Thx"] = units["T"]
         # A plain dict (not a read-only proxy), so that the value pickles
         # and deep-copies; the dataclass is frozen and nothing writes to it.
         object.__setattr__(self, "units", units)
@@ -103,7 +107,10 @@ class UnitSystem:
     def with_unit(self, key: str, unit: Unit, name: str = None) -> "UnitSystem":
         """Return a copy where one quantity uses a different unit."""
         units = dict(self.units)
-        units[quantity_key(key)] = unit
+        key = quantity_key(key)
+        units[key] = unit
+        if key == "T" and self.units.get("Thx") == self.units.get("T"):
+            units["Thx"] = unit   # the Mollier temperature scale follows the temperature, as it did
         return replace(self, name=name or self.name + "*", units=units)
 
 

@@ -23,7 +23,8 @@ the display units the spec asked for. Non-finite values are written as
 CoolPlot's own strings are ASCII; user texts (titles, cycle names) pass
 through as given. Keys of quantities are those of
 `coolplot.core.quantities`: `T`, `p`, `h`, `s`, `rho`, `v`, `u`, `Q` for
-fluids, plus `W`, `RH`, `Twb`, `Tdp`, `v` for humid air.
+fluids, plus `W`, `RH`, `Twb`, `Tdp`, `h`, `v` and `Thx` (the temperature
+scale of the Mollier chart, since 1.2) for humid air.
 
 ## 1. The chart spec
 
@@ -37,7 +38,7 @@ One record describes a property diagram and a psychrometric chart alike;
   "diagram": "ph",
   "units": "engineering",
   "limits": {"T_min": {"relative": 1.01}, "T_max": {"relative": 2.25}, "p_min": 25000.0, "p_max": null},
-  "settings": {"calc": {...}, "look": {...}, "labels": {...}, "page": {...}},
+  "settings": {"calc": {...}, "look": {...}, "labels": {...}, "page": {...}, "branding": {...}},
   "isolines": [{"key": "T", "values_SI": null, "num": 15, "range_SI": null, "rounding": true,
                 "points": null, "labels": true, "anchor": null},
                {"key": "s", "values_SI": null, "num": 15, "range_SI": null, "rounding": false,
@@ -51,7 +52,8 @@ One record describes a property diagram and a psychrometric chart alike;
   "processes": [],
   "style_overrides": {"T": {"color": "#0000ff"}},
   "view_SI": [null, null],
-  "title": ""
+  "title": "",
+  "show_saturation": true
 }
 ```
 
@@ -60,18 +62,25 @@ One record describes a property diagram and a psychrometric chart alike;
   "humid_air").
 * `diagram`: the name of a diagram type, vertical axis first: `ph`, `Ts`,
   `hs`, `ps`, `prho`, `Trho`, `pT` for fluids, `WT` (or `psychrometric`)
-  for humid air. The kind of the diagram has to match the fluid.
+  and, since 1.2, `ThxW` (or `mollier`, `hx`; the Mollier h,x chart) for
+  humid air. The kind of the diagram has to match the fluid.
 * `units`: a name (`SI`, `KSI`, `engineering`, `IP`) or
   `{"name": ..., "units": {"p": ["bar", 1e-5, 0.0], ...}}` with
   `[label, scale, offset]` per quantity (display = SI * scale + offset),
   and an optional fourth element, the label of a difference in the
   quantity (`["deg C", 1.0, -273.15, "K"]`; the label itself if absent).
+  `Thx` takes the unit of `T` when it is left out, and is written only
+  when it differs from it.
 * `limits`: for fluids a T-p box, each bound a number, `null` (the limit
   of the equation of state) or `{"relative": f}` (f times the saturation
   range); for humid air absolute bounds on the axis quantities,
   `{"bounds": {"T": [263.15, 323.15], "W": [0.0, 0.03]}}`.
 * `settings`: see `coolplot.spec.settings`; `look` is a theme name or a
-  theme record (the how-to on themes).
+  theme record (the how-to on themes). Since 1.2 the label mode
+  `"rails"` and the legend location `"auto"` are the defaults; a record
+  always holds its label mode, so a record of 1.1 keeps its labels, and
+  a theme record its legend location. In a scene the legend location is
+  always a corner or "outside right".
 * `isolines`: one entry per family, in drawing order. `values_SI` lists
   explicit values; `anchor` (since 1.1) places the lines through
   saturation states every `step_SI` of saturation temperature or
@@ -82,17 +91,28 @@ One record describes a property diagram and a psychrometric chart alike;
   `rounding`. A record of 1.0 has no `anchor` and reads as `null`.
 * `cycles`: numbered states, each given by a full state (`{"state":
   {"T": ..., "p": ..., ...}}`, holding every quantity of the chart's
-  fluid or of humid air, in any order), two properties, or one property and
+  fluid or of humid air, in any order; a humid-air state of 1.1 has no
+  `Thx`, which is computed from `h` and `W` when it is read), two
+  properties, or one property and
   `via` (`coolplot.core.cycle.VIA_KINDS`); `loops` are chains of state
   numbers, `paths` lists `[[from, to], kind]` for connections not drawn
   with "auto" (`PATH_KINDS`). Air processes on a psychrometric chart are
-  cycles whose paths are straight.
+  cycles whose paths are straight. `labels` (since 1.2) lists
+  `[number, text]` pairs, a text written next to that state after its
+  number ("2: ADP 11.2 deg C"), or alone when `numbers` is false; the key
+  is left out when a cycle has no labels, so a record of 1.1 reads as it
+  was. The via kind "sensible" (since 1.2, humid air only) keeps the
+  humidity ratio of the state before.
 * `processes`: lines through complete states (`coolplot.spec.ProcessSpec`).
   `set_process`, which wrote them, was removed in 1.0; specs that hold
   processes still read and draw, and `DiagramSpec.with_process` adds one.
 * `style_overrides`: `LineStyle` field changes per family, on top of
   the theme.
 * `view_SI`: `[x_limits, y_limits]`, each `null` or `[min, max]`.
+* `show_saturation` (since 1.2): `true` draws the saturation curve (quality
+  0 and 1, or 100 % relative humidity) whatever lines are set, `false`
+  hides it, `null` leaves it to the values of the family. A record of 1.1
+  has no such field and reads as `null`, so it draws as it did.
 
 ## 2. The curve record
 
@@ -153,6 +173,30 @@ definition; contributing/writing_a_backend.md says how each field is rendered.
 }
 ```
 
+Two optional keys of `axes` carry the branding (1.2), and are left out
+when the chart has none, so an unbranded record is the same as before:
+
+```js
+"badge": {"location": "upper left", "logo": ["data:image/svg+xml;base64,...", "data:image/png;base64,..."],
+          "logo_width_pt": 60.0, "lines": ["R290: Lemmon et al. (2009)", "example.com"],
+          "text": {...}, "background": "#ffffff", "background_alpha": 0.85, "frame_color": "#000000",
+          "frame_width_pt": 0.5, "padding_pt": 4.0, "gap_pt": 3.0, "inset_pt": 6.0},
+"watermark": {"picture": ["data:image/png;base64,..."], "width_pt": 300.0, "opacity": 0.06}
+```
+
+`badge` is a box in one corner of the plot area (`location`: "upper
+left", "upper right", "lower left" or "lower right", `inset_pt` from the
+frame), with the logo on top and the text lines below it, left aligned;
+`logo` lists variants of one picture as `data:` URIs, best first, and a
+writer draws the first one it can. `watermark` is a picture centred in
+the plot area, above its background and below the grid and the items.
+Sizes are in points; the heights follow from the pictures. The
+matplotlib and SVG writers (and the web renderer built on the latter)
+draw both. The SVG writer of coolplot-core does not: a scene with either is
+written by the Python SVG writer instead, without a warning, since the
+result is complete. The PDF writer of coolplot-core (`PdfRenderer`), the plotly backend and
+the JavaScript writer leave both out and warn once.
+
 Item types: `line` (a polyline; `null` splits it), `markers` (points
 without a line) and `text` (one label; `direction` is a direction in
 data coordinates the text follows, `offset_pt` a shift on screen in
@@ -167,6 +211,7 @@ an item in place:
 |---|---|
 | `iso/<key>/<value>` | a line of constant `<key>` at the SI value `<value>` (12 significant digits) |
 | `iso/<key>/<value>/label` | its label |
+| `iso/<key>/<value>/tick` | the tick of its label on an outer rail (1.2) |
 | `cycle/<name>/loop/<i>` | the i-th chain of a cycle |
 | `cycle/<name>/states` | the markers of all states of a cycle, in ascending state number |
 | `cycle/<name>/number/<n>` | the number of state n |
@@ -176,7 +221,9 @@ Groups collect what is styled and toggled together (`iso/T`,
 `iso/T/label`, `cycle/<name>`, `cycle/<name>/numbers`). Roles say what
 an item means: `isoline`, `saturation` (the phase boundary: quality 0
 and 1, relative humidity 100 %), `quality` (the other lines of the
-boundary family), `isoline_label`, `cycle`, `process`, `state_points`,
+boundary family), `isoline_label`, `label_tick` (since 1.2: the short
+line on the frame where a line with an outer rail label leaves, id
+`iso/<key>/<value>/tick`, in the group of the labels), `cycle`, `process`, `state_points`,
 `state_number`, `annotation`. Z order: isolines 1, saturation 2, labels
 4, cycles and processes 5, state points 6, state numbers 7; backends
 keep everything below 0 for grid and background.

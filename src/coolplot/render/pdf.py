@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from .. import corelib
 from .svg import PX_PER_PT, SvgRenderer, check_suffix
+from .base import warn_without_branding
 
 
 class PdfRenderer(SvgRenderer):
@@ -61,7 +62,8 @@ class PdfRenderer(SvgRenderer):
                                         self.margins_pt)
 
     def to_pdf(self) -> bytes:
-        """The PDF file of the last synchronised scene."""
+        """The PDF file of the last synchronised scene (without badge and watermark, see BrandingSettings)."""
+        warn_without_branding(self, self._axes)
         items = self._scene_items()
         font_files = []
         for item in items:

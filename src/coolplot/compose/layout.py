@@ -56,7 +56,13 @@ MAX_BEND_DEG = 35.0
 
 @dataclass(frozen=True)
 class LabelRequest:
-    """One line that wants a label, in display coordinates"""
+    """One line that wants a label, in display coordinates
+
+    ``value`` is the value of the line in display units (NaN where it has
+    none) and ``line_color`` the colour of the line; the "rails" mode
+    (:mod:`coolplot.compose.rails`) thins by the one and colours ticks
+    with the other.
+    """
     id: str
     group: str
     family: str
@@ -64,6 +70,8 @@ class LabelRequest:
     style: TextStyle
     x: np.ndarray
     y: np.ndarray
+    value: float = float("nan")
+    line_color: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -407,7 +415,8 @@ def _between(x0, y0, x1, y1, spacing_pt: float):
 
 def place_edge_labels(requests: Sequence[LabelRequest], frame: Frame, keep_out_lines, keep_out_pt: float,
                       preferred_edges: Dict[str, Tuple[str, ...]],
-                      previous: Optional[Dict[str, Text]] = None, fallback: bool = True) -> List[Text]:
+                      previous: Optional[Dict[str, Text]] = None, fallback: bool = True,
+                      occupied: Sequence[Box] = ()) -> List[Text]:
     """Edge labels for the requests, in the order given (most important first).
 
     ``keep_out_lines`` are (x, y) display-unit lines, or (x, y, False) for
@@ -416,13 +425,14 @@ def place_edge_labels(requests: Sequence[LabelRequest], frame: Frame, keep_out_l
     label items of the previous layout, see the module docstring; a label
     that stays where it was is returned as the very same item, so a
     renderer does not redraw it. ``fallback`` allows positions along the
-    line when no spot near the frame is free.
+    line when no spot near the frame is free. ``occupied`` are boxes no
+    label may overlap, such as the badge (:mod:`coolplot.compose.branding`).
     """
     if not frame.usable:
         return []
     previous = previous or {}
     kx, ky = keep_out_points(frame, keep_out_lines)
-    placed: List[Box] = []
+    placed: List[Box] = list(occupied)
     labels = []
     for request in requests:
         width, height = text_size_pt(request.text, request.style)
@@ -564,8 +574,9 @@ def place_state_numbers(numbers: Sequence[Text], frame: Frame, marker_x, marker_
 
     Each number starts up and to the right of its marker (its offset gives
     the distance) and moves to another corner if that spot overlaps a
-    number placed before or another marker. If no corner is free it stays
-    in the first one.
+    number placed before or another marker, or leaves the frame (a state
+    label can be long and would be cut off). If no corner is free it takes
+    the first corner inside the frame, else the first one.
     """
     if not frame.usable:
         return list(numbers)
@@ -581,14 +592,21 @@ def place_state_numbers(numbers: Sequence[Text], frame: Frame, marker_x, marker_
         distance = abs(t.offset_pt[0])
         others = (np.hypot(mx - px[0], my - py[0]) > 0.5)   # every marker but its own
         choice = None
+        inside = None   # the first corner inside the frame, should every corner be taken
         for sx, sy, h_align, v_align in NUMBER_SPOTS:
             cx = px[0] + sx * (distance + 0.5 * width)
             cy = py[0] + sy * (distance + 0.5 * height)
             box = Box(cx, cy, 0.0, 0.5 * width, 0.5 * height)
+            if not box.inside(frame.width_pt, frame.height_pt, 0.0):
+                continue
+            if inside is None:
+                inside = (box, sx, sy, h_align, v_align)
             if any(box.overlaps(b, 0.5) for b in placed) or box.near_points(mx[others], my[others], 2.0):
                 continue
             choice = (box, sx, sy, h_align, v_align)
             break
+        if choice is None:
+            choice = inside
         if choice is None:
             sx, sy, h_align, v_align = NUMBER_SPOTS[0]
             box = Box(px[0] + distance + 0.5 * width, py[0] + distance + 0.5 * height, 0.0,

@@ -5,7 +5,10 @@ A diagram is named after its axes with the vertical axis first, as is
 customary: "ph" is pressure over specific enthalpy (the log(p)-h chart),
 "Ts" is temperature over specific entropy. The psychrometric chart puts
 humidity ratio over dry-bulb temperature, "WT"; "psychrometric" is
-accepted as its name too.
+accepted as its name too. The Mollier h,x chart of European practice
+puts its temperature scale "Thx" over the humidity ratio, "ThxW", also
+named "mollier" or "hx"; it writes the humidity ratio x and the relative
+humidity phi.
 
 Every chart has a kind, "fluid" or "humid_air", which says what computes
 its states (a CoolProp AbstractState, or HAPropsSI for humid air). The
@@ -97,6 +100,9 @@ FAMILIES = {
         Family("Q", "T", ("bottom", "top"), default_num=11, bounds=(0.0, 1.0), boundary=(0.0, 1.0)),
     ),
     "humid_air": (
+        # Isotherms are a family only where T is no axis (the Mollier chart);
+        # they are stepped in the humidity ratio
+        Family("T", "W", ("right", "left"), default_num=12),
         Family("RH", "T", ("right", "top"), default_num=11, bounds=(0.0, 1.0), low_included=False,
                boundary=(1.0,)),
         Family("Twb", "T", ("bottom", "left"), default_num=9),
@@ -115,12 +121,19 @@ LINE_DEFAULTS = {
 #: Quantities that can be on an axis, per chart kind.
 AXES = {
     "fluid": ("T", "p", "h", "s", "rho", "u"),
-    "humid_air": ("T", "W"),
+    "humid_air": ("T", "W", "Thx"),
 }
 
-#: Chart kinds whose lines are computed for one orientation only: (y, x).
+#: Chart kinds whose lines are computed for given orientations only: (y, x)
+#: pairs. Humid air: the psychrometric chart and the Mollier h,x chart.
 FIXED_AXES = {
-    "humid_air": ("W", "T"),
+    "humid_air": (("W", "T"), ("Thx", "W")),
+}
+
+#: Symbols that differ from the quantity's own in one diagram: the Mollier
+#: chart writes the humidity ratio x and the relative humidity phi.
+_SYMBOLS = {
+    ("Thx", "W", "humid_air"): {"W": "x", "RH": "phi"},
 }
 
 #: Axis titles that differ from the quantity's name in one chart kind.
@@ -133,6 +146,7 @@ _NAMES = {
     "PD": ("p", "rho", "fluid"), "PRHO": ("p", "rho", "fluid"), "TD": ("T", "rho", "fluid"),
     "TRHO": ("T", "rho", "fluid"), "PT": ("p", "T", "fluid"),
     "WT": ("W", "T", "humid_air"), "PSYCHROMETRIC": ("W", "T", "humid_air"),
+    "THXW": ("Thx", "W", "humid_air"), "MOLLIER": ("Thx", "W", "humid_air"), "HX": ("Thx", "W", "humid_air"),
 }
 
 
@@ -163,9 +177,9 @@ class DiagramType:
                     key, self.kind, AXES[self.kind]))
         if x == y:
             raise ValueError("The axes of a diagram have to show different quantities, not '{0}' twice.".format(x))
-        if self.kind in FIXED_AXES and (y, x) != FIXED_AXES[self.kind]:
-            raise ValueError("A {0} chart shows {1} over {2}; '{3}{4}' is not offered.".format(
-                self.kind, FIXED_AXES[self.kind][0], FIXED_AXES[self.kind][1], y, x))
+        if self.kind in FIXED_AXES and (y, x) not in FIXED_AXES[self.kind]:
+            offered = " or ".join("{0} over {1}".format(*pair) for pair in FIXED_AXES[self.kind])
+            raise ValueError("A {0} chart shows {1}; '{2}{3}' is not offered.".format(self.kind, offered, y, x))
         object.__setattr__(self, "y", y)
         object.__setattr__(self, "x", x)
 
@@ -237,6 +251,16 @@ class DiagramType:
     def line_defaults(self) -> dict:
         """Default ``rounding`` and ``labels`` of set_lines for this kind of chart."""
         return LINE_DEFAULTS[self.kind]
+
+    def symbol(self, key: str) -> str:
+        """The symbol of a quantity in this diagram, e.g. "W", or "x" on the Mollier chart."""
+        key = quantity_key(key)
+        return _SYMBOLS.get((self.y, self.x, self.kind), {}).get(key, get_quantity(key).symbol)
+
+    @property
+    def is_mollier(self) -> bool:
+        """Whether this is the Mollier h,x chart (temperature scale over humidity ratio)."""
+        return self.kind == "humid_air" and self.y == "Thx"
 
     def quantity_label(self, key: str) -> str:
         """The name of a quantity in this kind of chart, e.g. "Dry-bulb temperature"."""

@@ -111,6 +111,24 @@ def compose_record(spec, domain, curves, plot_size_pt=None, previous_labels=None
     }
 
 
+def _drop_mollier_scale(record: dict) -> None:
+    """Leave the quantity Thx (1.2) out of a record for an older core, which refuses keys it does not know.
+
+    Humid-air states (of cycles and of legacy processes) hold Thx since
+    1.2, and a unit system may name a unit for it. Only the Mollier chart
+    draws it, and that is refused before.
+    """
+    for cycle in record["cycles"]:
+        for state in list(cycle["states"].values()) + [s for chain in cycle["chains"] for s in chain]:
+            state.pop("Thx", None)
+    for process in record["spec"].get("processes", ()):
+        for state in list(process.get("line_states", ())) + list(process.get("marker_states", ())):
+            state.pop("Thx", None)
+    units = record["spec"]["units"]
+    if isinstance(units, dict):
+        units.get("units", {}).pop("Thx", None)
+
+
 def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycles=None):
     """(items, axes) of a chart from coolplot-core, or None when the module is absent.
 
@@ -126,7 +144,22 @@ def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycle
         # right, lines labelled by their saturation state would not
         raise CoreRefusal("this coolplot_core ({0}) is older than 1.1 and cannot label lines by their saturation "
                           "states".format(".".join(str(v) for v in core_version())))
+    if any(c.labels for c in spec.cycles) and core_version() < (1, 2):
+        # An older core ignores the "labels" of a cycle record: the state
+        # labels would be missing from the scene without an error
+        raise CoreRefusal("this coolplot_core ({0}) is older than 1.2 and cannot label the states of a "
+                          "cycle".format(".".join(str(v) for v in core_version())))
+    if core_version() < (1, 2) and (spec.settings.labels.mode == "rails"
+                                    or spec.settings.look.axes.legend.location == "auto"):
+        # An older core refuses the mode and the location by name; say why
+        raise CoreRefusal("this coolplot_core ({0}) is older than 1.2 and cannot lay out labels on rails or "
+                          "place a legend by itself".format(".".join(str(v) for v in core_version())))
+    if spec.diagram.is_mollier and core_version() < (1, 2):
+        raise CoreRefusal("this coolplot_core ({0}) is older than 1.2 and cannot compose the Mollier h,x "
+                          "chart".format(".".join(str(v) for v in core_version())))
     record = compose_record(spec, domain, curves, plot_size_pt, previous_labels, cycles)
+    if core_version() < (1, 2):
+        _drop_mollier_scale(record)
     if core_version() < (1, 1):
         # A core older than 1.1 refuses theme fields it does not know; the
         # default label colour is what it draws anyway

@@ -27,8 +27,8 @@ std::vector<std::string> LabelSettings::preferred_edges(const std::string& famil
 
 LabelSettings LabelSettings::from_json(const json& data) {
     LabelSettings s;
-    s.mode = data.value("mode", "edge");
-    if (s.mode != "edge" && s.mode != "margin" && s.mode != "inline") throw Error("Unknown label mode '" + s.mode + "'.");
+    s.mode = data.value("mode", "rails");
+    if (s.mode != "rails" && s.mode != "edge" && s.mode != "margin" && s.mode != "inline") throw Error("Unknown label mode '" + s.mode + "'.");
     s.keep_out_pt = data.value("keep_out_pt", 12.0);
     if (!(s.keep_out_pt >= 0.0)) throw Error("LabelSettings.keep_out_pt has to be zero or positive.");
     if (data.contains("edges")) {
@@ -119,6 +119,16 @@ DiagramSpec DiagramSpec::from_json(const json& data) {
         CycleSpec cycle;
         cycle.name = c.at("name").get<std::string>();
         cycle.numbers = c.value("numbers", true);
+        // Python checks the labels; the core still refuses a malformed record instead of guessing
+        const json labels = c.contains("labels") && !c.at("labels").is_null() ? c.at("labels") : json::array();
+        if (!labels.is_array()) throw Error("cycle '" + cycle.name + "': labels have to be a list of [number, text]");
+        for (const json& label : labels) {
+            if (!label.is_array() || label.size() != 2 || !label.at(0).is_number_integer() || !label.at(1).is_string())
+                throw Error("cycle '" + cycle.name + "': a label has to be [number, text], not " + label.dump());
+            int number = label.at(0).get<int>();
+            if (cycle.labels.count(number)) throw Error("cycle '" + cycle.name + "': state " + std::to_string(number) + " is labelled twice");
+            cycle.labels[number] = label.at(1).get<std::string>();
+        }
         if (c.contains("line_style") && !c.at("line_style").is_null()) {
             cycle.has_line_style = true;
             cycle.line_style = LineStyle::from_json(c.at("line_style"));

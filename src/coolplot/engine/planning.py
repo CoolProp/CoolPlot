@@ -15,6 +15,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 
+from ..core.floats import same_number
 from ..core.quantities import get_quantity
 from ..spec.diagram import DiagramSpec, IsolineSet, SaturationAnchor
 
@@ -42,11 +43,14 @@ class Domain:
     values of the families placed by saturation states, as pairs
     ((key, SaturationAnchor), ((saturation_SI, value_SI), ...)); the
     engine computes them with the region, because they need property calls
-    and :func:`plan` makes none.
+    and :func:`plan` makes none. ``saturation`` says whether the chart has a
+    saturation curve at all (humid air, or a fluid with a critical point;
+    not an incompressible liquid).
     """
     tp_box: Tuple[float, float, float, float]
     ranges_SI: Tuple[Tuple[str, Tuple[float, float]], ...]
     anchored: Tuple[Tuple[Tuple[str, SaturationAnchor], Tuple[Tuple[float, float], ...]], ...] = ()
+    saturation: bool = False
 
     def range_SI(self, key: str) -> Tuple[float, float]:
         """(min, max) of quantity ``key`` over the region, in SI units."""
@@ -181,9 +185,27 @@ def _round_values(unit, lo: float, hi: float, num: int, log: bool) -> np.ndarray
 
 
 def plan(spec: DiagramSpec, domain: Domain) -> Tuple[CurveRequest, ...]:
-    """All isolines the diagram needs, in the order of the families in the spec."""
+    """All isolines the diagram needs, in the order of the families in the spec.
+
+    The saturation curve is the pair of quality lines 0 and 1 (fluids) or
+    the line of 100 % relative humidity (humid air). With
+    ``spec.show_saturation`` True it is drawn whatever values the family is
+    given, also without the family; with False it is left out; with None
+    (a spec saved before 1.2) the family's values decide, as they did.
+    """
     calc = spec.settings.calc
+    boundary_family = next((f for f in spec.diagram.families if f.on_boundary), None)
+    show = spec.show_saturation
+    add_saturation = show is True and domain.saturation and boundary_family is not None
     requests = []
+
+    def saturation_requests(planned_values):
+        """The lines of the saturation curve the family did not plan itself."""
+        key = boundary_family.key
+        points = calc.saturation_points if key == "Q" else calc.points
+        return [CurveRequest(isoline_id(key, b), key, float(b), points, False)
+                for b in boundary_family.boundary if not any(same_number(b, v) for v in planned_values)]
+
     for iso_set in spec.isolines:
         family = spec.diagram.family(iso_set.key)
         default_points = calc.saturation_points if iso_set.key == "Q" else calc.points
@@ -193,9 +215,18 @@ def plan(spec: DiagramSpec, domain: Domain) -> Tuple[CurveRequest, ...]:
             # The first saturation state that gives a value names its line
             for saturation_SI, value_SI in domain.anchor_pairs(iso_set.key, iso_set.anchor):
                 saturation.setdefault(snap(value_SI), saturation_SI)
+        planned = []
         for value_SI in isoline_values_SI(spec, iso_set, domain):
             if not family.has_line(value_SI):
                 continue   # a quality outside 0 to 1, or a relative humidity of 0, has no line
+            if show is False and any(same_number(value_SI, b) for b in family.boundary):
+                continue   # the saturation curve is hidden
+            planned.append(float(value_SI))
             requests.append(CurveRequest(isoline_id(iso_set.key, value_SI), iso_set.key, float(value_SI),
                                          points, iso_set.labels, saturation.get(float(value_SI))))
+        if add_saturation and family.key == boundary_family.key:
+            requests.extend(saturation_requests(planned))   # next to the family's own lines
+            add_saturation = False
+    if add_saturation:   # the family is not drawn: the saturation curve comes last
+        requests.extend(saturation_requests([]))
     return tuple(requests)

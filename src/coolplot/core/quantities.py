@@ -60,6 +60,10 @@ QUANTITIES = {
         Quantity("Twb", None, "B", "Twb", "Wet-bulb temperature"),
         Quantity("Tdp", None, "D", "Tdp", "Dew-point temperature"),
         Quantity("v", None, "V", "v", "Specific volume"),
+        # The temperature scale of the Mollier h,x chart: its vertical
+        # coordinate, (h - r0 * W) / cp_a, read as a temperature (it equals
+        # the dry-bulb temperature at W = 0). See coolplot.thermo.humid_air.
+        Quantity("Thx", None, None, "T", "Temperature"),
     )
 }
 

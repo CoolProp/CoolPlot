@@ -11,7 +11,8 @@ not concern you. What changes for you:
   classes are gone: the table in
   [From 0.1 to 0.2](#from-01-the-legacy-api-to-02-and-later) gives the
   equivalent of each call;
-* CoolPlot 1.0 needs Python 3.10 or later and CoolProp 8.0 or later.
+* CoolPlot needs Python 3.11 or later (1.0 and 1.1: 3.10) and CoolProp
+  8.0 or later.
 
 To stay on the legacy API, pin it: `pip install "coolplot<0.2"`.
 
@@ -33,6 +34,41 @@ starting with an underscore, the helpers in `coolplot.core`,
 `coolplot.engine`, `coolplot.compose` and `coolplot.corelib`,
 `coolplot.testing`, the scene item ids, and the exact coordinates of a
 chart (better numerics may move points).
+
+## From 1.1 to 1.2
+
+1.2 needs Python 3.11 or later; on Python 3.10, pip keeps installing
+1.1. Nothing to change in your code. 1.2 adds `"via": "sensible"`, `PsychrometricChart.mix`,
+`PsychrometricChart.add_zone`, `Chart.state`, state labels
+(`add_cycle(..., labels=...)`) and the Mollier h,x chart
+(`PsychrometricChart(..., style="mollier")`). Humid-air states gain the
+quantity `Thx`; a state saved by 1.1 gets it computed when it is read. Cycle records gain an optional `labels`
+list, left out when a cycle has none, so records of 1.1 read and write
+unchanged. The other way round is not covered: CoolPlot 1.1 reading a 1.2
+record ignores its labels and refuses a state given with via "sensible". A
+coolplot-core older than 1.2 still composes a 1.2 chart unless it has state
+labels; then the Python composer draws it, with a warning.
+
+Two visible changes. New charts draw the saturation curve also when no
+lines of constant quality (or relative humidity) include it; set
+`chart.show_saturation = False` to draw a chart without it. And labels
+sit on rails, showing bare values with symbol and unit in the legend,
+which moves inside the plot area into the emptiest corner. For the look
+of 1.1:
+
+```python
+chart.settings = chart.settings.with_(labels={"mode": "edge"})
+legend = chart.theme.axes.legend.with_(location="outside right")
+chart.theme = chart.theme.with_(axes=chart.theme.axes.with_(legend=legend))
+```
+
+Specs saved by 1.1 hold their label mode and their theme (legend
+location included), so they draw as before. Code that reads label texts
+from the scene of a new chart finds bare numbers ("20" instead of
+"T=20 deg C") unless it asks for edge labels.
+
+A coolplot-core older than 1.2 refuses rails and the automatic legend;
+the Python composer then draws the chart, with a warning.
 
 ## From 1.0 to 1.1
 

@@ -106,6 +106,7 @@ def test_moving_a_cycle_touches_only_the_cycle(diagram):
 
 
 def test_labels_follow_lines(diagram):
+    diagram.settings = diagram.settings.with_(labels={"mode": "edge"})   # the full label, along its line
     diagram.set_lines("T", values=[0.0], labels=True)
     label = diagram.update_scene()["iso/T/273.15/label"]
     assert isinstance(label, Text)
@@ -161,17 +162,24 @@ def test_save_chooses_the_writer_by_extension(tmp_path):
 
 
 def test_svg_and_html_saves_use_the_page_size(tmp_path):
-    """The canvas follows settings.page, as for matplotlib, unless a size is given."""
+    """The canvas follows settings.page, as for matplotlib, unless a size is given.
+
+    An SVG file states the page size in points (252 x 189 pt); an HTML page
+    has it in pixels (336 x 252 px).
+    """
     import re
     from coolplot import PropertyDiagram
     diagram = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP", settings="publication")
     diagram.set_lines("T", num=3)
-    size = re.compile(r'<svg [^>]*width="(\d+)" height="(\d+)"')
-    for name in ("chart.svg", "chart.html"):
-        diagram.save(tmp_path / name)
-        assert size.search((tmp_path / name).read_text()).groups() == ("336", "252")   # 252 x 189 pt
-    diagram.save(tmp_path / "wide.svg", width=500, height=300)
+    size = re.compile(r'<svg [^>]*width="([\d.]+(?:pt)?)" height="([\d.]+(?:pt)?)"')
+    diagram.save(tmp_path / "chart.svg")
+    assert size.search((tmp_path / "chart.svg").read_text()).groups() == ("252pt", "189pt")
+    diagram.save(tmp_path / "chart.html")
+    assert size.search((tmp_path / "chart.html").read_text()).groups() == ("336", "252")
+    diagram.save(tmp_path / "wide.svg", width=500, height=300, unit="px")
     assert size.search((tmp_path / "wide.svg").read_text()).groups() == ("500", "300")
+    diagram.save(tmp_path / "wide.html", width=500, height=300)
+    assert size.search((tmp_path / "wide.html").read_text()).groups() == ("500", "300")
 
 
 def test_changing_the_diagram_type_drops_families_it_cannot_draw():
@@ -182,3 +190,61 @@ def test_changing_the_diagram_type_drops_families_it_cannot_draw():
     assert d.spec.isolines == ()
     d.set_lines("T", num=3, points=40)
     d.update_scene()   # draws without the dropped families
+
+
+# The saturation curve (1.2) ------------------------------------------------
+
+def _saturation_ids(chart):
+    return [i.id for i in chart.update_scene() if i.role == "saturation"]
+
+
+def test_the_saturation_curve_is_drawn_without_quality_lines():
+    from coolplot import PropertyDiagram
+    d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP")
+    d.set_lines("T", num=5)
+    assert d.show_saturation is True and _saturation_ids(d) == ["iso/Q/0", "iso/Q/1"]
+    d.set_lines("Q", values=[0.2, 0.5])   # quality values that leave out 0 and 1
+    assert _saturation_ids(d) == ["iso/Q/0", "iso/Q/1"]
+    ids = [i.id for i in d.update_scene() if i.id.startswith("iso/Q/") and not i.id.endswith("/label")]
+    assert ids == ["iso/Q/0.2", "iso/Q/0.5", "iso/Q/0", "iso/Q/1"]   # next to the family's own lines
+
+
+def test_the_saturation_curve_can_be_hidden():
+    from coolplot import PropertyDiagram
+    d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP")
+    d.set_lines("Q", num=11)   # 0 to 1 with the saturation curve
+    d.show_saturation = False
+    assert _saturation_ids(d) == []
+    assert len([i for i in d.update_scene() if i.role == "quality"]) == 9
+
+
+def test_a_spec_saved_before_1_2_keeps_its_look():
+    from coolplot import PropertyDiagram
+    from coolplot.spec import DiagramSpec
+    d = PropertyDiagram("HEOS::R290", "ph", tp_limits="ACHP")
+    d.set_lines("T", num=5)
+    record = d.spec.to_dict()
+    assert record["show_saturation"] is True
+    del record["show_saturation"]   # a record of 1.1
+    old = DiagramSpec.from_dict(record)
+    assert old.show_saturation is None
+    d.spec = old
+    assert _saturation_ids(d) == []   # no quality lines set, no curve, as in 1.1
+    d.set_lines("Q", num=11)
+    assert _saturation_ids(d) == ["iso/Q/0", "iso/Q/1"]   # the values decide
+    with pytest.raises(ValueError, match="True, False or None"):
+        d.show_saturation = "yes"
+
+
+def test_an_incompressible_has_no_saturation_curve():
+    from coolplot import PropertyDiagram
+    d = PropertyDiagram("INCOMP::MEG[0.3]", "Ts", tp_limits=[260.0, 360.0, 1e5, 1e6])
+    d.set_lines("p", num=4)
+    assert _saturation_ids(d) == []
+
+
+def test_a_psychrometric_chart_draws_saturated_air():
+    from coolplot import PsychrometricChart
+    c = PsychrometricChart()
+    c.set_lines("h", num=5)
+    assert _saturation_ids(c) == ["iso/RH/1"]

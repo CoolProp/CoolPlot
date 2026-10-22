@@ -166,7 +166,10 @@ None MUST produce no paint, not black.
   legend `TextStyle` (the kit checks background, font family, size and
   colour of the text).
 * Locations: the four inside corners and `"outside right"`, which MUST
-  NOT cover the plot area. The kit classifies the drawn position.
+  NOT cover the plot area. The kit classifies the drawn position. The
+  theme's `"auto"` never reaches a writer: the composer replaces it by a
+  corner, and `AxesSpec` reads it as "upper right" in a scene made by
+  hand.
 * Long legend texts MAY be shortened; the legend MUST NOT squeeze the
   plot area to nothing.
 

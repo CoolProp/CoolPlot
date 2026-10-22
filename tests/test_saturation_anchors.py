@@ -40,6 +40,7 @@ def test_isentropes_through_the_saturated_vapour_every_10_K():
     zero = next(r for r in requests if abs(r.anchor_SI - 273.15) < 1e-9)
     s_zero = label_text(chart.spec, "s", zero.value_SI, zero.anchor_SI)
     assert s_zero == label_text(chart.spec, "s", zero.value_SI) == "s=%.4g kJ/kg/K" % (zero.value_SI / 1e3)
+    chart.settings = chart.settings.with_(labels={"mode": "edge"})   # full label texts
     labels = _labels(chart, "s")
     assert labels and all(text.startswith("s=") and text.endswith(" kJ/kg/K") for text in labels)
     # Asked for, they name the saturation state instead
@@ -51,6 +52,7 @@ def test_isentropes_through_the_saturated_vapour_every_10_K():
 
 def test_the_liquid_side_and_the_saturation_labels():
     chart = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP")
+    chart.settings = chart.settings.with_(labels={"mode": "edge"})   # full label texts
     chart.set_lines("rho", at_saturation={"T": 20, "Q": 0, "range": (-20, 40)}, labels=True)
     requests = _requests(chart, "rho")
     assert len(requests) == 4
@@ -90,6 +92,9 @@ def test_steps_are_round_in_the_units_shown():
     assert same_numbers(sorted(round(r.anchor_SI / 1e5, 9) for r in requests), [5.0, 10.0, 15.0, 20.0])
     for r in requests:   # an isotherm through a saturation pressure is at the saturation temperature
         assert r.value_SI == pytest.approx(bar.fluid.state_point("p", r.anchor_SI, "Q", 1.0).T, rel=1e-10)
+    assert "10" in _labels(bar, "T")   # rails: the bare saturation pressure, named in the legend
+    assert "Temperature T at p_sat / bar" in {i.legend for i in bar.update_scene() if i.legend}
+    bar.settings = bar.settings.with_(labels={"mode": "edge"})
     assert "p_sat=10 bar" in _labels(bar, "T")
 
 

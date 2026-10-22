@@ -16,7 +16,7 @@ namespace coolplot {
 
 struct LabelSettings
 {
-    std::string mode = "edge";
+    std::string mode = "rails";
     double keep_out_pt = 12.0;
     std::map<std::string, std::vector<std::string>> edges;
     std::vector<std::string> margin_edges = {"top"};
@@ -81,6 +81,7 @@ struct CycleSpec
 {
     std::string name;
     bool numbers = true;
+    std::map<int, std::string> labels;  ///< text written next to a state, after its number
     bool has_line_style = false;
     LineStyle line_style;
     bool has_marker_style = false;

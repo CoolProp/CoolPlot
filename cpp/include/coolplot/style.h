@@ -134,7 +134,7 @@ struct TextStyle
 struct LegendStyle
 {
     bool visible = true;
-    std::string location = "outside right";
+    std::string location = "auto";  ///< inside the plot area, in the corner the composer finds emptiest
     Color background = Color::of("#ffffff");
     Color frame_color = Color::none();
     TextStyle text;

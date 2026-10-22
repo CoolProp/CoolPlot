@@ -174,6 +174,7 @@ def test_the_pdf_check_rejects_defects(defect):
 def test_reader_finds_fonts_texts_colours_and_pages(tmp_path):
     path = tmp_path / "ph.pdf"
     d = _diagram()
+    d.settings = d.settings.with_(labels={"mode": "edge"})   # full label texts
     d.draw(MatplotlibRenderer(use_pyplot=False)).save(str(path))
     content = read_pdf(str(path))
     assert content.pages == 1 and content.info["Title"] == "R290, costs $5"

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <set>
 
 namespace coolplot {
 
@@ -416,14 +417,19 @@ Item edge_text(const LabelRequest& request, const Frame& frame, const Box& box, 
 
 }  // namespace
 
+void keep_out_points_pt(const Frame& frame, const std::vector<KeepOut>& lines, std::vector<double>& xs, std::vector<double>& ys) {
+    keep_out_points(frame, lines, xs, ys);
+}
+
 std::vector<Item> place_edge_labels(const std::vector<LabelRequest>& requests, const Frame& frame, const std::vector<KeepOut>& keep_out,
                                     double keep_out_pt, const std::map<std::string, std::vector<std::string>>& preferred_edges,
-                                    const std::map<std::string, Item>& previous, bool fallback) {
+                                    const std::map<std::string, Item>& previous, bool fallback, const std::vector<TakenBox>& occupied) {
     std::vector<Item> labels;
     if (!frame.usable()) return labels;
     std::vector<double> kx, ky;
     keep_out_points(frame, keep_out, kx, ky);
     std::vector<Box> placed;
+    for (const TakenBox& b : occupied) placed.push_back(Box{b.cx, b.cy, 0.0, b.half_w, b.half_h});
     for (const LabelRequest& request : requests) {
         std::pair<double, double> size = text_size_pt(request.text, request.style);
         double half_w = 0.5 * size.first, half_h = 0.5 * size.second;
@@ -455,6 +461,604 @@ std::vector<Item> place_edge_labels(const std::vector<LabelRequest>& requests, c
         }
     }
     return labels;
+}
+
+// ---------------------------------------------------------------------------
+// Rails (coolplot.compose.rails; the rules are in the Python module's docstring)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+const double RAIL_TICK_PT = 5.0;        // tick on the frame where a line with an outer label leaves it
+const double RAIL_TICK_WIDTH_PT = 0.8;  // width of that tick
+const double RAIL_OUTER_GAP_PT = 4.0;   // between the frame and an outer label
+const double RAIL_GAP_PT = 3.0;         // between neighbouring labels on an outer rail
+const double RAIL_SECOND = 2.2;         // depth of the second inner rail, in label heights
+const double RAIL_END_GAP_PT = 4.0;     // between the end of a line and its end label
+const double RAIL_END_MIN_PT = 30.0;    // shortest visible piece with an end label
+const int LEVEL_STEPS[] = {10, 5, 2, 1};
+const int N_LEVELS = 4;
+
+/// A rail: an edge and a depth index, -1 for the outer rail.
+struct Slot
+{
+    std::string edge;
+    int k;
+    bool operator==(const Slot& o) const {
+        return edge == o.edge && k == o.k;
+    }
+    bool operator<(const Slot& o) const {  // like Python's tuples (edge, k)
+        return edge < o.edge || (edge == o.edge && k < o.k);
+    }
+};
+
+/// How far inside the frame the boxes of inner rail k of an edge start; on the edges of the outer rails beyond
+/// their ticks.
+double rail_bound(const std::string& edge, int k, double label_height) {
+    return LABEL_PAD_PT + ((edge == "top" || edge == "right") ? RAIL_TICK_PT : 0.0) + k * RAIL_SECOND * label_height;
+}
+
+std::vector<Slot> rail_slots(bool outer_right) {
+    std::vector<Slot> out = {{"top", -1}};
+    if (outer_right) out.push_back({"right", -1});
+    const Slot inner[] = {{"top", 0}, {"right", 0}, {"bottom", 0}, {"left", 0}, {"bottom", 1}, {"left", 1}, {"top", 1}, {"right", 1}};
+    for (const Slot& s : inner) out.push_back(s);
+    return out;
+}
+
+/// One position of a label on a rail.
+struct RailCand
+{
+    const LabelRequest* request = nullptr;
+    double x = 0.0, y = 0.0;  // outer rails: where the line leaves the frame
+    double w = 0.0, h = 0.0;  // outer rails: the size of the text
+    Box box{0.0, 0.0, 0.0, 0.0, 0.0};  // inner rails and line ends
+    double dir_x = 0.0, dir_y = 0.0;
+    double along = 0.0;
+    int level = 0;
+    double value = 0.0;  // the value of the line, in display units
+};
+
+/// Whether at least three finite values have equal gaps (to a millionth of the gap).
+bool evenly_spaced(std::vector<double> values) {
+    if (values.size() < 3) return false;
+    for (double v : values)
+        if (!std::isfinite(v)) return false;
+    std::sort(values.begin(), values.end());
+    double first = values[1] - values[0];
+    if (!(first > 0.0)) return false;
+    for (size_t i = 1; i + 1 < values.size(); ++i)
+        if (std::fabs((values[i + 1] - values[i]) - first) > 1e-6 * first) return false;
+    return true;
+}
+
+/// The candidates of the finest level at which all of them fit; else one by one, coarsest level first.
+template <class Fits>
+std::vector<RailCand> choose(const std::vector<RailCand>& cands, Fits fits) {
+    for (int max_level = N_LEVELS - 1; max_level >= 0; --max_level) {
+        std::vector<RailCand> chosen;
+        for (const RailCand& c : cands)
+            if (c.level <= max_level) chosen.push_back(c);
+        if (!chosen.empty() && fits(chosen)) return chosen;
+    }
+    // One by one, coarsest level first and along the rail
+    std::vector<RailCand> order = cands;
+    std::stable_sort(order.begin(), order.end(),
+                     [](const RailCand& a, const RailCand& b) { return a.level < b.level || (a.level == b.level && a.along < b.along); });
+    std::vector<RailCand> greedy;
+    for (const RailCand& c : order) {
+        greedy.push_back(c);
+        if (!fits(greedy)) greedy.pop_back();
+    }
+    // Evenly spaced values: every m-th candidate along the rail, for the smallest stride at which some offset fits,
+    // if that keeps at least half as many labels
+    std::vector<RailCand> row = cands;
+    std::stable_sort(row.begin(), row.end(), [](const RailCand& a, const RailCand& b) { return a.along < b.along; });
+    std::vector<double> values;
+    for (const RailCand& c : row) values.push_back(c.value);
+    if (!evenly_spaced(values)) return greedy;
+    for (size_t stride = 2; stride <= row.size(); ++stride) {
+        bool found = false;
+        size_t best_size = 0;
+        int best_levels = 0;
+        std::vector<RailCand> best;
+        for (size_t offset = 0; offset < stride; ++offset) {
+            std::vector<RailCand> subset;
+            int levels = 0;
+            for (size_t i = offset; i < row.size(); i += stride) {
+                subset.push_back(row[i]);
+                levels += row[i].level;
+            }
+            if (subset.size() < 2 || !fits(subset)) continue;
+            // (size, -levels) compared like Python's tuples: more labels, then coarser values
+            if (!found || subset.size() > best_size || (subset.size() == best_size && -levels > -best_levels)) {
+                found = true;
+                best_size = subset.size();
+                best_levels = levels;
+                best = subset;
+            }
+        }
+        if (found) return 2 * best.size() >= greedy.size() ? best : greedy;
+    }
+    return greedy;
+}
+
+/// How far a point lies inside the frame, measured from an edge.
+double rail_depth(const std::string& edge, double x, double y, const Frame& frame) {
+    if (edge == "top") return frame.height_pt - y;
+    if (edge == "bottom") return y;
+    if (edge == "right") return frame.width_pt - x;
+    return x;
+}
+
+/// Where a piece meets the rail depth points inside an edge, nearest to its end on that edge; depth 0 is that end.
+bool crossing(const Piece& piece, const std::string& edge, double depth, const Frame& frame, double& x, double& y, double& s) {
+    if (edge != piece.start_edge && edge != piece.end_edge) return false;
+    bool forward = piece.start_edge == edge;
+    size_t n = piece.px.size();
+    if (depth <= 0.0) {
+        size_t i = forward ? 0 : n - 1;
+        x = piece.px[i];
+        y = piece.py[i];
+        s = piece.arc[i];
+        return true;
+    }
+    std::vector<double> d(n);
+    for (size_t i = 0; i < n; ++i) d[i] = rail_depth(edge, piece.px[i], piece.py[i], frame) - depth;
+    for (size_t step = 0; step + 1 < n; ++step) {
+        size_t i = forward ? step : n - 2 - step;
+        double a = d[i], b = d[i + 1];
+        if ((a <= 0.0 && 0.0 <= b) || (b <= 0.0 && 0.0 <= a)) {
+            double t = std::fabs(b - a) < 1e-12 ? 0.0 : -a / (b - a);
+            x = piece.px[i] + t * (piece.px[i + 1] - piece.px[i]);
+            y = piece.py[i] + t * (piece.py[i + 1] - piece.py[i]);
+            s = piece.arc[i] + t * (piece.arc[i + 1] - piece.arc[i]);
+            return true;
+        }
+    }
+    return false;
+}
+
+double nearest_depth(const Box& box, const std::string& edge, const Frame& frame) {
+    double best = 1e300;
+    for (const auto& c : box.corners()) best = std::min(best, rail_depth(edge, c.first, c.second, frame));
+    return best;
+}
+
+/// A label turned along the piece whose box touches the rail bound points inside the edge.
+bool inner_candidate(const Piece& piece, const std::string& edge, double bound, double half_w, double half_h, const Frame& frame,
+                     Candidate& out) {
+    // The centre stays at least half a label from the ends of the piece
+    if (piece.length() < 2.0 * half_w) return false;
+    double depth = bound + half_h;
+    Candidate c;
+    for (int i = 0; i < 3; ++i) {
+        double x, y, s;
+        if (!crossing(piece, edge, depth, frame, x, y, s)) return false;
+        if (!candidate(piece, std::min(std::max(s, half_w), piece.length() - half_w), half_w, half_h, 0.0, c)) return false;
+        // The next centre: where this one is, moved by what its box is off the rail
+        depth = rail_depth(edge, c.box.cx, c.box.cy, frame) + (bound - nearest_depth(c.box, edge, frame));
+    }
+    if (std::fabs(nearest_depth(c.box, edge, frame) - bound) > 0.5) return false;
+    out = c;
+    return true;
+}
+
+bool fits_on_line(std::vector<RailCand> row, bool use_h) {
+    std::stable_sort(row.begin(), row.end(), [](const RailCand& a, const RailCand& b) { return a.along < b.along; });
+    for (size_t i = 0; i + 1 < row.size(); ++i) {
+        double ea = use_h ? row[i].h : row[i].w, eb = use_h ? row[i + 1].h : row[i + 1].w;
+        if (!(row[i + 1].along - row[i].along >= 0.5 * (ea + eb) + RAIL_GAP_PT)) return false;
+    }
+    return true;
+}
+
+/// One layout: the frame, what labels keep clear of and the boxes placed so far.
+struct RailState
+{
+    const Frame* frame;
+    std::vector<double> kx, ky;
+    double keep_out_pt;
+    std::vector<Box> placed;
+
+    bool boxes_free(const std::vector<RailCand>& cands) const {
+        for (size_t i = 0; i < cands.size(); ++i) {
+            const Box& box = cands[i].box;
+            if (!box.inside(frame->width_pt, frame->height_pt, 0.0)) return false;
+            if (box.near_points(kx, ky, keep_out_pt)) return false;
+            for (const Box& other : placed)
+                if (box.overlaps(other, LABEL_PAD_PT)) return false;
+            for (size_t j = i + 1; j < cands.size(); ++j)
+                if (box.overlaps(cands[j].box, LABEL_PAD_PT)) return false;
+        }
+        return true;
+    }
+};
+
+std::vector<RailCand> candidates_on(const Slot& slot, const std::vector<const LabelRequest*>& members, const std::vector<std::vector<Piece>>& pieces,
+                                    const std::vector<int>& levels, const Frame& frame, double label_height) {
+    std::vector<RailCand> out;
+    double bound = rail_bound(slot.edge, slot.k, label_height);
+    for (size_t index = 0; index < members.size(); ++index) {
+        std::pair<double, double> size = text_size_pt(members[index]->text, members[index]->style);
+        for (const Piece& piece : pieces[index]) {
+            RailCand c;
+            c.request = members[index];
+            c.level = levels[index];
+            c.value = members[index]->value;
+            if (slot.k < 0) {
+                double x, y, s;
+                if (!crossing(piece, slot.edge, 0.0, frame, x, y, s)) continue;
+                c.x = x;
+                c.y = y;
+                c.w = size.first;
+                c.h = size.second;
+                c.along = slot.edge == "top" ? x : y;
+                out.push_back(c);
+                break;
+            }
+            Candidate found;
+            if (inner_candidate(piece, slot.edge, bound, 0.5 * size.first, 0.5 * size.second, frame, found)) {
+                c.box = found.box;
+                c.dir_x = found.dir_x;
+                c.dir_y = found.dir_y;
+                c.along = (slot.edge == "top" || slot.edge == "bottom") ? found.box.cx : found.box.cy;
+                out.push_back(c);
+                break;
+            }
+        }
+    }
+    return out;
+}
+
+/// The labels chosen on a rail: outer rails by spacing along the row, inner ones by boxes.
+std::vector<RailCand> select_on(const Slot& slot, const std::vector<RailCand>& cands, const RailState& state, bool& vertical) {
+    vertical = false;
+    if (cands.empty()) return {};
+    if (slot.k >= 0) return choose(cands, [&](const std::vector<RailCand>& cs) { return state.boxes_free(cs); });
+    double limit = slot.edge == "top" ? state.frame->width_pt : state.frame->height_pt;
+    auto row = [&](bool use_h) {
+        // Labels stay within the length of the frame, so that the two outer rails never meet at the corner
+        std::vector<RailCand> within;
+        for (const RailCand& c : cands) {
+            double e = use_h ? c.h : c.w;
+            if (c.along - 0.5 * e >= 0.0 && c.along + 0.5 * e <= limit) within.push_back(c);
+        }
+        if (within.empty()) return std::vector<RailCand>();
+        return choose(within, [&](const std::vector<RailCand>& cs) { return fits_on_line(cs, use_h); });
+    };
+    if (slot.edge == "right") return row(true);
+    std::vector<RailCand> horizontal = row(false), upright = row(true);
+    if (upright.size() > horizontal.size()) {
+        vertical = true;
+        return upright;
+    }
+    return horizontal;
+}
+
+std::vector<RailCand> end_candidates(const std::vector<const LabelRequest*>& members, const std::vector<std::vector<Piece>>& pieces,
+                                     const std::vector<int>& levels) {
+    std::vector<RailCand> out;
+    for (size_t index = 0; index < members.size(); ++index) {
+        std::pair<double, double> size = text_size_pt(members[index]->text, members[index]->style);
+        for (const Piece& piece : pieces[index]) {
+            if (piece.length() <= RAIL_END_MIN_PT || (!piece.end_edge.empty() && !piece.start_edge.empty())) continue;
+            double s = piece.end_edge.empty() ? piece.length() - (0.5 * size.first + RAIL_END_GAP_PT) : 0.5 * size.first + RAIL_END_GAP_PT;
+            Candidate c;
+            if (candidate(piece, s, 0.5 * size.first, 0.5 * size.second, 0.0, c)) {
+                RailCand r;
+                r.request = members[index];
+                r.box = c.box;
+                r.dir_x = c.dir_x;
+                r.dir_y = c.dir_y;
+                r.along = c.box.cx;
+                r.level = levels[index];
+                r.value = members[index]->value;
+                out.push_back(r);
+                break;
+            }
+        }
+    }
+    return out;
+}
+
+/// The rails that held labels of a family in the previous layout: an outer label counts for its rail, a label
+/// inside the frame for every inner rail its box touches (within 1 pt).
+std::set<Slot> previous_slots(const std::vector<const LabelRequest*>& members, const std::map<std::string, Item>& previous, const Frame& frame,
+                              double label_height) {
+    std::set<Slot> found;
+    for (const LabelRequest* request : members) {
+        auto entry = previous.find(request->id);
+        if (entry == previous.end()) continue;
+        const Item& old = entry->second;
+        if (!old.clip) {
+            found.insert(old.offset_y_pt > 0.0 ? Slot{"top", -1} : Slot{"right", -1});
+            continue;
+        }
+        double px = frame.x_to_pt(old.text_x), py = frame.y_to_pt(old.text_y);
+        if (!(std::isfinite(px) && std::isfinite(py))) continue;
+        double angle = 0.0;
+        if (old.has_direction) {
+            double dx = frame.x_to_pt(old.text_x + old.direction_x) - px, dy = frame.y_to_pt(old.text_y + old.direction_y) - py;
+            if (std::isfinite(dx) && std::isfinite(dy)) angle = std::atan2(dy, dx);
+        }
+        std::pair<double, double> size = text_size_pt(old.text, old.text_style);
+        Box box{px, py, angle, 0.5 * size.first, 0.5 * size.second};
+        for (const std::string& edge : EDGES) {
+            double near = nearest_depth(box, edge, frame);
+            for (int k = 0; k < 2; ++k)
+                if (std::fabs(near - rail_bound(edge, k, label_height)) <= 1.0) found.insert(Slot{edge, k});
+        }
+    }
+    return found;
+}
+
+/// The tick on the frame and the label outside it.
+void outer_items(const RailCand& c, const std::string& edge, bool vertical, const Frame& frame, Item& tick, Item& text) {
+    const LabelRequest& request = *c.request;
+    double ex, ey, ix, iy, ox, oy;
+    std::string h_align, v_align;
+    bool has_direction = false;
+    if (edge == "top") {
+        ex = c.x;
+        ey = frame.height_pt;
+        ix = c.x;
+        iy = frame.height_pt - RAIL_TICK_PT;
+        ox = 0.0;
+        oy = RAIL_OUTER_GAP_PT;
+        h_align = vertical ? "left" : "center";
+        v_align = vertical ? "center" : "bottom";
+        has_direction = vertical;
+    } else {
+        ex = frame.width_pt;
+        ey = c.y;
+        ix = frame.width_pt - RAIL_TICK_PT;
+        iy = c.y;
+        ox = RAIL_OUTER_GAP_PT;
+        oy = 0.0;
+        h_align = "left";
+        v_align = "center";
+    }
+    double dx0 = frame.x_to_data(ex), dx1 = frame.x_to_data(ix), dy0 = frame.y_to_data(ey), dy1 = frame.y_to_data(iy);
+    const std::string suffix = "/label";
+    bool labelled = request.id.size() >= suffix.size() && request.id.compare(request.id.size() - suffix.size(), suffix.size(), suffix) == 0;
+    std::string line_id = labelled ? request.id.substr(0, request.id.size() - suffix.size()) : request.id;
+    tick = Item();
+    tick.type = ItemType::Line;
+    tick.id = line_id + "/tick";
+    tick.group = request.group;
+    tick.role = "label_tick";
+    tick.x = {dx0, dx1};
+    tick.y = {dy0, dy1};
+    tick.line_style = LineStyle();
+    tick.line_style.color = request.line_color.present ? request.line_color : request.style.color;
+    tick.line_style.width_pt = RAIL_TICK_WIDTH_PT;
+    tick.z_order = 4.0;
+    text = label_item(request, dx0, dy0, has_direction, 0.0, has_direction ? 1.0 : 0.0, h_align, v_align, ox, oy, false);
+}
+
+/// The old label item where the new one is the same label in the same place, else the new one.
+Item kept(const std::map<std::string, Item>& previous, const Item& fresh, const Frame& frame) {
+    auto found = previous.find(fresh.id);
+    if (found == previous.end()) return fresh;
+    const Item& old = found->second;
+    if (old.text != fresh.text || old.text_style != fresh.text_style || old.clip != fresh.clip || !same_number(old.offset_x_pt, fresh.offset_x_pt)
+        || !same_number(old.offset_y_pt, fresh.offset_y_pt) || old.has_direction != fresh.has_direction)
+        return fresh;
+    double ox = frame.x_to_pt(old.text_x), nx = frame.x_to_pt(fresh.text_x);
+    double oy = frame.y_to_pt(old.text_y), ny = frame.y_to_pt(fresh.text_y);
+    if (!(std::isfinite(ox) && std::isfinite(oy)) || std::hypot(nx - ox, ny - oy) >= 0.5) return fresh;
+    if (old.has_direction) {
+        auto angle = [&](const Item& t) {
+            double x0 = frame.x_to_pt(t.text_x), x1 = frame.x_to_pt(t.text_x + t.direction_x);
+            double y0 = frame.y_to_pt(t.text_y), y1 = frame.y_to_pt(t.text_y + t.direction_y);
+            return std::atan2(y1 - y0, x1 - x0);
+        };
+        if (std::fabs(angle(old) - angle(fresh)) > 1e-3) return fresh;
+    }
+    return old;
+}
+
+}  // namespace
+
+std::vector<int> value_levels(const std::vector<double>& values) {
+    std::vector<double> finite;
+    for (double v : values)
+        if (std::isfinite(v)) finite.push_back(v);
+    std::sort(finite.begin(), finite.end());
+    bool any_gap = false;
+    double step = 0.0;
+    for (size_t i = 0; i + 1 < finite.size(); ++i) {
+        double a = finite[i], b = finite[i + 1];
+        if (b - a > 1e-12 * std::max({std::fabs(a), std::fabs(b), 1.0})) {
+            step = any_gap ? std::min(step, b - a) : b - a;
+            any_gap = true;
+        }
+    }
+    std::vector<int> levels;
+    for (double v : values) {
+        if (!any_gap || !std::isfinite(v)) {
+            levels.push_back(0);
+            continue;
+        }
+        int level = N_LEVELS - 1;
+        for (int i = 0; i < N_LEVELS; ++i) {
+            double q = v / (LEVEL_STEPS[i] * step);
+            if (std::fabs(q - std::nearbyint(q)) < 1e-6) {  // nearbyint rounds half to even, like Python's round
+                level = i;
+                break;
+            }
+        }
+        levels.push_back(level);
+    }
+    return levels;
+}
+
+std::vector<Item> place_rail_labels(const std::vector<LabelRequest>& requests, const Frame& frame, const std::vector<KeepOut>& keep_out,
+                                    double keep_out_pt, const std::map<std::string, Item>& previous, const std::vector<TakenBox>& occupied,
+                                    bool outer_right) {
+    std::vector<Item> items;
+    if (!frame.usable() || requests.empty()) return items;
+    RailState state;
+    state.frame = &frame;
+    keep_out_points(frame, keep_out, state.kx, state.ky);
+    state.keep_out_pt = keep_out_pt;
+    for (const TakenBox& b : occupied) state.placed.push_back(Box{b.cx, b.cy, 0.0, b.half_w, b.half_h});
+    double label_height = 0.0;
+    for (const LabelRequest& r : requests) label_height = std::max(label_height, LABEL_LINE_HEIGHT * r.style.font.size_pt);
+
+    // Families in order of their first request, with their lines in points and the levels of their values
+    std::vector<std::string> family_order;
+    std::map<std::string, std::vector<const LabelRequest*>> families;
+    for (const LabelRequest& r : requests) {
+        if (!families.count(r.family)) family_order.push_back(r.family);
+        families[r.family].push_back(&r);
+    }
+    std::map<std::string, std::vector<std::vector<Piece>>> pieces;
+    std::map<std::string, std::vector<int>> levels;
+    for (const std::string& key : family_order) {
+        std::vector<double> values;
+        for (const LabelRequest* r : families[key]) {
+            std::vector<double> px, py;
+            for (size_t i = 0; i < r->x.size(); ++i) {
+                px.push_back(frame.x_to_pt(r->x[i]));
+                py.push_back(frame.y_to_pt(r->y[i]));
+            }
+            pieces[key].push_back(visible_pieces(px, py, frame.width_pt, frame.height_pt));
+            values.push_back(r->value);
+        }
+        levels[key] = value_levels(values);
+    }
+    std::vector<Slot> slots = rail_slots(outer_right);
+
+    // How many labels of each family fit on each rail, on their own
+    struct Pair
+    {
+        size_t family, slot;
+        int score;
+        int bonus;
+    };
+    std::vector<Pair> pairs;
+    for (size_t f = 0; f < family_order.size(); ++f) {
+        const std::string& key = family_order[f];
+        std::set<Slot> kept_slots = previous_slots(families[key], previous, frame, label_height);
+        for (size_t s = 0; s < slots.size(); ++s) {
+            bool vertical;
+            int score = static_cast<int>(select_on(slots[s], candidates_on(slots[s], families[key], pieces[key], levels[key], frame, label_height),
+                                                   state, vertical)
+                                             .size());
+            pairs.push_back({f, s, score, kept_slots.count(slots[s]) ? 1 : 0});
+        }
+    }
+    // Rails go to the family that fits the most labels there; a rail that held labels of the family counts one more
+    std::stable_sort(pairs.begin(), pairs.end(), [&](const Pair& a, const Pair& b) {
+        int sa = -(a.score + a.bonus), sb = -(b.score + b.bonus);
+        if (sa != sb) return sa < sb;
+        bool ia = slots[a.slot].k >= 0, ib = slots[b.slot].k >= 0;
+        if (ia != ib) return !ia;
+        if (a.slot != b.slot) return a.slot < b.slot;
+        return a.family < b.family;
+    });
+    std::vector<std::pair<std::string, size_t>> assignment;  // family, slot index; in the order given
+    auto assigned = [&](const std::string& key) {
+        for (const auto& a : assignment)
+            if (a.first == key) return true;
+        return false;
+    };
+    auto slot_taken = [&](size_t s) {
+        for (const auto& a : assignment)
+            if (a.second == s) return true;
+        return false;
+    };
+    for (const Pair& p : pairs) {
+        const std::string& key = family_order[p.family];
+        int needed = std::min<int>(2, static_cast<int>(families[key].size()));
+        if (p.score < needed || assigned(key) || slot_taken(p.slot)) continue;
+        assignment.push_back({key, p.slot});
+    }
+
+    auto place = [&](const Slot& slot, std::vector<RailCand> chosen, bool vertical) {
+        std::stable_sort(chosen.begin(), chosen.end(), [](const RailCand& a, const RailCand& b) { return a.along < b.along; });
+        for (const RailCand& c : chosen) {
+            if (slot.k < 0) {
+                Item tick, text;
+                outer_items(c, slot.edge, vertical, frame, tick, text);
+                items.push_back(tick);
+                items.push_back(kept(previous, text, frame));
+                // The tick reaches into the frame; labels inside keep clear of it
+                if (slot.edge == "top")
+                    state.placed.push_back(Box{c.x, frame.height_pt - 0.5 * RAIL_TICK_PT, 0.0, 0.5 * RAIL_TICK_WIDTH_PT, 0.5 * RAIL_TICK_PT});
+                else
+                    state.placed.push_back(Box{frame.width_pt - 0.5 * RAIL_TICK_PT, c.y, 0.0, 0.5 * RAIL_TICK_PT, 0.5 * RAIL_TICK_WIDTH_PT});
+            } else {
+                state.placed.push_back(c.box);
+                items.push_back(kept(previous, edge_text(*c.request, frame, c.box, c.dir_x, c.dir_y), frame));
+            }
+        }
+    };
+
+    std::vector<std::pair<std::string, size_t>> in_order = assignment;
+    std::stable_sort(in_order.begin(), in_order.end(), [&](const std::pair<std::string, size_t>& a, const std::pair<std::string, size_t>& b) {
+        bool ia = slots[a.second].k >= 0, ib = slots[b.second].k >= 0;
+        if (ia != ib) return !ia;
+        return a.second < b.second;
+    });
+    std::map<std::string, std::set<std::string>> reached;
+    for (const auto& a : in_order) {
+        const Slot& slot = slots[a.second];
+        std::vector<RailCand> cands = candidates_on(slot, families[a.first], pieces[a.first], levels[a.first], frame, label_height);
+        for (const RailCand& c : cands) reached[a.first].insert(c.request->id);
+        bool vertical;
+        std::vector<RailCand> chosen = select_on(slot, cands, state, vertical);
+        place(slot, chosen, vertical);
+    }
+    // A second rail for the lines of a family that do not reach its first rail
+    std::set<size_t> taken;
+    for (const auto& a : assignment) taken.insert(a.second);
+    for (const std::string& key : family_order) {
+        if (!assigned(key)) continue;
+        std::vector<const LabelRequest*> members;
+        std::vector<std::vector<Piece>> rest_pieces;
+        std::vector<int> rest_levels;
+        for (size_t i = 0; i < families[key].size(); ++i)
+            if (!reached[key].count(families[key][i]->id)) {
+                members.push_back(families[key][i]);
+                rest_pieces.push_back(pieces[key][i]);
+                rest_levels.push_back(levels[key][i]);  // the levels of the whole family
+            }
+        if (members.size() < 2) continue;
+        bool found = false, best_vertical = false;
+        size_t best_slot = 0;
+        std::vector<RailCand> best;
+        for (size_t s = 0; s < slots.size(); ++s) {
+            if (taken.count(s)) continue;
+            bool vertical;
+            std::vector<RailCand> chosen =
+                select_on(slots[s], candidates_on(slots[s], members, rest_pieces, rest_levels, frame, label_height), state, vertical);
+            if (chosen.size() >= 2 && (!found || chosen.size() > best.size())) {
+                found = true;
+                best_slot = s;
+                best = chosen;
+                best_vertical = vertical;
+            }
+        }
+        if (found) {
+            taken.insert(best_slot);
+            place(slots[best_slot], best, best_vertical);
+        }
+    }
+    // Families without a rail: a label near the end of each line that ends inside the plot
+    for (const std::string& key : family_order) {
+        if (assigned(key)) continue;
+        std::vector<RailCand> chosen = choose(end_candidates(families[key], pieces[key], levels[key]),
+                                              [&](const std::vector<RailCand>& cs) { return state.boxes_free(cs); });
+        std::stable_sort(chosen.begin(), chosen.end(), [](const RailCand& a, const RailCand& b) { return a.along < b.along; });
+        for (const RailCand& c : chosen) {
+            state.placed.push_back(c.box);
+            items.push_back(kept(previous, edge_text(*c.request, frame, c.box, c.dir_x, c.dir_y), frame));
+        }
+    }
+    return items;
 }
 
 // ---------------------------------------------------------------------------
@@ -564,9 +1168,16 @@ std::vector<Item> place_state_numbers(const std::vector<Item>& numbers, const Fr
                 oy.push_back(my[i]);
             }
         const Spot* choice = nullptr;
+        const Spot* inside = nullptr;  // the first corner inside the frame, should every corner be taken
         Box box = {0.0, 0.0, 0.0, 0.5 * width, 0.5 * height};
+        Box inside_box = box;
         for (const Spot& spot : SPOTS) {
             box = Box{px + spot.sx * (distance + 0.5 * width), py + spot.sy * (distance + 0.5 * height), 0.0, 0.5 * width, 0.5 * height};
+            if (!box.inside(frame.width_pt, frame.height_pt, 0.0)) continue;  // a long label would be cut off
+            if (!inside) {
+                inside = &spot;
+                inside_box = box;
+            }
             bool blocked = box.near_points(ox, oy, 2.0);
             for (const Box& b : placed)
                 if (box.overlaps(b, 0.5)) blocked = true;
@@ -574,6 +1185,10 @@ std::vector<Item> place_state_numbers(const std::vector<Item>& numbers, const Fr
                 choice = &spot;
                 break;
             }
+        }
+        if (!choice && inside) {
+            choice = inside;
+            box = inside_box;
         }
         if (!choice) {
             choice = &SPOTS[0];

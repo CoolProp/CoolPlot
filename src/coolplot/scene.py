@@ -26,13 +26,15 @@ This module imports neither CoolProp nor any plotting library.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from typing import Dict, Iterable, Iterator, Optional, Tuple
 
 import numpy as np
 
 
 from .core.floats import is_zero, is_zero_array, same_number
+from .core.images import Picture, load_picture
+from .core.textwidth import text_width_pt
 from .style.values import (AxesStyle, LineStyle, MarkerStyle, TextStyle,  # noqa: F401 (re-exported)
                            style_from_dict, style_to_dict)
 
@@ -234,6 +236,163 @@ def drawable_limits(limits, log: bool) -> Tuple[float, float]:
     return lo, hi
 
 
+#: Corners of the plot area a badge can sit in.
+CORNERS = ("upper left", "upper right", "lower left", "lower right")
+#: Distance between the baselines of the badge lines, relative to the font size.
+BADGE_LINE_HEIGHT = 1.25
+#: Baseline of a badge line below the top of its line, relative to the font size.
+BADGE_BASELINE = 0.95
+
+
+def _pictures(value) -> Tuple[Picture, ...]:
+    """Variants of one picture as a tuple; a single Picture is allowed."""
+    if isinstance(value, Picture):
+        value = (value,)
+    pictures = tuple(value)
+    if not all(isinstance(p, Picture) for p in pictures):
+        raise TypeError("Expected Picture values, got {0}.".format([type(p).__name__ for p in pictures]))
+    return pictures
+
+
+@dataclass(frozen=True)
+class Badge:
+    """A box in one corner of the plot area: a logo above lines of text
+
+    The badge says where a chart comes from: the references of the
+    equation of state, the program versions, the owner's logo and a line
+    of their own (see :class:`coolplot.spec.settings.BrandingSettings`).
+    Like the legend, its corner and content are decided centrally. Its size
+    is :meth:`size_pt`, an estimate of the text widths made with
+    :mod:`coolplot.core.textwidth`; every backend draws the box at exactly
+    that size, so the label layout can keep clear of it.
+
+    Attributes
+    ----------
+    location : str
+        One of :data:`CORNERS`.
+    logo : tuple of Picture
+        Variants of the same logo, in order of preference (for example the
+        SVG and a PNG rendering of it); each backend draws the first one it
+        can, matplotlib only PNG. Empty for no logo.
+    logo_width_pt : float
+        Width of the logo; its height follows from the picture.
+    lines : tuple of str
+        Text lines below the logo, left aligned. A line containing "\\n" is
+        split into several lines.
+    text : TextStyle
+        Font and colour of the lines.
+    background, background_alpha : str or None, float
+        Fill of the box; None for no fill.
+    frame_color, frame_width_pt : str or None, float
+        Outline of the box; None for no outline.
+    padding_pt : float
+        Space between the box outline and its content.
+    gap_pt : float
+        Space between the logo and the first line.
+    inset_pt : float
+        Distance of the box from the frame of the plot area.
+    """
+    location: str = "lower right"
+    logo: Tuple[Picture, ...] = ()
+    logo_width_pt: float = 72.0
+    lines: Tuple[str, ...] = ()
+    text: TextStyle = field(default_factory=TextStyle)
+    background: Optional[str] = "#ffffff"
+    background_alpha: float = 0.85
+    frame_color: Optional[str] = None
+    frame_width_pt: float = 0.5
+    padding_pt: float = 4.0
+    gap_pt: float = 3.0
+    inset_pt: float = 6.0
+
+    def __post_init__(self):
+        if self.location not in CORNERS:
+            raise ValueError("Badge: location has to be one of {0}, not {1!r}.".format(CORNERS, self.location))
+        object.__setattr__(self, "logo", _pictures(self.logo))
+        # one entry per drawn line: the box height counts entries
+        lines = (part for line in self.lines for part in str(line).replace("\r\n", "\n").split("\n"))
+        object.__setattr__(self, "lines", tuple(lines))
+        for name in ("logo_width_pt", "frame_width_pt", "padding_pt", "gap_pt", "inset_pt"):
+            value = float(getattr(self, name))
+            if not (value >= 0.0 and math.isfinite(value)):
+                raise ValueError("Badge: {0} has to be finite and >= 0, not {1}.".format(name, value))
+            object.__setattr__(self, name, value)
+        alpha = float(self.background_alpha)
+        if not 0.0 <= alpha <= 1.0:
+            raise ValueError("Badge: background_alpha has to be between 0 and 1, not {0}.".format(alpha))
+        object.__setattr__(self, "background_alpha", alpha)
+
+    @property
+    def empty(self) -> bool:
+        """True when there is nothing to draw."""
+        return not self.logo and not self.lines
+
+    def logo_height_pt(self) -> float:
+        """Height of the logo as drawn, 0 without a logo."""
+        return self.logo_width_pt * self.logo[0].aspect if self.logo else 0.0
+
+    @property
+    def line_height_pt(self) -> float:
+        """Distance between the baselines of two text lines."""
+        return BADGE_LINE_HEIGHT * self.text.font.size_pt
+
+    def size_pt(self) -> Tuple[float, float]:
+        """Estimated (width, height) of the box in points.
+
+        The text widths come from :func:`coolplot.core.textwidth.text_width_pt`,
+        an estimate that errs on the wide side for common sans-serif fonts
+        (an unusually wide font can overflow it). The label layout keeps
+        clear of this box, and the SVG and matplotlib writers draw it at
+        exactly this size.
+        """
+        size = self.text.font.size_pt
+        text_w = max((text_width_pt(line, size) for line in self.lines), default=0.0)
+        content_w = max(self.logo_width_pt if self.logo else 0.0, text_w)
+        content_h = self.logo_height_pt() + len(self.lines) * self.line_height_pt
+        if self.logo and self.lines:
+            content_h += self.gap_pt
+        return content_w + 2.0 * self.padding_pt, content_h + 2.0 * self.padding_pt
+
+
+@dataclass(frozen=True)
+class Watermark:
+    """A faint picture centred in the plot area, behind the grid and the items
+
+    Attributes
+    ----------
+    picture : tuple of Picture
+        Variants of the same picture, in order of preference, as for
+        :attr:`Badge.logo`.
+    width_pt : float
+        Width as drawn; the height follows from the picture.
+    opacity : float
+        0 (invisible) to 1 (opaque).
+    """
+    picture: Tuple[Picture, ...] = ()
+    width_pt: float = 200.0
+    opacity: float = 0.06
+
+    def __post_init__(self):
+        object.__setattr__(self, "picture", _pictures(self.picture))
+        width = float(self.width_pt)
+        if not (width > 0.0 and math.isfinite(width)):
+            raise ValueError("Watermark: width_pt has to be positive, not {0}.".format(width))
+        object.__setattr__(self, "width_pt", width)
+        opacity = float(self.opacity)
+        if not 0.0 <= opacity <= 1.0:
+            raise ValueError("Watermark: opacity has to be between 0 and 1, not {0}.".format(opacity))
+        object.__setattr__(self, "opacity", opacity)
+
+    def height_pt(self) -> float:
+        """Height as drawn, 0 without a picture."""
+        return self.width_pt * self.picture[0].aspect if self.picture else 0.0
+
+
+def first_picture(variants: Tuple[Picture, ...], mimes) -> Optional[Picture]:
+    """The first variant whose type is in ``mimes``, or None."""
+    return next((p for p in variants if p.mime in mimes), None)
+
+
 @dataclass(frozen=True)
 class AxesSpec:
     """Everything about the axes that is not an item
@@ -245,6 +404,11 @@ class AxesSpec:
     The grid is drawn when ``style.grid_major`` (or ``grid_minor``) is set,
     the legend when ``style.legend.visible`` is True and at least one item
     has a legend text.
+
+    ``badge`` and ``watermark`` (both optional) are the branding of the
+    chart: a box with a logo and text lines in one corner, and a faint
+    picture behind everything in the plot area. Backends that cannot draw
+    them warn once and leave them out.
     """
     x_label: str = ""
     y_label: str = ""
@@ -255,13 +419,24 @@ class AxesSpec:
     title: str = ""
     style: AxesStyle = field(default_factory=AxesStyle)
     tick_digits: int = 6
+    badge: Optional[Badge] = None
+    watermark: Optional[Watermark] = None
 
     def __post_init__(self):
+        for name, cls in (("badge", Badge), ("watermark", Watermark)):
+            value = getattr(self, name)
+            if value is not None and not isinstance(value, cls):
+                raise TypeError("AxesSpec: {0} has to be a {1} or None.".format(name, cls.__name__))
         # Tick labels are written with coolplot.core.numbers.format_number
         # and this many significant digits, by every backend.
         if not 1 <= int(self.tick_digits) <= 12:
             raise ValueError("AxesSpec: tick_digits has to be between 1 and 12, not {0}.".format(self.tick_digits))
         object.__setattr__(self, "tick_digits", int(self.tick_digits))
+        # The composer gives an "auto" legend its corner; a scene made
+        # without it gets the upper right one, so that writers see a corner
+        legend = getattr(self.style, "legend", None)
+        if legend is not None and legend.location == "auto":
+            object.__setattr__(self, "style", replace(self.style, legend=replace(legend, location="upper right")))
         # Limits are stored ascending; inverted axes are not supported.
         for name in ("x_limits", "y_limits"):
             limits = getattr(self, name)
@@ -467,18 +642,57 @@ def item_from_dict(data: dict) -> Item:
 
 
 def axes_to_dict(axes: AxesSpec) -> dict:
-    """The record of docs/reference/contracts.md for an :class:`AxesSpec`."""
-    return {"x_label": axes.x_label, "y_label": axes.y_label, "x_log": axes.x_log, "y_log": axes.y_log,
-            "x_limits": None if axes.x_limits is None else list(axes.x_limits),
-            "y_limits": None if axes.y_limits is None else list(axes.y_limits),
-            "title": axes.title, "style": style_to_dict(axes.style), "tick_digits": axes.tick_digits}
+    """The record of docs/reference/contracts.md for an :class:`AxesSpec`.
+
+    ``badge`` and ``watermark`` are only written when the axes have them,
+    so the record of an unbranded chart is the same as before 1.2.
+    """
+    out = {"x_label": axes.x_label, "y_label": axes.y_label, "x_log": axes.x_log, "y_log": axes.y_log,
+           "x_limits": None if axes.x_limits is None else list(axes.x_limits),
+           "y_limits": None if axes.y_limits is None else list(axes.y_limits),
+           "title": axes.title, "style": style_to_dict(axes.style), "tick_digits": axes.tick_digits}
+    if axes.badge is not None:
+        badge = axes.badge
+        out["badge"] = {"location": badge.location, "logo": [p.data_uri() for p in badge.logo],
+                        "logo_width_pt": badge.logo_width_pt, "lines": list(badge.lines),
+                        "text": style_to_dict(badge.text), "background": badge.background,
+                        "background_alpha": badge.background_alpha, "frame_color": badge.frame_color,
+                        "frame_width_pt": badge.frame_width_pt, "padding_pt": badge.padding_pt,
+                        "gap_pt": badge.gap_pt, "inset_pt": badge.inset_pt}
+    if axes.watermark is not None:
+        mark = axes.watermark
+        out["watermark"] = {"picture": [p.data_uri() for p in mark.picture], "width_pt": mark.width_pt,
+                            "opacity": mark.opacity}
+    return out
+
+
+def _pictures_from_uris(uris) -> Tuple[Picture, ...]:
+    """Pictures from the ``data:`` URIs of a record; anything else is refused."""
+    pictures = []
+    for uri in uris:
+        if not (isinstance(uri, str) and uri.startswith("data:")):
+            raise ValueError("A scene record holds pictures as data: URIs, not {0!r}.".format(str(uri)[:40]))
+        pictures.append(load_picture(uri))
+    return tuple(pictures)
 
 
 def axes_from_dict(data: dict) -> AxesSpec:
     """An :class:`AxesSpec` from its record, see :func:`axes_to_dict`."""
+    badge = watermark = None
+    if data.get("badge") is not None:
+        b = dict(data["badge"])
+        b["logo"] = _pictures_from_uris(b.get("logo", ()))
+        b["lines"] = tuple(b.get("lines", ()))
+        if "text" in b:
+            b["text"] = style_from_dict(TextStyle, b["text"])
+        badge = Badge(**b)
+    if data.get("watermark") is not None:
+        w = dict(data["watermark"])
+        w["picture"] = _pictures_from_uris(w.get("picture", ()))
+        watermark = Watermark(**w)
     return AxesSpec(x_label=data.get("x_label", ""), y_label=data.get("y_label", ""),
                     x_log=data.get("x_log", False), y_log=data.get("y_log", False),
                     x_limits=None if data.get("x_limits") is None else tuple(data["x_limits"]),
                     y_limits=None if data.get("y_limits") is None else tuple(data["y_limits"]),
                     title=data.get("title", ""), style=style_from_dict(AxesStyle, data.get("style", {})),
-                    tick_digits=data.get("tick_digits", 6))
+                    tick_digits=data.get("tick_digits", 6), badge=badge, watermark=watermark)

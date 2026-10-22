@@ -36,7 +36,7 @@ def write(path):
               "leaves the chart at the edges listed, where its labels sit.\n\n")
     out.write(_row("Diagram", "Vertical", "Horizontal", "Families (stepped in; preferred label edges)"))
     out.write(_row(*["---"] * 4))
-    for name in ("ph", "Ts", "hs", "ps", "prho", "Trho", "pT", "WT"):
+    for name in ("ph", "Ts", "hs", "ps", "prho", "Trho", "pT", "WT", "ThxW"):
         d = DiagramType.parse(name)
         families = "; ".join("{0} ({1}; {2})".format(f.key, f.sweep, ", ".join(f.edges)) for f in d.families)
         out.write(_row("`{0}`".format(name), d.quantity_label(d.y), d.quantity_label(d.x), families))

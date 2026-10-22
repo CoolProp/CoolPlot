@@ -16,7 +16,7 @@ from coolplot.core.floats import same_number
 PACKAGE_NAMES = {
     "__version__", "Chart", "PropertyDiagram", "PsychrometricChart", "save_pdf",
     "Cycle", "CycleSpec", "StateInput", "DiagramSpec", "FluidSpec", "HumidAirSpec", "IsolineSet", "ProcessSpec",
-    "Settings", "CalcSettings", "LabelSettings", "PageSettings", "Engine", "Fluid", "DiagramType",
+    "Settings", "CalcSettings", "LabelSettings", "PageSettings", "BrandingSettings", "Engine", "Fluid", "DiagramType",
     "TpLimits", "Relative", "Region", "StatePoint", "state_point", "process_path", "PropertyError",
     "Theme", "get_theme", "LineStyle", "MarkerStyle", "TextStyle", "Font", "AxesStyle", "LegendStyle",
     "Scene", "UnitSystem", "Unit", "SI", "KSI", "ENGINEERING", "IP",
@@ -27,11 +27,12 @@ PACKAGE_NAMES = {
 CHART_METHODS = {
     "set_lines", "set_default_lines", "remove_lines", "line_sets", "set_line_style",
     "add_cycle", "remove_cycle", "move_cycle_state", "cycle_states",
-    "set_view", "state_at", "to_display", "update_scene", "draw", "show", "save",
-    "refresh", "close", "wait", "from_spec",
+    "set_view", "state", "state_at", "to_display", "update_scene", "draw", "show", "save",
+    "refresh", "close", "wait", "from_spec", "uncached_curves",
 }
 #: Properties; spec, engine and scene are plain attributes set by the constructor.
-CHART_PROPERTIES = {"cache", "progress", "fluid", "diagram_type", "units", "settings", "theme", "title", "kind"}
+CHART_PROPERTIES = {"cache", "progress", "fluid", "diagram_type", "units", "settings", "theme", "title", "kind",
+                    "show_saturation"}
 CHART_ATTRIBUTES = {"spec", "engine", "scene"}
 
 #: Names removed in 1.0 (deprecated from 0.5 to 0.9), with the method to use
@@ -74,7 +75,7 @@ def test_constructors_add_only_their_own_names():
     from coolplot.diagram import PropertyDiagram
     from coolplot.psychrometric import PsychrometricChart
     assert _public(PropertyDiagram) == {"kind", "fluid", "diagram_type", "tp_limits"}
-    assert _public(PsychrometricChart) == {"kind", "p_Pa", "points"}
+    assert _public(PsychrometricChart) == {"kind", "p_Pa", "points", "add_zone", "mix", "style"}
 
 
 def test_removed_names_say_what_to_use_instead():

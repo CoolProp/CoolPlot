@@ -38,8 +38,20 @@ def curve_record(request, curve):
             "curve": curve.to_dict()}
 
 
+def legacy(chart):
+    """The chart with edge labels and the legend outside on the right, the defaults before 1.2."""
+    if chart.settings.labels.mode == "rails":
+        chart.settings = chart.settings.with_(labels={"mode": "edge"})
+    theme = chart.theme
+    if theme.axes.legend.location == "auto":
+        chart.theme = theme.with_(axes=theme.axes.with_(legend=theme.axes.legend.with_(location="outside right")))
+    return chart
+
+
 def compose_case(name, chart, plot_size_pt=None, previous=None):
     """The input of the composer and the scene the Python composer makes of it."""
+    if not name.startswith("compose_rails_"):
+        legacy(chart)
     spec = chart.spec
     domain = chart.engine.domain(spec)
     curves = chart.engine.curves(spec, domain, plan(spec, domain))
@@ -116,6 +128,28 @@ def main():
     chart.add_cycle("Air conditioning", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}, {"T": 20, "W": 8.9}], closed=False)
     compose_case("compose_psychrometric", chart)
 
+    # State labels: after the numbers on one process, alone (numbers hidden)
+    # on an outline whose other states get no text
+    labelled = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25), settings="interactive")
+    labelled.set_default_lines()
+    labelled.add_cycle("Air conditioning", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}, {"T": 20, "via": "sensible"}],
+                       closed=False, labels={2: "ADP 11.2 deg C", 3: "+7.1 kJ/kg"})
+    labelled.add_cycle("Comfort zone", [{"T": 20, "RH": 30}, {"T": 26, "RH": 30}, {"T": 26, "RH": 60},
+                                        {"T": 20, "RH": 60}], numbers=False, labels={3: "comfort"})
+    compose_case("compose_psychrometric_labels", labelled)
+
+    # The Mollier h,x chart: isotherms, x and phi, a process with labels
+    mollier = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25), settings="interactive", style="mollier")
+    mollier.set_default_lines()
+    mollier.add_cycle("Air conditioning", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}, {"T": 20, "via": "sensible"}],
+                      closed=False, labels={2: "coil"})
+    compose_case("compose_mollier", mollier)
+
+    # The saturation curve without lines of constant quality (drawn since 1.2)
+    bare = PropertyDiagram("R290", "Ts", tp_limits="ACHP", settings="interactive")
+    bare.set_lines("p", num=6, labels=True)
+    compose_case("compose_r290_ts_saturation_only", bare)
+
     # Isentropes through the saturated vapour every 10 K and isochores through
     # wet states every 20 K, labelled by their saturation temperature;
     # isotherms through the saturated vapour every 2 bar, labelled by their
@@ -133,6 +167,56 @@ def main():
     coloured.theme = get_theme("dark").with_(isoline_label_color="line")
     coloured.set_default_lines(labels=True)
     compose_case("compose_r290_ph_line_labels", coloured)
+
+    rails_cases()
+
+
+def rails(chart, legend="auto"):
+    """The chart with labels on rails and the legend at ``legend``."""
+    chart.settings = chart.settings.with_(labels={"mode": "rails"})
+    theme = chart.theme
+    chart.theme = theme.with_(axes=theme.axes.with_(legend=theme.axes.legend.with_(location=legend)))
+    return chart
+
+
+def rails_cases():
+    """Labels on rails (1.2): outer and inner rails, thinning, second rails, line ends, stability."""
+    def r290():
+        d = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+        d.set_lines("T", values=list(range(-40, 181, 10)), labels=True)
+        d.set_lines("s", values=[x / 100.0 for x in range(75, 301, 25)], labels=True)
+        d.set_lines("rho", values=[1, 2, 5, 10, 20, 50, 100, 200, 500], labels=True)
+        d.set_lines("Q", values=[x / 10.0 for x in range(0, 11)], labels=True)
+        d.add_cycle("Heat pump", [{"p": 3.0, "T": 0.0}, {"p": 15.0, "via": "compression", "eta_is": 0.7},
+                                  {"p": 15.0, "Q": 0.0}, {"p": 3.0, "via": "isenthalpic"}])
+        return rails(d)
+
+    size = (600.0, 420.0)
+    chart = r290()
+    scene = compose_case("compose_rails_r290_ph", chart, size)
+    # A state moved, laid out with the first layout as the previous one:
+    # labels that stay are the same items, and families keep their rails
+    previous = {item.id: item for item in scene if item.role == "isoline_label"}
+    chart.move_cycle_state("Heat pump", 2, 690.0, 15.0)
+    compose_case("compose_rails_r290_ph_moved", chart, size, previous)
+    # A narrow chart: whole levels of values are dropped
+    compose_case("compose_rails_r290_ph_narrow", r290(), (260.0, 420.0))
+    # A legend outside on the right leaves the right rail free
+    compose_case("compose_rails_r290_ph_outside_legend", rails(r290(), "outside right"), size)
+    # Relative humidity on two rails, enthalpy on the right, line ends
+    psy = rails(PsychrometricChart(T_range=(-10, 45), W_range=(0, 25), settings="interactive"))
+    psy.set_default_lines()
+    psy.add_cycle("Air conditioning", [{"T": 32, "RH": 50}, {"T": 13, "RH": 95}, {"T": 20, "via": "sensible"}],
+                  closed=False)
+    compose_case("compose_rails_psychrometric", psy, size)
+    mollier = rails(PsychrometricChart(T_range=(-10, 45), W_range=(0, 25), settings="interactive", style="mollier"))
+    mollier.set_default_lines()
+    compose_case("compose_rails_mollier", mollier, size)
+    # A family labelled by its saturation states keeps its full labels and its plain legend
+    anchored = rails(PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive"))
+    anchored.set_lines("rho", at_saturation={"T": 20, "Q": 0.5, "label": "saturation"}, labels=True)
+    anchored.set_lines("T", at_saturation={"p": 2}, labels=True)
+    compose_case("compose_rails_r290_ph_anchored", anchored, size)
 
 
 if __name__ == "__main__":

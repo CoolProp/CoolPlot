@@ -67,6 +67,20 @@ def test_dragging_a_state_moves_it(app):
     assert diagram.cache.misses == misses                  # no isoline recalculated
 
 
+def test_the_corners_of_a_zone_cannot_be_dragged():
+    from coolplot import PsychrometricChart
+    chart = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25))
+    chart.add_zone("Comfort", T_range=(20, 26), RH_range=(30, 60))
+    renderer = _mpl()
+    Interaction(chart, renderer).redraw()
+    before = chart.spec
+    corner = chart.cycle_states("Comfort")[1]
+    renderer.simulate_pointer("press", corner.T - 273.15, corner.W * 1e3)
+    renderer.simulate_pointer("move", 35.0, 15.0)
+    renderer.simulate_pointer("release", 35.0, 15.0)
+    assert chart.spec.cycles == before.cycles   # the zone kept its shape
+
+
 def test_dragging_to_an_impossible_place_keeps_the_last_state(app):
     diagram, renderer, interaction, _ = app
     before = diagram.cycle_states("Heat pump")

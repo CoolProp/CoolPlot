@@ -46,7 +46,7 @@ from .compose import compose
 from .core.cycle import Cycle, StateInput
 from .core.errors import PropertyError
 from .core.quantities import quantity_key
-from .core.state import StatePoint
+from .core.state import StatePoint, with_mollier_temperature
 from .core.units import get_unit_system
 from .engine import BackgroundEngine, CurveCache, Engine, plan
 from .scene import Scene
@@ -54,6 +54,7 @@ from .spec import CycleSpec, DiagramSpec, IsolineSet, SaturationAnchor, get_sett
 from .spec.diagram import ANCHOR_KEYS
 from .style.theme import Theme, get_theme
 from .style.values import LineStyle, MarkerStyle
+from .thermo.cycles.paths import resolve_state
 
 
 def _known_key(name, inputs):
@@ -136,6 +137,9 @@ def check_state(state: StatePoint, provider) -> StatePoint:
     """
     if "v" not in state and "rho" in state and provider.kind == "fluid" and state.rho > 0.0:
         state = StatePoint(v=1.0 / state.rho, **state.to_dict())
+    if provider.kind == "humid_air":
+        # A humid-air state made before 1.2 lacks the temperature scale of the Mollier chart
+        state = with_mollier_temperature(state)
     missing = [k for k in provider.quantities if k not in state]
     if missing:
         raise ValueError("The state {0} is not a state of {1}: it lacks {2}.".format(state, provider.name, missing))
@@ -206,6 +210,7 @@ class Chart:
             self.engine = Engine(cache)
         self.scene = Scene()
         self._default_renderer = None
+        self._file_renderer = None   # the matplotlib renderer of save(), outside pyplot
         self._plot_size_pt = None
         try:
             check_fluid(self.engine, spec.fluid)   # a misspelt fluid fails here, not at the first draw
@@ -308,6 +313,22 @@ class Chart:
         self.settings = self.spec.settings.with_(look=get_theme(value))
 
     @property
+    def show_saturation(self):
+        """Whether the saturation curve is drawn whatever lines are set.
+
+        True by default: the quality lines 0 and 1 of a fluid with a
+        critical point, or the line of 100 % relative humidity, are drawn
+        even when the lines set leave them out, or are not set at all.
+        False hides the curve; None leaves it to the values of the quality
+        or humidity lines (a chart saved before 1.2).
+        """
+        return self.spec.show_saturation
+
+    @show_saturation.setter
+    def show_saturation(self, value):
+        self.spec = self.spec.with_(show_saturation=value)
+
+    @property
     def title(self) -> str:
         """The title shown above the chart."""
         return self.spec.title
@@ -367,7 +388,8 @@ class Chart:
         key : str
             Quantity held constant: "T", "p", "h", "s", "rho", "u" or "Q"
             in a property diagram; "RH", "Twb", "h" or "v" in a
-            psychrometric chart.
+            psychrometric chart, and also "T" (isotherms) in a Mollier
+            h,x chart.
         values : sequence, optional
             Explicit constant values, in the chart's units or in ``units``.
         num : int, optional
@@ -509,7 +531,7 @@ class Chart:
 
     def add_cycle(self, name, states=None, loops=None, paths=None, numbers: bool = True, units=None,
                   line_style: LineStyle = None, marker_style: MarkerStyle = None, steps: int = 20,
-                  closed: bool = True, **arrays):
+                  closed: bool = True, labels=None, **arrays):
         """Add or replace a cycle, drawn on top of the chart.
 
         Parameters
@@ -547,6 +569,11 @@ class Chart:
             Segments per drawn path.
         closed : bool
             Whether the default loop returns to the first state.
+        labels : dict, optional
+            ``{number: text}``: a text written next to a state, after its
+            number, e.g. ``{2: "ADP 11.2 deg C", 3: "+8.1 kJ/kg"}`` shows
+            "2: ADP 11.2 deg C". With ``numbers=False`` the text stands
+            alone and states without a label get nothing.
         **arrays
             Instead of ``states``: arrays of two properties, e.g.
             ``add_cycle("measured", p=[...], h=[...])``.
@@ -558,17 +585,18 @@ class Chart:
         cycle = name if isinstance(name, Cycle) else (states if isinstance(states, Cycle) else None)
         if cycle is not None:
             spec = self._spec_from_model(cycle, None if isinstance(name, Cycle) else name, loops, paths, numbers,
-                                         line_style, marker_style, steps)
+                                         line_style, marker_style, steps, labels)
         else:
             unit_system = self._units(units)
             inputs = self._state_inputs(_states_from_arrays(states, arrays) if arrays else states, name, unit_system)
             spec = CycleSpec(str(name), inputs, loops or _default_loops(inputs, closed), paths or (), numbers,
-                             line_style, marker_style, steps)
+                             line_style, marker_style, steps, () if labels is None else labels)
         self._compute_cycle(spec)   # compute now, so that errors show up here
         self.spec = self.spec.with_cycle(spec)
         return spec.name
 
-    def _spec_from_model(self, cycle: Cycle, name, loops, paths, numbers, line_style, marker_style, steps):
+    def _spec_from_model(self, cycle: Cycle, name, loops, paths, numbers, line_style, marker_style, steps,
+                         labels=None):
         """A CycleSpec for a computed Cycle, after checking that it belongs to this chart's fluid."""
         if cycle.fluid and self._other_fluid(cycle.fluid):
             raise ValueError("Cycle '{0}' was computed for {1}, but this chart shows {2}.".format(
@@ -576,7 +604,8 @@ class Chart:
         states = tuple((n, check_state(state, self.fluid)) for n, state in cycle.states)
         cycle = replace(cycle, states=states)   # with v filled in for a cycle computed before 0.7
         return CycleSpec.from_cycle(cycle, name=name, loops=loops, paths=paths, numbers=numbers,
-                                    line_style=line_style, marker_style=marker_style, steps=steps)
+                                    line_style=line_style, marker_style=marker_style, steps=steps,
+                                    labels=labels)
 
     def _state_inputs(self, states, name, unit_system):
         """(number, StateInput) pairs from a list (numbered from 1) or a dict of given states."""
@@ -647,6 +676,24 @@ class Chart:
             return {n: states[n].in_units(unit_system) for n in sorted(states)}
         return {n: states[n] for n in sorted(states)}
 
+    def state(self, entry, units=None) -> StatePoint:
+        """The full state (SI units) from two properties in the chart's units or in ``units``.
+
+        ``entry`` is a dict as for a state of :meth:`add_cycle`, e.g.
+        ``chart.state({"T": 13, "RH": 95})`` on a psychrometric chart in
+        engineering units, or a StatePoint (returned as it is, after a
+        check that it belongs to this chart). A "via" needs a state before
+        it and is not accepted here.
+        """
+        given = state_input(entry, self._units(units), self.fluid)
+        if given.via is not None:
+            raise ValueError("A state with via '{0}' needs a state before it; give two properties.".format(
+                given.via))
+        try:
+            return resolve_state(self.fluid, given)
+        except PropertyError as e:
+            raise self._in_units(e) from None
+
     # ------------------------------------------------------------------
     # Interaction helpers
     # ------------------------------------------------------------------
@@ -684,7 +731,8 @@ class Chart:
         curves = self.engine.curves(spec, domain, plan(spec, domain))
         previous = {item.id: item for item in self.scene if item.role == "isoline_label"}
         cycles = [self.engine.cycle(spec, c) for c in spec.cycles]
-        items, axes = compose(spec, domain, curves, self._plot_size_pt, previous, cycles)
+        items, axes = compose(spec, domain, curves, self._plot_size_pt, previous, cycles,
+                              self.engine.source_lines(spec))
         self.scene.replace_all(items, axes=axes)
         return self.scene
 
@@ -744,21 +792,62 @@ class Chart:
         ``.svg`` is written by the SVG writer and ``.html`` by the web
         renderer (a static page), neither of which needs matplotlib;
         every other extension (PNG, PDF, EPS, ...) goes through matplotlib,
-        with ``kwargs`` such as ``dpi`` or ``pdf_fonts`` passed on. The
-        canvas has the size of ``settings.page`` for every writer, unless
-        ``width`` and ``height`` (pixels) are given for SVG or HTML.
+        with ``kwargs`` such as ``dpi`` or ``pdf_fonts`` passed on.
+
+        An SVG file has the size of ``settings.page``, stated in points
+        (``width``, ``height`` and ``unit`` passed as ``kwargs`` override
+        it). Matplotlib files are drawn into a figure of their own outside
+        pyplot, of the size of ``settings.page``, so that saving charts in
+        a server or a loop does not collect pyplot figures; after
+        :meth:`draw` or :meth:`show` made a figure, that figure is saved
+        instead, at its own size. An HTML page has the size of
+        ``settings.page`` in pixels, unless ``width`` and ``height`` are given.
         """
         extension = str(path).rsplit(".", 1)[-1].lower() if "." in str(path) else ""
-        if extension in ("svg", "html", "htm"):
+        page = self.spec.settings.page
+        if extension == "svg":
+            from .render.svg import PX_PER_PT, SvgRenderer
+            options = dict(width=page.width_pt * PX_PER_PT, height=page.height_pt * PX_PER_PT, unit="pt")
+            options.update(kwargs)
+            self.draw(SvgRenderer(**options)).save(path)
+        elif extension in ("html", "htm"):
             from .render.svg import PX_PER_PT
-            page = self.spec.settings.page
+            from .render.web import WebRenderer
             kwargs.setdefault("width", round(page.width_pt * PX_PER_PT))
             kwargs.setdefault("height", round(page.height_pt * PX_PER_PT))
-        if extension == "svg":
-            from .render.svg import SvgRenderer
-            self.draw(SvgRenderer(**kwargs)).save(path)
-        elif extension in ("html", "htm"):
-            from .render.web import WebRenderer
             self.draw(WebRenderer(**kwargs)).save(path)
-        else:
+        elif self._default_renderer is not None:
             self.draw().save(path, **kwargs)
+        else:
+            self.draw(self._matplotlib_file_renderer()).save(path, **kwargs)
+
+    def _matplotlib_file_renderer(self):
+        """The renderer of :meth:`save` for matplotlib formats: a figure outside pyplot, sized by settings.page."""
+        size = self.spec.settings.page.size_in
+        if self._file_renderer is None:
+            from .render.mpl import MatplotlibRenderer
+            self._file_renderer = MatplotlibRenderer(use_pyplot=False, figsize=size)
+        elif tuple(self._file_renderer.figure.get_size_inches()) != tuple(size):
+            self._file_renderer.figure.set_size_inches(size)   # the page settings changed since
+        return self._file_renderer
+
+    def uncached_curves(self) -> int:
+        """How many isolines of the chart are in neither part of the curve cache.
+
+        Lines in memory or in the cache's folder on disk (see
+        :class:`coolplot.engine.CurveCache`) do not count; looking for one
+        on disk loads it into memory, as the next update would. The answer
+        costs the calculation region of the chart (the T-p box and, for
+        mixtures, the phase envelope), which the next update needs anyway,
+        but no line is calculated. An application can use it to tell a
+        request that only draws from one that calculates.
+
+        It counts the final lines of the isoline families only: cycles are
+        left out, and with a background engine a line counts until its
+        final version is in the cache, also while a job for it is running.
+        """
+        spec = self.spec
+        domain = self.engine.domain(spec)
+        cache = self.engine.cache
+        return sum(1 for request in plan(spec, domain)
+                   if cache.peek(self.engine.cache_key(spec, domain, request)) is None)

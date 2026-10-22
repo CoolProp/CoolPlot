@@ -22,6 +22,7 @@ from ..spec.diagram import CycleSpec, DiagramSpec
 from ..thermo.cycles import cycle_paths, resolve_states
 from ..thermo.isolines import Curve
 from ..thermo import native
+from ..thermo.references import fluid_references, versions_line
 from ..thermo.provider import chart_domain, compute_curve, make_provider, saturation_anchor_values
 from .cache import CurveCache
 from .planning import CurveRequest, Domain
@@ -94,7 +95,9 @@ class Engine:
         key = (spec.fluid, spec.limits, margin)
         if key not in self._domains:
             tp_box, ranges = chart_domain(self.fluid(spec.fluid), spec.limits, margin)
-            self._domains[key] = Domain(tp_box, ranges)
+            provider = self.fluid(spec.fluid)
+            has_saturation = provider.kind == "humid_air" or bool(getattr(provider, "has_critical_point", False))
+            self._domains[key] = Domain(tp_box, ranges, saturation=has_saturation)
             if len(self._domains) > 64:
                 self._domains.popitem(last=False)
         self._domains.move_to_end(key)
@@ -141,7 +144,12 @@ class Engine:
         if request.key == "Q":
             return base + (calc.critical_margin, calc.saturation_spacing)
         # The margin decides where saturation states are inserted
-        return base + (domain.tp_box, calc.solver, calc.critical_margin)
+        key = base + (domain.tp_box, calc.solver, calc.critical_margin)
+        if request.key == "T" and spec.diagram.is_mollier:
+            # An isotherm of the Mollier chart ends a little beyond the top of
+            # the humidity ratio range, which the T-p box does not hold
+            key += (dict(domain.ranges_SI).get("W"),)
+        return key
 
     def curve(self, spec: DiagramSpec, domain: Domain, request: CurveRequest) -> Curve:
         """One curve, from the cache or freshly computed."""
@@ -184,6 +192,8 @@ class Engine:
             if curve.n_valid < 2:
                 if curve.n_failed == 0 and curve.n_outside > 0:
                     continue   # the line lies outside the calculation domain: nothing to draw, nothing wrong
+                if request.key == "Q" and self._pseudo_pure_warning(spec):
+                    continue   # one warning for the fluid explains every missing quality line
                 why = curve.reason or "CoolProp failed for {0} of {1} points".format(curve.n_failed, total)
                 self._warn(spec, domain, request, "Skipping the line {0}={1:.6g} in {2}: {3}.".format(
                     request.key, request.value_SI, spec.fluid.name, why))
@@ -213,6 +223,33 @@ class Engine:
         if len(self._cycles) > 64:
             self._cycles.popitem(last=False)
         return states, chains
+
+    def source_lines(self, spec: DiagramSpec) -> Tuple[str, ...]:
+        """The badge lines that name where the properties come from, as
+        ``Settings.branding`` asks for them: the references of the fluid
+        (:func:`coolplot.thermo.references.fluid_references`) and the
+        versions of CoolProp and CoolPlot. Empty when it asks for neither."""
+        settings = spec.settings.branding
+        lines = []
+        if settings.references != "none":
+            lines.extend(fluid_references(spec.fluid, settings.references))
+        if settings.versions:
+            lines.append(versions_line())
+        return tuple(lines)
+
+    def _pseudo_pure_warning(self, spec) -> bool:
+        """Warn once per fluid that a pseudo-pure blend has no quality lines; False for other fluids."""
+        blend = getattr(self.fluid(spec.fluid), "pseudo_pure_blend", None)
+        if blend is None:
+            return False
+        key = ("pseudo-pure", spec.fluid)
+        if key not in self._warned:
+            self._warned.add(key)
+            warnings.warn("{0} is CoolProp's pseudo-pure model of a blend: it has no two-phase states, so the "
+                          "lines of constant vapour quality are left out and the dome has no glide. Use "
+                          "'{1}' for the blend as a mixture.".format(spec.fluid.name, blend), UserWarning,
+                          stacklevel=4)
+        return True
 
     def _warn(self, spec, domain, request, message):
         # Keyed like the curve itself, so a gappy line in a new domain warns again

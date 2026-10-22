@@ -211,6 +211,39 @@ def test_cycles_round_trip_through_json(diagram):
     assert isinstance(again.cycles[0], CycleSpec) and again.cycles[0].paths == (((1, 2), "straight"),)
 
 
+def test_state_labels_follow_the_numbers_or_stand_alone(diagram):
+    diagram.add_cycle("Heat pump", HEAT_PUMP, labels={2: "discharge", 4: "after the valve"})
+    scene = diagram.update_scene()
+    texts = {n: scene["cycle/Heat pump/number/{0}".format(n)].text for n in (1, 2, 3, 4)}
+    assert texts == {1: "1", 2: "2: discharge", 3: "3", 4: "4: after the valve"}
+    # Without numbers only the labelled states get a text
+    diagram.add_cycle("Heat pump", HEAT_PUMP, numbers=False, labels={2: "discharge"})
+    scene = diagram.update_scene()
+    assert [t.text for t in scene.group("cycle/Heat pump/numbers")] == ["discharge"]
+    # Labels survive moving a state and a round trip through JSON
+    diagram.move_cycle_state("Heat pump", 3, 300.0, 15.0)
+    assert dict(diagram.spec.cycles[0].labels) == {2: "discharge"}
+    data = json.loads(json.dumps(diagram.spec.to_dict()))
+    assert data["cycles"][0]["labels"] == [[2, "discharge"]]
+    assert DiagramSpec.from_dict(data) == diagram.spec
+
+
+def test_a_cycle_without_labels_keeps_its_old_record(diagram):
+    diagram.add_cycle("Heat pump", HEAT_PUMP)
+    assert "labels" not in diagram.spec.to_dict()["cycles"][0]
+
+
+@pytest.mark.parametrize("labels, match", [({5: "x"}, "no state 5"), ({2: ""}, "non-empty"), ({2: 3}, "non-empty"),
+                                           ({2.5: "x"}, "state numbers"), ({True: "x"}, "state numbers"),
+                                           ([(2, "a"), (2, "b")], "labelled twice"), (0, "labels are"),
+                                           (False, "labels are"), ("2: x", "labels are"), ([(2,)], "pair"),
+                                           ({2: "\ud800"}, "not valid text")])
+def test_bad_state_labels_are_refused(diagram, labels, match):
+    with pytest.raises(ValueError, match=match):
+        diagram.add_cycle("Heat pump", HEAT_PUMP, labels=labels)
+    assert diagram.spec.cycles == ()
+
+
 def test_cycle_object_defaults():
     s = StateInput((("p", 1e5), ("T", 300.0)))
     with pytest.raises(ValueError):

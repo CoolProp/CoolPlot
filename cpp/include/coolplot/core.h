@@ -202,6 +202,8 @@ struct DiagramType
     const Family* family(const std::string& iso_key) const;
     /// The name of a quantity in this kind of chart ("Dry-bulb temperature" on a psychrometric chart).
     std::string quantity_label(const std::string& key) const;
+    /// The symbol of a quantity in this diagram ("x" for the humidity ratio on the Mollier chart).
+    std::string symbol(const std::string& key) const;
 };
 
 }  // namespace coolplot

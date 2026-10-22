@@ -17,7 +17,14 @@ from .quantities import quantity_key
 STATE_KEYS = ("T", "p", "h", "s", "rho", "v", "u", "Q")
 
 #: Quantities stored in every state of humid air (per kg of dry air).
-AIR_STATE_KEYS = ("T", "W", "RH", "Twb", "Tdp", "h", "v", "p")
+AIR_STATE_KEYS = ("T", "W", "RH", "Twb", "Tdp", "h", "v", "Thx", "p")
+
+#: The constants of the temperature scale Thx of the Mollier h,x chart:
+#: Thx = 0 deg C + (h - R0 W) / cp_a, linear in the enthalpy h per kg of dry air.
+#: R0 is the enthalpy of evaporation of water at 0 deg C, cp_a the specific
+#: heat of dry air.
+R0_J_KG = 2500e3
+CP_DRY_AIR_J_KG_K = 1006.0
 
 # The order in which a StatePoint keeps its quantities, whatever order they
 # were given in, so that equal states compare and hash equal and a state
@@ -102,8 +109,11 @@ class StatePoint:
 
     @classmethod
     def from_dict(cls, data: dict) -> "StatePoint":
-        """A state from a dict of SI values."""
-        return cls(**{k: float(v) for k, v in data.items()})
+        """A state from a dict of SI values.
+
+        A humid-air state written before 1.2 has no Thx; it is computed here.
+        """
+        return with_mollier_temperature(cls(**{k: float(v) for k, v in data.items()}))
 
     # Value semantics -----------------------------------------------------
     def __setattr__(self, name, value):
@@ -121,6 +131,18 @@ class StatePoint:
     def __reduce__(self):
         # Pickled as its values, so a state travels to worker processes
         return (_state_from_items, (self._values,))
+
+
+def with_mollier_temperature(state: StatePoint) -> StatePoint:
+    """The state with the temperature scale Thx of the Mollier chart.
+
+    A humid-air state (one with h and W) made before 1.2 lacks it; any
+    other state is returned as it is.
+    """
+    if "Thx" in state or "W" not in state or "h" not in state:
+        return state
+    Thx_K = 273.15 + (state.h - R0_J_KG * state.W) / CP_DRY_AIR_J_KG_K
+    return StatePoint(Thx=Thx_K, **state.to_dict())
 
 
 def _state_from_items(items) -> StatePoint:

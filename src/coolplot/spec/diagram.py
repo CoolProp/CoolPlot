@@ -16,6 +16,7 @@ Change it with the ``with_*`` methods, which return a new spec.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from numbers import Integral
 from typing import Any, Dict, Optional, Tuple
 
 from ..core.cycle import Cycle, StateInput, check_loops, check_paths, default_loops
@@ -218,6 +219,39 @@ def _checked_states(name: str, states) -> Tuple[Tuple[int, StateInput], ...]:
     return checked
 
 
+def _checked_labels(name: str, numbers, labels) -> Tuple[Tuple[int, str], ...]:
+    """(number, text) pairs sorted by number, each for a state of the cycle and at most once."""
+    if isinstance(labels, dict):
+        items = list(labels.items())
+    elif isinstance(labels, (list, tuple)):
+        items = list(labels)
+    else:
+        raise ValueError("Cycle '{0}': labels are a dict {{number: text}} or (number, text) pairs, not {1!r}.".format(
+            name, labels))
+    checked = []
+    for item in items:
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            raise ValueError("Cycle '{0}': a label is a (number, text) pair, not {1!r}.".format(name, item))
+        number, text = item
+        if isinstance(number, bool) or not isinstance(number, Integral):
+            raise ValueError("Cycle '{0}': label keys are state numbers, not {1!r}.".format(name, number))
+        if int(number) not in numbers:
+            raise ValueError("Cycle '{0}' has no state {1} to label.".format(name, number))
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("Cycle '{0}', state {1}: a label is a non-empty text, not {2!r}.".format(
+                name, number, text))
+        try:
+            text.encode("utf-8")   # a lone surrogate cannot be written to SVG, PDF or the core
+        except UnicodeEncodeError:
+            raise ValueError("Cycle '{0}', state {1}: the label {2!r} is not valid text.".format(
+                name, number, text)) from None
+        checked.append((int(number), str(text)))
+    checked.sort()
+    if len({n for n, _ in checked}) != len(checked):
+        raise ValueError("Cycle '{0}': a state is labelled twice.".format(name))
+    return tuple(checked)
+
+
 @dataclass(frozen=True)
 class CycleSpec:
     """A cycle to draw: numbered states, the chains through them and how paths are drawn
@@ -226,7 +260,9 @@ class CycleSpec:
     of state numbers (one closed loop through all states in ascending order
     if empty), ``paths`` (from, to) -> path kind for connections that should
     not use "auto". ``numbers`` shows the state numbers. ``steps`` is the
-    number of segments per drawn path.
+    number of segments per drawn path. ``labels`` are (number, text)
+    pairs: the text is written next to that state, after its number
+    ("2: ADP 11.2 deg C"), or alone when the numbers are hidden.
     """
     name: str
     states: Tuple[Tuple[int, StateInput], ...]
@@ -236,6 +272,7 @@ class CycleSpec:
     line_style: Optional[LineStyle] = None
     marker_style: Optional[MarkerStyle] = None
     steps: int = 20
+    labels: Tuple[Tuple[int, str], ...] = ()
 
     def __post_init__(self):
         states = _checked_states(self.name, self.states)
@@ -247,6 +284,7 @@ class CycleSpec:
             raise ValueError("Cycle '{0}': steps has to be at least 1.".format(self.name))
         object.__setattr__(self, "steps", int(self.steps))
         object.__setattr__(self, "numbers", bool(self.numbers))
+        object.__setattr__(self, "labels", _checked_labels(self.name, numbers, self.labels))
 
     @classmethod
     def from_cycle(cls, cycle: Cycle, **changes) -> "CycleSpec":
@@ -258,11 +296,14 @@ class CycleSpec:
 
     def to_dict(self) -> dict:
         """The record of docs/reference/contracts.md for this cycle."""
-        return {"name": self.name, "states": [[n, s.to_dict()] for n, s in self.states],
-                "loops": [list(c) for c in self.loops], "paths": [[list(p), k] for p, k in self.paths],
-                "numbers": self.numbers, "steps": self.steps,
-                "line_style": None if self.line_style is None else style_to_dict(self.line_style),
-                "marker_style": None if self.marker_style is None else style_to_dict(self.marker_style)}
+        record = {"name": self.name, "states": [[n, s.to_dict()] for n, s in self.states],
+                  "loops": [list(c) for c in self.loops], "paths": [[list(p), k] for p, k in self.paths],
+                  "numbers": self.numbers, "steps": self.steps,
+                  "line_style": None if self.line_style is None else style_to_dict(self.line_style),
+                  "marker_style": None if self.marker_style is None else style_to_dict(self.marker_style)}
+        if self.labels:   # left out when empty, so records without labels stay as they were
+            record["labels"] = [[n, text] for n, text in self.labels]
+        return record
 
     @classmethod
     def from_dict(cls, data: dict) -> "CycleSpec":
@@ -272,7 +313,7 @@ class CycleSpec:
                    tuple((tuple(p), k) for p, k in data.get("paths", ())), data.get("numbers", True),
                    None if data.get("line_style") is None else style_from_dict(LineStyle, data["line_style"]),
                    None if data.get("marker_style") is None else style_from_dict(MarkerStyle, data["marker_style"]),
-                   data.get("steps", 20))
+                   data.get("steps", 20), tuple((n, text) for n, text in (data.get("labels") or ())))
 
 
 @dataclass(frozen=True)
@@ -286,7 +327,11 @@ class DiagramSpec:
     ``style_overrides`` maps an isoline quantity to LineStyle field changes
     on top of the theme, stored as sorted pairs so the spec stays hashable.
     ``view_SI`` is the zoom window ((x_min, x_max), (y_min, y_max)) in SI
-    units, None for the full calculation region.
+    units, None for the full calculation region. ``show_saturation`` draws
+    the saturation curve (quality 0 and 1, or 100 % relative humidity)
+    whatever lines are set (True), hides it (False), or leaves it to the
+    values of the quality or humidity family (None, how a spec saved
+    before 1.2 reads).
     """
     fluid: Any
     diagram: DiagramType = DiagramType("p", "h")
@@ -299,6 +344,7 @@ class DiagramSpec:
     style_overrides: Tuple[Tuple[str, Tuple[Tuple[str, Any], ...]], ...] = ()
     view_SI: Tuple[Limits, Limits] = (None, None)
     title: str = ""
+    show_saturation: Optional[bool] = True
 
     def __post_init__(self):
         fluid = self.fluid if isinstance(self.fluid, HumidAirSpec) else FluidSpec.parse(self.fluid)
@@ -323,6 +369,8 @@ class DiagramSpec:
         _unique([c.name for c in self.cycles], "Cycle names have to be unique")
         object.__setattr__(self, "cycles", tuple(self.cycles))
         object.__setattr__(self, "view_SI", _checked_view(self.view_SI))
+        if self.show_saturation not in (True, False, None):
+            raise ValueError("show_saturation is True, False or None, not {0!r}.".format(self.show_saturation))
         object.__setattr__(self, "isolines", tuple(self.isolines))
         object.__setattr__(self, "processes", tuple(self.processes))
         object.__setattr__(self, "style_overrides", tuple(sorted(
@@ -396,7 +444,7 @@ class DiagramSpec:
                 "style_overrides": {k: {name: _plain(v) for name, v in changes}
                                     for k, changes in self.style_overrides},
                 "view_SI": [None if lim is None else list(lim) for lim in self.view_SI],
-                "title": self.title}
+                "title": self.title, "show_saturation": self.show_saturation}
 
     @classmethod
     def from_dict(cls, data: dict) -> "DiagramSpec":
@@ -413,7 +461,9 @@ class DiagramSpec:
                    cycles=tuple(CycleSpec.from_dict(c) for c in data.get("cycles", ())),
                    style_overrides=overrides,
                    view_SI=tuple(None if lim is None else tuple(lim) for lim in data.get("view_SI", (None, None))),
-                   title=data.get("title", ""))
+                   title=data.get("title", ""),
+                   # A record saved before 1.2 has no such field: its family values decide, as they did
+                   show_saturation=data.get("show_saturation"))
 
 
 # Validation helpers ----------------------------------------------------------
@@ -454,9 +504,12 @@ def _hashable(value):
 def _units_to_dict(units: UnitSystem):
     if UNIT_SYSTEMS.get(units.name.upper()) == units:
         return units.name
+    # The Mollier temperature scale is left out where it copies the
+    # temperature: a record without it reads the same, also in CoolPlot 1.1
     return {"name": units.name,
             "units": {k: [u.label, u.scale, u.offset] + ([u.difference_label] if u.difference_label else [])
-                      for k, u in units.units.items()}}
+                      for k, u in units.units.items()
+                      if not (k == "Thx" and units.units.get("T") == u)}}
 
 
 def _units_from_dict(data) -> UnitSystem:

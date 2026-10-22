@@ -86,6 +86,54 @@ TEST_CASE("A psychrometric chart with an air process", "[compose]") {
     check_case("compose_r290_ph_line_labels.json");
 }
 
+TEST_CASE("State labels after the numbers, and alone with the numbers hidden", "[compose]") {
+    check_case("compose_psychrometric_labels.json");
+}
+
+TEST_CASE("The Mollier h,x chart with isotherms, x and phi", "[compose]") {
+    check_case("compose_mollier.json");
+}
+
+TEST_CASE("The saturation curve without lines of constant quality", "[compose]") {
+    check_case("compose_r290_ts_saturation_only.json");
+}
+
+TEST_CASE("Labels on rails, with the legend in the emptiest corner", "[compose][rails]") {
+    check_case("compose_rails_r290_ph.json");
+    check_case("compose_rails_r290_ph_narrow.json");
+    check_case("compose_rails_r290_ph_outside_legend.json");
+    check_case("compose_rails_r290_ph_anchored.json");
+}
+
+TEST_CASE("Rails keep their labels and families when a state moves", "[compose][rails]") {
+    check_case("compose_rails_r290_ph_moved.json");
+}
+
+TEST_CASE("Rails on psychrometric and Mollier charts", "[compose][rails]") {
+    check_case("compose_rails_psychrometric.json");
+    check_case("compose_rails_mollier.json");
+}
+
+TEST_CASE("Malformed state labels are refused, a null list reads as none", "[compose]") {
+    json input = load("compose_psychrometric_labels.json").at("input");
+    for (const char* bad : {R"([[2.5, "x"]])", R"([[2, 3]])", R"([[2]])", R"([[2, "a"], [2, "b"]])", R"({"2": "x"})"}) {
+        json changed = input;
+        changed["spec"]["cycles"][0]["labels"] = json::parse(bad);
+        INFO(bad);
+        CHECK_THROWS_AS(compose_json(changed.dump()), Error);
+    }
+    json none = input;
+    none["spec"]["cycles"][0]["labels"] = nullptr;
+    Scene scene = Scene::from_json(json::parse(compose_json(none.dump())));
+    int found = 0;
+    for (const Item& item : scene.items)
+        if (item.id == "cycle/Air conditioning/number/2") {
+            ++found;
+            CHECK(item.text == "2");
+        }
+    CHECK(found == 1);
+}
+
 TEST_CASE("Label texts and axis titles", "[compose]") {
     json data = load("compose_r290_ph.json");
     DiagramSpec spec = DiagramSpec::from_json(data.at("input").at("spec"));

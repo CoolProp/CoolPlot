@@ -221,6 +221,8 @@ AxesSpec AxesSpec::from_json(const json& data) {
     }
     a.title = data.value("title", "");
     if (data.contains("style")) a.style = AxesStyle::from_json(data.at("style"));
+    // The composer gives an "auto" legend its corner; a scene made without it gets the upper right one
+    if (a.style.legend.location == "auto") a.style.legend.location = "upper right";
     a.tick_digits = data.value("tick_digits", 6);
     a.validate();
     return a;

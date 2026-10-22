@@ -7,14 +7,36 @@ diagram.settings = diagram.settings.with_(labels={"mode": "edge"})
 
 | mode | Where labels go |
 |------|-----------------|
-| `"edge"` (default) | just inside the frame where each line leaves the chart, rotated along the line, as printed refrigerant charts do |
+| `"rails"` (default, since 1.2) | the bare values of each family in a row along one edge: outside the frame at the top and on the right, with a tick where the line leaves, or just inside the frame, turned along the lines; symbol and unit are in the legend |
+| `"edge"` | the full label ("T=20 deg C") just inside the frame where each line leaves the chart, rotated along the line (the default before 1.2) |
 | `"margin"` | outside the frame like a second set of tick labels (vertical at the top), never touching the data |
 | `"inline"` | at `position` along each line |
 
-In edge mode every cycle keeps a zone of `keep_out_pt` points free of
-labels, no two labels overlap, and a label that does not fit is left out.
-A label keeps its place from one redraw to the next while that place
-stays free, so labels do not jump while a cycle is dragged.
+On rails each family takes the row where most of its labels fit, and
+when not all fit it drops whole levels of values: a family stepped by 10
+keeps the multiples of 100 longest, then those of 50 and 20, so the row
+stays regular. Lines that leave through another edge
+get a second row; lines that end inside the chart get a label near
+their end. The legend reads "Temperature T / deg C", or "Specific
+entropy s at T_sat / deg C" for lines labelled by their saturation
+states. With legend
+location "auto" (the default) it sits inside the plot area, in the corner
+where it covers the fewest cycle points, then the fewest lines; on a small
+page, where it would cover more than a quarter of the plot area, it goes
+outside on the right.
+
+In rails and edge mode every cycle keeps a zone of `keep_out_pt` points
+free of labels, no two labels overlap, and a label that does not fit is
+left out. Labels keep their place from one redraw to the next while it
+stays free, so they do not jump while a cycle is dragged.
+
+The look before 1.2, full labels and the legend outside:
+
+```python
+diagram.settings = diagram.settings.with_(labels={"mode": "edge"})
+legend = diagram.theme.axes.legend.with_(location="outside right")
+diagram.theme = diagram.theme.with_(axes=diagram.theme.axes.with_(legend=legend))
+```
 
 Other fields of `LabelSettings`: `edges` (the preferred frame edges per
 family, e.g. `{"T": ("top", "right")}`), `fallback` (allow positions

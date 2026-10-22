@@ -6,6 +6,7 @@
 #ifndef COOLPLOT_LAYOUT_H
 #define COOLPLOT_LAYOUT_H
 
+#include <limits>
 #include <map>
 #include <string>
 #include <vector>
@@ -19,7 +20,10 @@ extern const double LABEL_LINE_HEIGHT;  ///< label box height relative to the fo
 extern const double LABEL_PAD_PT;       ///< free space between a label and the frame or a neighbour
 extern const double LABEL_MAX_BEND_DEG; ///< labels are not put where the line bends more than this
 
-/// One line that wants a label, in display coordinates.
+/// One line that wants a label, in display coordinates. ``value`` is the
+/// line's value in display units (NaN where it has none) and ``line_color``
+/// the colour of the line; the "rails" mode thins by the one and colours
+/// ticks with the other.
 struct LabelRequest
 {
     std::string id;
@@ -29,6 +33,14 @@ struct LabelRequest
     TextStyle style;
     std::vector<double> x;
     std::vector<double> y;
+    double value = std::numeric_limits<double>::quiet_NaN();
+    Color line_color = Color::none();
+};
+
+/// An upright box no label may overlap (the legend, the badge), in points: centre and half sizes.
+struct TakenBox
+{
+    double cx, cy, half_w, half_h;
 };
 
 /// The visible plot area and its size, to convert display units to points
@@ -80,10 +92,24 @@ struct KeepOut
     bool joined = true;
 };
 
-/// Edge labels for the requests, most important first (coolplot.compose.layout.place_edge_labels).
+/// Points every 2 pt along the lines (single points for unjoined markers), in pt (coolplot.compose.layout.keep_out_points).
+void keep_out_points_pt(const Frame& frame, const std::vector<KeepOut>& lines, std::vector<double>& xs, std::vector<double>& ys);
+
+/// Edge labels for the requests, most important first (coolplot.compose.layout.place_edge_labels);
+/// ``occupied`` are boxes no label may overlap (the legend).
 std::vector<Item> place_edge_labels(const std::vector<LabelRequest>& requests, const Frame& frame, const std::vector<KeepOut>& keep_out,
                                     double keep_out_pt, const std::map<std::string, std::vector<std::string>>& preferred_edges,
-                                    const std::map<std::string, Item>& previous, bool fallback);
+                                    const std::map<std::string, Item>& previous, bool fallback,
+                                    const std::vector<TakenBox>& occupied = std::vector<TakenBox>());
+
+/// The level of each value for thinning: 0 for multiples of ten steps, 1 of five, 2 of two, 3 for the rest
+/// (coolplot.compose.rails.value_levels).
+std::vector<int> value_levels(const std::vector<double>& values);
+
+/// Ticks and labels on rails along the frame (coolplot.compose.rails.place_rail_labels).
+std::vector<Item> place_rail_labels(const std::vector<LabelRequest>& requests, const Frame& frame, const std::vector<KeepOut>& keep_out,
+                                    double keep_out_pt, const std::map<std::string, Item>& previous, const std::vector<TakenBox>& occupied,
+                                    bool outer_right);
 
 /// Horizontal labels outside the frame where the lines cross it.
 std::vector<Item> place_margin_labels(const std::vector<LabelRequest>& requests, const Frame& frame, const std::vector<std::string>& edges,

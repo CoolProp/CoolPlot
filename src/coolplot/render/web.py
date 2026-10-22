@@ -42,6 +42,7 @@ import numpy as np
 from ..core.events import Click, Drag, DragEnd, DragStart, Hover, ViewChanged
 from ..scene import AxesSpec, Line, Markers
 from .base import SyncReport
+from .base import warn_without_branding as _warn_without_branding
 from .svg import PX_PER_PT, SvgRenderer, check_suffix
 from ..core.floats import is_zero
 
@@ -193,8 +194,11 @@ def scene_page(scene, width: int = 800, height: int = 600, margins=(80, 20, 40, 
 
     The page holds the scene record (docs/reference/contracts.md) and the
     JavaScript renderer; nothing is computed on a server, and the page
-    shows the same SVG the SVG backend would write. ASCII only.
+    shows the same SVG the SVG backend would write, except for the
+    branding: the JavaScript writer does not draw the badge or the
+    watermark yet, and a branded scene warns once. ASCII only.
     """
+    _warn_without_branding("scene_page (the JavaScript writer)", scene.axes)
     # In scene order: the JavaScript writer takes the legend from that order
     # and sorts by z order for drawing, like the SVG backend
     record = json.dumps(scene.to_dict(in_draw_order=False), allow_nan=False, separators=(",", ":"))
@@ -579,6 +583,8 @@ class WebRenderer(SvgRenderer):
             item = self._items.get(item_id)
             if item is None or not item.visible or not isinstance(item, (Line, Markers)):
                 continue
+            if isinstance(item, Markers) and is_zero(item.style.size_pt):
+                continue   # markers without size (the corners of a zone) cannot be grabbed
             xs, ys = (np.asarray(v, dtype=float) for v in to_px(item.x, item.y))
             if isinstance(item, Markers):
                 reach = max(radius, item.style.size_pt * PX_PER_PT / 2.0)

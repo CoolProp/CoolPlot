@@ -159,3 +159,14 @@ def test_markers_are_kept_out_as_points():
     assert len(px) == 2
     px, _ = keep_out_points(frame, [([0.1, 0.9], [0.1, 0.9])])
     assert len(px) > 2
+
+
+def test_a_long_state_label_turns_to_the_side_where_it_stays_inside_the_frame():
+    from coolplot.compose.layout import place_state_numbers
+    from coolplot.scene import Text
+    frame = Frame((0.0, 10.0), (0.0, 10.0), False, False, 400.0, 300.0)
+    label = Text(id="n1", group="g", role="state_number", x=9.5, y=5.0,   # 20 pt from the right edge
+                 text="1: a label far too long to fit to the right of its state", offset_pt=(4.5, 4.5),
+                 style=TextStyle(font=Font(size_pt=8.0), h_align="left", v_align="bottom"))
+    placed = place_state_numbers([label], frame, [9.5], [5.0])
+    assert placed[0].style.h_align == "right" and same_numbers(placed[0].offset_pt, (-4.5, 4.5))

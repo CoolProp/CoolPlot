@@ -18,6 +18,10 @@ Example
 """
 from __future__ import annotations
 
+from numbers import Integral
+
+import numpy as np
+
 from .chart import REMOVED_NAMES, Chart
 from .core.diagram_type import DiagramType
 from .core.limits import Region
@@ -25,10 +29,18 @@ from .core.units import get_unit_system
 from .engine import CurveCache, Engine
 from .spec import DiagramSpec, HumidAirSpec, get_settings
 from .core.limits import within
+from .core.errors import PropertyError
+from .core.state import StatePoint
+from .style.values import LineStyle, MarkerStyle
+from .thermo.humid_air import mixed_air
+
+
+#: The chart styles and their diagram types.
+STYLES = {"psychrometric": "WT", "mollier": "mollier"}
 
 
 class PsychrometricChart(Chart):
-    """A psychrometric chart: humidity ratio over dry-bulb temperature
+    """A psychrometric chart: humidity ratio over dry-bulb temperature, or the Mollier h,x chart
 
     Parameters
     ----------
@@ -46,6 +58,14 @@ class PsychrometricChart(Chart):
         As for :class:`coolplot.PropertyDiagram`.
     points : int, optional
         Points per line; default from ``settings.calc``.
+    style : str
+        "psychrometric" (the default): humidity ratio W over dry-bulb
+        temperature, as in ASHRAE practice. "mollier": the Mollier h,x
+        chart of European practice (DIN 1946), the humidity ratio x on the
+        horizontal axis and a skewed enthalpy axis read as a temperature
+        scale (``T_range``) on the vertical one; it adds isotherms to the
+        lines and writes x and phi for the humidity ratio and the relative
+        humidity. Values are given as W and RH in both.
     engine, cache, background, on_ready, workers
         See :class:`coolplot.Chart`.
     """
@@ -57,7 +77,9 @@ class PsychrometricChart(Chart):
 
     def __init__(self, p: float = None, T_range=(-10.0, 50.0), W_range=(0.0, 30.0), units="engineering",
                  theme=None, settings=None, points: int = None, engine: Engine = None, cache: CurveCache = None,
-                 background: str = None, on_ready=None, workers: int = None):
+                 background: str = None, on_ready=None, workers: int = None, style: str = "psychrometric"):
+        if style not in STYLES:
+            raise ValueError("Unknown style {0!r}, expected one of {1}.".format(style, sorted(STYLES)))
         units = get_unit_system(units, stacklevel=3)
         settings = get_settings(settings)
         if theme is not None:
@@ -65,7 +87,9 @@ class PsychrometricChart(Chart):
         if points is not None:
             settings = settings.with_(calc={"points": int(points)})
         p_Pa = 101325.0 if p is None else float(units["p"].to_SI(p))
-        T_range_K = tuple(units["T"].to_SI(T_range).tolist())
+        diagram = DiagramType.parse(STYLES[style])
+        temperature = "Thx" if diagram.is_mollier else "T"   # the Mollier chart is bounded by its temperature scale
+        T_range_K = tuple(units[temperature].to_SI(T_range).tolist())
         for T_K in T_range_K:
             if not within(T_K, HumidAirSpec.T_LIMITS_K):
                 raise ValueError("Temperatures have to lie between {0} and {1} K for HAPropsSI, got {2} K "
@@ -74,9 +98,14 @@ class PsychrometricChart(Chart):
         W_range = tuple(units["W"].to_SI(W_range).tolist())
         if min(W_range) < 0.0:
             raise ValueError("Humidity ratios have to be at least 0, got {0}.".format(W_range))
-        spec = DiagramSpec(fluid=HumidAirSpec(p_Pa), diagram=DiagramType.parse("WT"), units=units,
-                           limits=Region((("T", T_range_K), ("W", W_range))), settings=settings)
+        spec = DiagramSpec(fluid=HumidAirSpec(p_Pa), diagram=diagram, units=units,
+                           limits=Region(((temperature, T_range_K), ("W", W_range))), settings=settings)
         Chart.__init__(self, spec, engine, cache, background, on_ready, workers)
+
+    @property
+    def style(self) -> str:
+        """"psychrometric" or "mollier", see the class docstring."""
+        return "mollier" if self.spec.diagram.is_mollier else "psychrometric"
 
     @property
     def p_Pa(self) -> float:
@@ -91,3 +120,58 @@ class PsychrometricChart(Chart):
     @points.setter
     def points(self, value):
         self.settings = self.spec.settings.with_(calc={"points": int(value)})
+
+    def add_zone(self, name: str, T_range, RH_range, label: str = None, line_style: LineStyle = None,
+                 units=None, segments: int = 12) -> str:
+        """Outline a region of dry-bulb temperature and relative humidity, e.g. a comfort zone.
+
+        ``T_range`` and ``RH_range`` are (min, max) in the chart's units or
+        in ``units`` (deg C and % with "engineering"). The outline is a
+        closed cycle without markers or state numbers: straight edges at
+        the two temperatures, and two edges that follow the lines of
+        constant relative humidity, each drawn with ``segments`` straight
+        pieces. ``label``, if given, is written at the corner of the
+        lowest temperature and highest humidity. Without ``line_style``
+        the zone is drawn like the next process (it takes a style of the
+        theme's process palette); a dashed grey line keeps it apart from
+        the processes. Its corners cannot be dragged. Returns the name; the
+        zone is removed with :meth:`remove_cycle`.
+
+        >>> chart = PsychrometricChart()
+        >>> chart.add_zone("Comfort", T_range=(20, 26), RH_range=(30, 60), label="comfort")
+        'Comfort'
+        """
+        T_lo, T_hi = sorted(float(t) for t in T_range)
+        RH_lo, RH_hi = sorted(float(rh) for rh in RH_range)
+        if not T_lo < T_hi or not RH_lo < RH_hi:
+            raise ValueError("A zone needs two different temperatures and two different humidities, not {0} "
+                             "and {1}.".format(tuple(T_range), tuple(RH_range)))
+        if isinstance(segments, bool) or not isinstance(segments, Integral) or segments < 1:
+            raise ValueError("segments is a whole number of at least 1, not {0!r}.".format(segments))
+        T_edge = np.linspace(T_lo, T_hi, int(segments) + 1)
+        # Along the lower humidity edge to the warm side, back along the upper edge
+        states = [{"T": T, "RH": RH_lo} for T in T_edge] + [{"T": T, "RH": RH_hi} for T in T_edge[::-1]]
+        labels = {len(states): label} if label else None   # the last state is (T_lo, RH_hi)
+        return self.add_cycle(name, states, numbers=False, units=units, line_style=line_style,
+                              marker_style=MarkerStyle(size_pt=0.0, face_color="none", edge_color="none"),
+                              labels=labels)
+
+    def mix(self, a, b, m_dot_a_kg_s: float = 1.0, m_dot_b_kg_s: float = 1.0, units=None) -> StatePoint:
+        """The state (SI units) after two streams of air mix adiabatically.
+
+        ``a`` and ``b`` are StatePoints or dicts of two properties in the
+        chart's units (or in ``units``), e.g. ``{"T": 32, "RH": 40}``.
+        ``m_dot_a_kg_s`` and ``m_dot_b_kg_s`` are their mass flows of dry
+        air; only the ratio matters. The mixed state lies on the straight
+        line between the two states, closer to the larger stream; it can
+        be given to :meth:`add_cycle` as it is.
+
+        >>> chart = PsychrometricChart()
+        >>> mixed = chart.mix({"T": 32, "RH": 40}, {"T": 24, "RH": 50}, m_dot_a_kg_s=0.3, m_dot_b_kg_s=0.7)
+        >>> round(mixed.T - 273.15, 1)
+        26.4
+        """
+        try:
+            return mixed_air(self.state(a, units), self.state(b, units), m_dot_a_kg_s, m_dot_b_kg_s)
+        except PropertyError as e:
+            raise self._in_units(e) from None

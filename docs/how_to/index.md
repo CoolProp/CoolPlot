@@ -9,8 +9,10 @@ units
 isolines
 labels
 cycles
+psychrometric
 blends
 pdf_print
+branding
 themes
 embedding
 caching

@@ -1,8 +1,10 @@
 # What is not supported
 
 * **Diagram types** other than p-h, T-s, h-s, p-s, p-rho, T-rho and p-T
-  for fluids and the T-W (ASHRAE) psychrometric chart. A Mollier h-x
-  chart of humid air is planned as a variant of the same model.
+  for fluids, and the T-W (ASHRAE) psychrometric chart and the Mollier
+  h,x chart (DIN 1946, VDI 4670) of humid air. The Mollier chart is drawn
+  in its usual construction, with the temperature scale linear in the
+  enthalpy, not on oblique axes of h and x.
 * **Lines of constant specific volume** of a fluid: v is a state
   quantity (1/rho) but not a line family; use density.
 * **Property calculations other than CoolProp's**: the fluids, the

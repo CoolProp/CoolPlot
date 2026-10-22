@@ -63,7 +63,7 @@ place; derive a changed copy with `.with_(...)`.
 | `Font` | `family` (list, first available wins), `size_pt`, `weight` (normal, bold), `style` (normal, italic), `files` (font files to load first) |
 | `TextStyle` | `font`, `color`, `alpha`, `h_align`, `v_align`, `halo_color`, `halo_width_pt` |
 | `AxesStyle` | `background`, `figure_background`, `frame_color`, `frame_width_pt`, tick colour, length, width and direction, fonts for `tick_label`, `axis_label` and `title`, `grid_major`, `grid_minor`, `legend` |
-| `LegendStyle` | `visible`, `location` (upper/lower left/right, outside right), `background`, `frame_color`, `text` |
+| `LegendStyle` | `visible`, `location` (upper/lower left/right, outside right, or "auto": inside, in the emptiest corner, the default since 1.2), `background`, `frame_color`, `text` |
 
 Rules that hold everywhere:
 
