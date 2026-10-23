@@ -8,12 +8,17 @@ bibliography, ``CoolPropBibTeXLibrary.bib``, inside the Python package.
 chart (:class:`coolplot.spec.settings.BrandingSettings`):
 
 * a pure fluid of the HEOS backend: its equation of state;
-* a mixture: the equation of state of every component, then the
-  references of its mixing model (the binary pairs CoolProp has fitted);
+* a mixture: first its name and composition ("R407C: R32 23 %, R125
+  25 %, R134a 52 % by mass"), then the equation of state of every
+  component, then the references of its mixing model (the binary pairs
+  CoolProp has fitted). A mixture given by its fractions is named after
+  the predefined blend of CoolProp with the same composition, if there is
+  one, else "Mixture";
 * humid air: ASHRAE RP-1485 (Herrmann, Kretzschmar and Gatley), the
   basis of ``HAPropsSI``;
 * other backends: the name of the backend (REFPROP, a cubic equation),
-  without a reference, since CoolProp cannot name one.
+  without a reference, since CoolProp cannot name one; with the fractions
+  of a mixture or a solution ("MEG 30 % by mass").
 
 When the bibliography is missing or lacks a key, the line shows the key
 itself, which still identifies the source exactly.
@@ -29,6 +34,7 @@ from typing import Dict, List, Optional, Tuple
 import CoolProp
 import CoolProp.CoolProp as CP
 
+from ..core.numbers import format_number
 from .fluid import Fluid, model_from_string
 
 BIB_FILE = "CoolPropBibTeXLibrary.bib"
@@ -249,31 +255,119 @@ def fluid_references(fluid, style: str = "short") -> Tuple[str, ...]:
     if getattr(fluid, "kind", None) == "humid_air" or type(fluid).__name__ in ("HumidAirSpec", "HumidAir"):
         return ("Humid air: " + cite(HUMID_AIR_KEY, style),)
     if isinstance(fluid, Fluid):
-        backend, components = fluid.model_key[0], fluid.model_key[1]
+        backend, components, fractions, basis = fluid.model_key[:4]
     elif isinstance(fluid, str):
-        backend, components = model_from_string(fluid)[:2]
+        backend, components, fractions, basis = model_from_string(fluid)[:4]
     else:
         backend, components = fluid.backend, tuple(fluid.components)
+        fractions, basis = tuple(getattr(fluid, "fractions", ())), getattr(fluid, "basis", "mole")
     backend = _short_backend(backend)
+    blend = ""
     if backend == "HEOS" and len(components) == 1 and components[0].lower().endswith(".mix"):
-        components = _blend_components(components[0])
-    return _fluid_lines(backend, tuple(components), style)
+        blend = components[0][:-len(".mix")]
+        components, fractions = _blend_composition(components[0])
+        basis = "mole"
+    return _fluid_lines(backend, tuple(components), tuple(float(f) for f in fractions), basis, blend, style)
 
 
 @lru_cache(maxsize=64)
-def _blend_components(name: str) -> Tuple[str, ...]:
-    """The components of a predefined blend such as "R407C.mix"."""
-    return tuple(Fluid("HEOS::" + name).model_key[1])
+def _blend_composition(name: str) -> Tuple[Tuple[str, ...], Tuple[float, ...]]:
+    """(components, mole fractions) of a predefined blend such as "R407C.mix"."""
+    model_key = Fluid("HEOS::" + name).model_key
+    return tuple(model_key[1]), tuple(model_key[2])
+
+
+# Composition of mixtures -----------------------------------------------------
+
+#: How far (in mass fraction) a mixture may be from a predefined blend of
+#: CoolProp to carry its name: half a percent, finer than the steps
+#: between blends of the same components (R407A, R407C, R407F, R407H).
+BLEND_TOLERANCE = 0.005
+
+_BASIS_WORDS = {"mole": "by mole", "mass": "by mass", "volu": "by volume"}
+
+
+def _mass_fractions(components: Tuple[str, ...], fractions: Tuple[float, ...]) -> Optional[Tuple[float, ...]]:
+    """Mass fractions from mole fractions, w_i = x_i M_i / sum(x_j M_j); None if CoolProp lacks a molar mass."""
+    try:
+        weights = [x * CP.PropsSI("molar_mass", name) for x, name in zip(fractions, components)]
+    except Exception:   # a name the HEOS backend does not know
+        return None
+    total = sum(weights)
+    return tuple(w / total for w in weights) if total > 0.0 else None
+
+
+@lru_cache(maxsize=1)
+def _predefined_blends() -> Dict[frozenset, List[Tuple[str, Dict[str, float]]]]:
+    """The predefined blends of CoolProp by their set of components: [(name, {component: mass fraction})].
+
+    CoolProp lists every blend twice ("R407C.mix" and "R407C.MIX"); the
+    first spelling is used. A blend whose components CoolProp cannot load
+    is left out.
+    """
+    blends: Dict[frozenset, List[Tuple[str, Dict[str, float]]]] = {}
+    for name in CP.get_global_param_string("predefined_mixtures").split(","):
+        if not name.endswith(".mix"):
+            continue
+        try:
+            state = CP.AbstractState("HEOS", name)
+            components, mass = tuple(state.fluid_names()), tuple(state.get_mass_fractions())
+        except Exception:   # components or parameters missing in this CoolProp
+            continue
+        blends.setdefault(frozenset(components), []).append((name[:-len(".mix")], dict(zip(components, mass))))
+    return blends
+
+
+def blend_name(components: Tuple[str, ...], mass_fractions: Tuple[float, ...]) -> str:
+    """The name of the predefined blend of CoolProp with this composition, e.g. "R410A", or "".
+
+    Matches when every mass fraction is within :data:`BLEND_TOLERANCE`;
+    of several matches the closest one wins.
+    """
+    best, best_distance = "", BLEND_TOLERANCE
+    for name, blend in _predefined_blends().get(frozenset(components), ()):
+        distance = max(abs(blend[c] - w) for c, w in zip(components, mass_fractions))
+        if distance <= best_distance:
+            best, best_distance = name, distance
+    return best
+
+
+def composition_text(components: Tuple[str, ...], fractions: Tuple[float, ...], basis: str) -> str:
+    """"R32 70 %, R125 30 % by mole": every component with its fraction in per cent."""
+    parts = ["{0} {1} %".format(name, format_number(100.0 * f, 3)) for name, f in zip(components, fractions)]
+    return "{0} {1}".format(", ".join(parts), _BASIS_WORDS.get(basis, "by " + basis))
+
+
+def _composition_line(backend: str, components: Tuple[str, ...], fractions: Tuple[float, ...], basis: str,
+                      blend: str) -> str:
+    """"R407C: R32 23 %, R125 25 %, R134a 52 % by mass", or "Mixture: ..." for a blend without a name.
+
+    A named refrigerant blend is shown by mass, as its R number is defined
+    (ASHRAE Standard 34); every other mixture in the basis it was given in.
+    """
+    mass: Optional[Tuple[float, ...]] = None
+    if backend == "HEOS":
+        mass = fractions if basis == "mass" else _mass_fractions(components, fractions) if basis == "mole" else None
+    if mass is not None:
+        blend = blend or blend_name(components, mass)
+        if re.match(r"R\d", blend):
+            fractions, basis = mass, "mass"
+    return "{0}: {1}".format(blend or "Mixture", composition_text(components, fractions, basis))
 
 
 @lru_cache(maxsize=256)
-def _fluid_lines(backend: str, components: Tuple[str, ...], style: str) -> Tuple[str, ...]:
+def _fluid_lines(backend: str, components: Tuple[str, ...], fractions: Tuple[float, ...], basis: str, blend: str,
+                 style: str) -> Tuple[str, ...]:
     if backend != "HEOS":
         names = ", ".join(components)
+        if fractions:
+            names = composition_text(components, fractions, basis)
         labels = {"REFPROP": "REFPROP", "PR": "Peng-Robinson equation of state",
                   "SRK": "Soave-Redlich-Kwong equation of state", "INCOMP": "CoolProp incompressible fluid"}
         return ("{0}: {1}".format(names, labels.get(backend, backend + " backend of CoolProp")),)
     lines = []
+    if len(components) > 1 and len(fractions) == len(components):
+        lines.append(_composition_line(backend, components, fractions, basis, blend))
     for name in components:
         try:
             key = CP.get_BibTeXKey(name, "EOS")

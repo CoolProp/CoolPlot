@@ -50,9 +50,25 @@ the bibliography that ships in the CoolProp package.
 | Fluid | Lines |
 |---|---|
 | a pure fluid | its equation of state |
-| a mixture (`"R407C.mix"`, `"R32[0.7]&R125[0.3]"`) | each component, then "Mixture model:" with the references of the fitted binary pairs |
+| a mixture (`"R407C.mix"`, `"R32[0.7]&R125[0.3]"`) | its name and composition, then each component, then "Mixture model:" with the references of the fitted binary pairs |
 | humid air (psychrometric charts) | ASHRAE RP-1485 (Herrmann, Kretzschmar and Gatley) |
-| REFPROP, Peng-Robinson, SRK, incompressibles | the name of the backend, no reference |
+| REFPROP, Peng-Robinson, SRK, incompressibles | the name of the backend, no reference; the fractions of a mixture or solution ("MEG 30 % by mass") |
+
+The first line of a mixture names it and gives its composition, since
+1.4:
+
+| Fluid | First line |
+|---|---|
+| `"R407C.mix"` | R407C: R32 23 %, R125 25 %, R134a 52 % by mass |
+| `"R32[0.697616]&R125[0.302384]"` | R410A: R32 50 %, R125 50 % by mass |
+| `"R32[0.2]&R125[0.8]"` | Mixture: R32 20 %, R125 80 % by mole |
+
+A mixture given by its fractions carries the name of the predefined
+blend of CoolProp with the same components and a composition within half
+a percent (by mass); otherwise it is called "Mixture". Refrigerant blends
+with an R number are shown by mass, as the R number is defined (ASHRAE
+Standard 34); other mixtures in the basis of their fractions, which is
+by mole for fluid strings.
 
 `coolplot.thermo.references.fluid_references` returns the same lines for
 use elsewhere, for example in a report.
