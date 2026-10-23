@@ -173,7 +173,7 @@ definition; contributing/writing_a_backend.md says how each field is rendered.
      "style": {...}, "x": [...], "y": [...]},
     {"type": "text", "id": "iso/T/273.15/label", "group": "iso/T/label", "role": "isoline_label",
      "legend": null, "visible": true, "z_order": 4.0, "style": {...},
-     "x": 412.3, "y": 3.2, "text": "T=0 deg C", "direction": [1.0, 0.1],
+     "x": 412.3, "y": 3.2, "text": "T=0 \u00b0C", "direction": [1.0, 0.1],
      "offset_pt": [0.0, 0.0], "clip": true}
   ]
 }
