@@ -9,6 +9,10 @@ guide in the documentation says what to change in your code.
 ## [1.4.0] - 2026-10-23
 
 ### Added
+- Gallery example "A company chart: Clean Heat Partners": a theme with
+  the company colours, the saturation line without casing, the company
+  logo and brandmark (SVG files in `examples/data`, trademarks outside the
+  MIT licence, see `examples/data/NOTICE`) on an R290 heat pump.
 - `LabelSettings.symbols`: "unicode" writes symbols and units in axis
   titles, legends and labels with their own characters (the Greek rho
   and phi, the degree sign, m3 with a superscript 3), "ascii" with plain
@@ -40,6 +44,27 @@ guide in the documentation says what to change in your code.
 - A new picture on the landing page and in the README, drawn by the code
   next to it (now with round values, `rounding=True`): labels on rails,
   the legend inside the plot and the symbols of 1.4.
+- A chart compares a cycle's fluid with its own as a model
+  (`Fluid.same_fluid`): the same mixture by mass, by mole or as a
+  predefined blend (R32/R125 50/50 by mass and "R410A.mix"), with its
+  components in the same order, and a pure fluid by an alias ("R290" and
+  "Propane") count as one fluid. A mixture's fractions are compared to
+  1e-9 and its interaction parameters to 1e-12. The message for a cycle
+  of another fluid gives the basis of a mixture by mass ("(fractions by
+  mass)"), and says "another model of" when both fluids print alike.
+
+### Fixed
+- A cycle was checked against its chart by the name of its fluid, which
+  loses the basis of the fractions, interaction parameters set on a
+  mixture and the fractions of an AbstractState. So a cycle of a mixture
+  given by mass fractions (a `FluidSpec` with `basis="mass"`), with its
+  own interaction parameters or as an AbstractState was refused by its
+  own chart ("Cycle ... was computed for X, but this chart shows X"), and
+  a cycle with other interaction parameters was taken by a chart without
+  them. A cycle now keeps the model of its fluid (`Cycle.fluid_model`,
+  `Fluid.model_key`, filled in by the cycle models), and the chart
+  rebuilds the fluid from it (`Fluid.from_model`); a cycle with only a
+  name is checked by the name, as before.
 
 ## [1.3.0] - 2026-10-22
 

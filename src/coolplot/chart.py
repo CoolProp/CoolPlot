@@ -60,6 +60,7 @@ from .spec.diagram import ANCHOR_KEYS
 from .style.theme import Theme, get_theme
 from .style.values import LineStyle, MarkerStyle
 from .thermo.cycles.paths import resolve_state
+from .thermo.fluid import Fluid
 from .thermo.provider import PropertyProvider
 
 if TYPE_CHECKING:   # only for the type checker: the renderers are imported when a chart is drawn
@@ -199,6 +200,28 @@ REMOVED_NAMES = {
     "set_isoline_style": "use set_line_style",
     "savefig": "use save",
 }
+
+
+def _fluid_text(name: str, model: Tuple) -> str:
+    """A fluid for a message: its name, and the basis of a mixture's fractions when that is mass or volume.
+
+    "HEOS::R32[0.5]&R125[0.5]" reads as mole fractions; given by mass it is
+    written "HEOS::R32[0.5]&R125[0.5] (fractions by mass)". A fluid of one
+    component keeps its name; so does an INCOMP fluid, which is one
+    component in CoolProp ("MEG" in "INCOMP::MEG[0.3]").
+    """
+    if not model or len(model[1]) < 2 or model[3] not in ("mass", "volu"):
+        return name
+    return "{0} (fractions by {1})".format(name, "volume" if model[3] == "volu" else "mass")
+
+
+def _other_fluid_message(cycle: Cycle, chart_fluid: str, chart_model: Tuple) -> str:
+    """Why a cycle does not belong on a chart; says so when the two fluids print alike."""
+    theirs, mine = _fluid_text(cycle.fluid, cycle.fluid_model), _fluid_text(chart_fluid, chart_model)
+    if theirs == mine:
+        return ("Cycle '{0}' was computed for another model of {1} than this chart's (other fractions, "
+                "basis of the fractions or interaction parameters).".format(cycle.name, mine))
+    return "Cycle '{0}' was computed for {1}, but this chart shows {2}.".format(cycle.name, theirs, mine)
 
 
 class Chart:
@@ -656,9 +679,10 @@ class Chart:
                          line_style: Optional[LineStyle], marker_style: Optional[MarkerStyle], steps: int,
                          labels: Labels = None) -> CycleSpec:
         """A CycleSpec for a computed Cycle, after checking that it belongs to this chart's fluid."""
-        if cycle.fluid and self._other_fluid(cycle.fluid):
-            raise ValueError("Cycle '{0}' was computed for {1}, but this chart shows {2}.".format(
-                cycle.name, cycle.fluid, self.spec.fluid))
+        if (cycle.fluid or cycle.fluid_model) and self._other_fluid(cycle):
+            own = self.fluid
+            chart_model = own.model_key if isinstance(own, Fluid) else ()
+            raise ValueError(_other_fluid_message(cycle, str(self.spec.fluid), chart_model))
         states = tuple((n, check_state(state, self.fluid)) for n, state in cycle.states)
         cycle = replace(cycle, states=states)   # with v filled in for a cycle computed before 0.7
         return CycleSpec.from_cycle(cycle, name=name, loops=loops, paths=paths, numbers=numbers,
@@ -681,12 +705,20 @@ class Chart:
             where = "{0} '{1}'".format(e.where, cycle.name) if e.where else "Cycle '{0}'".format(cycle.name)
             raise self._in_units(e).with_where(where) from None
 
-    def _other_fluid(self, fluid_name: str) -> bool:
-        """Whether a cycle computed for ``fluid_name`` belongs to another fluid."""
-        from .thermo.fluid import Fluid
-        if self.spec.fluid.kind != "fluid":
+    def _other_fluid(self, cycle: Cycle) -> bool:
+        """Whether ``cycle`` was computed for another fluid than this chart's.
+
+        The cycle's fluid is rebuilt from its model (:attr:`Cycle.fluid_model`,
+        which the cycle models fill in), or from its name for a cycle without
+        one, and compared with :meth:`coolplot.thermo.Fluid.same_fluid`: the
+        same mixture given by mass, by mole or as a predefined blend, with
+        its components in the same order, counts as one fluid.
+        """
+        own = self.fluid
+        if not isinstance(own, Fluid):   # humid air: a cycle of a fluid does not belong on it
             return True
-        return Fluid(fluid_name).model_key != self.fluid.model_key
+        theirs = Fluid.from_model(cycle.fluid_model, cycle.fluid) if cycle.fluid_model else Fluid(cycle.fluid)
+        return not theirs.same_fluid(own)
 
     def move_cycle_state(self, name: str, number: int, x: float, y: float,
                          units: Optional[UnitsLike] = None) -> None:

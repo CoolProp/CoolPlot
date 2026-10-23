@@ -60,7 +60,13 @@ steam = PropertyDiagram("Water", "Ts", units="engineering", tp_limits="ORC")
 steam.add_cycle(rankine("Water", p_high_Pa=40e5, p_low_Pa=0.1e5, T_live_C=400))
 ```
 
-A cycle computed for one fluid is refused by a chart of another.
+A cycle computed for one fluid is refused by a chart of another. A cycle
+of the cycle models keeps the model of its fluid (`Cycle.fluid_model`),
+so the same fluid given another way counts as the same: a mixture by
+mass, by mole or as a predefined blend (R32/R125 50/50 by mass and
+"R410A.mix"), with its components in the same order, or a pure fluid by
+an alias ("R290" and "Propane"). Other fractions or other interaction
+parameters make another fluid.
 
 For blends the models take the evaporating and condensing temperatures
 as dew points (EN 12900).

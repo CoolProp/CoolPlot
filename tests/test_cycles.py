@@ -1,18 +1,20 @@
 # -*- coding: utf-8 -*-
 """Cycles: models, state resolution, paths and drawing them on a diagram."""
 import json
+from dataclasses import replace
 
 import numpy as np
 import pytest
 
 pytest.importorskip("CoolProp")
+import CoolProp  # noqa: E402
 from CoolProp.CoolProp import PropsSI  # noqa: E402
 
 from coolplot import PropertyDiagram  # noqa: E402
 from coolplot.core.cycle import Cycle, StateInput  # noqa: E402
 from coolplot.render.svg import SvgRenderer  # noqa: E402
 from coolplot.scene import Line, Markers, Text  # noqa: E402
-from coolplot.spec import CycleSpec, DiagramSpec  # noqa: E402
+from coolplot.spec import CycleSpec, DiagramSpec, FluidSpec  # noqa: E402
 from coolplot.thermo import Fluid, state_point  # noqa: E402
 from coolplot.thermo.cycles import (auto_kind, path_states, rankine, resolve_states,  # noqa: E402
                                     simple_compression, two_stage)
@@ -261,6 +263,132 @@ def test_cycles_belong_to_the_diagram_fluid():
     diagram.add_cycle(simple_compression("R134a", -10.0, 40.0))   # same fluid, other spelling
     with pytest.warns(UserWarning, match="previous fluid"):
         diagram.fluid = "HEOS::R290"
+
+
+# The fluid of a cycle and of its chart ------------------------------------------
+# A cycle keeps its fluid's model (Cycle.fluid_model). Before 1.4 it kept only
+# the name, which loses the basis of the fractions ("HEOS::R32[0.5]&R125[0.5]"
+# given by mass reads by mole), interaction parameters set on a mixture and the
+# fractions of an AbstractState; the chart then refused the cycle of its own
+# fluid, or took a cycle of another one.
+
+R32_R125_BY_MASS = FluidSpec(backend="HEOS", components=("R32", "R125"), fractions=(0.5, 0.5), basis="mass")
+R32_R125_TUNED = FluidSpec(backend="HEOS", components=("R32", "R125"), fractions=(0.5, 0.5), basis="mass",
+                           interactions=((0, 1, "betaT", 1.001),))
+R515B_BY_MASS = FluidSpec(backend="HEOS", components=("R1234ze(E)", "R227EA"), fractions=(0.911, 0.089), basis="mass")
+
+
+def _accepts(chart_fluid, cycle) -> bool:
+    try:
+        PropertyDiagram(chart_fluid, "ph").add_cycle(cycle)
+    except ValueError as e:
+        assert "computed for" in str(e)
+        return False
+    return True
+
+
+def test_the_models_keep_the_model_of_their_fluid():
+    for cycle, fluid in ((simple_compression(R32_R125_BY_MASS, -5.0, 35.0), R32_R125_BY_MASS),
+                         (two_stage(R32_R125_BY_MASS, -30.0, 35.0), R32_R125_BY_MASS),
+                         (rankine(R515B_BY_MASS, 2.0e6, 0.5e6), R515B_BY_MASS)):
+        assert cycle.fluid_model == Fluid(fluid).model_key
+        assert cycle.fluid_model[3] == "mass"
+
+
+def test_a_cycle_of_a_mixture_by_mass_draws_on_its_chart():
+    assert _accepts(R32_R125_BY_MASS, simple_compression(R32_R125_BY_MASS, -5.0, 35.0))
+    assert _accepts(R515B_BY_MASS, rankine(R515B_BY_MASS, 2.0e6, 0.5e6))
+    # The states are those of the mixture by mass: the evaporator outlet of R515B
+    # against CoolProp, saturated at -5 deg C and superheated by 5 K
+    state = Fluid(R515B_BY_MASS).state
+    state.update(CoolProp.QT_INPUTS, 1.0, 268.15)
+    state.update(CoolProp.PT_INPUTS, state.p(), 273.15)
+    outlet = simple_compression(R515B_BY_MASS, -5.0, 45.0).state(1)
+    assert outlet.h == pytest.approx(state.hmass(), rel=1e-9)
+
+
+def test_interaction_parameters_tell_two_models_apart():
+    tuned = simple_compression(R32_R125_TUNED, -5.0, 35.0)
+    assert _accepts(R32_R125_TUNED, tuned)
+    assert not _accepts(R32_R125_BY_MASS, tuned)
+    assert not _accepts(R32_R125_TUNED, simple_compression(R32_R125_BY_MASS, -5.0, 35.0))
+    # Both print as "HEOS::R32[0.5]&R125[0.5]": the message says what differs
+    with pytest.raises(ValueError, match="another model of .* interaction parameters"):
+        PropertyDiagram(R32_R125_BY_MASS, "ph").add_cycle(tuned)
+
+
+def test_a_cycle_of_an_abstract_state_mixture_draws_on_its_chart():
+    state = CoolProp.AbstractState("HEOS", "R32&R125")
+    state.set_mole_fractions([0.6, 0.4])
+    assert _accepts(state, simple_compression(state, -5.0, 35.0))
+
+
+def test_the_same_mixture_by_mass_by_mole_or_as_a_blend_is_one_fluid():
+    by_mass = Fluid(R32_R125_BY_MASS)
+    blend = Fluid("R410A.mix")   # R32/R125 50/50 by mass
+    mole = by_mass.state.get_mole_fractions()
+    by_mole = Fluid("HEOS::R32[{0!r}]&R125[{1!r}]".format(*mole))
+    assert by_mass.same_fluid(blend) and blend.same_fluid(by_mass)
+    assert by_mass.same_fluid(by_mole) and by_mole.same_fluid(blend)
+    assert Fluid("R290").same_fluid(Fluid("HEOS::Propane"))
+    assert _accepts("R410A.mix", simple_compression(R32_R125_BY_MASS, -5.0, 35.0))
+    assert _accepts(R32_R125_BY_MASS, simple_compression("R410A.mix", -5.0, 35.0))
+
+
+def test_other_fluids_are_told_apart():
+    by_mass = Fluid(R32_R125_BY_MASS)
+    mole = by_mass.state.get_mole_fractions()
+    nudged = Fluid("HEOS::R32[{0!r}]&R125[{1!r}]".format(mole[0] + 1e-6, mole[1] - 1e-6))
+    assert not by_mass.same_fluid(nudged)                                # 1e-6 in a mole fraction
+    assert not by_mass.same_fluid(Fluid("HEOS::R32[0.5]&R125[0.5]"))     # 50/50 by mole
+    assert not by_mass.same_fluid(Fluid(R32_R125_TUNED))                 # interaction parameters
+    assert not Fluid("R32").same_fluid(Fluid("R125"))
+    assert not Fluid("INCOMP::MEG[0.3]").same_fluid(Fluid("INCOMP::MEG[0.4]"))
+    assert Fluid("INCOMP::MEG[0.3]").same_fluid(Fluid("INCOMP::MEG[0.3]"))
+    # A cycle that has only a name is checked by its name, as before 1.4
+    named = Cycle("by name", simple_compression("HEOS::R290", -5.0, 35.0).states, fluid="HEOS::R290")
+    assert _accepts("R290", named) and not _accepts("R32", named)
+
+
+def test_the_tolerances_and_the_backend_are_kept():
+    # Mole fractions to 1e-9: a difference of 1e-8 is another mixture, 1e-11 the same
+    mole = Fluid(R32_R125_BY_MASS).state.get_mole_fractions()
+    def nudged(delta):
+        return Fluid("HEOS::R32[{0!r}]&R125[{1!r}]".format(mole[0] + delta, mole[1] - delta))
+    assert not Fluid(R32_R125_BY_MASS).same_fluid(nudged(1e-8))
+    assert Fluid(R32_R125_BY_MASS).same_fluid(nudged(1e-11))
+    # Interaction parameters to 1e-12 relative: 1e-10 apart is another model
+    near = FluidSpec(backend="HEOS", components=("R32", "R125"), fractions=(0.5, 0.5), basis="mass",
+                     interactions=((0, 1, "betaT", 1.001 + 1e-10),))
+    assert not Fluid(R32_R125_TUNED).same_fluid(Fluid(near))
+    # Another backend is another fluid, even of the same substance
+    assert not Fluid("HEOS::R290").same_fluid(Fluid("TTSE&HEOS::R290"))
+
+
+def test_the_basis_is_named_only_for_mixtures_by_mass():
+    from coolplot.chart import _fluid_text
+    assert _fluid_text("HEOS::R32[0.5]&R125[0.5]", Fluid(R32_R125_BY_MASS).model_key).endswith("(fractions by mass)")
+    pure_by_mass = FluidSpec(backend="HEOS", components=("R290",), basis="mass")
+    assert _fluid_text("HEOS::R290", Fluid(pure_by_mass).model_key) == "HEOS::R290"
+    assert _fluid_text("INCOMP::MEG[0.3]", Fluid("INCOMP::MEG[0.3]").model_key) == "INCOMP::MEG[0.3]"
+    with pytest.raises(ValueError, match=r"computed for HEOS::R32, but this chart shows HEOS::R290\."):
+        PropertyDiagram("HEOS::R290", "ph").add_cycle(simple_compression("HEOS::R32", -5.0, 35.0))
+
+
+def test_a_cycle_keeps_a_hashable_model_and_is_checked_by_it_alone():
+    model = Fluid(R32_R125_BY_MASS).model_key
+    listed = Cycle("listed", simple_compression(R32_R125_BY_MASS, -5.0, 35.0).states,
+                   fluid_model=[list(part) if isinstance(part, tuple) else part for part in model])
+    assert listed.fluid_model == model and hash(listed) == hash(replace(listed))
+    # A cycle with a model but no name is checked too
+    assert _accepts(R32_R125_BY_MASS, listed) and not _accepts("R290", listed)
+
+
+def test_a_cycle_of_another_mixture_names_the_basis():
+    diagram = PropertyDiagram("HEOS::R32[0.5]&R125[0.5]", "ph")   # 50/50 by mole
+    with pytest.raises(ValueError, match=r"computed for HEOS::R32\[0\.5\]&R125\[0\.5\] \(fractions by mass\), "
+                                         r"but this chart shows HEOS::R32\[0\.5\]&R125\[0\.5\]\."):
+        diagram.add_cycle(simple_compression(R32_R125_BY_MASS, -5.0, 35.0))
 
 
 def test_models_reject_impossible_inputs():

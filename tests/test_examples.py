@@ -129,6 +129,15 @@ def test_branding(tmp_path):
     assert "cp-badge" in svg and "Example Engineering" in svg and "data:image/svg+xml;base64," in svg
 
 
+def test_branding_chp(tmp_path):
+    # Run from another folder: the script finds its pictures next to itself
+    assert "COP heating: 3.8" in _run("branding_chp.py", tmp_path)
+    svg = (tmp_path / "branding_chp.svg").read_text()
+    assert "cp-badge" in svg and "cp-watermark" in svg and "cleanheatpartners.com" in svg
+    assert "Lemmon et al. (2009)" in svg
+    assert "#00998b" in svg.lower()   # the company teal of the first line family
+
+
 def _ports_installed() -> bool:
     from coolplot import corelib
     from coolplot.thermo import native
@@ -204,11 +213,12 @@ BOTH_PATHS = ["quickstart.py", "two_stage_cycles.py", "refrigerant_blend.py", "p
               "interactive_cycle.py", "saturation_lines.py", "psychrometric_processes.py",
               "psychrometric_air_handling.py", "psychrometric_evaporative_cooling.py", "psychrometric_mollier.py",
               "steam_rankine_ts.py", "steam_turbine_hs.py", "co2_transcritical.py", "orc_ts.py",
-              "refrigerant_comparison.py", "ip_units.py", "themes.py", "label_modes.py", "branding.py"]
+              "refrigerant_comparison.py", "ip_units.py", "themes.py", "label_modes.py", "branding.py",
+              "branding_chp.py"]
 
 #: Examples whose charts are all composed by Python also with coolplot-core:
 #: coolplot-core does not compose the branding (see coolplot.compose.compose).
-PYTHON_COMPOSER = {"branding.py"}
+PYTHON_COMPOSER = {"branding.py", "branding_chp.py"}
 
 
 def test_the_list_of_examples_is_complete():

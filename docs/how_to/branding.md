@@ -105,3 +105,5 @@ background works best.
 ## In the gallery
 
 A chart with a logo, the full references and a watermark: {doc}`../gallery/branding`.
+A company chart with its own theme colours, logo and brandmark (Clean Heat
+Partners): {doc}`../gallery/branding_chp`.
