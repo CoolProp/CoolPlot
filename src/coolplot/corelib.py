@@ -153,6 +153,8 @@ _NEEDS_A_NEWER_CORE = (
      "lay out labels on rails or place a legend by itself"),
     ((1, 2), lambda spec: spec.diagram.is_mollier, "compose the Mollier h,x chart"),
     ((1, 3), _restyles_the_dome, "restyle the saturation curve or the quality lines"),
+    ((1, 4), lambda spec: spec.settings.labels.symbols == "unicode", "write symbols and units with their own "
+     "characters (rho, deg C, m3)"),
 )
 
 

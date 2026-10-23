@@ -62,6 +62,9 @@ LabelSettings LabelSettings::from_json(const json& data) {
     s.tick_digits = data.value("tick_digits", 6);
     if (s.digits < 1 || s.digits > 12 || s.tick_digits < 1 || s.tick_digits > 12)
         throw Error("LabelSettings.digits and tick_digits have to be between 1 and 12.");
+    // A record before 1.4 always holds its labels, never the symbol style: it keeps the plain spelling
+    s.symbols = data.value("symbols", "ascii");
+    check_symbol_style(s.symbols);
     return s;
 }
 

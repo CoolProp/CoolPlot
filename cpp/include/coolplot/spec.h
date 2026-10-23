@@ -26,6 +26,8 @@ struct LabelSettings
     int digits = 4;
     bool show_units = true;
     int tick_digits = 6;
+    /// "unicode" (rho, deg C and m3 with their own characters) or "ascii"; a labels record without it is "ascii"
+    std::string symbols = "unicode";
 
     /// The edges set for a family, or the family's own.
     std::vector<std::string> preferred_edges(const std::string& family, const std::vector<std::string>& fallback_edges) const;

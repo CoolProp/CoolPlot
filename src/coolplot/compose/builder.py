@@ -24,6 +24,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from ..core.quantities import get_quantity
+from ..core.symbols import symbol_text, unit_text
 from ..scene import AxesSpec, SceneItem, Line, Markers, Text, drawable_limits
 from ..spec.diagram import SATURATION_KEY, CycleSpec, DiagramSpec, ProcessSpec
 from ..style.theme import Theme
@@ -57,9 +58,19 @@ def scaled_theme(theme: Theme, factor: float) -> Theme:
     return theme if same_number(factor, 1.0) else _scaled(theme, factor)
 
 
+def shown_symbol(spec: DiagramSpec, key: str) -> str:
+    """The symbol of a quantity as the chart writes it, see ``LabelSettings.symbols``."""
+    return symbol_text(spec.diagram.symbol(key), spec.settings.labels.symbols)
+
+
+def shown_unit(spec: DiagramSpec, key: str) -> str:
+    """The unit label of a quantity as the chart writes it, see ``LabelSettings.symbols``."""
+    return unit_text(spec.units[key].label, spec.settings.labels.symbols)
+
+
 def axis_label(spec: DiagramSpec, key: str) -> str:
     """Axis title with symbol and unit, e.g. "Specific enthalpy h / kJ/kg"."""
-    return "{0} {1} / {2}".format(spec.diagram.quantity_label(key), spec.diagram.symbol(key), spec.units[key].label)
+    return "{0} {1} / {2}".format(spec.diagram.quantity_label(key), shown_symbol(spec, key), shown_unit(spec, key))
 
 
 def _include(limits, values, log: bool, pad: float = 0.04):
@@ -138,18 +149,18 @@ def legend_with_unit(spec: DiagramSpec, key: str, legend: str) -> str:
     family labelled by its saturation states says so, with the unit of
     those: "Specific entropy s at T_sat / deg C".
     """
-    text = "{0} {1}".format(legend, spec.diagram.symbol(key))
+    text = "{0} {1}".format(legend, shown_symbol(spec, key))
     anchor = _saturation_anchor(spec, key)
     if anchor is not None:
         text += " at " + saturation_symbol(spec, anchor)
         key = anchor.by
-    unit = spec.units[key].label
+    unit = shown_unit(spec, key)
     return text if unit in ("-", "") else text + " / " + unit
 
 
 def saturation_symbol(spec: DiagramSpec, anchor) -> str:
     """The symbol of the saturation state lines are labelled by: "T_sat", "T_sat,liq" or "T(x=0.5)"."""
-    symbol = spec.diagram.symbol(anchor.by)
+    symbol = shown_symbol(spec, anchor.by)
     if same_number(anchor.Q, 1.0):
         return symbol + "_sat"
     if is_zero(anchor.Q):
@@ -179,11 +190,11 @@ def label_text(spec: DiagramSpec, key: str, value_SI: float, anchor_SI: Optional
         key, value_SI = anchor.by, anchor_SI
         symbol = saturation_symbol(spec, anchor)
     else:
-        symbol = spec.diagram.symbol(key)
+        symbol = shown_symbol(spec, key)
     unit = spec.units[key]
     text = "{0}={1}".format(symbol, labels.format_value(unit.label_value(value_SI)))
     if labels.show_units and unit.label not in ("-", ""):
-        text += " " + unit.label
+        text += " " + shown_unit(spec, key)
     return text
 
 

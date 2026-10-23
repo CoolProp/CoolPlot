@@ -181,7 +181,7 @@ def test_a_line_at_zero_in_a_unit_with_an_offset_is_labelled_zero():
     assert IP["T"].label_value(273.15) == pytest.approx(32.0)
     diagram = PropertyDiagram("HEOS::R134a", "ph", units="IP", tp_limits="ACHP")
     diagram.set_lines("T", values=[-40, 0, 40], labels=True)
-    for mode, label in (("rails", "0"), ("edge", "T=0 deg F")):
+    for mode, label in (("rails", "0"), ("edge", "T=0 \u00b0F")):
         diagram.settings = diagram.settings.with_(labels={"mode": mode})
         texts = {item.text for item in diagram.update_scene() if item.role == "isoline_label"}
         assert label in texts, texts

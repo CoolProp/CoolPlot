@@ -8,7 +8,7 @@ diagram.settings = diagram.settings.with_(labels={"mode": "edge"})
 | mode | Where labels go |
 |------|-----------------|
 | `"rails"` (default, since 1.2) | the bare values of each family in a row along one edge: outside the frame at the top and on the right, with a tick where the line leaves, or just inside the frame, turned along the lines; symbol and unit are in the legend |
-| `"edge"` | the full label ("T=20 deg C") just inside the frame where each line leaves the chart, rotated along the line (the default before 1.2) |
+| `"edge"` | the full label ("T=20 &deg;C") just inside the frame where each line leaves the chart, rotated along the line (the default before 1.2) |
 | `"margin"` | outside the frame like a second set of tick labels (vertical at the top), never touching the data |
 | `"inline"` | at `position` along each line |
 
@@ -17,8 +17,8 @@ when not all fit it drops whole levels of values: a family stepped by 10
 keeps the multiples of 100 longest, then those of 50 and 20, so the row
 stays regular. Lines that leave through another edge
 get a second row; lines that end inside the chart get a label near
-their end. The legend reads "Temperature T / deg C", or "Specific
-entropy s at T_sat / deg C" for lines labelled by their saturation
+their end. The legend reads "Temperature T / &deg;C", or "Specific
+entropy s at T_sat / &deg;C" for lines labelled by their saturation
 states. With legend
 location "auto" (the default) it sits inside the plot area, in the corner
 where it covers the fewest cycle points, then the fewest lines; on a small
@@ -58,6 +58,34 @@ Labels are laid out for the size of the plot area. `diagram.draw()` and
 `save()` take it from the plotting library; if you drive a renderer
 yourself, pass it: `renderer.sync(diagram.update_scene(renderer.plot_size_pt()))`.
 How positions are chosen is in {doc}`../explanation/label_placement`.
+
+## Symbols and units
+
+Since 1.4 axis titles, legends and labels write symbols and units with
+their proper characters:
+
+| Plain text (`symbols="ascii"`) | Chart (`symbols="unicode"`, the default) |
+|---|---|
+| rho | &rho; |
+| RH, phi (relative humidity, both air charts) | &phi; |
+| Twb, Tdp | T_wb, T_dp |
+| deg C, deg F, R | &deg;C, &deg;F, &deg;R |
+| kg/m3, m3/kg, lb/ft3, ft3/lb | kg/m&sup3;, m&sup3;/kg, lb/ft&sup3;, ft&sup3;/lb |
+| Btu/lb/R | Btu/lb/&deg;R |
+
+Only what the chart shows changes. In code a quantity stays `"rho"` and
+a unit `Unit("deg C", ...)`; a custom unit with one of the labels above
+is written the same way. For plain letters on the chart, as before 1.4:
+
+```python
+diagram.settings = diagram.settings.with_(labels={"symbols": "ascii"})
+```
+
+Specs saved before 1.4 keep the plain letters. Relative humidity is
+&phi; on the psychrometric chart too, as in the ASHRAE Handbook and
+ISO 80000-5. The default fonts (Inter, then DejaVu Sans) have every
+character; a theme that names only a font without Greek letters should
+add a fallback such as DejaVu Sans (the how-to on themes).
 
 ## In the gallery
 

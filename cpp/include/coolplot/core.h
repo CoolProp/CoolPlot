@@ -112,7 +112,7 @@ std::string text_prefix(const std::string& utf8, size_t count);
 struct Quantity
 {
     std::string key;     ///< the short name used everywhere, e.g. "p"
-    std::string symbol;  ///< symbol in axis labels, plain ASCII
+    std::string symbol;  ///< symbol in axis labels, plain ASCII; charts may write it in Unicode (symbol_text)
     std::string label;   ///< human readable name
     bool log_scale;      ///< whether an axis showing it defaults to a log scale
 };
@@ -120,6 +120,17 @@ struct Quantity
 /// Normalise a quantity name to its key ("P" -> "p", "Hmass" -> "h"); throws Error.
 std::string quantity_key(const std::string& name);
 const Quantity& get_quantity(const std::string& name);
+
+// ---------------------------------------------------------------------------
+// Symbols (coolplot.core.symbols)
+// ---------------------------------------------------------------------------
+
+/// Throws Error unless `style` is "unicode" or "ascii" (LabelSettings.symbols).
+void check_symbol_style(const std::string& style);
+/// A quantity symbol as the chart shows it: "rho" in "unicode" style is the Greek letter, in UTF-8.
+std::string symbol_text(const std::string& symbol, const std::string& style);
+/// A unit label as the chart shows it: "deg C" in "unicode" style is the degree sign and C, in UTF-8.
+std::string unit_text(const std::string& label, const std::string& style);
 
 // ---------------------------------------------------------------------------
 // Units (coolplot.core.units)

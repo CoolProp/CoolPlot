@@ -146,6 +146,23 @@ TEST_CASE("Label texts and axis titles", "[compose]") {
     CHECK(label_text(spec, "T", 273.15) == "T=0 deg C");
     CHECK(label_text(spec, "Q", 0.4) == "x=0.4");
     CHECK(label_text(spec, "s", 1500.0) == "s=1.5 kJ/kg/K");
+    // A labels record without "symbols" was written before 1.4 and keeps the plain spelling
+    json labels = data.at("input").at("spec").at("settings").at("labels");
+    CHECK_FALSE(labels.contains("symbols"));
+    CHECK(spec.settings.labels.symbols == "ascii");
+    json unicode = data.at("input").at("spec");
+    unicode["settings"]["labels"]["symbols"] = "unicode";
+    unicode["isolines"].push_back({{"key", "rho"}, {"labels", true}});
+    spec = DiagramSpec::from_json(unicode);
+    CHECK(axis_label(spec, "h") == "Specific enthalpy h / kJ/kg");
+    CHECK(label_text(spec, "T", 273.15) == "T=0 \xc2\xb0" "C");
+    CHECK(label_text(spec, "rho", 10.0) == "\xcf\x81=10 kg/m\xc2\xb3");
+    unicode["settings"]["labels"].erase("symbols");
+    CHECK(DiagramSpec::from_json(unicode).settings.labels.symbols == "ascii");
+    unicode["settings"].erase("labels");
+    CHECK(DiagramSpec::from_json(unicode).settings.labels.symbols == "unicode");   // no labels record: the default
+    unicode["settings"]["labels"] = {{"symbols", "latex"}};
+    CHECK_THROWS_AS(DiagramSpec::from_json(unicode), Error);
     CHECK_THROWS_AS(compose_json("{not json"), Error);
     CHECK_THROWS_AS(compose_json("{}"), Error);   // valid JSON, no spec
     CHECK_THROWS_AS(compose_json(R"({"spec": {"diagram": "ph"}, "domain": {"ranges_SI": {}},

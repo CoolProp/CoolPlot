@@ -94,7 +94,7 @@ def test_font_scale_reaches_every_text(diagram):
 def test_label_settings_change_texts(diagram):
     assert diagram.update_scene()["iso/T/293.15/label"].text == "20"   # rails: the bare value
     diagram.settings = diagram.settings.with_(labels={"mode": "edge"})
-    assert diagram.update_scene()["iso/T/293.15/label"].text == "T=20 deg C"
+    assert diagram.update_scene()["iso/T/293.15/label"].text == "T=20 \u00b0C"
     diagram.settings = diagram.settings.with_(labels={"show_units": False})
     assert diagram.update_scene()["iso/T/293.15/label"].text == "T=20"
 

@@ -179,7 +179,7 @@ def test_reader_finds_fonts_texts_colours_and_pages(tmp_path):
     content = read_pdf(str(path))
     assert content.pages == 1 and content.info["Title"] == "R290, costs $5"
     assert all(f.program_kind == "truetype" and not f.problems for f in content.fonts)
-    assert {"R290, costs $5", "T=50 deg C", "x=0.5", "Saturation"} <= set(content.texts)
+    assert {"R290, costs $5", "T=50 \u00b0C", "x=0.5", "Saturation"} <= set(content.texts)
     theme = d.spec.settings.look
     assert theme.saturation.color in content.colors and not content.cmyk
     with pytest.raises(ValueError):

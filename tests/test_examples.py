@@ -69,7 +69,7 @@ def test_psychrometric_evaporative_cooling(tmp_path):
 def test_psychrometric_mollier(tmp_path):
     assert "phi =" in _run("psychrometric_mollier.py", tmp_path)
     svg = (tmp_path / "psychrometric_mollier.svg").read_text()
-    assert "Humidity ratio x / g/kg" in svg and "Relative humidity phi / %" in svg and "cooling coil" in svg \
+    assert "Humidity ratio x / g/kg" in svg and "Relative humidity &#966; / %" in svg and "cooling coil" in svg \
         and len(svg) > 10000
 
 
@@ -107,7 +107,7 @@ def test_refrigerant_comparison(tmp_path):
 def test_ip_units(tmp_path):
     assert "EER" in _run("ip_units.py", tmp_path)
     svg = (tmp_path / "ip_units.svg").read_text()
-    assert "Temperature T / deg F" in svg and "Btu/lb" in svg and len(svg) > 10000
+    assert "Temperature T / &#176;F" in svg and "Btu/lb" in svg and len(svg) > 10000
     # The isotherm at 0 deg F is labelled 0, not with the noise of the conversion (-4e-10)
     assert ">-40</text>" in svg and ">0</text>" in svg and "e-10</text>" not in svg
 
