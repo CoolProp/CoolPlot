@@ -22,7 +22,7 @@ from coolplot import PropertyDiagram
 from coolplot.thermo.cycles import simple_compression
 
 diagram = PropertyDiagram("R290", "ph", units="engineering", tp_limits="ACHP")
-diagram.set_default_lines(labels=True)
+diagram.set_default_lines(labels=True, rounding=True)
 diagram.add_cycle(simple_compression("R290", T_evap_C=-5, T_cond_C=45, dT_sh_K=5))
 diagram.save("R290_ph.png")           # or .pdf, .svg; show() opens a window
 ```

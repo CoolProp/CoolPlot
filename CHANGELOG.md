@@ -37,6 +37,9 @@ guide in the documentation says what to change in your code.
 - coolplot-core 1.4.0. The Python bridge hands a chart with "unicode"
   symbols to the Python composer, with a warning, when the installed
   core is older.
+- A new picture on the landing page and in the README, drawn by the code
+  next to it (now with round values, `rounding=True`): labels on rails,
+  the legend inside the plot and the symbols of 1.4.
 
 ## [1.3.0] - 2026-10-22
 
