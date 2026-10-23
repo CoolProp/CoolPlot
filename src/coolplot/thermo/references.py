@@ -318,12 +318,23 @@ def _predefined_blends() -> Dict[frozenset, List[Tuple[str, Dict[str, float]]]]:
     return blends
 
 
+@lru_cache(maxsize=256)
+def _canonical_name(name: str) -> str:
+    """CoolProp's own name of a fluid, e.g. "Nitrogen" for the alias "N2"; the name itself if unknown."""
+    try:
+        return CP.get_fluid_param_string(name, "name")
+    except Exception:   # not a fluid of the HEOS library
+        return name
+
+
 def blend_name(components: Tuple[str, ...], mass_fractions: Tuple[float, ...]) -> str:
     """The name of the predefined blend of CoolProp with this composition, e.g. "R410A", or "".
 
     Matches when every mass fraction is within :data:`BLEND_TOLERANCE`;
-    of several matches the closest one wins.
+    of several matches the closest one wins. Components may be given by
+    an alias of CoolProp ("N2" for Nitrogen).
     """
+    components = tuple(_canonical_name(c) for c in components)
     best, best_distance = "", BLEND_TOLERANCE
     for name, blend in _predefined_blends().get(frozenset(components), ()):
         distance = max(abs(blend[c] - w) for c, w in zip(components, mass_fractions))

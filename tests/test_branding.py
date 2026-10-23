@@ -118,6 +118,8 @@ def test_references_name_a_mixture_and_its_composition():
     assert fluid_references("HEOS::R32[0.7]&R125[0.3]")[0] == "R410A: R32 50.3 %, R125 49.7 % by mass"
     # No blend of these fractions: a mixture in the basis it was given in
     assert fluid_references("HEOS::R32[0.2]&R125[0.8]")[0] == "Mixture: R32 20 %, R125 80 % by mole"
+    # Components given by an alias of CoolProp match too, and keep the names they were given with
+    assert fluid_references("HEOS::N2[0.7812]&Ar[0.0092]&O2[0.2096]")[0] == "Air: N2 78.1 %, Ar 0.92 %, O2 21 % by mole"
     # A Fluid has lost the name of its blend; the composition finds it again
     from coolplot.thermo.fluid import Fluid
     assert fluid_references(Fluid("HEOS::R407C.mix"))[0] == "R407C: R32 23 %, R125 25 %, R134a 52 % by mass"
