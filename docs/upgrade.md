@@ -35,6 +35,29 @@ starting with an underscore, the helpers in `coolplot.core`,
 `coolplot.testing`, the scene item ids, and the exact coordinates of a
 chart (better numerics may move points).
 
+## From 1.3 to 1.4
+
+Nothing to change in your code. Axis titles, legends and labels of new
+charts write symbols and units with their own characters: "Density
+&rho; / kg/m&sup3;" instead of "Density rho / kg/m3", "T=20 &deg;C"
+instead of "T=20 deg C", and &phi; for the relative humidity on both
+humid air charts. For the plain letters of 1.3:
+
+```python
+chart.settings = chart.settings.with_(labels={"symbols": "ascii"})
+```
+
+Specs saved by 1.3 or earlier keep the plain letters. Code that reads
+label texts from the scene of a new chart finds the new characters.
+What you write in code stays the same: quantities are still `"rho"`
+and `"RH"`, units `Unit("deg C", ...)`, and `UnitSystem.describe`
+still writes "25 deg C". A coolplot-core older than 1.4 cannot write the
+new characters; the Python composer then draws the chart, with a warning.
+
+The badge references of a mixture start with a line naming it and its
+composition ("R407C: R32 23 %, R125 25 %, R134a 52 % by mass"), see the
+how-to on branding.
+
 ## From 1.2 to 1.3
 
 Nothing to change in your code to run it. CoolPlot now ships its type

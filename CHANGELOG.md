@@ -6,6 +6,38 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-23
+
+### Added
+- `LabelSettings.symbols`: "unicode" writes symbols and units in axis
+  titles, legends and labels with their own characters (the Greek rho
+  and phi, the degree sign, m3 with a superscript 3), "ascii" with plain
+  letters as before. The tables are in `coolplot.core.symbols`, and
+  coolplot-core 1.4 writes the same texts. Every character is written as
+  an escape, so the sources stay ASCII.
+- The references of a mixture in the badge start with its name and
+  composition: "R407C: R32 23 %, R125 25 %, R134a 52 % by mass". A
+  mixture given by its fractions takes the name of the predefined blend
+  of CoolProp within half a percent by mass, else "Mixture". Refrigerant
+  blends are shown by mass, as their R number is defined; other mixtures
+  in the basis of their fractions. Other backends show the fractions of
+  a mixture or solution ("MEG 30 % by mass: CoolProp incompressible
+  fluid"). New in `coolplot.thermo.references`: `blend_name` and
+  `composition_text`.
+
+### Changed
+- "unicode" is the default of `LabelSettings.symbols`: new charts show
+  "Density &rho; / kg/m&sup3;" for "Density rho / kg/m3", "&deg;C" for
+  "deg C", T_wb and T_dp for Twb and Tdp, and &phi; for the relative
+  humidity on the psychrometric chart as well (it was "RH"; ASHRAE
+  Handbook and ISO 80000-5 write phi). A settings record without
+  `symbols`, as every record before 1.4, reads as "ascii", so saved
+  specs draw as before. `labels={"symbols": "ascii"}` gives the look of
+  1.3 (the how-to on labels).
+- coolplot-core 1.4.0. The Python bridge hands a chart with "unicode"
+  symbols to the Python composer, with a warning, when the installed
+  core is older.
+
 ## [1.3.0] - 2026-10-22
 
 ### Added
