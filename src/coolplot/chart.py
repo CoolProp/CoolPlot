@@ -215,9 +215,19 @@ def _fluid_text(name: str, model: Tuple) -> str:
     return "{0} (fractions by {1})".format(name, "volume" if model[3] == "volu" else "mass")
 
 
+def _model_name(model: Tuple) -> str:
+    """A fluid string for a model key, "HEOS::R32[0.5]&R125[0.5]", for a cycle that kept no name."""
+    backend, components, fractions, basis = model[:4]
+    try:
+        return str(FluidSpec(backend=backend, components=tuple(components), fractions=tuple(fractions), basis=basis))
+    except (TypeError, ValueError):   # a model FluidSpec does not take: the components at least
+        return "&".join(components)
+
+
 def _other_fluid_message(cycle: Cycle, chart_fluid: str, chart_model: Tuple) -> str:
     """Why a cycle does not belong on a chart; says so when the two fluids print alike."""
-    theirs, mine = _fluid_text(cycle.fluid, cycle.fluid_model), _fluid_text(chart_fluid, chart_model)
+    theirs = _fluid_text(cycle.fluid or _model_name(cycle.fluid_model), cycle.fluid_model)
+    mine = _fluid_text(chart_fluid, chart_model)
     if theirs == mine:
         return ("Cycle '{0}' was computed for another model of {1} than this chart's (other fractions, "
                 "basis of the fractions or interaction parameters).".format(cycle.name, mine))

@@ -380,8 +380,11 @@ def test_a_cycle_keeps_a_hashable_model_and_is_checked_by_it_alone():
     listed = Cycle("listed", simple_compression(R32_R125_BY_MASS, -5.0, 35.0).states,
                    fluid_model=[list(part) if isinstance(part, tuple) else part for part in model])
     assert listed.fluid_model == model and hash(listed) == hash(replace(listed))
-    # A cycle with a model but no name is checked too
+    # A cycle with a model but no name is checked too, and the message names its fluid from the model
     assert _accepts(R32_R125_BY_MASS, listed) and not _accepts("R290", listed)
+    with pytest.raises(ValueError, match=r"computed for HEOS::R32\[0\.5\]&R125\[0\.5\] \(fractions by mass\), "
+                                         r"but this chart shows HEOS::R290\."):
+        PropertyDiagram("HEOS::R290", "ph").add_cycle(listed)
 
 
 def test_a_cycle_of_another_mixture_names_the_basis():
