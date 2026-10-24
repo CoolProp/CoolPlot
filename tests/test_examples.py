@@ -95,7 +95,7 @@ def test_co2_transcritical(tmp_path):
 def test_orc_ts(tmp_path):
     assert "Efficiency 14.2 %" in _run("orc_ts.py", tmp_path)
     svg = (tmp_path / "orc_ts.svg").read_text()
-    assert "exhaust 54 deg C" in svg and len(svg) > 10000
+    assert "exhaust 54 &#176;C" in svg and len(svg) > 10000
 
 
 def test_refrigerant_comparison(tmp_path):

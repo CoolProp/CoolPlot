@@ -28,7 +28,7 @@ from coolplot import LineStyle, MarkerStyle, PsychrometricChart
 from coolplot.render.svg import SvgRenderer
 
 chart = PsychrometricChart(T_range=(0, 45), W_range=(0, 20))   # sea level, deg C and g/kg
-chart.title = "Air processes from 24 deg C and 50 %"
+chart.title = "Air processes from 24 \u00b0C and 50 %"
 chart.set_default_lines()
 
 room = {"T": 24, "RH": 50}

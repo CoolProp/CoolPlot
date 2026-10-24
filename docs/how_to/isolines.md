@@ -48,7 +48,7 @@ diagram.set_lines("s", at_saturation={"T": 10}, labels=True)           # isentro
 diagram.set_lines("rho", at_saturation={"T": 20, "range": (-40, 60)})  # isochores every 20 K, -40 to 60 deg C
 diagram.set_lines("T", at_saturation={"p": 2})                         # isotherms every 2 bar of saturation pressure
 diagram.set_lines("s", at_saturation={"T": 10, "Q": 0})                # through the saturated liquid
-diagram.set_lines("s", at_saturation={"T": 10, "label": "saturation"}) # labels "T_sat=0 deg C"
+diagram.set_lines("s", at_saturation={"T": 10, "label": "saturation"}) # labels "T_sat=0" with its unit
 ```
 
 The steps are round in the chart's units (every 10 K in a deg C chart

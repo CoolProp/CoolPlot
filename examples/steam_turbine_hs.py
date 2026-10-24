@@ -24,7 +24,7 @@ eta_is = 0.85
 live_steam = {"p": 100.0, "T": 500.0}   # bar, deg C
 
 diagram = PropertyDiagram("HEOS::Water", "hs", units="engineering", tp_limits=[290.0, 870.0, 3e3, 2.5e7])
-diagram.title = "Steam turbine, 100 bar and 500 deg C to 0.1 bar"
+diagram.title = "Steam turbine, 100 bar and 500 \u00b0C to 0.1 bar"
 diagram.set_lines("Q", values=[0.8, 0.85, 0.9, 0.95, 1.0], labels=True)
 diagram.set_lines("p", values=[0.05, 0.1, 0.5, 1, 5, 10, 50, 100], labels=True)
 diagram.set_lines("T", values=[100, 200, 300, 400, 500, 600], labels=True)

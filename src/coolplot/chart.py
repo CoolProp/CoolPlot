@@ -503,7 +503,7 @@ class Chart:
             ``"range": (lo, hi)`` limits the saturation temperatures or
             pressures. Steps and range are in ``units``. The labels show the
             lines' own values ("s=2.321 kJ/kg/K"); ``"label": "saturation"``
-            shows the saturation state instead ("T_sat=0 deg C"). Charts of
+            shows the saturation state instead ("T_sat=0" with its unit). Charts of
             a fluid only.
 
         Examples

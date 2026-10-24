@@ -32,7 +32,7 @@ epsilon_direct = 0.85      # saturation effectiveness of the wetted pad
 epsilon_indirect = 0.60    # wet-bulb effectiveness of the indirect heat exchanger
 
 chart = PsychrometricChart(T_range=(10, 45), W_range=(0, 20))   # sea level, deg C and g/kg
-chart.title = "Evaporative cooling of outdoor air at 38 deg C and 15 %"
+chart.title = "Evaporative cooling of outdoor air at 38 \u00b0C and 15 %"
 chart.set_default_lines()
 chart.add_zone("Comfort zone", T_range=(23, 27), RH_range=(30, 60), label="comfort zone",
                line_style=LineStyle(color="#7f8c8d", width_pt=1.5, dash="dashed"))
@@ -44,7 +44,7 @@ T_outdoor_C, Twb_outdoor_C = outdoor_state.T - 273.15, outdoor_state.Twb - 273.1
 
 def supply_label(state):
     """Temperature and relative humidity of a supply state, for its label."""
-    return "supply {0:.1f} deg C, {1:.0f} %".format(state.T - 273.15, state.RH * 100)
+    return "supply {0:.1f} \u00b0C, {1:.0f} %".format(state.T - 273.15, state.RH * 100)
 
 
 def style(color):

@@ -24,7 +24,7 @@ from coolplot.thermo.cycles import rankine
 
 # T from 17 to 597 deg C, p from 0.03 to 250 bar, in SI units (K and Pa)
 diagram = PropertyDiagram("HEOS::Water", "Ts", units="engineering", tp_limits=[290.0, 870.0, 3e3, 2.5e7])
-diagram.title = "Steam Rankine cycle, 100 bar and 500 deg C"
+diagram.title = "Steam Rankine cycle, 100 bar and 500 \u00b0C"
 diagram.set_lines("Q", num=11, labels=True)
 diagram.set_lines("p", values=[0.1, 1, 10, 100], labels=True)
 diagram.set_lines("h", values=[1000, 2000, 3000], labels=True)
