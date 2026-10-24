@@ -58,6 +58,14 @@ The badge references of a mixture start with a line naming it and its
 composition ("R407C: R32 23 %, R125 25 %, R134a 52 % by mass"), see the
 how-to on branding.
 
+A chart checks a cycle against its fluid by the model of the fluid
+(`Cycle.fluid_model`, filled in by the cycle models), not by its name. A
+cycle of a mixture given by mass fractions, with interaction parameters
+or as an AbstractState now draws on its own chart, where 1.3 refused it;
+a cycle with other interaction parameters than the chart's is now
+refused, where 1.3 drew it. `Cycle` has a new last field, `fluid_model`;
+a cycle built with only a `fluid` name is checked by the name, as before.
+
 ## From 1.2 to 1.3
 
 Nothing to change in your code to run it. CoolPlot now ships its type

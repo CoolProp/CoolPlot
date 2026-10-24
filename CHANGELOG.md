@@ -6,7 +6,7 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
-## [1.4.0] - 2026-10-23
+## [1.4.0] - 2026-10-24
 
 ### Added
 - Gallery example "A company chart: Clean Heat Partners": a theme with
