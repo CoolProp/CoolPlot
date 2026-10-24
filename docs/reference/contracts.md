@@ -80,7 +80,10 @@ One record describes a property diagram and a psychrometric chart alike;
   `"rails"` and the legend location `"auto"` are the defaults; a record
   always holds its label mode, so a record of 1.1 keeps its labels, and
   a theme record its legend location. In a scene the legend location is
-  always a corner or "outside right".
+  always a corner or "outside right". Since 1.4 `labels` holds
+  `symbols`, "unicode" (the default: rho, deg C and m3 written with
+  their own characters) or "ascii"; a `labels` record without it was
+  written before 1.4 and reads as "ascii", so it draws as before.
 * `isolines`: one entry per family, in drawing order. `values_SI` lists
   explicit values; `anchor` (since 1.1) places the lines through
   saturation states every `step_SI` of saturation temperature or
@@ -170,7 +173,7 @@ definition; contributing/writing_a_backend.md says how each field is rendered.
      "style": {...}, "x": [...], "y": [...]},
     {"type": "text", "id": "iso/T/273.15/label", "group": "iso/T/label", "role": "isoline_label",
      "legend": null, "visible": true, "z_order": 4.0, "style": {...},
-     "x": 412.3, "y": 3.2, "text": "T=0 deg C", "direction": [1.0, 0.1],
+     "x": 412.3, "y": 3.2, "text": "T=0 \u00b0C", "direction": [1.0, 0.1],
      "offset_pt": [0.0, 0.0], "clip": true}
   ]
 }

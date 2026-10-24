@@ -30,7 +30,7 @@ constant enthalpy are straight and fall to the right, and a straight line
 is still a mixing line. The isotherms rise slightly with x, since moist air
 holds more enthalpy at the same temperature. For dry air the scale is the
 dry-bulb temperature; `T_range` is its range. The relative humidity is
-called phi. Everything else is as on the psychrometric chart: states,
+called phi (&phi; on the chart, as on the psychrometric chart since 1.4). Everything else is as on the psychrometric chart: states,
 processes, zones and labels take the same keys (`W` for x, `RH` for phi),
 and every state also holds `Thx`. The default lines add isotherms.
 

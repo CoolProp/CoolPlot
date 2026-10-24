@@ -6,6 +6,66 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-24
+
+### Added
+- Gallery example "A company chart: Clean Heat Partners": a theme with
+  the company colours, the saturation line without casing, the company
+  logo and brandmark (SVG files in `examples/data`, trademarks outside the
+  MIT licence, see `examples/data/NOTICE`) on an R290 heat pump.
+- `LabelSettings.symbols`: "unicode" writes symbols and units in axis
+  titles, legends and labels with their own characters (the Greek rho
+  and phi, the degree sign, m3 with a superscript 3), "ascii" with plain
+  letters as before. The tables are in `coolplot.core.symbols`, and
+  coolplot-core 1.4 writes the same texts. Every character is written as
+  an escape, so the sources stay ASCII.
+- The references of a mixture in the badge start with its name and
+  composition: "R407C: R32 23 %, R125 25 %, R134a 52 % by mass". A
+  mixture given by its fractions takes the name of the predefined blend
+  of CoolProp within half a percent by mass, else "Mixture". Refrigerant
+  blends are shown by mass, as their R number is defined; other mixtures
+  in the basis of their fractions. Other backends show the fractions of
+  a mixture or solution ("MEG 30 % by mass: CoolProp incompressible
+  fluid"). New in `coolplot.thermo.references`: `blend_name` and
+  `composition_text`.
+
+### Changed
+- "unicode" is the default of `LabelSettings.symbols`: new charts show
+  "Density &rho; / kg/m&sup3;" for "Density rho / kg/m3", "&deg;C" for
+  "deg C", T_wb and T_dp for Twb and Tdp, and &phi; for the relative
+  humidity on the psychrometric chart as well (it was "RH"; ASHRAE
+  Handbook and ISO 80000-5 write phi). A settings record without
+  `symbols`, as every record before 1.4, reads as "ascii", so saved
+  specs draw as before. `labels={"symbols": "ascii"}` gives the look of
+  1.3 (the how-to on labels).
+- coolplot-core 1.4.0. The Python bridge hands a chart with "unicode"
+  symbols to the Python composer, with a warning, when the installed
+  core is older.
+- A new picture on the landing page and in the README, drawn by the code
+  next to it (now with round values, `rounding=True`): labels on rails,
+  the legend inside the plot and the symbols of 1.4.
+- A chart compares a cycle's fluid with its own as a model
+  (`Fluid.same_fluid`): the same mixture by mass, by mole or as a
+  predefined blend (R32/R125 50/50 by mass and "R410A.mix"), with its
+  components in the same order, and a pure fluid by an alias ("R290" and
+  "Propane") count as one fluid. A mixture's fractions are compared to
+  1e-9 and its interaction parameters to 1e-12. The message for a cycle
+  of another fluid gives the basis of a mixture by mass ("(fractions by
+  mass)"), and says "another model of" when both fluids print alike.
+
+### Fixed
+- A cycle was checked against its chart by the name of its fluid, which
+  loses the basis of the fractions, interaction parameters set on a
+  mixture and the fractions of an AbstractState. So a cycle of a mixture
+  given by mass fractions (a `FluidSpec` with `basis="mass"`), with its
+  own interaction parameters or as an AbstractState was refused by its
+  own chart ("Cycle ... was computed for X, but this chart shows X"), and
+  a cycle with other interaction parameters was taken by a chart without
+  them. A cycle now keeps the model of its fluid (`Cycle.fluid_model`,
+  `Fluid.model_key`, filled in by the cycle models), and the chart
+  rebuilds the fluid from it (`Fluid.from_model`); a cycle with only a
+  name is checked by the name, as before.
+
 ## [1.3.0] - 2026-10-22
 
 ### Added

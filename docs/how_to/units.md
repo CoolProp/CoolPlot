@@ -34,6 +34,11 @@ value is `SI * scale + offset`. The last field names the unit of a
 superheat is 5 K, not 5 deg C. `ENGINEERING.describe_difference("T", 5.0)`
 writes "5 K".
 
+Labels stay plain ASCII in code ("deg C", "kg/m3"). Since 1.4 the chart
+writes them with their own characters, "&deg;C" and "kg/m&sup3;", also in a
+custom unit with the same label; `labels={"symbols": "ascii"}` keeps the
+plain letters (the how-to on labels).
+
 ## Gauge pressure
 
 ```python

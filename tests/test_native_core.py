@@ -285,7 +285,7 @@ def test_the_pdf_of_a_chart_reads_back(tmp_path):
     assert all(not f.problems for f in content.fonts) and content.fonts
     texts = set(content.texts)
     assert "Propane heat pump" in texts and "heat pump" in texts
-    assert "Temperature T / deg C" in texts   # rails: bare values, symbol and unit in the legend
+    assert "Temperature T / \u00b0C" in texts   # rails: bare values, symbol and unit in the legend
     with pytest.raises(ValueError, match="PDF"):
         renderer.save(str(tmp_path / "chart.svg"))
 
@@ -350,8 +350,8 @@ def test_lines_placed_by_saturation_states_compose_the_same_through_the_port():
     values = [i.text for i in ported if i.id.endswith("/label")]
     assert values and all(re.fullmatch(r"-?[0-9.]+(e[-+]?[0-9]+)?", t) for t in values)
     legends = {i.legend for i in ported if i.legend}
-    assert {"Specific entropy s at T_sat / deg C", "Density rho at T_sat,liq / deg C",
-            "Temperature T / deg C"} <= legends
+    assert {"Specific entropy s at T_sat / \u00b0C", "Density \u03c1 at T_sat,liq / \u00b0C",
+            "Temperature T / \u00b0C"} <= legends
     # Edge labels write the saturation state out, the same way through the port
     chart.settings = chart.settings.with_(labels={"mode": "edge"})
     python, ported = _both_scenes(chart)
@@ -440,9 +440,46 @@ def test_an_older_core_refuses_a_restyled_saturation_curve(monkeypatch):
     assert {i.style.casing_width_pt for i in items if i.role == "saturation"} == {0.0}   # drawn by Python
 
 
-def _before_12(chart):
-    """The chart with the label mode and legend of 1.1, which an older core understands."""
+@needs_core
+def test_an_older_core_refuses_unicode_symbols(monkeypatch):
+    """A core from before 1.4 would ignore the symbol style and write rho and deg C in plain letters."""
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    from coolplot.compose import compose
+    from coolplot.engine import plan
+    chart = PropertyDiagram("R290", "Trho", tp_limits="ACHP", settings="interactive")
+    chart.set_lines("p", num=4, labels=True)
+    spec = chart.spec
+    domain = chart.engine.domain(spec)
+    curves = chart.engine.curves(spec, domain, plan(spec, domain))
+    monkeypatch.setattr(native, "core_version", lambda: (1, 3, 0))
+    monkeypatch.setenv("COOLPLOT_NATIVE", "1")
+    with pytest.warns(native.CoreFallbackWarning, match="older than 1.4"):
+        _, axes = compose(spec, domain, curves)
+    assert axes.x_label == "Density \u03c1 / kg/m\u00b3"   # drawn by the Python composer
+    chart.settings = chart.settings.with_(labels={"symbols": "ascii"})
+    assert native.compose(chart.spec, domain, curves) is not None   # plain letters: the older core composes it
+
+
+@needs_core
+def test_unicode_symbols_compose_the_same_through_the_port():
+    pytest.importorskip("CoolProp")
+    if native.core_version() < (1, 4):
+        pytest.skip("coolplot-core 1.4 writes the symbols in Unicode; an older one is refused (previous test)")
+    from coolplot import PsychrometricChart
+    chart = PsychrometricChart(T_range=(40, 110), W_range=(0, 150), settings="interactive", units="IP")
     chart.settings = chart.settings.with_(labels={"mode": "edge"})
+    chart.set_default_lines(labels=True)
+    python, ported = _both_scenes(chart)
+    difference = _same(python.to_dict(), ported.to_dict())
+    assert difference == "", difference
+    assert ported.axes.x_label == "Dry-bulb temperature T / \u00b0F"
+    assert any(t.text.startswith("\u03c6=") for t in ported if t.id.startswith("iso/RH/") and t.id.endswith("/label"))
+
+
+def _before_12(chart):
+    """The chart with the label mode, legend and plain symbols of 1.1, which an older core understands."""
+    chart.settings = chart.settings.with_(labels={"mode": "edge", "symbols": "ascii"})
     legend = chart.theme.axes.legend.with_(location="outside right")
     chart.theme = chart.theme.with_(axes=chart.theme.axes.with_(legend=legend))
     return chart

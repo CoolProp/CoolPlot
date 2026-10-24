@@ -103,7 +103,7 @@ def simple_compression(fluid, T_evap_C: float, T_cond_C: float, dT_sh_K: float =
                "T_comp_out_K": s2.T}
     return Cycle(name, ((1, s1), (2, s2), (3, s3), (4, s4)), paths=(((1, 2), "polytropic"),),
                  results=tuple(results.items()),
-                 fluid=fluid.name)
+                 fluid=fluid.name, fluid_model=fluid.model_key)
 
 
 def two_stage(fluid, T_evap_C: float, T_cond_C: float, intermediate: str = "flash_tank",
@@ -188,7 +188,7 @@ def two_stage(fluid, T_evap_C: float, T_cond_C: float, intermediate: str = "flas
                    COP_heating=q_cond_J_kg / w_comp_J_kg)
     default_name = "Two-stage, " + ("flash tank" if intermediate == "flash_tank" else "economizer")
     return Cycle(name or default_name, tuple(states.items()), tuple(tuple(chain) for chain in loops),
-                 tuple(paths.items()), tuple(results.items()), fluid.name)
+                 tuple(paths.items()), tuple(results.items()), fluid.name, fluid.model_key)
 
 
 def rankine(fluid, p_high_Pa: float, p_low_Pa: float, T_live_C: Optional[float] = None,
@@ -238,4 +238,4 @@ def rankine(fluid, p_high_Pa: float, p_low_Pa: float, T_live_C: Optional[float] 
                "w_pump_J_kg": w_pump_J_kg, "eta_th": (w_turbine_J_kg - w_pump_J_kg) / q_in_J_kg}
     return Cycle(name, ((1, s1), (2, s2), (3, s3), (4, s4)), paths=(((1, 2), "polytropic"), ((3, 4), "polytropic")),
                  results=tuple(results.items()),
-                 fluid=fluid.name)
+                 fluid=fluid.name, fluid_model=fluid.model_key)

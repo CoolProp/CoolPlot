@@ -45,9 +45,9 @@ def test_isentropes_through_the_saturated_vapour_every_10_K():
     assert labels and all(text.startswith("s=") and text.endswith(" kJ/kg/K") for text in labels)
     # Asked for, they name the saturation state instead
     chart.set_lines("s", at_saturation={"T": 10, "range": (-40, 60), "label": "saturation"}, labels=True)
-    assert label_text(chart.spec, "s", zero.value_SI, zero.anchor_SI) == "T_sat=0 deg C"
+    assert label_text(chart.spec, "s", zero.value_SI, zero.anchor_SI) == "T_sat=0 \u00b0C"
     labels = _labels(chart, "s")
-    assert labels and all(text.startswith("T_sat=") and text.endswith(" deg C") for text in labels)
+    assert labels and all(text.startswith("T_sat=") and text.endswith(" \u00b0C") for text in labels)
 
 
 def test_the_liquid_side_and_the_saturation_labels():
@@ -58,13 +58,13 @@ def test_the_liquid_side_and_the_saturation_labels():
     assert len(requests) == 4
     for r in requests:
         assert r.value_SI == pytest.approx(chart.fluid.state_point("T", r.anchor_SI, "Q", 0.0).rho, rel=1e-10)
-    assert all(text.startswith("rho=") for text in _labels(chart, "rho"))
+    assert all(text.startswith("\u03c1=") for text in _labels(chart, "rho"))
     assert chart.line_sets()["rho"].anchor.label == "value"
     chart.set_lines("rho", at_saturation={"T": 20, "Q": 0, "range": (-20, 40), "label": "saturation"}, labels=True)
-    assert "T_sat,liq=0 deg C" in _labels(chart, "rho")
+    assert "T_sat,liq=0 \u00b0C" in _labels(chart, "rho")
     chart.set_lines("rho", at_saturation={"T": 20, "Q": 0.5, "range": (-20, 40), "label": "saturation"},
                     labels=True)
-    assert "T(x=0.5)=20 deg C" in _labels(chart, "rho")
+    assert "T(x=0.5)=20 \u00b0C" in _labels(chart, "rho")
 
 
 def test_a_blend_uses_its_dew_or_bubble_point():

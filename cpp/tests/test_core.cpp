@@ -57,6 +57,20 @@ TEST_CASE("Quantities and their aliases", "[core]") {
     CHECK_THROWS_AS(quantity_key("banana"), Error);
 }
 
+TEST_CASE("Symbols and units in unicode and ascii style, as in Python", "[core]") {
+    // UTF-8 bytes, as in coolplot.core.symbols
+    CHECK(symbol_text("rho", "unicode") == "\xcf\x81");
+    CHECK(symbol_text("RH", "unicode") == "\xcf\x86");
+    CHECK(symbol_text("Twb", "unicode") == "T_wb");
+    CHECK(symbol_text("h", "unicode") == "h");
+    CHECK(symbol_text("rho", "ascii") == "rho");
+    CHECK(unit_text("deg C", "unicode") == "\xc2\xb0" "C");
+    CHECK(unit_text("kg/m3", "unicode") == "kg/m\xc2\xb3");
+    CHECK(unit_text("kJ/kg", "unicode") == "kJ/kg");
+    CHECK(unit_text("deg C", "ascii") == "deg C");
+    CHECK_THROWS_AS(check_symbol_style("latex"), Error);
+}
+
 TEST_CASE("Unit systems", "[core]") {
     const UnitSystem& eng = get_unit_system("engineering");
     CHECK(eng.at("T").from_SI(273.15) == Catch::Approx(0.0));

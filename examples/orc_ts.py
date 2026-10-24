@@ -31,7 +31,7 @@ diagram.set_lines("p", values=[1, 2, 5, 10, 20, 30], labels=True)
 cycle = rankine(diagram.fluid, p_high_Pa=20e5, p_low_Pa=2e5)   # saturated vapour into the turbine
 exhaust = cycle.state(4)
 T_cond_C = cycle.state(1).T - 273.15
-diagram.add_cycle(cycle, labels={4: "exhaust {0:.0f} deg C".format(exhaust.T - 273.15)})
+diagram.add_cycle(cycle, labels={4: "exhaust {0:.0f} \u00b0C".format(exhaust.T - 273.15)})
 
 r = cycle.result
 print("Evaporating {0:.1f} deg C, condensing {1:.1f} deg C".format(cycle.state(3).T - 273.15, T_cond_C))

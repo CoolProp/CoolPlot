@@ -69,7 +69,7 @@ class SaturationAnchor:
     label : str
         "value" (the default) labels each line with its own value, e.g.
         "s=2.321 kJ/kg/K"; "saturation" with the saturation state it was
-        placed through, e.g. "T_sat=0 deg C".
+        placed through, e.g. "T_sat=0" with its unit.
     """
     by: str = "T"
     step_SI: float = 10.0

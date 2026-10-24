@@ -24,6 +24,7 @@ from dataclasses import asdict, dataclass, field, fields, replace
 from typing import Optional, Tuple, Union
 
 from ..core.numbers import format_number
+from ..core.symbols import check_symbol_style
 from ..style.theme import Theme, get_theme
 
 SATURATION_SPACINGS = ("critical", "linear")
@@ -147,6 +148,12 @@ class LabelSettings:
         Significant digits of the values shown in labels.
     show_units : bool
         Append the unit to every label value.
+    symbols : str
+        How symbols and units are written in axis titles, legends and
+        labels: "unicode" (the default since 1.4) with their proper
+        characters (the Greek rho and phi, the degree sign, m3 with a
+        superscript 3), "ascii" in plain letters ("rho", "deg C", "kg/m3"),
+        as before 1.4. See :mod:`coolplot.core.symbols`.
     tick_digits : int
         Significant digits of tick labels; every backend writes them with
         :func:`coolplot.core.numbers.format_number`.
@@ -161,6 +168,7 @@ class LabelSettings:
     digits: int = 4
     show_units: bool = True
     tick_digits: int = 6
+    symbols: str = "unicode"
 
     def __post_init__(self):
         if self.mode not in LABEL_MODES:
@@ -176,6 +184,7 @@ class LabelSettings:
             if not 1 <= int(getattr(self, name)) <= 12:
                 raise ValueError("LabelSettings.{0} has to be between 1 and 12.".format(name))
             object.__setattr__(self, name, int(getattr(self, name)))
+        check_symbol_style(self.symbols)
         object.__setattr__(self, "keep_out_pt", float(self.keep_out_pt))
         object.__setattr__(self, "edges", edges)
         object.__setattr__(self, "margin_edges", margin_edges)
@@ -393,9 +402,14 @@ class Settings:
                 raise ValueError("Unknown {0} fields: {1}.".format(part_cls.__name__, sorted(unknown)))
             return part_cls(**(values or {}))
         look = data.get("look")
+        labels = dict(data.get("labels") or {})
+        if data.get("labels") is not None and "symbols" not in labels:
+            # A record before 1.4 always holds its labels, never the symbol
+            # style: it keeps the plain spelling it was drawn with
+            labels["symbols"] = "ascii"
         return cls(calc=part(CalcSettings, data.get("calc")),
                    look=Theme.from_dict(look) if isinstance(look, dict) else get_theme(look or "default"),
-                   labels=part(LabelSettings, data.get("labels")),
+                   labels=part(LabelSettings, labels),
                    page=part(PageSettings, data.get("page")),
                    branding=part(BrandingSettings, data.get("branding")))
 

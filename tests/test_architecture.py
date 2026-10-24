@@ -190,3 +190,22 @@ def test_building_and_rendering_svg_does_not_load_matplotlib():
             "print('matplotlib' in sys.modules)")
     out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, check=True)
     assert out.stdout.strip() == "False"
+
+
+def test_sources_are_ascii():
+    """Every source file is plain ASCII; texts write other characters as escapes ("\\u03c1", "\\xcf\\x81")."""
+    roots = [PACKAGE, os.path.join(ROOT, "tests"), os.path.join(ROOT, "examples"), os.path.join(ROOT, "docs")] + \
+        [os.path.join(ROOT, "cpp", d) for d in ("src", "include", "python", "tests")]
+    suffixes = (".py", ".js", ".cpp", ".h", ".md", ".txt", ".toml", ".cfg")
+    found = []
+    for root in roots:
+        for folder, _, names in os.walk(root):
+            if "_build" in folder or "generated" in folder:   # files sphinx writes
+                continue
+            for name in names:
+                if name.endswith(suffixes):
+                    path = os.path.join(folder, name)
+                    with open(path, "rb") as f:
+                        if any(byte > 127 for byte in f.read()):
+                            found.append(os.path.relpath(path, ROOT))
+    assert found == []

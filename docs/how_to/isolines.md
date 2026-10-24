@@ -48,7 +48,7 @@ diagram.set_lines("s", at_saturation={"T": 10}, labels=True)           # isentro
 diagram.set_lines("rho", at_saturation={"T": 20, "range": (-40, 60)})  # isochores every 20 K, -40 to 60 deg C
 diagram.set_lines("T", at_saturation={"p": 2})                         # isotherms every 2 bar of saturation pressure
 diagram.set_lines("s", at_saturation={"T": 10, "Q": 0})                # through the saturated liquid
-diagram.set_lines("s", at_saturation={"T": 10, "label": "saturation"}) # labels "T_sat=0 deg C"
+diagram.set_lines("s", at_saturation={"T": 10, "label": "saturation"}) # labels "T_sat=0" with its unit
 ```
 
 The steps are round in the chart's units (every 10 K in a deg C chart
@@ -56,10 +56,10 @@ gives 0, 10, 20 deg C; in an IP chart a step of 20 gives 0, 20, 40 deg F)
 and stop just below the critical point. Each line is labelled with its
 own value, like any other line (`s=2.321 kJ/kg/K`, four significant
 digits, since the values are not round). `"label": "saturation"` names the
-saturation state instead, `T_sat=0 deg C` for the vapour side,
-`T_sat,liq=0 deg C` for the liquid side (with labels on rails, the default
+saturation state instead, "T_sat=0 &deg;C" for the vapour side,
+"T_sat,liq=0 &deg;C" for the liquid side (with labels on rails, the default
 since 1.2, the bare saturation value, and the legend says "Specific entropy
-s at T_sat / deg C"). For a blend, `"Q": 1` is the dew point and `"Q": 0`
+s at T_sat / &deg;C"). For a blend, `"Q": 1` is the dew point and `"Q": 0`
 the bubble point at that temperature. A line placed this way is the same
 line, and the same cache entry, as one given by its value.
 

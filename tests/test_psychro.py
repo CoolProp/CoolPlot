@@ -103,12 +103,12 @@ def test_chart_scene(chart):
     groups = {i.group for i in scene}
     assert {"iso/RH", "iso/Twb", "iso/h", "iso/v", "cycle/Air conditioning"} <= groups
     assert scene["iso/RH/1"].role == "saturation"
-    assert scene.axes.x_label == "Dry-bulb temperature T / deg C"
+    assert scene.axes.x_label == "Dry-bulb temperature T / \u00b0C"
     assert scene.axes.y_label == "Humidity ratio W / g/kg"
     assert same_numbers(scene.axes.x_limits, (-10.0, 45.0))
     labels = [i for i in scene if i.role == "isoline_label"]
     assert len(labels) > 10 and any(t.id == "iso/RH/0.5/label" and t.text == "50" for t in labels)
-    assert "Relative humidity RH / %" in {i.legend for i in scene if i.legend}
+    assert "Relative humidity \u03c6 / %" in {i.legend for i in scene if i.legend}
     states = list(chart.cycle_states("Air conditioning").values())
     assert states[2].W == pytest.approx(8.9e-3) and states[1].RH == pytest.approx(0.95)
 
@@ -372,18 +372,18 @@ def test_the_mollier_chart_has_x_across_and_temperature_up(mollier):
     assert mollier.style == "mollier" and mollier.spec.diagram.is_mollier
     scene = mollier.update_scene()
     assert scene.axes.x_label == "Humidity ratio x / g/kg"
-    assert scene.axes.y_label == "Temperature T / deg C"
+    assert scene.axes.y_label == "Temperature T / \u00b0C"
     assert same_numbers(scene.axes.x_limits, (0.0, 25.0)) and same_numbers(scene.axes.y_limits, (-10.0, 45.0))
     groups = {i.group for i in scene}
     assert {"iso/T", "iso/RH", "iso/h", "iso/Twb", "iso/v", "cycle/Air conditioning"} <= groups
     assert scene["iso/RH/1"].role == "saturation"
     legends = {i.legend for i in scene if i.legend}
-    assert "Relative humidity phi / %" in legends and not any("RH" in t for t in legends)
+    assert "Relative humidity \u03c6 / %" in legends and not any("RH" in t for t in legends)
     assert scene["iso/RH/0.5/label"].text == "50"
     chart = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25), style="mollier", settings="interactive")
     chart.settings = chart.settings.with_(labels={"mode": "edge"})
     chart.set_lines("RH", [50.0])
-    assert chart.update_scene()["iso/RH/0.5/label"].text == "phi=50 %"
+    assert chart.update_scene()["iso/RH/0.5/label"].text == "\u03c6=50 %"
     with pytest.raises(ValueError, match="style"):
         PsychrometricChart(style="din")
 
@@ -462,8 +462,8 @@ def test_the_mollier_scale_follows_a_changed_temperature_unit():
     assert chart.spec.limits.range_SI("Thx") == pytest.approx((273.15, 313.15))
     chart.set_lines("T", [50.0])
     scene = chart.update_scene()
-    assert scene.axes.y_label.endswith("deg F") and scene["iso/T/283.15/label"].text == "50"
-    assert "Dry-bulb temperature T / deg F" in {i.legend for i in scene if i.legend}
+    assert scene.axes.y_label.endswith("\u00b0F") and scene["iso/T/283.15/label"].text == "50"
+    assert "Dry-bulb temperature T / \u00b0F" in {i.legend for i in scene if i.legend}
     kelvin = ENGINEERING.with_unit("Thx", Unit("K")).with_unit("T", Unit("deg F", 1.8, -459.67, "R"))
     assert kelvin["Thx"].label == "K"   # set on its own, it stays
 

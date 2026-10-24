@@ -69,7 +69,7 @@ def test_psychrometric_evaporative_cooling(tmp_path):
 def test_psychrometric_mollier(tmp_path):
     assert "phi =" in _run("psychrometric_mollier.py", tmp_path)
     svg = (tmp_path / "psychrometric_mollier.svg").read_text()
-    assert "Humidity ratio x / g/kg" in svg and "Relative humidity phi / %" in svg and "cooling coil" in svg \
+    assert "Humidity ratio x / g/kg" in svg and "Relative humidity &#966; / %" in svg and "cooling coil" in svg \
         and len(svg) > 10000
 
 
@@ -95,7 +95,7 @@ def test_co2_transcritical(tmp_path):
 def test_orc_ts(tmp_path):
     assert "Efficiency 14.2 %" in _run("orc_ts.py", tmp_path)
     svg = (tmp_path / "orc_ts.svg").read_text()
-    assert "exhaust 54 deg C" in svg and len(svg) > 10000
+    assert "exhaust 54 &#176;C" in svg and len(svg) > 10000
 
 
 def test_refrigerant_comparison(tmp_path):
@@ -107,7 +107,7 @@ def test_refrigerant_comparison(tmp_path):
 def test_ip_units(tmp_path):
     assert "EER" in _run("ip_units.py", tmp_path)
     svg = (tmp_path / "ip_units.svg").read_text()
-    assert "Temperature T / deg F" in svg and "Btu/lb" in svg and len(svg) > 10000
+    assert "Temperature T / &#176;F" in svg and "Btu/lb" in svg and len(svg) > 10000
     # The isotherm at 0 deg F is labelled 0, not with the noise of the conversion (-4e-10)
     assert ">-40</text>" in svg and ">0</text>" in svg and "e-10</text>" not in svg
 
@@ -127,6 +127,15 @@ def test_branding(tmp_path):
     assert "Tillner-Roth and Yokozeki" in _run("branding.py", tmp_path)
     svg = (tmp_path / "branding.svg").read_text()
     assert "cp-badge" in svg and "Example Engineering" in svg and "data:image/svg+xml;base64," in svg
+
+
+def test_branding_chp(tmp_path):
+    # Run from another folder: the script finds its pictures next to itself
+    assert "COP heating: 3.8" in _run("branding_chp.py", tmp_path)
+    svg = (tmp_path / "branding_chp.svg").read_text()
+    assert "cp-badge" in svg and "cp-watermark" in svg and "cleanheatpartners.com" in svg
+    assert "Lemmon et al. (2009)" in svg
+    assert "#00998b" in svg.lower()   # the company teal of the first line family
 
 
 def _ports_installed() -> bool:
@@ -204,11 +213,12 @@ BOTH_PATHS = ["quickstart.py", "two_stage_cycles.py", "refrigerant_blend.py", "p
               "interactive_cycle.py", "saturation_lines.py", "psychrometric_processes.py",
               "psychrometric_air_handling.py", "psychrometric_evaporative_cooling.py", "psychrometric_mollier.py",
               "steam_rankine_ts.py", "steam_turbine_hs.py", "co2_transcritical.py", "orc_ts.py",
-              "refrigerant_comparison.py", "ip_units.py", "themes.py", "label_modes.py", "branding.py"]
+              "refrigerant_comparison.py", "ip_units.py", "themes.py", "label_modes.py", "branding.py",
+              "branding_chp.py"]
 
 #: Examples whose charts are all composed by Python also with coolplot-core:
 #: coolplot-core does not compose the branding (see coolplot.compose.compose).
-PYTHON_COMPOSER = {"branding.py"}
+PYTHON_COMPOSER = {"branding.py", "branding_chp.py"}
 
 
 def test_the_list_of_examples_is_complete():

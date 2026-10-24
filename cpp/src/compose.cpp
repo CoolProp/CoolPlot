@@ -161,8 +161,21 @@ Item markers_item(const std::string& id, const std::string& group, const std::st
 
 }  // namespace
 
+namespace {
+
+/// The symbol of a quantity as the chart writes it, see LabelSettings::symbols.
+std::string shown_symbol(const DiagramSpec& spec, const std::string& key) {
+    return symbol_text(spec.diagram.symbol(key), spec.settings.labels.symbols);
+}
+
+/// The unit label of a quantity as the chart writes it, see LabelSettings::symbols.
+std::string shown_unit(const DiagramSpec& spec, const std::string& key) {
+    return unit_text(spec.units.at(key).label, spec.settings.labels.symbols);
+}
+}
+
 std::string axis_label(const DiagramSpec& spec, const std::string& key) {
-    return spec.diagram.quantity_label(key) + " " + spec.diagram.symbol(key) + " / " + spec.units.at(key).label;
+    return spec.diagram.quantity_label(key) + " " + shown_symbol(spec, key) + " / " + shown_unit(spec, key);
 }
 
 namespace {
@@ -176,7 +189,7 @@ const IsolineSet* saturation_anchor(const DiagramSpec& spec, const std::string& 
 
 /// The symbol of the saturation state lines are labelled by: "T_sat", "T_sat,liq" or "T(x=0.5)".
 std::string saturation_symbol(const DiagramSpec& spec, const IsolineSet& anchored) {
-    std::string symbol = spec.diagram.symbol(anchored.anchor_by);
+    std::string symbol = shown_symbol(spec, anchored.anchor_by);
     if (same_number(anchored.anchor_Q, 1.0)) return symbol + "_sat";
     if (is_zero(anchored.anchor_Q)) return symbol + "_sat,liq";
     return symbol + "(" + get_quantity("Q").symbol + "=" + spec.settings.labels.format_value(anchored.anchor_Q) + ")";
@@ -185,13 +198,13 @@ std::string saturation_symbol(const DiagramSpec& spec, const IsolineSet& anchore
 /// A family's legend text with its symbol and unit, e.g. "Temperature T / deg C" (the "rails" mode); a family
 /// labelled by its saturation states says so: "Specific entropy s at T_sat / deg C".
 std::string legend_with_unit(const DiagramSpec& spec, const std::string& key, const std::string& legend) {
-    std::string text = legend + " " + spec.diagram.symbol(key);
+    std::string text = legend + " " + shown_symbol(spec, key);
     std::string unit_key = key;
     if (const IsolineSet* anchored = saturation_anchor(spec, key)) {
         text += " at " + saturation_symbol(spec, *anchored);
         unit_key = anchored->anchor_by;
     }
-    const std::string& unit = spec.units.at(unit_key).label;
+    std::string unit = shown_unit(spec, unit_key);
     return (unit == "-" || unit.empty()) ? text : text + " / " + unit;
 }
 
@@ -205,7 +218,7 @@ std::string label_text(const DiagramSpec& spec, const std::string& key, double v
     if (has_anchor)
         for (const IsolineSet& s : spec.isolines)
             if (s.key == key && s.has_anchor) anchored = &s;
-    std::string shown_key = key, symbol = spec.diagram.symbol(key);
+    std::string shown_key = key, symbol = shown_symbol(spec, key);
     double shown = value_SI;
     if (anchored && anchored->anchor_label == "saturation") {
         shown_key = anchored->anchor_by;
@@ -214,7 +227,7 @@ std::string label_text(const DiagramSpec& spec, const std::string& key, double v
     }
     const Unit& unit = spec.units.at(shown_key);
     std::string text = symbol + "=" + labels.format_value(unit.label_value(shown));
-    if (labels.show_units && unit.label != "-" && !unit.label.empty()) text += " " + unit.label;
+    if (labels.show_units && unit.label != "-" && !unit.label.empty()) text += " " + shown_unit(spec, shown_key);
     return text;
 }
 

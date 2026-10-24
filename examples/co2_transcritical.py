@@ -42,7 +42,7 @@ Q_dot_gc_kW = m_dot_kg_s * (s[2].h - s[3].h) * 1e-3
 Q_dot_evap_kW = m_dot_kg_s * (s[1].h - s[4].h) * 1e-3
 W_dot_kW = m_dot_kg_s * (s[2].h - s[1].h) * 1e-3
 diagram.add_cycle("Heat pump", states, labels={
-    2: "{0:.0f} deg C".format(s[2].T - 273.15),
+    2: "{0:.0f} \u00b0C".format(s[2].T - 273.15),
     3: "gas cooler {0:.1f} kW".format(Q_dot_gc_kW),
     4: "evaporator {0:.1f} kW".format(Q_dot_evap_kW)})
 

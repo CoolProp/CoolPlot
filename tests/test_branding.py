@@ -96,7 +96,7 @@ def test_references_name_the_equation_of_state():
     assert fluid_references("R290") == ("R290: Lemmon et al. (2009)",)
     assert fluid_references("R290", "full") == ("R290: Lemmon et al., J. Chem. Eng. Data 54 (2009) 3141-3180",)
     blend = fluid_references("R407C.mix")
-    assert [line.split(":")[0] for line in blend] == ["R32", "R125", "R134a", "Mixture model"]
+    assert [line.split(":")[0] for line in blend] == ["R407C", "R32", "R125", "R134a", "Mixture model"]
     assert blend[-1] == "Mixture model: Lemmon and Jacobsen (2004)"
     from coolplot import HumidAirSpec
     assert fluid_references(HumidAirSpec(), "full") == ("Humid air: Herrmann et al., ASHRAE RP-1485 (2009)",)
@@ -104,6 +104,30 @@ def test_references_name_the_equation_of_state():
     assert fluid_references("REFPROP::R290") == ("R290: REFPROP",)
     with pytest.raises(ValueError, match="reference style"):
         fluid_references("R290", "long")
+
+
+def test_references_name_a_mixture_and_its_composition():
+    # A predefined blend by its name, shown by mass as its R number is defined
+    assert fluid_references("R407C.mix")[0] == "R407C: R32 23 %, R125 25 %, R134a 52 % by mass"
+    # Fractions that match a predefined blend carry its name, by mole or by mass
+    assert fluid_references("HEOS::R32[0.697616]&R125[0.302384]")[0] == "R410A: R32 50 %, R125 50 % by mass"
+    from coolplot.spec.fluid import FluidSpec
+    by_mass = FluidSpec(components=("R32", "R125"), fractions=(0.5, 0.5), basis="mass")
+    assert fluid_references(by_mass)[0] == "R410A: R32 50 %, R125 50 % by mass"
+    # Within half a percent the name stays, with the composition as given
+    assert fluid_references("HEOS::R32[0.7]&R125[0.3]")[0] == "R410A: R32 50.3 %, R125 49.7 % by mass"
+    # No blend of these fractions: a mixture in the basis it was given in
+    assert fluid_references("HEOS::R32[0.2]&R125[0.8]")[0] == "Mixture: R32 20 %, R125 80 % by mole"
+    # Components given by an alias of CoolProp match too, and keep the names they were given with
+    assert fluid_references("HEOS::N2[0.7812]&Ar[0.0092]&O2[0.2096]")[0] == "Air: N2 78.1 %, Ar 0.92 %, O2 21 % by mole"
+    # A Fluid has lost the name of its blend; the composition finds it again
+    from coolplot.thermo.fluid import Fluid
+    assert fluid_references(Fluid("HEOS::R407C.mix"))[0] == "R407C: R32 23 %, R125 25 %, R134a 52 % by mass"
+    # Other backends show the fractions next to the backend name, without asking CoolProp
+    assert fluid_references("REFPROP::R32[0.7]&R125[0.3]") == ("R32 70 %, R125 30 % by mole: REFPROP",)
+    assert fluid_references("INCOMP::MEG[0.3]") == ("MEG 30 % by mass: CoolProp incompressible fluid",)
+    # Pure fluids, also the pseudo-pure R410A, have no composition line
+    assert fluid_references("R410A") == ("R410A: Lemmon (2003)",)
 
 
 def test_latex_of_the_bibliography_becomes_plain_text():

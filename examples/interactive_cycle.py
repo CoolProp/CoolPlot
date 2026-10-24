@@ -42,8 +42,8 @@ def main():
 
     ax_evap = fig.add_axes((0.15, 0.10, 0.7, 0.03))
     ax_cond = fig.add_axes((0.15, 0.05, 0.7, 0.03))
-    T_evap = Slider(ax_evap, "T_evap / deg C", -40.0, 15.0, valinit=-5.0)
-    T_cond = Slider(ax_cond, "T_cond / deg C", 20.0, 70.0, valinit=40.0)
+    T_evap = Slider(ax_evap, "T_evap / \u00b0C", -40.0, 15.0, valinit=-5.0)
+    T_cond = Slider(ax_cond, "T_cond / \u00b0C", 20.0, 70.0, valinit=40.0)
 
     def redraw(_=None):
         cycle = simple_compression(diagram.fluid, T_evap.val, T_cond.val, name="Heat pump")
@@ -55,7 +55,7 @@ def main():
     def show_state(state, event):
         if state is None:
             return
-        readout.set_text("T = {0:.1f} deg C, p = {1:.2f} bar, h = {2:.1f} kJ/kg, s = {3:.3f} kJ/kg/K".format(
+        readout.set_text("T = {0:.1f} \u00b0C, p = {1:.2f} bar, h = {2:.1f} kJ/kg, s = {3:.3f} kJ/kg/K".format(
             state.T - 273.15, state.p * 1e-5, state.h * 1e-3, state.s * 1e-3))
         fig.canvas.draw_idle()
 

@@ -138,8 +138,24 @@ def test_labels_follow_lines(diagram):
     diagram.set_lines("T", values=[0.0], labels=True)
     label = diagram.update_scene()["iso/T/273.15/label"]
     assert isinstance(label, Text)
-    assert label.text == "T=0 deg C"
+    assert label.text == "T=0 \u00b0C"
     assert label.direction is not None
+
+
+def test_symbols_and_units_in_unicode_or_ascii():
+    diagram = PropertyDiagram("R290", "Trho", units="engineering")
+    diagram.settings = diagram.settings.with_(labels={"mode": "edge"})
+    diagram.set_lines("p", values=[10.0], labels=True)
+    scene = diagram.update_scene()
+    assert scene.axes.x_label == "Density \u03c1 / kg/m\u00b3"
+    assert scene.axes.y_label == "Temperature T / \u00b0C"
+    assert scene["iso/p/1000000/label"].text == "p=10 bar"
+    diagram.settings = diagram.settings.with_(labels={"symbols": "ascii"})
+    scene = diagram.update_scene()
+    assert scene.axes.x_label == "Density rho / kg/m3"
+    assert scene.axes.y_label == "Temperature T / deg C"
+    # What code reads and writes stays ASCII
+    assert diagram.units.describe("T", 298.15) == "25 deg C"
 
 
 def test_state_at_cursor(diagram):

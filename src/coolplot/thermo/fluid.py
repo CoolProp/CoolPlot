@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 from functools import lru_cache
 from typing import Optional, Tuple, Union
@@ -202,6 +203,38 @@ class Fluid:
         that determines the properties, so it can serve as a cache key."""
         return self._model
 
+    def same_fluid(self, other: "Fluid") -> bool:
+        """Whether ``other`` is this fluid model, however it was given.
+
+        The same model key, or the same model as CoolProp reports it for the
+        two states (:func:`model_from_state`): the same backend, components
+        and interaction parameters, with the same mole fractions to 1e-9 (the
+        rounding of converting mass to mole fractions). So R32/R125 50/50 by
+        mass, the same mixture by mole and CoolProp's "R410A.mix" are one
+        fluid, and so are "R290" and "Propane".
+        """
+        if self._model == other._model:
+            return True
+        try:
+            mine, theirs = model_from_state(self._state), model_from_state(other._state)
+        except ValueError:   # a state that cannot report its fluid (INCOMP): only the model key decides
+            return False
+        # CoolProp reports a predefined blend ("R410A.mix") on "HelmholtzEOSBackend"
+        # and the same mixture given by its components on
+        # "HelmholtzEOSMixtureBackend": one family of equations, so the word
+        # Mixture is left out of the comparison (likewise for REFPROP)
+        backends = (str(mine[0]).replace("Mixture", ""), str(theirs[0]).replace("Mixture", ""))
+        if backends[0] != backends[1] or mine[1] != theirs[1]:
+            return False
+        same_fractions = len(mine[2]) == len(theirs[2]) and all(
+            math.isclose(a, b, rel_tol=0.0, abs_tol=1e-9) for a, b in zip(mine[2], theirs[2]))
+        # Interaction parameters as (i, j, key, value); a state of one backend
+        # reports the same keys, so the values decide
+        same_interactions = len(mine[4]) == len(theirs[4]) and all(
+            a[:3] == b[:3] and math.isclose(a[3], b[3], rel_tol=1e-12, abs_tol=0.0)
+            for a, b in zip(mine[4], theirs[4]))
+        return same_fractions and same_interactions
+
     @property
     def pseudo_pure_blend(self) -> Optional[str]:
         """For CoolProp's pseudo-pure model of a blend ("R407C"), the name of the
@@ -221,6 +254,22 @@ class Fluid:
             return None
         name = components[0] + ".mix"
         return name if name in _predefined_mixtures() else None
+
+    @classmethod
+    def from_model(cls, model: Tuple, name: str = "") -> "Fluid":
+        """A Fluid of a model key (:attr:`model_key`), as a Cycle keeps it.
+
+        The model key holds everything a fluid name may lose: the basis of
+        the fractions, interaction parameters set on a mixture, the fractions
+        of a mixture given as an AbstractState. ``name`` is shown in messages;
+        by default the components joined by "&".
+        """
+        fluid = cls.__new__(cls)
+        fluid._model = tuple(model)
+        fluid._state = build_state(fluid._model)
+        fluid._reset_caches()
+        fluid._name = name or "&".join(fluid._model[1])
+        return fluid
 
     def with_backend(self, backend: str) -> "Fluid":
         """The same fluid model on another CoolProp backend."""

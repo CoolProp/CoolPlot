@@ -83,6 +83,21 @@ def test_settings_json_round_trip():
         Settings.from_dict({"calc": {"pionts": 10}})
 
 
+def test_symbol_style_of_settings_and_old_records():
+    assert LabelSettings().symbols == "unicode"
+    with pytest.raises(ValueError, match="symbol style"):
+        LabelSettings(symbols="latex")
+    for symbols in ("unicode", "ascii"):
+        settings = Settings().with_(labels={"symbols": symbols})
+        assert Settings.from_dict(_json(settings.to_dict())) == settings
+    # A record before 1.4 always holds its labels and never the symbol style: plain letters
+    old = Settings().to_dict()
+    del old["labels"]["symbols"]
+    assert Settings.from_dict(old).labels.symbols == "ascii"
+    # A record without labels at all takes the default
+    assert Settings.from_dict({}).labels.symbols == "unicode"
+
+
 def test_label_number_format():
     assert LabelSettings(digits=3).format_value(12.345) == "12.3"
     assert LabelSettings().format_value(0.0) == "0"

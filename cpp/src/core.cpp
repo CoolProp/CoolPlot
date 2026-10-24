@@ -439,6 +439,60 @@ bool DiagramType::valid() const {
     return std::find(allowed.begin(), allowed.end(), x) != allowed.end() && std::find(allowed.begin(), allowed.end(), y) != allowed.end();
 }
 
+// ---------------------------------------------------------------------------
+// Symbols
+// ---------------------------------------------------------------------------
+
+// The characters are written as UTF-8 bytes, so that the source stays ASCII
+// and every compiler stores the same bytes. A hex escape takes every hex
+// digit that follows, so a letter after one starts a new literal ("\xc2\xb0" "C").
+
+namespace {
+
+const std::map<std::string, std::string>& unicode_symbols() {
+    static const std::map<std::string, std::string> table = {
+      {"rho", "\xcf\x81"},  // Greek small letter rho, density
+      {"phi", "\xcf\x86"},  // Greek small letter phi, relative humidity
+      {"RH", "\xcf\x86"},
+      {"Twb", "T_wb"},
+      {"Tdp", "T_dp"},
+    };
+    return table;
+}
+
+const std::map<std::string, std::string>& unicode_units() {
+    static const std::map<std::string, std::string> table = {
+      {"deg C", "\xc2\xb0" "C"},  // degree sign
+      {"deg F", "\xc2\xb0" "F"},
+      {"R", "\xc2\xb0" "R"},
+      {"Btu/lb/R", "Btu/lb/\xc2\xb0" "R"},
+      {"kg/m3", "kg/m\xc2\xb3"},  // superscript three
+      {"m3/kg", "m\xc2\xb3/kg"},
+      {"lb/ft3", "lb/ft\xc2\xb3"},
+      {"ft3/lb", "ft\xc2\xb3/lb"},
+    };
+    return table;
+}
+
+std::string replaced(const std::map<std::string, std::string>& table, const std::string& text, const std::string& style) {
+    if (style != "unicode") return text;
+    auto found = table.find(text);
+    return found == table.end() ? text : found->second;
+}
+}
+
+void check_symbol_style(const std::string& style) {
+    if (style != "unicode" && style != "ascii") throw Error("Unknown symbol style '" + style + "'.");
+}
+
+std::string symbol_text(const std::string& symbol, const std::string& style) {
+    return replaced(unicode_symbols(), symbol, style);
+}
+
+std::string unit_text(const std::string& label, const std::string& style) {
+    return replaced(unicode_units(), label, style);
+}
+
 bool DiagramType::x_log() const {
     return get_quantity(x).log_scale;
 }

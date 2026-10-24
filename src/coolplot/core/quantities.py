@@ -31,7 +31,9 @@ class Quantity:
         Name understood by ``CoolProp.HumidAirProp.HAPropsSI``, or None
         for a quantity that humid air does not have.
     symbol : str
-        Symbol used in axis labels, plain ASCII.
+        Symbol used in axis labels, plain ASCII. Charts write some of
+        them with their own characters ("rho" as the Greek letter), see
+        :mod:`coolplot.core.symbols`.
     label : str
         Human readable name used in axis labels.
     log_scale : bool

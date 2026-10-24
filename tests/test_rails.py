@@ -89,7 +89,7 @@ def test_rails_write_bare_values_with_ticks_and_units_in_the_legend():
         assert isinstance(tick, Line) and tick.group.endswith("/label") and tick.id.endswith("/tick")
         assert scene[tick.id[:-len("/tick")] + "/label"].clip is False
     legends = {i.legend for i in scene if i.legend}
-    assert {"Temperature T / deg C", "Specific entropy s / kJ/kg/K", "Density rho / kg/m3",
+    assert {"Temperature T / \u00b0C", "Specific entropy s / kJ/kg/K", "Density \u03c1 / kg/m\u00b3",
             "Vapour quality x", "Saturation"} <= legends
     assert scene.axes.style.legend.location in ("upper left", "upper right", "lower left", "lower right")
 
@@ -190,7 +190,7 @@ def test_texts_of_rails_draw_with_every_backend(tmp_path):
     from coolplot.render.svg import SvgRenderer
     chart.draw(SvgRenderer(width=900, height=650)).save(str(tmp_path / "rails.svg"))
     svg = (tmp_path / "rails.svg").read_text()
-    assert "cp-role-label_tick" in svg and "Temperature T / deg C" in svg
+    assert "cp-role-label_tick" in svg and "Temperature T / &#176;C" in svg
     pytest.importorskip("matplotlib")
     chart.save(str(tmp_path / "rails.png"))
     assert (tmp_path / "rails.png").stat().st_size > 10000

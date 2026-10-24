@@ -141,6 +141,13 @@ def check_paths(paths) -> Tuple[Tuple[Tuple[int, int], str], ...]:
     return tuple(sorted(out))
 
 
+def _frozen(value: Any) -> Any:
+    """``value`` with every list and tuple in it turned into a tuple, recursively."""
+    if isinstance(value, (list, tuple)):
+        return tuple(_frozen(item) for item in value)
+    return value
+
+
 @dataclass(frozen=True)
 class Cycle:
     """A computed cycle: numbered states, routes and results
@@ -162,7 +169,15 @@ class Cycle:
         Results in SI units, named like the quantities they hold, for
         example ("COP_heating", 3.9) or ("q_evap_J_kg", 2.6e5).
     fluid : str
-        The fluid the states were computed for.
+        The fluid the states were computed for, as :attr:`coolplot.thermo.Fluid.name`
+        gives it; shown in messages.
+    fluid_model : tuple
+        The model of that fluid, :attr:`coolplot.thermo.Fluid.model_key`:
+        backend, components, fractions, their basis and interaction
+        parameters, which the name may not hold (a mixture given by mass
+        has a name CoolProp reads by mole). The cycle models fill it in;
+        a chart checks a cycle against its fluid with it, or with the name
+        when it is empty.
     """
     name: str
     states: Tuple[Tuple[int, StatePoint], ...]
@@ -170,6 +185,7 @@ class Cycle:
     paths: Tuple[Tuple[Tuple[int, int], str], ...] = ()
     results: Tuple[Tuple[str, float], ...] = ()
     fluid: str = ""
+    fluid_model: Tuple[Any, ...] = ()
 
     def __post_init__(self):
         states = tuple(sorted((int(n), s) for n, s in (self.states.items() if isinstance(self.states, dict)
@@ -180,6 +196,8 @@ class Cycle:
         object.__setattr__(self, "paths", check_paths(self.paths))
         results = self.results.items() if isinstance(self.results, dict) else self.results
         object.__setattr__(self, "results", tuple((str(k), float(v)) for k, v in results))
+        # Lists anywhere in the model become tuples, so that the Cycle stays hashable
+        object.__setattr__(self, "fluid_model", _frozen(self.fluid_model))
 
     def state(self, number: int) -> StatePoint:
         """The state with the given number."""

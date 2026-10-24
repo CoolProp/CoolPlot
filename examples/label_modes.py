@@ -8,8 +8,8 @@ chart in the four modes:
 
 * ``"rails"`` (the default): the bare values of each family in a row along
   one edge, with the symbol and unit in the legend.
-* ``"edge"``: the full label ("T=50 deg C") just inside the frame where a
-  line leaves the chart, turned along the line.
+* ``"edge"``: the full label, symbol, value and unit, just inside the
+  frame where a line leaves the chart, turned along the line.
 * ``"margin"``: outside the frame like a second set of tick labels; the
   plot area stays free of text.
 * ``"inline"``: on the line itself, at ``position`` along it (0.5, the
