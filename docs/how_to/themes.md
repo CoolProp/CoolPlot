@@ -18,14 +18,15 @@ diagram.set_line_style("T", width_pt=1.0)              # one family, this chart 
 | `dark` | Screen, dark background. The same hues stepped and checked for the dark surface. |
 | `print` | Black and white. Families differ by dash pattern only. |
 | `classic` | The colours of the CoolProp plots before 2026, no legend, no grid. |
-| `nostalgia` | The log(p),h-diagrams of CoolPack (DTU, late 1990s): Times on white, a dense grey grid, red isotherms, blue isentropes, green isochores, labels in the colour of their lines, no legend. |
+| `coolpack` | The log(p),h-diagrams of CoolPack (DTU, late 1990s): Times on white, a dense grey grid, red isotherms, blue isentropes, green isochores, labels in the colour of their lines, no legend. |
 
 In `default` and `dark`, isolines are thin reference lines in colour.
 The saturation dome and cycles are drawn in ink, heavier and with a
 casing, so they read as the subject of the chart. Text uses ink colours,
 not series colours, unless a theme asks for labels in the colour of their
 lines (`isoline_label_color`, below). Why the colours are what they are is
-in {doc}`../explanation/colours`.
+in {doc}`../explanation/colours`; every theme with its pictures and its
+contrast and colour vision numbers is in the {doc}`../explanation/theme_catalog`.
 
 ## Customise
 
@@ -127,5 +128,5 @@ moves it and `LegendStyle(visible=False)` hides it.
 ## In the gallery
 
 The same chart in the four themes: {doc}`../gallery/themes`. The
-`nostalgia` theme on the R290 chart of the CoolPack tutorial:
-{doc}`../gallery/nostalgia`.
+`coolpack` theme on the R290 chart of the CoolPack tutorial:
+{doc}`../gallery/coolpack`.

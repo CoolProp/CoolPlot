@@ -3,15 +3,18 @@
 Isolines of different families cross each other everywhere, so every
 pair of family colours has to stay distinguishable, including for
 readers with a colour vision deficiency. Of the eight hues in the
-default palette only three pass that test for all pairs (worst pair:
-CVD Delta E 9.2, normal vision 24.0 in OKLab x100, light surface). Every
-diagram type offers exactly three coloured isoline families (plus
-quality, drawn in ink, and the rarely used internal energy), so three
-are enough. On the dark surface the stepped hues give a worst pair of
-CVD Delta E 9.4 for deuteranopia and 12.6 for protanopia, and 20.9 for
-normal vision. Tritanopia, which is very rare, separates blue and aqua
-less well in the dark theme (Delta E 4.0); labels or the dash-based
-`print` theme cover that case.
+default palette only three pass that test for all pairs (worst pair in
+OKLab x100 on the light surface: 10.1 for deuteranopia, 13.5 for
+protanopia, 10.4 for tritanopia, 24.0 for normal vision). Every diagram
+type offers exactly three coloured isoline families (plus quality, drawn
+in ink, and the rarely used internal energy), so three are enough. On
+the dark surface the stepped hues give 10.1 for deuteranopia, 13.6 for
+protanopia and 20.9 for normal vision. Tritanopia, which is very rare,
+separates blue and aqua poorly in the dark theme (2.6); labels or the
+dash-based `print` theme cover that case. The {doc}`theme_catalog` shows
+these numbers for every theme, computed when the documentation is built,
+and {doc}`accessibility` what they miss and how the default could do
+better.
 
 | Slot | Light | Dark | Families that land here |
 |------|-------|------|-------------------------|
@@ -34,7 +37,7 @@ The light aqua and yellow have less than 3:1 contrast against the light
 surface. Where those families matter, switch on value labels, which then
 carry the information. To pin a colour to a quantity regardless of the
 diagram, use `theme.with_isoline_color("T", "#c00000")`; the `classic`
-and `nostalgia` themes do this for every family.
+and `coolpack` themes do this for every family.
 
 ## Ink and reference lines
 

@@ -7,12 +7,22 @@ guide in the documentation says what to change in your code.
 ## [Unreleased]
 
 ### Added
-- Theme "nostalgia": the look of the log(p),h-diagrams of CoolPack (DTU,
+- Theme "coolpack": the look of the log(p),h-diagrams of CoolPack (DTU,
   "Refrigeration Utilities", late 1990s). Times on white with a dense
   light grey grid (major and minor ticks), a black saturation curve, red
   isotherms, blue isentropes, green isochores and navy lines of constant
   quality in the colours of the 16 colour Windows palette, every label in
-  the colour of its line, no legend. coolplot-core has the same preset.
+  the colour of its line, no legend. Purple isobars and magenta
+  isenthalps for the other charts. coolplot-core has the same preset.
+- Documentation: a theme catalog with every theme on a log(p)-h and a T-s
+  chart, its isoline colours as seen with each kind of colour vision
+  deficiency and in greyscale, contrast and separation numbers, and why
+  its colours are what they are. Pictures and numbers are generated when
+  the documentation is built.
+- Documentation: "Colour and accessibility", the rules the themes are
+  measured against (WCAG 2.2 AA, the colour science literature), who they
+  are for, and a proposed default palette with more contrast and a
+  lightness ladder that survives greyscale.
 - Gallery example "A CoolPack chart, for old times' sake": the R290 chart
   of the CoolPack tutorial with its one stage cycle, in the new theme.
 

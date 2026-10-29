@@ -1,0 +1,176 @@
+# Theme catalog
+
+Every theme that comes with CoolPlot, drawn on the same two charts of
+R290 (a log(p)-h and a T-s chart with a heat pump cycle), with the reasons
+for its colours and the numbers that show how well they work. The
+pictures and numbers are made from the package when this documentation is
+built, so they always show the themes as they are.
+
+How to read each entry:
+
+* **The charts** show the theme as most readers see it.
+* **The colour strip** shows each isoline colour as a bar and as a line
+  as thin as the theme's isolines, the way it looks with normal colour
+  vision, with the three kinds of dichromacy (one type of cone missing)
+  and in greyscale (a black and white print, or achromatopsia). Two rows
+  that look alike in a column are two families that reader cannot tell
+  apart by colour.
+* **The tables** give the contrast of each colour against the plot
+  background (WCAG 2.2 asks 3:1 for lines that carry meaning) and, per
+  chart, the pair of families whose colours are closest, as a distance in
+  OKLab x100. Below about 10, two thin lines are hard to tell apart; bold
+  marks values below 3:1 or 10.
+
+The simulations follow the recommendation of DaltonLens: Vienot (1999)
+for protanopia and deuteranopia, Brettel (1997) for tritanopia. How the
+colours of a theme are given to the families of a chart is explained in
+{doc}`colours`; what the themes miss, and how the default could do
+better, in {doc}`accessibility`.
+
+| Theme | Made for | Families told apart by |
+|-------|----------|------------------------|
+| `default` | screens with a light background, colour print | colour, checked for colour vision deficiencies |
+| `dark` | screens with a dark background | colour, checked for red-green deficiencies |
+| `print` | black and white print, photocopies | dash pattern only |
+| `classic` | continuity with CoolProp plots before 2026 | colour, pinned per quantity |
+| `coolpack` | the look of CoolPack's charts, late 1990s | colour, pinned per quantity, and labels in line colour |
+
+## default
+
+The default is built for the screen and for colour print, and for the
+roughly one in twelve men who see colours differently.
+
+**Why these colours.** The three hues (blue, orange, aqua) are the three
+of an eight-hue palette that stay apart in every pairing for readers with
+red-green deficiencies. Every chart type offers exactly three coloured
+isoline families, so three colours are enough. They are given out by
+position: the families a chart offers, in the fixed order T, p, h, s,
+rho, u, take the colours in turn. Temperature is therefore blue wherever
+it is an isoline, density always aqua, and on a T-s chart (where T is an
+axis) the isobars take the blue. The saturation dome and the cycles are
+drawn in ink, heavier and with a band in the background colour along
+them (the casing), so they read as the subject and the coloured isolines
+as the reference behind them. Labels are dark grey ink (7.7:1), readable
+on every line they cross.
+
+**Weak points.** The aqua isochores reach only 2.7:1 on the light
+surface, and in greyscale entropy and density become the same grey.
+
+:::{container} cp-pair
+![The default theme on a log(p)-h chart](../_generated/themes/default_ph.svg)
+![The default theme on a T-s chart](../_generated/themes/default_Ts.svg)
+:::
+
+![Isoline colours of the default theme under five kinds of colour vision](../_generated/themes/default_swatches.svg)
+
+```{include} ../_generated/themes/default_scores.md
+```
+
+## dark
+
+The default for a dark background, for dark mode screens and slides.
+
+**Why these colours.** The same three hues, stepped in lightness until
+each one reaches more than 4.4:1 on the near-black surface and the pairs
+still separate for red-green deficiencies. Ink becomes white, the casing
+dark. All three colours have about the same lightness, which looks calm
+on a dark screen.
+
+**Weak points.** Equal lightness is also the cost: in greyscale the
+families are nearly the same grey, and for tritanopia (very rare) the
+blue isotherms and the aqua isochores merge.
+
+:::{container} cp-pair
+![The dark theme on a log(p)-h chart](../_generated/themes/dark_ph.svg)
+![The dark theme on a T-s chart](../_generated/themes/dark_Ts.svg)
+:::
+
+![Isoline colours of the dark theme under five kinds of colour vision](../_generated/themes/dark_swatches.svg)
+
+```{include} ../_generated/themes/dark_scores.md
+```
+
+## print
+
+For black and white printers, photocopies, and readers who see no
+colour at all.
+
+**Why these colours.** There is one: a dark grey (11.4:1) for every
+isoline family, so nothing depends on colour. The families differ by
+dash pattern instead: the first solid, the second dashed, the third
+dotted. Named dash patterns grow with the line width, but never below
+those of a 1 pt line, so that the 0.6 pt isolines still show their
+pattern. The background is pure white for paper and the grid a light
+grey that a printer still reproduces.
+
+:::{container} cp-pair
+![The print theme on a log(p)-h chart](../_generated/themes/print_ph.svg)
+![The print theme on a T-s chart](../_generated/themes/print_Ts.svg)
+:::
+
+![Isoline colour of the print theme under five kinds of colour vision](../_generated/themes/print_swatches.svg)
+
+```{include} ../_generated/themes/print_scores.md
+```
+
+## classic
+
+The look of the CoolProp plots before 2026, for charts that should match
+older reports and slides.
+
+**Why these colours.** They are the colours the old CoolProp plotting
+code used: CSS named colours, dark red for temperature, dark cyan for
+pressure, dark green for enthalpy, dark orange for entropy, dark blue for
+density, purple for internal energy. Unlike the slots of the default,
+each colour is pinned to its quantity, so a quantity has the same colour
+on every chart. The dark colours differ strongly in lightness, which is
+why this theme separates families well, even in greyscale. No grid, no
+legend, as before.
+
+**Weak points.** The dark orange of the isentropes has only 2.3:1
+contrast on white. The theme was not designed for accessibility and
+makes no promise.
+
+:::{container} cp-pair
+![The classic theme on a log(p)-h chart](../_generated/themes/classic_ph.svg)
+![The classic theme on a T-s chart](../_generated/themes/classic_Ts.svg)
+:::
+
+![Isoline colours of the classic theme under five kinds of colour vision](../_generated/themes/classic_swatches.svg)
+
+```{include} ../_generated/themes/classic_scores.md
+```
+
+## coolpack
+
+The look of the log(p),h-diagrams of CoolPack, the refrigeration
+programs of the Technical University of Denmark (DTU) from the late
+1990s. CoolPack is DTU's program; the theme only imitates the look of its
+charts and is not connected to DTU or the CoolPack authors.
+
+**Why these colours.** They are copied from the R290 chart in the
+CoolPack tutorial: red isotherms, blue isentropes, green isochores, navy
+lines of constant quality and a black dome. All are colours of the 16
+colour Windows palette, the colours a Windows program of the time could
+count on every screen to show without dithering, which is why they are
+pure and saturated. With no legend, each label takes the colour of its
+line, so the families are told apart by their labels. Times on white with
+a dense light grey grid completes the look. The tutorial shows no T-s
+chart, so the purple isobars and magenta isenthalps were chosen from the
+same palette to stay apart from the green isochores; they are not copied.
+See it on a full chart in the gallery: {doc}`../gallery/coolpack`.
+
+**Weak points.** Red and green, the classic combination to avoid, are
+hard to tell apart with protanopia. Red labels reach 4.0:1, below the
+4.5:1 WCAG asks for text. Like `classic`, the theme makes no promise on
+accessibility.
+
+:::{container} cp-pair
+![The coolpack theme on a log(p)-h chart](../_generated/themes/coolpack_ph.svg)
+![The coolpack theme on a T-s chart](../_generated/themes/coolpack_Ts.svg)
+:::
+
+![Isoline colours of the coolpack theme under five kinds of colour vision](../_generated/themes/coolpack_swatches.svg)
+
+```{include} ../_generated/themes/coolpack_scores.md
+```
