@@ -22,7 +22,7 @@ family never repaints the others.
 
 A theme can instead pin a colour to a quantity with ``isoline_colors``, as
 the "classic" theme does to reproduce the old CoolProp look and the
-"nostalgia" theme does to reproduce the CoolPack charts of the late 1990s.
+"coolpack" theme does to reproduce the CoolPack charts of the late 1990s.
 
 Changing the theme of a diagram only restyles items in the scene; it never
 triggers a property calculation.
@@ -236,7 +236,8 @@ def _screen_theme(name, surface, ink, ink_secondary, ink_muted, gridline, baseli
 
 #: Light screen theme. Colours come from a palette whose first three hues
 #: were checked for colour vision deficiencies in every pairing, on this
-#: surface (worst pair: CVD Delta E 9.2, normal vision 24.0, OKLab x100).
+#: surface (worst pair in OKLab x100: 10.1 for deuteranopia, 24.0 for
+#: normal vision; docs/explanation/theme_catalog.md has all the numbers).
 DEFAULT = _screen_theme(
     "default", surface="#fcfcfb", ink="#0b0b0b", ink_secondary="#52514e", ink_muted="#898781",
     gridline="#e1e0d9", baseline="#c3c2b7",
@@ -282,17 +283,18 @@ def _serif(size_pt, **kwargs):
 
 #: The look of the log(p),h-diagrams of CoolPack (DTU, "Refrigeration
 #: Utilities", 1996-2001): Times on white, a dense light grey grid (major
-#: and minor ticks alike), a black
-#: saturation curve, red isotherms, blue isentropes, green isochores and
-#: navy lines of constant quality, every label in the colour of its line
-#: and no legend. Taken from the R290 chart in the CoolPack tutorial. The
-#: colours are those of the 16 colour Windows palette. The tutorial shows
-#: no cycle, so the cycle style (black, square markers) is a guess.
-NOSTALGIA = Theme(
-    name="nostalgia",
+#: and minor ticks alike), a black saturation curve, red isotherms, blue
+#: isentropes, green isochores and navy lines of constant quality, every
+#: label in the colour of its line and no legend. Taken from the R290
+#: chart in the CoolPack tutorial; the colours are those of the 16 colour
+#: Windows palette. The tutorial shows neither a cycle nor isobars and
+#: isenthalps, so the cycle style (black, square markers), purple isobars
+#: and magenta isenthalps are chosen, not copied.
+COOLPACK = Theme(
+    name="coolpack",
     categorical=("#000000",),
     isoline_colors={"T": "#ff0000", "s": "#0000ff", "rho": "#008000", "v": "#008000", "p": "#800080",
-                    "h": "#808000", "u": "#008080", "Twb": "#ff0000"},
+                    "h": "#ff00ff", "u": "#008080", "Twb": "#ff0000"},
     isoline=LineStyle(width_pt=0.5),
     saturation=LineStyle(color="#000000", width_pt=1.25),
     quality=LineStyle(color="#000080", width_pt=0.5),
@@ -317,12 +319,12 @@ NOSTALGIA = Theme(
     ),
 )
 
-THEMES = {t.name: t for t in (DEFAULT, DARK, PRINT, CLASSIC, NOSTALGIA)}
+THEMES = {t.name: t for t in (DEFAULT, DARK, PRINT, CLASSIC, COOLPACK)}
 
 
 def get_theme(theme: Union[str, Theme, None]) -> Theme:
     """Accept a Theme or the name of a preset: 'default', 'dark', 'print', 'classic',
-    'nostalgia'."""
+    'coolpack'."""
     if isinstance(theme, Theme):
         return theme
     if theme is None:

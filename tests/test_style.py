@@ -7,7 +7,7 @@ import pytest
 from coolplot.core.floats import same_number, same_numbers
 from coolplot.style import (CSS_COLORS, AxesStyle, Font, LineStyle, MarkerStyle, TextStyle,
                             dash_pattern_pt, parse_color)
-from coolplot.style.theme import CLASSIC, DARK, DEFAULT, NOSTALGIA, PRINT, THEMES, Theme, get_theme
+from coolplot.style.theme import CLASSIC, COOLPACK, DARK, DEFAULT, PRINT, THEMES, Theme, get_theme
 
 
 def _same_color(parsed, color, alpha):
@@ -69,8 +69,8 @@ def test_presets():
     with pytest.raises(ValueError):
         get_theme("neon")
     assert CLASSIC.axes.legend.visible is False and CLASSIC.axes.grid_major is None
-    assert get_theme("Nostalgia") is NOSTALGIA and NOSTALGIA.axes.legend.visible is False
-    assert NOSTALGIA.axes.grid_minor is not None and NOSTALGIA.isoline_label_color == "line"
+    assert get_theme("Coolpack") is COOLPACK and COOLPACK.axes.legend.visible is False
+    assert COOLPACK.axes.grid_minor is not None and COOLPACK.isoline_label_color == "line"
 
 
 def test_isoline_colours_follow_the_quantity_not_the_rank():
@@ -86,7 +86,7 @@ def test_isoline_colours_follow_the_quantity_not_the_rank():
     assert len({PRINT.isoline_style(k, ph).color for k in ph}) == 1
     # Pinned colours win over slots
     assert CLASSIC.isoline_style("T", ph).color == "#8b0000"
-    assert [NOSTALGIA.isoline_style(k, ph).color for k in ph] == ["#ff0000", "#0000ff", "#008000"]
+    assert [COOLPACK.isoline_style(k, ph).color for k in ph] == ["#ff0000", "#0000ff", "#008000"]
     assert DEFAULT.with_isoline_color("T", "purple").isoline_style("T", ph).color == "#800080"
 
 
