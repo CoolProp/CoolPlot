@@ -35,6 +35,22 @@ starting with an underscore, the helpers in `coolplot.core`,
 `coolplot.testing`, the scene item ids, and the exact coordinates of a
 chart (better numerics may move points).
 
+## From 1.4 to 1.5
+
+Nothing to change in your code, but charts in the `default` and `dark`
+themes look different: isotherms are red instead of blue, isentropes
+blue instead of orange, isochores teal instead of aqua (on a T-s chart:
+isobars red, isenthalps blue). Why is in
+{doc}`explanation/accessibility`. For the colours of 1.4:
+
+```python
+from coolplot.style.theme import DEFAULT
+diagram.theme = DEFAULT.with_(categorical=("#2a78d6", "#eb6834", "#1baf7a", "#eda100"))
+```
+
+For the dark theme of 1.4, use `DARK` with
+`("#3987e5", "#d95926", "#199e70", "#c98500")`.
+
 ## From 1.3 to 1.4
 
 Nothing to change in your code. Axis titles, legends and labels of new

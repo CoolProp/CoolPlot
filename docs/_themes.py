@@ -49,11 +49,9 @@ _BRETTEL_TRITAN = (
 # Relative luminance of linear sRGB (WCAG, ITU-R BT.709)
 _LUMINANCE = (0.2126, 0.7152, 0.0722)
 
-#: A proposed light default (explanation/accessibility.md): the hues of the
-#: default theme, ordered dark to light so that they also differ in
-#: greyscale, each with at least 3:1 contrast on the light surface. Slot 1
-#: (T on a log(p)-h chart, p on a T-s chart) is the burnt orange.
-CANDIDATE_COLORS = ("#983e04", "#040b8d", "#2ba18f", "#eda100")
+#: The colours of the default theme up to 1.4 (blue, orange, aqua, yellow),
+#: for the comparison in explanation/accessibility.md.
+PREVIOUS_DEFAULT_COLORS = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100")
 
 
 # ---------------------------------------------------------------------------
@@ -154,10 +152,10 @@ def simulated_theme(theme, kind):
     return Theme.from_dict(record)
 
 
-def candidate_theme():
-    """The proposed light default of explanation/accessibility.md, as a Theme."""
+def previous_default_theme():
+    """The default theme with the colours it had up to 1.4, as a Theme."""
     from coolplot.style.theme import DEFAULT
-    return DEFAULT.with_(name="candidate", categorical=CANDIDATE_COLORS)
+    return DEFAULT.with_(name="previous", categorical=PREVIOUS_DEFAULT_COLORS)
 
 
 def isoline_colors(theme, chart):
@@ -282,9 +280,9 @@ def write(folder):
     os.makedirs(folder, exist_ok=True)
     charts = _diagrams()
     themes = dict(THEMES)
-    themes["candidate"] = candidate_theme()
+    themes["previous"] = previous_default_theme()
     titles = {name: 'R290, theme="{0}"'.format(name) for name in THEMES}
-    titles["candidate"] = "R290, proposed default"
+    titles["previous"] = "R290, default up to 1.4"
     for name, theme in themes.items():
         for chart, diagram in charts.items():
             _draw(diagram, theme, titles[name], os.path.join(folder, "{0}_{1}.svg".format(name, chart)))
@@ -292,8 +290,8 @@ def write(folder):
             f.write(swatches_svg(theme))
         with open(os.path.join(folder, name + "_scores.md"), "w") as f:
             f.write(scores_md(theme))
-    # The current and the proposed default as readers with deuteranopia and in greyscale see them
-    for theme, title in ((DEFAULT, "Current default"), (themes["candidate"], "Proposed default")):
+    # The default up to 1.4 and now, as readers with deuteranopia and in greyscale see them
+    for theme, title in ((themes["previous"], "Default up to 1.4"), (DEFAULT, "Default")):
         for kind in ("deutan", "grey"):
             _draw(charts["ph"], simulated_theme(theme, kind), "{0}, {1}".format(title, SIMULATION_NAMES[kind].lower()),
                   os.path.join(folder, "{0}_ph_{1}.svg".format(theme.name, kind)))

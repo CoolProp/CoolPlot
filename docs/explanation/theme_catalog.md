@@ -29,8 +29,8 @@ better, in {doc}`accessibility`.
 
 | Theme | Made for | Families told apart by |
 |-------|----------|------------------------|
-| `default` | screens with a light background, colour print | colour, checked for colour vision deficiencies |
-| `dark` | screens with a dark background | colour, checked for red-green deficiencies |
+| `default` | screens with a light background, colour print | colour and lightness, checked for colour vision deficiencies and greyscale |
+| `dark` | screens with a dark background | colour and lightness, checked the same way |
 | `print` | black and white print, photocopies | dash pattern only |
 | `classic` | continuity with CoolProp plots before 2026 | colour, pinned per quantity |
 | `coolpack` | the look of CoolPack's charts, late 1990s | colour, pinned per quantity, and labels in line colour |
@@ -40,21 +40,26 @@ better, in {doc}`accessibility`.
 The default is built for the screen and for colour print, and for the
 roughly one in twelve men who see colours differently.
 
-**Why these colours.** The three hues (blue, orange, aqua) are the three
-of an eight-hue palette that stay apart in every pairing for readers with
-red-green deficiencies. Every chart type offers exactly three coloured
-isoline families, so three colours are enough. They are given out by
-position: the families a chart offers, in the fixed order T, p, h, s,
-rho, u, take the colours in turn. Temperature is therefore blue wherever
-it is an isoline, density always aqua, and on a T-s chart (where T is an
-axis) the isobars take the blue. The saturation dome and the cycles are
-drawn in ink, heavier and with a band in the background colour along
-them (the casing), so they read as the subject and the coloured isolines
-as the reference behind them. Labels are dark grey ink (7.7:1), readable
-on every line they cross.
+**Why these colours.** Red for temperature, blue for entropy, teal for
+density, as most engineers expect them. The three differ in hue and also
+step in lightness (blue dark, red middle, teal light), so they stay apart
+for every kind of colour vision deficiency and even as three greys in a
+black and white print; each reaches at least 3:1 against the background,
+as WCAG 2.2 asks of lines. They are given out by position: the families a
+chart offers, in the fixed order T, p, h, s, rho, u, take the colours in
+turn. Temperature is therefore red wherever it is an isoline, density
+always teal, and on a T-s chart (where T and s are the axes) the isobars
+take the red and the isenthalps the blue. The saturation dome and the
+cycles are drawn in ink, heavier and with a band in the background colour
+along them (the casing), so they read as the subject and the coloured
+isolines as the reference behind them. Labels are dark grey ink (7.7:1),
+readable on every line they cross. How the colours were found is in
+{doc}`accessibility`.
 
-**Weak points.** The aqua isochores reach only 2.7:1 on the light
-surface, and in greyscale entropy and density become the same grey.
+**Weak points.** The teal is just at 3:1, too light for text: labels in
+line colour (`isoline_label_color="line"`) are harder to read for the
+isochores. Colour is still the only cue between families unless value
+labels are switched on.
 
 :::{container} cp-pair
 ![The default theme on a log(p)-h chart](../_generated/themes/default_ph.svg)
@@ -70,15 +75,15 @@ surface, and in greyscale entropy and density become the same grey.
 
 The default for a dark background, for dark mode screens and slides.
 
-**Why these colours.** The same three hues, stepped in lightness until
-each one reaches more than 4.4:1 on the near-black surface and the pairs
-still separate for red-green deficiencies. Ink becomes white, the casing
-dark. All three colours have about the same lightness, which looks calm
-on a dark screen.
+**Why these colours.** The same families on a near-black surface: coral
+for temperature, blue for entropy, aqua for density. On a dark surface
+the light colours stand out, so the lightness steps the other way round
+(blue dark, coral middle, aqua light), again so that the three stay apart
+for every kind of colour vision deficiency and in greyscale. Each reaches
+at least 3:1. Ink becomes white, the casing dark.
 
-**Weak points.** Equal lightness is also the cost: in greyscale the
-families are nearly the same grey, and for tritanopia (very rare) the
-blue isotherms and the aqua isochores merge.
+**Weak points.** The blue is just above 3:1 and the dimmest of the
+three; on a projector in a lit room the `default` theme reads better.
 
 :::{container} cp-pair
 ![The dark theme on a log(p)-h chart](../_generated/themes/dark_ph.svg)

@@ -1,9 +1,9 @@
 # Colour and accessibility
 
 A chart is only useful to readers who can read it. This page sets out
-the rules CoolPlot's themes are measured against, who they are for, how
-the themes do today, and a proposal for a better default. The numbers
-for every theme are in the {doc}`theme_catalog`.
+the rules CoolPlot's themes are measured against, who they are for, and
+how the colours of the default theme were chosen. The numbers for every
+theme are in the {doc}`theme_catalog`.
 
 ## The rules
 
@@ -55,81 +55,73 @@ in twelve male readers should not have to look for a setting. Most of
 them are anomalous trichromats, who see colours shifted rather than
 missing; a palette that works for full dichromats works for them too.
 
-## How the default does today
+## How the default colours were chosen
 
-The default keeps the three families apart for red-green deficiencies
-(worst pair 10.1), but three things fall short. The aqua isochores reach
-only 2.7:1 contrast. In greyscale, entropy and density become the same
-grey (3.3). And unless value labels are switched on, colour is the only
-cue that tells the families apart, which WCAG 1.4.1 does not allow. The
-dark theme gives all three families the same lightness, so it is weaker
-still in greyscale (1.7) and for tritanopia (2.6).
+Up to 1.4 the default drew isotherms blue, isentropes orange and
+isochores aqua. Those kept the families apart for red-green deficiencies
+(closest pair 10.1 in OKLab x100), but fell short in three ways: the aqua
+reached only 2.7:1 contrast, entropy and density turned into the same grey
+in a black and white print (3.3), and the dark theme gave all three
+colours the same lightness (1.7 in greyscale, 2.6 for tritanopia).
 
-## A better default: the proposal
+The colours since then are red for temperature, blue for entropy and
+teal for density, the colours most engineers expect for them. They were
+found by a search in the OKLCH colour space, within a window of hue
+around red, blue and teal: of all colours with at least 3:1 contrast on
+the background, the three whose closest pair stays furthest apart for
+deuteranopia, protanopia, tritanopia and in greyscale. The answer steps
+in lightness: on the light surface the blue is dark, the red middle and
+the teal light.
 
-Keeping the hues but putting them on a ladder of lightness fixes the
-first two points. The proposal, not yet the default:
+| Family on a log(p)-h chart | On a T-s chart | Light theme | Contrast | Dark theme | Contrast |
+|---------------------------|----------------|-------------|----------|------------|----------|
+| T, isotherms | p, isobars | `#c72500` red | 5.5 | `#ee7a5a` coral | 6.3 |
+| s, isentropes | h, isenthalps | `#2d03cd` blue | 10.2 | `#3a66d0` blue | 3.3 |
+| rho, isochores | rho, isochores | `#0ba589` teal | 3.0 | `#7ee6d2` aqua | 11.7 |
 
-| Family on a log(p)-h chart | On a T-s chart | Colour | Contrast |
-|---------------------------|----------------|--------|----------|
-| T, isotherms | p, isobars | `#983e04` burnt orange | 6.8 |
-| s, isentropes | h, isenthalps | `#040b8d` navy | 14.2 |
-| rho, isochores | rho, isochores | `#2ba18f` teal | 3.1 |
-
-The colours were found by searching the OKLCH colour space near the
-default's hues for three colours that each reach 3:1 and whose closest
-pair stays as far apart as possible for every simulated deficiency and in
-greyscale. The closest pair improves from 10.1 to 19.3 for deuteranopia
-and from 3.3 to 18.6 in greyscale. Temperature takes the warm colour, as
-most readers expect.
+The closest pair improves from 10.1 to 15.0 for deuteranopia and from
+3.3 to 14.6 in greyscale on the light surface, and from 1.7 to 15.8 in
+greyscale on the dark one. A deeper navy instead of the blue would give
+about 19, but reads as navy, not blue.
 
 :::{container} cp-pair
-![The current default on a log(p)-h chart](../_generated/themes/default_ph.svg)
-![The proposed default on a log(p)-h chart](../_generated/themes/candidate_ph.svg)
+![The default theme up to 1.4 on a log(p)-h chart](../_generated/themes/previous_ph.svg)
+![The default theme on a log(p)-h chart](../_generated/themes/default_ph.svg)
 :::
 
 The same two charts as a reader with deuteranopia sees them, and in
-greyscale. In the current default (left) the isochores fade and, in
-greyscale, take the grey of the isentropes; the proposal keeps three
-steps of grey.
+greyscale. With the colours up to 1.4 (left) the isochores fade and, in
+greyscale, take the grey of the isentropes; the current default keeps
+three steps of grey.
 
 :::{container} cp-pair
-![The current default as seen with deuteranopia](../_generated/themes/default_ph_deutan.svg)
-![The proposed default as seen with deuteranopia](../_generated/themes/candidate_ph_deutan.svg)
+![The default up to 1.4 as seen with deuteranopia](../_generated/themes/previous_ph_deutan.svg)
+![The default as seen with deuteranopia](../_generated/themes/default_ph_deutan.svg)
 :::
 
 :::{container} cp-pair
-![The current default in greyscale](../_generated/themes/default_ph_grey.svg)
-![The proposed default in greyscale](../_generated/themes/candidate_ph_grey.svg)
+![The default up to 1.4 in greyscale](../_generated/themes/previous_ph_grey.svg)
+![The default in greyscale](../_generated/themes/default_ph_grey.svg)
 :::
-
-![Isoline colours of the proposed default under five kinds of colour vision](../_generated/themes/candidate_swatches.svg)
-
-```{include} ../_generated/themes/candidate_scores.md
-```
 
 ### And the T-s chart?
 
 The T-s chart uses the same three colours, by position. Its isoline
 families are p, h and rho (T and s are the axes), and in the fixed order
-T, p, h, s, rho the isobars come first and take the orange, the
-isenthalps the navy, the isochores the teal:
+T, p, h, s, rho the isobars come first and take the red, the isenthalps
+the blue, the isochores the teal:
 
-![The proposed default on a T-s chart](../_generated/themes/candidate_Ts.svg)
+![The default theme on a T-s chart](../_generated/themes/default_Ts.svg)
 
 Giving every quantity a colour of its own instead, so that pressure had
 the same colour on every chart, would need six colours (T, p, h, s, rho,
-u) that stay apart in every pairing. Three is the most that pass the
-tests above with enough contrast, so a fixed colour per quantity would
-make every chart worse for readers with a colour vision deficiency. The
-rules that hold instead: temperature is always the warm colour when it is
-an isoline, density always teal, and hiding a family never repaints the
-others. A user who prefers a colour per quantity can pin one with
+u) that stay apart in every pairing. Three is about the most that pass
+the tests above with enough contrast, so a fixed colour per quantity
+would make every chart worse for readers with a colour vision
+deficiency. The rules that hold instead: temperature is always red when
+it is an isoline, density always teal, and hiding a family never repaints
+the others. A user who prefers a colour per quantity can pin one with
 `theme.with_isoline_color("p", ...)`, as the `classic` theme does.
-
-The proposal still needs a look on real charts, on a projector and in
-print, by readers with colour vision deficiencies, before it replaces the
-default; the dark theme needs the same work.
 
 ## More than colour
 

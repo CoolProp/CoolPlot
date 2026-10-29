@@ -1,43 +1,57 @@
 # Why the colours are what they are
 
 Isolines of different families cross each other everywhere, so every
-pair of family colours has to stay distinguishable, including for
-readers with a colour vision deficiency. Of the eight hues in the
-default palette only three pass that test for all pairs (worst pair in
-OKLab x100 on the light surface: 10.1 for deuteranopia, 13.5 for
-protanopia, 10.4 for tritanopia, 24.0 for normal vision). Every diagram
-type offers exactly three coloured isoline families (plus quality, drawn
-in ink, and the rarely used internal energy), so three are enough. On
-the dark surface the stepped hues give 10.1 for deuteranopia, 13.6 for
-protanopia and 20.9 for normal vision. Tritanopia, which is very rare,
-separates blue and aqua poorly in the dark theme (2.6); labels or the
-dash-based `print` theme cover that case. The {doc}`theme_catalog` shows
-these numbers for every theme, computed when the documentation is built,
-and {doc}`accessibility` what they miss and how the default could do
-better.
+pair of family colours has to stay distinguishable: for readers with a
+colour vision deficiency, in a black and white print, and on a
+washed-out projector. Hue alone cannot do that, because hue is exactly
+what those take away. The default colours therefore differ in hue and
+also step in lightness: on the light surface the blue is dark, the red
+middle and the teal light, so the three stay apart even as three greys.
+Each reaches at least 3:1 contrast against the background, which WCAG
+2.2 asks of lines that carry meaning. Three colours is about the most
+that pass all of this together; fortunately every diagram type offers
+exactly three coloured isoline families (plus quality, drawn in ink, and
+the rarely used internal energy).
 
 | Slot | Light | Dark | Families that land here |
 |------|-------|------|-------------------------|
-| 1 | `#2a78d6` blue | `#3987e5` | T wherever offered; p in Ts, Trho; h in pT |
-| 2 | `#eb6834` orange | `#d95926` | s in ph, pT; p in hs; h in Ts, ps, prho, Trho |
-| 3 | `#1baf7a` aqua | `#199e70` | rho wherever offered; s in prho, Trho |
-| 4 | `#eda100` yellow | `#c98500` | u, only if requested |
+| 1 | `#c72500` red | `#ee7a5a` coral | T wherever offered; p in Ts, Trho; h in pT |
+| 2 | `#2d03cd` blue | `#3a66d0` blue | s in ph, pT; p in hs; h in Ts, ps, prho, Trho |
+| 3 | `#0ba589` teal | `#7ee6d2` aqua | rho wherever offered; s in prho, Trho |
+| 4 | `#2d004b` aubergine | `#ffff78` pale lemon | u, only if requested |
+
+The closest pair of the first three, as a distance in OKLab x100 (below
+about 10, two thin lines are hard to tell apart):
+
+| Surface | Normal vision | Deuteranopia | Protanopia | Tritanopia | Greyscale |
+|---------|---------------|--------------|------------|------------|-----------|
+| light | 32.3 | 15.0 | 27.6 | 25.2 | 14.6 |
+| dark | 28.4 | 18.5 | 24.9 | 28.1 | 15.8 |
+
+The dark theme steps the lightness the other way round (blue dark, coral
+middle, aqua light), since on a dark surface the light colours stand
+out. The {doc}`theme_catalog` shows these numbers for every theme,
+computed when the documentation is built, and {doc}`accessibility` how
+the colours were found and what they replaced.
 
 The families a diagram offers, in the fixed order T, p, h, s, rho, u,
 take the slots in turn. The consequences:
 
-* temperature is always blue and density always aqua;
+* temperature is always red and density always teal;
+* on a T-s chart, where T and s are the axes, the isobars take the red,
+  the isenthalps the blue and the isochores the teal;
 * hiding a family never repaints the others, because the assignment
   depends on what the diagram offers, not on what is shown;
-* the fourth slot (u) does not pass the all-pairs test against the
-  others; isolines of u should carry labels if they are shown with three
-  other families.
+* the fourth slot (u) stays apart from the others (14.6 on the light
+  surface, 10.9 on the dark one) but is close to the ink of the dome;
+  isolines of u should carry labels if they are shown with three other
+  families.
 
-The light aqua and yellow have less than 3:1 contrast against the light
-surface. Where those families matter, switch on value labels, which then
-carry the information. To pin a colour to a quantity regardless of the
-diagram, use `theme.with_isoline_color("T", "#c00000")`; the `classic`
-and `coolpack` themes do this for every family.
+A colour per quantity instead, so that pressure had one colour on every
+chart, would need six colours that stay apart in every pairing; three is
+the most that pass. To pin a colour to a quantity regardless of the
+diagram anyway, use `theme.with_isoline_color("p", "#7a3cc8")`; the
+`classic` and `coolpack` themes do this for every family.
 
 ## Ink and reference lines
 

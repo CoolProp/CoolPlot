@@ -21,10 +21,21 @@ guide in the documentation says what to change in your code.
   the documentation is built.
 - Documentation: "Colour and accessibility", the rules the themes are
   measured against (WCAG 2.2 AA, the colour science literature), who they
-  are for, and a proposed default palette with more contrast and a
-  lightness ladder that survives greyscale.
+  are for, and how the default colours were chosen.
 - Gallery example "A CoolPack chart, for old times' sake": the R290 chart
   of the CoolPack tutorial with its one stage cycle, in the new theme.
+
+### Changed
+- New isoline colours in the `default` and `dark` themes: red isotherms,
+  blue isentropes and teal isochores on a log(p)-h chart (the slots, in
+  order: `#c72500`, `#2d03cd`, `#0ba589`, `#2d004b` on the light surface,
+  `#ee7a5a`, `#3a66d0`, `#7ee6d2`, `#ffff78` on the dark one). The colours
+  step in lightness, so the families stay apart for every kind of colour
+  vision deficiency and in a black and white print (closest pair 14.6 in
+  OKLab x100 instead of 3.3), and every one reaches 3:1 contrast on its
+  background (WCAG 2.2; the aqua isochores had 2.7:1). coolplot-core has
+  the same colours. The picture on the landing page and in the README is
+  drawn again with them.
 
 ## [1.4.0] - 2026-10-24
 

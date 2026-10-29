@@ -744,9 +744,9 @@ Theme screen_theme(const std::string& name, const std::string& surface, const st
 const std::map<std::string, Theme>& themes() {
     static const std::map<std::string, Theme> table = [] {
         Theme light = screen_theme("default", "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7",
-                                   {"#2a78d6", "#eb6834", "#1baf7a", "#eda100"});
+                                   {"#c72500", "#2d03cd", "#0ba589", "#2d004b"});
         Theme dark = screen_theme("dark", "#1a1a19", "#ffffff", "#c3c2b7", "#898781", "#2c2c2a", "#383835",
-                                  {"#3987e5", "#d95926", "#199e70", "#c98500"});
+                                  {"#ee7a5a", "#3a66d0", "#7ee6d2", "#ffff78"});
         Theme print = light;
         print.name = "print";
         print.categorical = {"#3a3a3a"};

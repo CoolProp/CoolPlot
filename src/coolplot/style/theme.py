@@ -11,14 +11,18 @@ How isoline colours are chosen
 ------------------------------
 Isolines of different families cross each other everywhere, so any two
 family colours have to stay distinguishable, also for readers with a colour
-vision deficiency. Only three hues of the default palette pass that test
-for every pair. Fortunately every diagram type offers exactly three
-coloured isoline families (plus vapour quality, drawn in ink, and the
-rarely used internal energy). Colours are therefore given out per diagram
-type: the families the diagram offers, in the fixed order T, p, h, s, rho,
-u, take the palette slots one after another. Temperature is always the
-first slot wherever it appears and density always the third, and hiding a
-family never repaints the others.
+vision deficiency and in a black and white print. The default colours (red,
+blue, teal) differ in hue and also step in lightness, so every pair stays
+apart for each kind of colour vision deficiency and in greyscale, and each
+colour has at least 3:1 contrast on the background (WCAG 2.2). Three
+colours is about the most that pass these tests together. Fortunately
+every diagram type offers exactly three coloured isoline families (plus
+vapour quality, drawn in ink, and the rarely used internal energy).
+Colours are therefore given out per diagram type: the families the diagram
+offers, in the fixed order T, p, h, s, rho, u, take the palette slots one
+after another. Temperature is always the first slot (red) wherever it
+appears and density always the third (teal), and hiding a family never
+repaints the others.
 
 A theme can instead pin a colour to a quantity with ``isoline_colors``, as
 the "classic" theme does to reproduce the old CoolProp look and the
@@ -100,7 +104,7 @@ class Theme:
         Background, frame, ticks, grid, fonts and legend.
     """
     name: str = "custom"
-    categorical: Tuple[str, ...] = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100")
+    categorical: Tuple[str, ...] = ("#c72500", "#2d03cd", "#0ba589", "#2d004b")
     slot_dashes: Tuple[Dash, ...] = ("solid", "solid", "solid", "solid")
     isoline_colors: Optional[Mapping[str, str]] = field(default=None, hash=False)
     isoline: LineStyle = LineStyle(width_pt=0.75)
@@ -234,20 +238,25 @@ def _screen_theme(name, surface, ink, ink_secondary, ink_muted, gridline, baseli
     )
 
 
-#: Light screen theme. Colours come from a palette whose first three hues
-#: were checked for colour vision deficiencies in every pairing, on this
-#: surface (worst pair in OKLab x100: 10.1 for deuteranopia, 24.0 for
-#: normal vision; docs/explanation/theme_catalog.md has all the numbers).
+#: Light screen theme. Red isotherms, blue isentropes, teal isochores (on
+#: a log(p)-h chart): hues that also step in lightness (blue dark, red
+#: middle, teal light), so that every pair stays apart for each kind of
+#: colour vision deficiency and in greyscale (worst pair 14.6 in OKLab x100,
+#: 32.3 for normal vision), each with at least 3:1 contrast on the surface.
+#: The fourth slot (aubergine) is for internal energy.
+#: docs/explanation/theme_catalog.md has all the numbers.
 DEFAULT = _screen_theme(
     "default", surface="#fcfcfb", ink="#0b0b0b", ink_secondary="#52514e", ink_muted="#898781",
     gridline="#e1e0d9", baseline="#c3c2b7",
-    categorical=("#2a78d6", "#eb6834", "#1baf7a", "#eda100"))
+    categorical=("#c72500", "#2d03cd", "#0ba589", "#2d004b"))
 
-#: The same hues stepped for a dark surface and checked there.
+#: The same families on a dark surface: coral, blue and aqua, stepped in
+#: lightness the other way round (blue dark, coral middle, aqua light) and
+#: checked there in the same way (worst pair 15.8).
 DARK = _screen_theme(
     "dark", surface="#1a1a19", ink="#ffffff", ink_secondary="#c3c2b7", ink_muted="#898781",
     gridline="#2c2c2a", baseline="#383835",
-    categorical=("#3987e5", "#d95926", "#199e70", "#c98500"))
+    categorical=("#ee7a5a", "#3a66d0", "#7ee6d2", "#ffff78"))
 
 #: Black and white for printing: families differ by dash pattern only.
 PRINT = DEFAULT.with_(
