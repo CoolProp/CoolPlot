@@ -21,7 +21,8 @@ first slot wherever it appears and density always the third, and hiding a
 family never repaints the others.
 
 A theme can instead pin a colour to a quantity with ``isoline_colors``, as
-the "classic" theme does to reproduce the old CoolProp look.
+the "classic" theme does to reproduce the old CoolProp look and the
+"nostalgia" theme does to reproduce the CoolPack charts of the late 1990s.
 
 Changing the theme of a diagram only restyles items in the scene; it never
 triggers a property calculation.
@@ -274,11 +275,54 @@ CLASSIC = Theme(
     axes=AxesStyle(grid_major=None, legend=LegendStyle(visible=False)),
 )
 
-THEMES = {t.name: t for t in (DEFAULT, DARK, PRINT, CLASSIC)}
+def _serif(size_pt, **kwargs):
+    return Font(family=("Times New Roman", "Times", "Liberation Serif", "Nimbus Roman", "DejaVu Serif", "serif"),
+                size_pt=size_pt, **kwargs)
+
+
+#: The look of the log(p),h-diagrams of CoolPack (DTU, "Refrigeration
+#: Utilities", 1996-2001): Times on white, a dense light grey grid (major
+#: and minor ticks alike), a black
+#: saturation curve, red isotherms, blue isentropes, green isochores and
+#: navy lines of constant quality, every label in the colour of its line
+#: and no legend. Taken from the R290 chart in the CoolPack tutorial. The
+#: colours are those of the 16 colour Windows palette. The tutorial shows
+#: no cycle, so the cycle style (black, square markers) is a guess.
+NOSTALGIA = Theme(
+    name="nostalgia",
+    categorical=("#000000",),
+    isoline_colors={"T": "#ff0000", "s": "#0000ff", "rho": "#008000", "v": "#008000", "p": "#800080",
+                    "h": "#808000", "u": "#008080", "Twb": "#ff0000"},
+    isoline=LineStyle(width_pt=0.5),
+    saturation=LineStyle(color="#000000", width_pt=1.25),
+    quality=LineStyle(color="#000080", width_pt=0.5),
+    isoline_label=TextStyle(font=_serif(6.5), halo_color="#ffffff", halo_width_pt=1.0),
+    isoline_label_color="line",
+    processes=(LineStyle(color="#000000", width_pt=1.5), LineStyle(color="#800000", width_pt=1.5),
+               LineStyle(color="#800080", width_pt=1.5)),
+    state_points=(MarkerStyle(shape="s", size_pt=4.5, face_color="#000000", edge_color="#000000"),
+                  MarkerStyle(shape="s", size_pt=4.5, face_color="#800000", edge_color="#800000"),
+                  MarkerStyle(shape="s", size_pt=4.5, face_color="#800080", edge_color="#800080")),
+    state_number=TextStyle(font=_serif(8.0, weight="bold"), color="#000000", halo_color="#ffffff",
+                           halo_width_pt=1.5),
+    axes=AxesStyle(
+        frame_width_pt=0.75,
+        tick_width_pt=0.75,
+        tick_label=TextStyle(font=_serif(8.0)),
+        axis_label=TextStyle(font=_serif(9.5)),
+        title=TextStyle(font=_serif(12.0, weight="bold")),
+        grid_major=LineStyle(color="#c0c0c0", width_pt=0.4),
+        grid_minor=LineStyle(color="#c0c0c0", width_pt=0.4),
+        legend=LegendStyle(visible=False),
+    ),
+)
+
+THEMES = {t.name: t for t in (DEFAULT, DARK, PRINT, CLASSIC, NOSTALGIA)}
 
 
 def get_theme(theme: Union[str, Theme, None]) -> Theme:
-    """Accept a Theme or the name of a preset: 'default', 'dark', 'print', 'classic'."""
+    """Accept a Theme or the name of a preset: 'default', 'dark', 'print', 'classic',
+    'nostalgia'."""
     if isinstance(theme, Theme):
         return theme
     if theme is None:

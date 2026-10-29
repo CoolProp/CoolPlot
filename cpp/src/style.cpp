@@ -665,6 +665,14 @@ Font sans(double size_pt, const std::string& weight = "normal") {
     return f;
 }
 
+Font serif(double size_pt, const std::string& weight = "normal") {
+    Font f;
+    f.family = {"Times New Roman", "Times", "Liberation Serif", "Nimbus Roman", "DejaVu Serif", "serif"};
+    f.size_pt = size_pt;
+    f.weight = weight;
+    return f;
+}
+
 TextStyle text_of(const Font& font, const std::string& color, const std::string& halo = "", double halo_width = 0.0) {
     TextStyle t;
     t.font = font;
@@ -771,8 +779,36 @@ const std::map<std::string, Theme>& themes() {
         classic.axes = AxesStyle();
         classic.axes.has_grid_major = false;
         classic.axes.legend.visible = false;
+        // The CoolPack look, see NOSTALGIA in coolplot.style.theme
+        Theme nostalgia;
+        nostalgia.name = "nostalgia";
+        nostalgia.categorical = {"#000000"};
+        nostalgia.has_isoline_colors = true;
+        nostalgia.isoline_colors = {{"T", Color::of("#ff0000")},   {"s", Color::of("#0000ff")}, {"rho", Color::of("#008000")},
+                                    {"v", Color::of("#008000")},   {"p", Color::of("#800080")}, {"h", Color::of("#808000")},
+                                    {"u", Color::of("#008080")},   {"Twb", Color::of("#ff0000")}};
+        nostalgia.isoline = line_of("#000000", 0.5);
+        nostalgia.saturation = line_of("#000000", 1.25);
+        nostalgia.quality = line_of("#000080", 0.5);
+        nostalgia.isoline_label = text_of(serif(6.5), "#000000", "#ffffff", 1.0);
+        nostalgia.isoline_label_color = "line";
+        nostalgia.processes = {line_of("#000000", 1.5), line_of("#800000", 1.5), line_of("#800080", 1.5)};
+        nostalgia.state_points = {marker_of("s", 4.5, "#000000", "#000000", 1.0), marker_of("s", 4.5, "#800000", "#800000", 1.0),
+                                  marker_of("s", 4.5, "#800080", "#800080", 1.0)};
+        nostalgia.state_number = text_of(serif(8.0, "bold"), "#000000", "#ffffff", 1.5);
+        nostalgia.axes = AxesStyle();
+        nostalgia.axes.frame_width_pt = 0.75;
+        nostalgia.axes.tick_width_pt = 0.75;
+        nostalgia.axes.tick_label = text_of(serif(8.0), "#000000");
+        nostalgia.axes.axis_label = text_of(serif(9.5), "#000000");
+        nostalgia.axes.title = text_of(serif(12.0, "bold"), "#000000");
+        nostalgia.axes.has_grid_major = true;
+        nostalgia.axes.grid_major = line_of("#c0c0c0", 0.4);
+        nostalgia.axes.has_grid_minor = true;
+        nostalgia.axes.grid_minor = line_of("#c0c0c0", 0.4);
+        nostalgia.axes.legend.visible = false;
         std::map<std::string, Theme> presets;
-        for (const Theme& t : {light, dark, print, classic}) presets[t.name] = t;
+        for (const Theme& t : {light, dark, print, classic, nostalgia}) presets[t.name] = t;
         return presets;
     }();
     return table;

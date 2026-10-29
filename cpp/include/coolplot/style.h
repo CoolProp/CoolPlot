@@ -208,7 +208,7 @@ struct Theme
     static Theme from_json(const json& data);
 };
 
-/// A preset by name: "default", "dark", "print", "classic".
+/// A preset by name: "default", "dark", "print", "classic", "nostalgia".
 const Theme& get_theme(const std::string& name);
 
 /// Apply LineStyle field changes from a JSON record (a style override of a spec).

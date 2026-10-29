@@ -159,7 +159,7 @@ TEST_CASE("Dash patterns scale with the width but not below one point", "[style]
 }
 
 TEST_CASE("Themes round-trip through JSON and give out colours per slot", "[style]") {
-    for (const char* name : {"default", "dark", "print", "classic"}) {
+    for (const char* name : {"default", "dark", "print", "classic", "nostalgia"}) {
         const Theme& theme = get_theme(name);
         json record = theme.to_json();
         Theme again = Theme::from_json(json::parse(record.dump()));
@@ -190,6 +190,13 @@ TEST_CASE("Themes round-trip through JSON and give out colours per slot", "[styl
     CHECK(print.isoline_style("s", ph).dash.name == "dashed");
     CHECK(print.isoline_style("rho", ph).dash.name == "dotted");
     CHECK(get_theme("classic").isoline_style("T", ph).color.hex == "#8b0000");
+    const Theme& nostalgia = get_theme("nostalgia");
+    CHECK(nostalgia.isoline_style("T", ph).color.hex == "#ff0000");
+    CHECK(nostalgia.isoline_style("s", ph).color.hex == "#0000ff");
+    CHECK(nostalgia.isoline_style("rho", ph).color.hex == "#008000");
+    CHECK(nostalgia.isoline_label_color == "line");
+    CHECK(nostalgia.axes.has_grid_minor);
+    CHECK_FALSE(nostalgia.axes.legend.visible);
     CHECK_THROWS_AS(Theme::from_json({{"categorical", {"nope"}}}), Error);
     CHECK_THROWS_AS(Theme::from_json({{"slot_dashes", {"wavy"}}}), Error);
     CHECK_THROWS_AS(AxesStyle::from_json({{"tick_direction", "sideways"}}), Error);

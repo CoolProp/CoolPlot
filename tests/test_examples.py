@@ -138,6 +138,13 @@ def test_branding_chp(tmp_path):
     assert "#00998b" in svg.lower()   # the company teal of the first line family
 
 
+def test_nostalgia(tmp_path):
+    # The cycle of the CoolPack tutorial, which gives a COP of 3.31
+    assert "COP cooling: 3.30" in _run("nostalgia.py", tmp_path)
+    svg = (tmp_path / "nostalgia.svg").read_text()
+    assert "Times New Roman" in svg and "#ff0000" in svg.lower() and "#0000ff" in svg.lower()
+
+
 def _ports_installed() -> bool:
     from coolplot import corelib
     from coolplot.thermo import native
@@ -214,7 +221,7 @@ BOTH_PATHS = ["quickstart.py", "two_stage_cycles.py", "refrigerant_blend.py", "p
               "psychrometric_air_handling.py", "psychrometric_evaporative_cooling.py", "psychrometric_mollier.py",
               "steam_rankine_ts.py", "steam_turbine_hs.py", "co2_transcritical.py", "orc_ts.py",
               "refrigerant_comparison.py", "ip_units.py", "themes.py", "label_modes.py", "branding.py",
-              "branding_chp.py"]
+              "branding_chp.py", "nostalgia.py"]
 
 #: Examples whose charts are all composed by Python also with coolplot-core:
 #: coolplot-core does not compose the branding (see coolplot.compose.compose).

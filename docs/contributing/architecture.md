@@ -403,7 +403,7 @@ Summary of the how-to on themes:
   colours to `#rrggbb` plus alpha, all lengths in points, dashes resolved
   by one function (`dash_pattern_pt`) that every backend uses.
 * A `Theme` maps element kinds to styles. Presets: `default`, `dark`,
-  `print`, `classic`. Themes serialise to JSON.
+  `print`, `classic`, `nostalgia`. Themes serialise to JSON.
 * Isoline colours are assigned per diagram type from three hues that stay
   distinguishable in every pairing, also for colour vision deficiencies;
   the assignment depends on what a diagram offers, so hiding a family

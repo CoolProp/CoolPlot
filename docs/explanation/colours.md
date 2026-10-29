@@ -34,7 +34,7 @@ The light aqua and yellow have less than 3:1 contrast against the light
 surface. Where those families matter, switch on value labels, which then
 carry the information. To pin a colour to a quantity regardless of the
 diagram, use `theme.with_isoline_color("T", "#c00000")`; the `classic`
-theme does this for every family.
+and `nostalgia` themes do this for every family.
 
 ## Ink and reference lines
 
