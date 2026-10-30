@@ -35,17 +35,23 @@ CAPABILITIES = {
 _branding_warned: Set[str] = set()   # renderer classes that already said they leave the branding out
 
 
-def warn_without_branding(renderer, axes: Optional[AxesSpec]):
-    """Warn once per renderer (a renderer object, or a name) when the axes carry a badge or
-    watermark it does not draw."""
+def warn_without_branding(renderer, axes: Optional[AxesSpec], draws_text_badge: bool = False):
+    """Warn once per renderer (a renderer object, or a name) when the axes carry branding it does not draw.
+
+    ``draws_text_badge``: the renderer draws a badge of text lines, so only
+    a logo or a watermark is left out.
+    """
     if axes is None or (axes.badge is None and axes.watermark is None):
+        return
+    if draws_text_badge and axes.watermark is None and (axes.badge is None or not axes.badge.logo):
         return
     name = renderer if isinstance(renderer, str) else type(renderer).__name__
     if name in _branding_warned:
         return
     _branding_warned.add(name)
-    warnings.warn("{0} does not draw the badge or the watermark of the chart (BrandingSettings) and leaves them "
-                  "out; the matplotlib and SVG backends draw them.".format(name), UserWarning, stacklevel=3)
+    what = "the logo or the watermark" if draws_text_badge else "the badge or the watermark"
+    warnings.warn("{0} does not draw {1} of the chart (BrandingSettings) and leaves them out; the matplotlib "
+                  "and SVG backends draw them.".format(name, what), UserWarning, stacklevel=3)
 
 
 @dataclass

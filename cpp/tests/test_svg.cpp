@@ -134,7 +134,7 @@ TEST_CASE("The composed charts render as in Python", "[svg]") {
     for (const char* name : {"compose_r290_ph", "compose_r290_ph_sized", "compose_blend_ts_margin", "compose_r290_hs_inline", "compose_psychrometric", "compose_r290_ph_anchored",
                              "compose_r290_ph_line_labels", "compose_psychrometric_labels",
                              "compose_r290_ts_saturation_only", "compose_mollier", "compose_rails_r290_ph",
-                             "compose_rails_psychrometric"}) {
+                             "compose_rails_psychrometric", "compose_badge_r290_ph", "compose_badge_r290_ph_upper_left"}) {
         json data = load(std::string(name) + ".json");
         Scene scene = Scene::from_json(data.at("scene_order"));  // the legend follows the scene order
         check_svg(scene, std::string(name) + ".svg");
@@ -168,7 +168,7 @@ TEST_CASE("The C ABI composes, writes SVG and reports errors", "[svg][capi]") {
     CHECK(std::string(error).find("not valid JSON") != std::string::npos);
     coolplot_free(error);
     CHECK(coolplot_compose(nullptr, &scene_json, nullptr) == 1);
-    CHECK(std::string(coolplot_version()) == "1.4.0");
+    CHECK(std::string(coolplot_version()) == "1.5.0");
 }
 
 TEST_CASE("The writers ignore the C locale", "[svg][pdf][locale]") {

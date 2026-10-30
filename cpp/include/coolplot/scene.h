@@ -56,6 +56,40 @@ bool items_equal(const Item& a, const Item& b);
 /// The axis limits a backend draws for the requested ones (coolplot.scene.drawable_limits).
 Range drawable_limits(Range limits, bool log);
 
+/// Corners of the plot area a badge can sit in.
+extern const char* const BADGE_CORNERS[4];
+/// Distance between the baselines of the badge lines, relative to the font size.
+extern const double BADGE_LINE_HEIGHT;
+/// Baseline of a badge line below the top of its line, relative to the font size.
+extern const double BADGE_BASELINE;
+
+/// The badge of the branding: a box in one corner of the plot area with
+/// lines of text, such as the references of the equation of state
+/// (coolplot.scene.Badge). coolplot-core draws badges without a logo; a
+/// scene record whose badge has a logo is refused, Python writes those.
+struct Badge
+{
+    std::string location = "lower right";
+    double logo_width_pt = 72.0;     ///< kept for the record; the core draws no logo
+    std::vector<std::string> lines;  ///< one entry per drawn line
+    TextStyle text;
+    Color background = Color::of("#ffffff");
+    double background_alpha = 0.85;
+    Color frame_color = Color::none();
+    double frame_width_pt = 0.5;
+    double padding_pt = 4.0;
+    double gap_pt = 3.0;
+    double inset_pt = 6.0;
+
+    double line_height_pt() const;
+    /// Estimated (width, height) of the box in points, from text_width_pt; every writer draws it at this size.
+    std::pair<double, double> size_pt() const;
+    void validate() const;
+    bool operator==(const Badge& o) const;
+    json to_json() const;
+    static Badge from_json(const json& data);
+};
+
 struct AxesSpec
 {
     std::string x_label;
@@ -69,6 +103,8 @@ struct AxesSpec
     std::string title;
     AxesStyle style;
     int tick_digits = 6;
+    bool has_badge = false;
+    Badge badge;
 
     void validate() const;
     bool operator==(const AxesSpec& o) const;

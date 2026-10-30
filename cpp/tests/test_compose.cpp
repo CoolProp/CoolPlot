@@ -118,6 +118,22 @@ TEST_CASE("Rails on psychrometric and Mollier charts", "[compose][rails]") {
     check_case("compose_rails_mollier.json");
 }
 
+TEST_CASE("The badge of the branding takes a corner with the legend, as in Python", "[compose][badge]") {
+    check_case("compose_badge_r290_ph.json");
+    check_case("compose_badge_r290_ph_upper_left.json");
+    // Without the source lines of the caller and without lines of its own there is no badge
+    json input = load("compose_badge_r290_ph_upper_left.json").at("input");
+    input.erase("sources");
+    CHECK_FALSE(compose(input).axes.has_badge);
+    // Pictures are drawn by Python, the core refuses them instead of leaving them out
+    json with_logo = input;
+    with_logo["spec"]["settings"]["branding"]["logo"] = json::array({"data:image/png;base64,AAAA"});
+    CHECK_THROWS_AS(compose(with_logo), Error);
+    json bad_corner = input;
+    bad_corner["spec"]["settings"]["branding"]["location"] = "middle";
+    CHECK_THROWS_AS(compose(bad_corner), Error);
+}
+
 TEST_CASE("Malformed state labels are refused, a null list reads as none", "[compose]") {
     json input = load("compose_psychrometric_labels.json").at("input");
     for (const char* bad : {R"([[2.5, "x"]])", R"([[2, 3]])", R"([[2]])", R"([[2, "a"], [2, "b"]])", R"({"2": "x"})"}) {
