@@ -457,7 +457,7 @@ def test_an_older_core_refuses_unicode_symbols(monkeypatch):
     with pytest.warns(native.CoreFallbackWarning, match="older than 1.4"):
         _, axes = compose(spec, domain, curves)
     assert axes.x_label == "Density \u03c1 / kg/m\u00b3"   # drawn by the Python composer
-    chart.settings = chart.settings.with_(labels={"symbols": "ascii"})
+    chart.settings = chart.settings.with_(labels={"symbols": "ascii"}, branding={"references": "none"})
     assert native.compose(chart.spec, domain, curves) is not None   # plain letters: the older core composes it
 
 
@@ -478,8 +478,8 @@ def test_unicode_symbols_compose_the_same_through_the_port():
 
 
 def _before_12(chart):
-    """The chart with the label mode, legend and plain symbols of 1.1, which an older core understands."""
-    chart.settings = chart.settings.with_(labels={"mode": "edge", "symbols": "ascii"})
+    """The chart with the label mode, legend, plain symbols and no badge of 1.1, which an older core understands."""
+    chart.settings = chart.settings.with_(labels={"mode": "edge", "symbols": "ascii"}, branding={"references": "none"})
     legend = chart.theme.axes.legend.with_(location="outside right")
     chart.theme = chart.theme.with_(axes=chart.theme.axes.with_(legend=legend))
     return chart
@@ -659,6 +659,22 @@ def test_an_older_core_refuses_the_badge(monkeypatch):
         _, axes = compose(spec, domain, curves, sources=chart.engine.source_lines(spec))
     assert axes.badge is not None   # drawn by the Python composer
     assert not native.draws_branding(axes)   # and written by the Python SVG writer
+
+
+def test_the_core_record_keeps_the_text_of_a_badge_with_a_logo(monkeypatch):
+    """With a logo, coolplot-core 1.5 still gets the text lines (the references), only the pictures go."""
+    from dataclasses import replace
+    logo = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjIiLz4="
+    axes = _branded(logo=(logo,)).update_scene().axes
+    assert axes.badge.logo and axes.badge.lines
+    monkeypatch.setattr(native, "available", lambda: True)
+    monkeypatch.setattr(native, "core_version", lambda: (1, 5, 0))
+    record = native._axes_record(axes)
+    assert record["badge"]["logo"] == [] and record["badge"]["lines"] == list(axes.badge.lines)
+    # Without lines there is nothing left to draw, and a core before 1.5 draws no badge at all
+    assert "badge" not in native._axes_record(replace(axes, badge=replace(axes.badge, lines=())))
+    monkeypatch.setattr(native, "core_version", lambda: (1, 4, 0))
+    assert "badge" not in native._axes_record(axes)
 
 
 @needs_core

@@ -218,10 +218,17 @@ def draws_branding(axes: Optional[AxesSpec]) -> bool:
 
 
 def _axes_record(axes: Optional[AxesSpec]) -> dict:
-    """The axes record for the core, without the branding it cannot draw (see :func:`draws_branding`)."""
+    """The axes record for the core, without the branding it cannot draw (see :func:`draws_branding`).
+
+    From 1.5 the core draws the text lines of the badge, so only the logo
+    and the watermark are left out: a PDF keeps its references.
+    """
     axes = axes or AxesSpec()
     if not draws_branding(axes):
-        axes = replace(axes, badge=None, watermark=None)
+        badge = None
+        if axes.badge is not None and axes.badge.lines and available() and core_version() >= (1, 5):
+            badge = replace(axes.badge, logo=())
+        axes = replace(axes, badge=badge, watermark=None)
     return axes_to_dict(axes)
 
 

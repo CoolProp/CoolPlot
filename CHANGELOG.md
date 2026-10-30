@@ -6,6 +6,8 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-30
+
 ### Added
 - coolplot-core 1.5 composes and writes the badge of the branding when it
   holds text lines only (references, versions, lines of your own): the
@@ -17,7 +19,8 @@ guide in the documentation says what to change in your code.
   it, with a warning.
 - The plotly backend and the JavaScript writer (`scene_page`) draw the
   badge of text lines too; only a logo or a watermark is left out, with a
-  warning. `PdfRenderer` draws it through coolplot-core 1.5.
+  warning. `PdfRenderer` draws it through coolplot-core 1.5, also on a
+  chart with a logo or a watermark, which it leaves out with a warning.
 - Theme "coolpack": the look of the log(p),h-diagrams of CoolPack (DTU,
   "Refrigeration Utilities", late 1990s). Times on white with a dense
   light grey grid (major and minor ticks), a black saturation curve, red
@@ -37,6 +40,13 @@ guide in the documentation says what to change in your code.
   of the CoolPack tutorial with its one stage cycle, in the new theme.
 
 ### Changed
+- Every chart names the equation of state of its fluid by default:
+  `BrandingSettings.references` is "short" instead of "none", so the
+  badge shows a line such as "R290: Lemmon et al. (2009)" in the
+  emptiest corner. `branding={"references": "none"}` removes it. Specs
+  saved before 1.2 keep drawing without badge, specs saved since hold
+  their setting. The picture on the landing page and in the README is
+  drawn again with the badge (and the default colours of 1.5).
 - One colour per quantity in the `default` and `dark` themes, the same on
   every chart: red isotherms, wine isobars, orchid isenthalps, blue
   isentropes, teal isochores and purple lines of constant u (`#c72500`,
@@ -49,8 +59,7 @@ guide in the documentation says what to change in your code.
   on its background (WCAG 2.2; the aqua isochores had 2.7:1). The slots,
   still used by themes without pinned colours, are `#c72500`, `#2d03cd`,
   `#0ba589`, `#87459f` (dark: `#ee7a5a`, `#3a66d0`, `#7ee6d2`, `#f6c919`).
-  coolplot-core has the same colours. The picture on the landing page and
-  in the README is drawn again with them.
+  coolplot-core has the same colours.
 - Documentation: the top bar lists the gallery right after Getting
   started and shows six pages before "More", so the gallery no longer
   hides behind it; the landing page shows thumbnails of four examples.
