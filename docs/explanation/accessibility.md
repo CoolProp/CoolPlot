@@ -7,11 +7,13 @@ theme are in the {doc}`theme_catalog`.
 
 ## The rules
 
-CoolPlot aims at **WCAG 2.2, level AA**, the rule set behind the
-European standard EN 301 549 (version 4.1.1, 2026) used under the
-European Accessibility Act. It also covers the older WCAG versions that
-US law refers to (2.1 for public universities under ADA Title II, 2.0
-for Section 508). WCAG 3.0 is still a working draft without a contrast
+CoolPlot aims at **WCAG 2.2, level AA**. It is the rule set of version
+4.1.1 of the European standard EN 301 549 (published in 2026); until the
+European Commission cites that version, version 3.2.1 (WCAG 2.1) remains
+the reference under the European Accessibility Act. WCAG 2.2 AA also
+covers the older WCAG versions that law refers to: 2.1 for EN 301 549
+3.2.1 and for public universities under the US ADA Title II, 2.0 for
+Section 508. WCAG 3.0 is still a working draft without a contrast
 formula, so APCA, the contrast method discussed for it, is at most an
 extra check.
 
