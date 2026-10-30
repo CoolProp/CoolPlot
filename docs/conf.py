@@ -10,6 +10,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+# The docs folder too, for the helper modules _tables and _gallery_order
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from coolplot import __version__  # noqa: E402
 
@@ -78,7 +80,8 @@ sphinx_gallery_conf = {
     "matplotlib_animations": False,
     "plot_gallery": "True",
     "reset_modules": ("matplotlib",),
-    "within_subsection_order": "FileNameSortKey",
+    # By file name, but the company chart last (docs/_gallery_order.py)
+    "within_subsection_order": "_gallery_order.company_chart_last",
     "min_reported_time": 1,
     "show_memory": False,
     # Needed by the minigallery on the landing page (a few thumbnails that
@@ -105,7 +108,6 @@ html_css_files = ["coolplot.css"]
 def setup(app):
     """Write the generated reference tables, and clear the examples' old output files."""
     import glob
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import _tables
     _tables.write(os.path.join(os.path.dirname(__file__), "reference", "tables.md"))
     examples = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "examples")
