@@ -81,6 +81,9 @@ sphinx_gallery_conf = {
     "within_subsection_order": "FileNameSortKey",
     "min_reported_time": 1,
     "show_memory": False,
+    # Needed by the minigallery on the landing page (a few thumbnails that
+    # link to their examples); the files written there are not pages
+    "backreferences_dir": "gallery/backreferences",
 }
 
 html_theme = "pydata_sphinx_theme"
@@ -90,6 +93,9 @@ html_title = "CoolPlot {0}".format(__version__)
 html_theme_options = {
     "github_url": "https://github.com/CoolProp/CoolPlot",
     "show_toc_level": 2,
+    # The top bar shows the pages of the main toctree in its order, the first
+    # six as links (from Getting started to Reference), the rest under "More"
+    "header_links_before_dropdown": 6,
     "navigation_with_keys": False,
 }
 html_context = {"default_mode": "light"}

@@ -6,6 +6,15 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### Changed
+- Documentation: the top bar lists the gallery right after Getting
+  started and shows six pages before "More", so the gallery no longer
+  hides behind it; the landing page shows thumbnails of four examples.
+- The gallery example "A chart with a logo, references and a watermark"
+  is gone: the company chart of Clean Heat Partners shows the same
+  (logo, references, versions, a line of text and a watermark) on a real
+  chart.
+
 ## [1.4.0] - 2026-10-24
 
 ### Added
