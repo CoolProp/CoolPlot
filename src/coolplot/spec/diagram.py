@@ -226,9 +226,10 @@ class LineSpec:
     @classmethod
     def from_dict(cls, data: dict) -> "LineSpec":
         """A line from its record, see :meth:`to_dict`."""
-        return cls(data["name"], data["key"], data["value_SI"], data.get("label", True),
-                   None if data.get("line_style") is None else style_from_dict(LineStyle, data["line_style"]),
-                   data.get("points"))
+        line_style = data.get("line_style")
+        return cls(name=data["name"], key=data["key"], value_SI=data["value_SI"], label=data.get("label", True),
+                   line_style=None if line_style is None else style_from_dict(LineStyle, line_style),
+                   points=data.get("points"))
 
 
 @dataclass(frozen=True)
@@ -443,7 +444,7 @@ class DiagramSpec:
         _unique([c.name for c in self.cycles], "Cycle names have to be unique")
         _unique([line.name for line in self.lines], "Line names have to be unique")
         for line in self.lines:
-            if not (diagram.supports(line.key) or line.key in (diagram.x, diagram.y)):
+            if not (diagram.supports(line.key) or diagram.is_axis(line.key)):
                 raise ValueError("Line '{0}': lines of constant '{1}' cannot be drawn in a {2} diagram.".format(
                     line.name, line.key, diagram.name))
         object.__setattr__(self, "lines", tuple(self.lines))

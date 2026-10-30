@@ -234,8 +234,8 @@ def plan(spec: DiagramSpec, domain: Domain) -> Tuple[CurveRequest, ...]:
     if add_saturation and boundary_family is not None:   # the family is not drawn: the saturation curve comes last
         requests.extend(saturation_requests(boundary_family, []))
     for line in spec.lines:
-        if line.key in (spec.diagram.x, spec.diagram.y):
-            continue
+        if spec.diagram.is_axis(line.key):
+            continue   # straight, see coolplot.compose.builder.axis_line
         default_points = calc.saturation_points if line.key == "Q" else calc.points
         requests.append(CurveRequest(line.item_id, line.key, line.value_SI, line.points or default_points))
     return tuple(requests)

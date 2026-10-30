@@ -156,7 +156,7 @@ DiagramSpec DiagramSpec::from_json(const json& data) {
         line.name = l.at("name").get<std::string>();
         line.key = quantity_key(l.at("key").get<std::string>());
         line.value_SI = l.at("value_SI").get<double>();
-        if (!spec.diagram.family(line.key) && line.key != spec.diagram.x && line.key != spec.diagram.y)
+        if (!spec.diagram.family(line.key) && !spec.diagram.is_axis(line.key))
             throw Error("line '" + line.name + "': lines of constant '" + line.key + "' cannot be drawn in a " + spec.diagram.name() +
                         " diagram");
         const json label = l.contains("label") ? l.at("label") : json(true);

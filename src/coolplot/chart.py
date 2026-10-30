@@ -53,6 +53,7 @@ from .core.quantities import quantity_key
 from .core.state import StatePoint, with_mollier_temperature
 from .core.units import Unit, UnitsLike, UnitSystem, get_unit_system
 from .engine import BackgroundEngine, CurveCache, Engine, plan
+from .engine.planning import snap
 from .scene import Scene
 from .spec import (CycleSpec, DiagramSpec, FluidSpec, HumidAirSpec, IsolineSet, LineSpec, SaturationAnchor,
                    Settings, get_settings)
@@ -646,12 +647,12 @@ class Chart:
         if len(values_SI) != 1:
             raise ValueError("A line has one value, not {0}; give a family of lines with set_lines.".format(value))
         value_SI = float(values_SI[0])
-        if key not in (diagram.x, diagram.y):
+        if not diagram.is_axis(key):
             self._family(key).check_values((value_SI,), diagram.quantity_label(key))
         if name is None:
-            line = LineSpec("line", key, value_SI)   # snaps the value as the line will hold it
-            name = label_text(self.spec, key, line.value_SI)
-        self.spec = self.spec.with_line(LineSpec(name, key, value_SI, label, line_style, points))
+            name = label_text(self.spec, key, snap(value_SI))   # the value as the line holds it
+        self.spec = self.spec.with_line(LineSpec(name=name, key=key, value_SI=value_SI, label=label,
+                                                 line_style=line_style, points=points))
         return name
 
     def remove_line(self, name: str) -> None:

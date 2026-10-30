@@ -213,6 +213,10 @@ struct DiagramType
     }
     /// Whether both axes may show their quantities in this kind of chart.
     bool valid() const;
+    /// Whether the quantity key `key` is on one of the two axes, e.g. "p" or "h" in a ph diagram.
+    bool is_axis(const std::string& key) const {
+        return key == x || key == y;
+    }
     bool x_log() const;
     bool y_log() const;
     /// The families this chart can draw, in their usual order.
