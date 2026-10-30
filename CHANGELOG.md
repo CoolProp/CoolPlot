@@ -6,6 +6,8 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-30
+
 ### Changed
 - Every chart names the equation of state of its fluid by default:
   `BrandingSettings.references` is "short" instead of "none", so the
