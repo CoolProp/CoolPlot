@@ -12,7 +12,8 @@ guide in the documentation says what to change in your code.
   badge shows a line such as "R290: Lemmon et al. (2009)" in the
   emptiest corner. `branding={"references": "none"}` removes it. Specs
   saved before 1.2 keep drawing without badge, specs saved since hold
-  their setting.
+  their setting. The picture on the landing page and in the README is
+  drawn again with the badge (and the default colours of 1.5).
 
 ### Added
 - coolplot-core 1.5 composes and writes the badge of the branding when it
