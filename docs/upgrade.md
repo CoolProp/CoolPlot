@@ -35,6 +35,30 @@ starting with an underscore, the helpers in `coolplot.core`,
 `coolplot.testing`, the scene item ids, and the exact coordinates of a
 chart (better numerics may move points).
 
+## From 1.4 to 1.5
+
+Nothing to change in your code, but charts in the `default` and `dark`
+themes look different. Every quantity now has a colour of its own, the
+same on every chart: temperature red, pressure wine, enthalpy orchid,
+entropy blue, density teal, internal energy purple (1.4 gave the colours
+out by position: blue, orange, aqua). Why is in
+{doc}`explanation/accessibility`. For the colours of 1.4:
+
+```python
+from coolplot.style.theme import DEFAULT
+diagram.theme = DEFAULT.with_(categorical=("#2a78d6", "#eb6834", "#1baf7a", "#eda100"), isoline_colors=None)
+```
+
+For the dark theme of 1.4, use `DARK` with
+`("#3987e5", "#d95926", "#199e70", "#c98500")`. A theme of your own
+derived from `DEFAULT` or `DARK` with new `categorical` colours needs
+`isoline_colors=None` as well, or the pinned colours win.
+
+The `classic` theme is gone; its idea, one colour per quantity, is now
+the default. Code that asks for `theme="classic"` gets a `ValueError`;
+a chart saved with it keeps its colours, since a saved chart holds its
+whole theme.
+
 ## From 1.3 to 1.4
 
 Nothing to change in your code. Axis titles, legends and labels of new

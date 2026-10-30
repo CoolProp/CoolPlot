@@ -32,7 +32,9 @@ extensions = [
 
 source_suffix = {".md": "markdown", ".rst": "restructuredtext"}
 master_doc = "index"
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+# _generated holds the theme catalog's pictures and tables, written by setup()
+# below and included by the pages that show them, not pages of their own
+exclude_patterns = ["_build", "_generated", "Thumbs.db", ".DS_Store"]
 # The gallery configuration holds a function (the scraper below), which
 # Sphinx cannot cache between builds; that is a notice, not a problem
 suppress_warnings = ["config.cache"]
@@ -106,10 +108,12 @@ html_css_files = ["coolplot.css"]
 
 
 def setup(app):
-    """Write the generated reference tables, and clear the examples' old output files."""
+    """Write the generated reference tables and theme catalog, and clear the examples' old output files."""
     import glob
     import _tables
+    import _themes
     _tables.write(os.path.join(os.path.dirname(__file__), "reference", "tables.md"))
+    _themes.write(os.path.join(os.path.dirname(__file__), "_generated", "themes"))
     examples = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "examples")
     for pattern in ("*.svg", "*.png", "*.pdf", "*.html"):
         for path in glob.glob(os.path.join(examples, pattern)):

@@ -7,7 +7,7 @@ import pytest
 from coolplot.core.floats import same_number, same_numbers
 from coolplot.style import (CSS_COLORS, AxesStyle, Font, LineStyle, MarkerStyle, TextStyle,
                             dash_pattern_pt, parse_color)
-from coolplot.style.theme import CLASSIC, DARK, DEFAULT, PRINT, THEMES, Theme, get_theme
+from coolplot.style.theme import COOLPACK, DARK, DEFAULT, PRINT, THEMES, Theme, get_theme
 
 
 def _same_color(parsed, color, alpha):
@@ -68,22 +68,35 @@ def test_presets():
     assert get_theme(PRINT) is PRINT
     with pytest.raises(ValueError):
         get_theme("neon")
-    assert CLASSIC.axes.legend.visible is False and CLASSIC.axes.grid_major is None
+    with pytest.raises(ValueError):
+        get_theme("classic")   # removed in 1.5: the default colours follow the quantity now
+    assert get_theme("Coolpack") is COOLPACK and COOLPACK.axes.legend.visible is False
+    assert COOLPACK.axes.grid_minor is not None and COOLPACK.isoline_label_color == "line"
 
 
 def test_isoline_colours_follow_the_quantity_not_the_rank():
     ph = ["T", "s", "rho"]          # what a ph chart offers, in fixed order
     hs = ["T", "p", "rho"]
     ts = ["p", "h", "rho"]
-    slot = DEFAULT.categorical
-    assert DEFAULT.isoline_style("T", ph).color == DEFAULT.isoline_style("T", hs).color == slot[0]
-    assert DEFAULT.isoline_style("rho", ph).color == DEFAULT.isoline_style("rho", ts).color == slot[2]
-    assert DEFAULT.isoline_style("p", ts).color == slot[0]
+    # The default themes pin one colour per quantity: the same on every chart
+    for theme in (DEFAULT, DARK):
+        for key in ("T", "p", "h", "s", "rho", "u"):
+            colours = {theme.isoline_style(key, chart).color for chart in (ph, hs, ts) if key in chart}
+            assert len(colours) <= 1
+        assert len({theme.isoline_style(k, ["T", "p", "h", "s", "rho", "u"]).color for k in "T p h s rho u".split()}) == 6
+    assert DEFAULT.isoline_style("p", ts).color == DEFAULT.isoline_style("p", hs).color == "#621b40"
+    assert DEFAULT.isoline_style("Twb", ["RH", "Twb", "h", "v"]).color == DEFAULT.isoline_style("s", ph).color
+    # A theme without pinned colours gives out its slots per diagram type
+    slots = DEFAULT.with_(isoline_colors=None)
+    slot = slots.categorical
+    assert slots.isoline_style("T", ph).color == slots.isoline_style("T", hs).color == slot[0]
+    assert slots.isoline_style("rho", ph).color == slots.isoline_style("rho", ts).color == slot[2]
+    assert slots.isoline_style("p", ts).color == slot[0]
     # The print theme separates families by dash pattern instead
     assert [PRINT.isoline_style(k, ph).dash for k in ph] == ["solid", "dashed", "dotted"]
     assert len({PRINT.isoline_style(k, ph).color for k in ph}) == 1
     # Pinned colours win over slots
-    assert CLASSIC.isoline_style("T", ph).color == "#8b0000"
+    assert [COOLPACK.isoline_style(k, ph).color for k in ph] == ["#ff0000", "#0000ff", "#008000"]
     assert DEFAULT.with_isoline_color("T", "purple").isoline_style("T", ph).color == "#800080"
 
 
@@ -131,7 +144,7 @@ def test_theme_loading_is_strict():
 
 def test_presets_cannot_be_changed_by_accident():
     with pytest.raises(TypeError):
-        CLASSIC.isoline_colors["T"] = "red"
+        DEFAULT.isoline_colors["T"] = "blue"
     custom = DEFAULT.with_(slot_dashes=((4, 2), "dashed"))
     again = Theme.from_dict(json.loads(json.dumps(custom.to_dict())))
     assert again == custom and hash(again) == hash(custom)
