@@ -58,7 +58,22 @@ diagram.units = "engineering"                    # back from the examples above
 state = diagram.state_at(400, 5)                 # h = 400 kJ/kg, p = 5 bar in the chart's units
 state.describe("engineering")                    # "T = 1.729 deg C, p = 5 bar, h = 400 kJ/kg, ..."
 state.in_units("IP")                             # a dict
-diagram.cycle_states("Heat pump", units="engineering")   # every state of a cycle
+diagram.cycle_states("Heat pump", units="engineering")   # every state of a cycle, as dicts
+```
+
+A StatePoint always holds SI values, wherever it comes from. `units=` on
+`state`, `state_at` and `mix` sets the units of what you give; the
+StatePoint returned is still in SI units. `units=` on `cycle_states` sets
+the units of what you get back, so the states come as plain dicts of
+values instead of StatePoints: a StatePoint holding deg C or bar would be
+read as SI by everything that takes one. Both forms are read by key,
+`states[2]["T"]`; only a StatePoint also allows `states[2].T`. To keep
+the StatePoints and read converted values as well:
+
+```python
+states = diagram.cycle_states("Heat pump")       # StatePoints, SI
+states[2].T                                      # in K
+states[2].in_units("engineering")["T"]           # in deg C
 ```
 
 A state can be given by v as well: `{"T": 20, "v": 0.05}`.

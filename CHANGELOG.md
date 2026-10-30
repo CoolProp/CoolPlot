@@ -6,6 +6,12 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### Changed
+- `cycle_states`, `state`, `state_at` and `mix` say which way `units=`
+  works: on `cycle_states` it converts the states returned (as dicts),
+  on the others it only sets the units of the input and the StatePoint
+  returned stays in SI units. The how-to on units explains why (#33).
+
 ## [1.4.0] - 2026-10-24
 
 ### Added
