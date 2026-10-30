@@ -26,18 +26,18 @@ import numpy as np
 from ..core.quantities import get_quantity
 from ..core.symbols import symbol_text, unit_text
 from ..scene import AxesSpec, SceneItem, Line, Markers, Text, drawable_limits
-from ..spec.diagram import SATURATION_KEY, CycleSpec, DiagramSpec, ProcessSpec
+from ..spec.diagram import SATURATION_KEY, CycleSpec, DiagramSpec, LineSpec, ProcessSpec
 from ..style.theme import Theme
-from ..style.values import Font
+from ..style.values import Font, LineStyle
 from .branding import branding
 from .corners import legend_size_pt, place_corners
 from .layout import Frame, LabelRequest, place_edge_labels, place_margin_labels, place_state_numbers
 from .rails import place_rail_labels
 from ..core.floats import is_zero, same_number
 
-# Drawing order: isolines, saturation dome, labels, processes and cycles,
-# state points, state numbers.
-Z_ISOLINE, Z_SATURATION, Z_LABEL, Z_PROCESS, Z_STATES = 1.0, 2.0, 4.0, 5.0, 6.0
+# Drawing order: isolines, saturation dome, single lines, labels, processes
+# and cycles, state points, state numbers.
+Z_ISOLINE, Z_SATURATION, Z_LINE, Z_LABEL, Z_PROCESS, Z_STATES = 1.0, 2.0, 3.0, 4.0, 5.0, 6.0
 
 
 def _scaled(value, factor: float):
@@ -96,7 +96,8 @@ def axes_spec(spec: DiagramSpec, domain, theme: Theme, shown=()) -> AxesSpec:
 
     Without a zoom window the axes cover the calculation domain, widened
     where needed so that every point in ``shown`` (display-unit (x, y)
-    arrays of processes and cycles) is visible.
+    arrays of processes, cycles and single lines of an axis quantity) is
+    visible.
     """
     diagram = spec.diagram
     limits = []
@@ -313,6 +314,89 @@ def labels_for(spec: DiagramSpec, requests, axes: AxesSpec, keep_out_lines, plot
                              settings.fallback, occupied)
 
 
+def single_line_style(spec: DiagramSpec, theme: Theme, line: LineSpec) -> LineStyle:
+    """The style of a single line: its own, or else its family's at twice the width.
+
+    A line of an axis quantity has no family; it takes the colour of the
+    saturation curve, the darkest line of the theme.
+    """
+    if line.line_style is not None:
+        return line.line_style
+    if spec.diagram.supports(line.key):
+        base = isoline_look(spec, theme, line.key, line.value_SI)[0]
+    else:
+        base = theme.isoline.with_(color=theme.saturation.color)
+    return base.with_(width_pt=2.0 * base.width_pt)
+
+
+def axis_line_values(spec: DiagramSpec) -> List[Tuple[np.ndarray, np.ndarray]]:
+    """(x, y) in display units of every single line of an axis quantity, one
+    of them empty, so that the axes widen to show the line."""
+    shown = []
+    for line in spec.lines:
+        value = np.atleast_1d(spec.units[line.key].from_SI(line.value_SI))
+        if line.key == spec.diagram.x:
+            shown.append((value, np.array([])))
+        elif line.key == spec.diagram.y:
+            shown.append((np.array([]), value))
+    return shown
+
+
+def single_line_items(spec: DiagramSpec, theme: Theme, curves, frame: Frame) -> List[SceneItem]:
+    """The single lines of the spec (:class:`coolplot.spec.LineSpec`) and their labels.
+
+    A line of an axis quantity runs straight across the plot, from one
+    axis limit to the other. Any other line follows its curve from
+    ``curves`` ((CurveRequest, Curve) pairs) and is left out while it has
+    none: it lies outside the calculation region, or a background engine
+    has not computed it yet. The label sits at ``Settings.labels.position``
+    along the visible part of the line, whatever the label mode.
+    """
+    ux, uy = spec.units[spec.diagram.x], spec.units[spec.diagram.y]
+    by_id = {request.item_id: curve for request, curve in curves}
+    position = spec.settings.labels.position
+    items: List[SceneItem] = []
+    for line in spec.lines:
+        style = single_line_style(spec, theme, line)
+        label = None   # (x, y, direction) of the label on an axis line
+        if line.key in (spec.diagram.x, spec.diagram.y):
+            vertical = line.key == spec.diagram.x
+            value = float(spec.units[line.key].from_SI(line.value_SI))
+            (lo, hi), log = (frame.y_limits, frame.y_log) if vertical else (frame.x_limits, frame.x_log)
+            # The point at ``position`` along the line, evenly on a logarithmic axis too
+            along = lo * (hi / lo) ** position if log else lo + position * (hi - lo)
+            if vertical:
+                x, y = np.array([value, value]), np.array([lo, hi])
+                label = (value, along, (0.0, 1.0)) if frame.x_limits[0] <= value <= frame.x_limits[1] else None
+            else:
+                x, y = np.array([lo, hi]), np.array([value, value])
+                label = (along, value, (1.0, 0.0)) if frame.y_limits[0] <= value <= frame.y_limits[1] else None
+        else:
+            curve = by_id.get(line.item_id)
+            if curve is None:
+                continue
+            x, y = ux.from_SI(curve.x), uy.from_SI(curve.y)
+        items.append(Line(id=line.item_id, group=line.item_id, role="line", legend=line.name, x=x, y=y,
+                          style=style, z_order=Z_LINE))
+        if line.label is False:
+            continue
+        text = label_text(spec, line.key, line.value_SI) if line.label is True else line.label
+        text_style = theme.isoline_label
+        if theme.isoline_label_color == "line" and style.color is not None:
+            text_style = text_style.with_(color=style.color)   # the label in its line's colour
+        if line.key in (spec.diagram.x, spec.diagram.y):
+            if label is not None:
+                items.append(Text(id=line.item_id + "/label", group=line.item_id + "/label", role="line_label",
+                                  x=label[0], y=label[1], text=text, direction=label[2], style=text_style,
+                                  z_order=Z_LABEL))
+            continue
+        request = LabelRequest(id=line.item_id + "/label", group=line.item_id + "/label", family=line.key,
+                               text=text, style=text_style, x=x, y=y,
+                               value=spec.units[line.key].label_value(line.value_SI), line_color=style.color)
+        items.extend(replace(t, role="line_label") for t in inline_labels(spec, [request], frame))
+    return items
+
+
 def process_items(spec: DiagramSpec, theme: Theme, process: ProcessSpec, index: int) -> List[SceneItem]:
     """The line and the state markers of one process."""
     ux, uy = spec.units[spec.diagram.x], spec.units[spec.diagram.y]
@@ -401,15 +485,22 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Optional[
     :meth:`coolplot.engine.Engine.source_lines`.
     """
     theme = scaled_theme(spec.settings.look, spec.settings.page.font_scale)
+    # The curves of the single lines come with those of the families; they are drawn apart
+    single_ids = {line.item_id for line in spec.lines}
+    line_curves = [(r, c) for r, c in curves if r.item_id in single_ids]
+    curves = [(r, c) for r, c in curves if r.item_id not in single_ids]
     process_parts = overlay_items(spec, theme, cycles or ())
     drawn = [(p.x, p.y, isinstance(p, Line)) for p in process_parts if not isinstance(p, Text)]
-    axes = axes_spec(spec, domain, theme, drawn)
+    axes = axes_spec(spec, domain, theme, drawn + axis_line_values(spec))
     size = plot_size_pt or default_plot_size_pt(spec)
     frame = Frame.from_axes(axes, size)
     process_parts = placed_state_numbers(process_parts, frame)
     lines = isoline_items(spec, theme, curves)
+    single_lines = single_line_items(spec, theme, line_curves, frame)
     badge, watermark = branding(spec, theme, frame, sources)
-    axes, badge, boxes = corners_for(spec, theme, axes, frame, badge, lines, process_parts, drawn)
+    axes, badge, boxes = corners_for(spec, theme, axes, frame, badge,
+                                     lines + [item for item in single_lines if isinstance(item, Line)],
+                                     process_parts, drawn)
     if badge is not None or watermark is not None:
         axes = replace(axes, badge=badge, watermark=watermark)
     items: List[SceneItem] = list(lines)
@@ -417,6 +508,7 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Optional[
     if requests:
         # Rail and edge labels keep clear of a legend inside the plot area and of the badge
         items.extend(labels_for(spec, requests, axes, drawn, size, previous_labels, tuple(boxes)))
+    items.extend(single_lines)
     items.extend(process_parts)
     return items, axes
 

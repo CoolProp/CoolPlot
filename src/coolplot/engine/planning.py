@@ -193,6 +193,9 @@ def plan(spec: DiagramSpec, domain: Domain) -> Tuple[CurveRequest, ...]:
     ``spec.show_saturation`` True it is drawn whatever values the family is
     given, also without the family; with False it is left out; with None
     (a spec saved before 1.2) the family's values decide, as they did.
+
+    The single lines of the spec come last, with their own ids (``LineSpec.item_id``).
+    A line of an axis quantity is straight and needs no curve.
     """
     calc = spec.settings.calc
     boundary_family = next((f for f in spec.diagram.families if f.on_boundary), None)
@@ -230,4 +233,9 @@ def plan(spec: DiagramSpec, domain: Domain) -> Tuple[CurveRequest, ...]:
             add_saturation = False
     if add_saturation and boundary_family is not None:   # the family is not drawn: the saturation curve comes last
         requests.extend(saturation_requests(boundary_family, []))
+    for line in spec.lines:
+        if line.key in (spec.diagram.x, spec.diagram.y):
+            continue
+        default_points = calc.saturation_points if line.key == "Q" else calc.points
+        requests.append(CurveRequest(line.item_id, line.key, line.value_SI, line.points or default_points))
     return tuple(requests)

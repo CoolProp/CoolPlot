@@ -90,6 +90,25 @@ struct CycleSpec
     MarkerStyle marker_style;
 };
 
+/// A single line of constant `key` at `value_SI` (coolplot.spec.LineSpec), drawn on top of the families.
+/// `key` has a family in the diagram, or is one of its axes: such a line is straight and spans the plot.
+struct LineSpec
+{
+    std::string name;
+    std::string key;
+    double value_SI = 0.0;
+    bool has_label = true;       ///< false: no label
+    bool label_is_value = true;  ///< true: the label is the line's value ("p=130 bar"), else `label`
+    std::string label;
+    bool has_line_style = false;
+    LineStyle line_style;
+
+    /// The id of the line in the scene and of its curve request: "line/<name>".
+    std::string item_id() const {
+        return "line/" + name;
+    }
+};
+
 struct DiagramSpec
 {
     DiagramType diagram;
@@ -98,6 +117,7 @@ struct DiagramSpec
     std::vector<IsolineSet> isolines;
     std::vector<ProcessSpec> processes;
     std::vector<CycleSpec> cycles;
+    std::vector<LineSpec> lines;
     std::map<std::string, json> style_overrides;  ///< LineStyle field changes per family, and for "saturation"
     bool has_x_view = false;
     Range x_view_SI;

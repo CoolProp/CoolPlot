@@ -6,6 +6,19 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### Added
+- `Chart.add_line` and `Chart.remove_line` (issue #32): single lines of
+  constant value drawn on top of the families, each with its own name,
+  legend entry, label and style, such as a highlighted isotherm among
+  the default ones. Lines of an axis quantity are offered too, straight
+  across the plot (the pressure at which the burst disks of a CO2 plant
+  open, in a log(p)-h chart), and the axes widen to show them. Without a
+  style a line takes its family's at twice the width. The lines are
+  stored in `DiagramSpec.lines` (`coolplot.LineSpec`, the spec record's
+  `lines`), drawn with the scene roles `line` and `line_label`, and
+  composed the same by coolplot-core 1.5; an older core leaves charts
+  with single lines to the Python composer.
+
 ## [1.4.0] - 2026-10-24
 
 ### Added

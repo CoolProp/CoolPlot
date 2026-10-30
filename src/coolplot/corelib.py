@@ -155,6 +155,7 @@ _NEEDS_A_NEWER_CORE = (
     ((1, 3), _restyles_the_dome, "restyle the saturation curve or the quality lines"),
     ((1, 4), lambda spec: spec.settings.labels.symbols == "unicode", "write symbols and units with their own "
      "characters (rho, deg C, m3)"),
+    ((1, 5), lambda spec: bool(spec.lines), "draw single lines (add_line)"),
 )
 
 

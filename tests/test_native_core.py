@@ -477,6 +477,49 @@ def test_unicode_symbols_compose_the_same_through_the_port():
     assert any(t.text.startswith("\u03c6=") for t in ported if t.id.startswith("iso/RH/") and t.id.endswith("/label"))
 
 
+@needs_core
+def test_single_lines_compose_the_same_through_the_port():
+    pytest.importorskip("CoolProp")
+    if native.core_version() < (1, 5):
+        pytest.skip("coolplot-core 1.5 draws single lines; an older one is refused (next test)")
+    from coolplot import LineStyle, PropertyDiagram, PsychrometricChart
+    diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    diagram.set_default_lines(labels=True)
+    diagram.add_line("T", 22)
+    diagram.add_line("p", 30, name="Relief valve", line_style=LineStyle(color="red", width_pt=2.0))
+    diagram.add_line("h", 1500, label="beyond the region")
+    diagram.add_line("Q", 0.4, label=False)
+    chart = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25), settings="interactive")
+    chart.settings = chart.settings.with_(labels={"mode": "inline"})
+    chart.set_default_lines()
+    chart.add_line("T", 26, name="Room")
+    chart.add_line("RH", 60)
+    for case in (diagram, chart):
+        python, ported = _both_scenes(case)
+        difference = _same(python.to_dict(), ported.to_dict())
+        assert difference == "", difference
+        assert {i.role for i in ported if i.id.startswith("line/")} == {"line", "line_label"}
+
+
+@needs_core
+def test_an_older_core_refuses_single_lines(monkeypatch):
+    """A core from before 1.5 would ignore the single lines and draw the chart without them."""
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    from coolplot.compose import compose
+    from coolplot.engine import plan
+    chart = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    chart.set_lines("T", num=4)
+    chart.add_line("p", 30, name="Relief valve")
+    spec = chart.spec
+    domain = chart.engine.domain(spec)
+    curves = chart.engine.curves(spec, domain, plan(spec, domain))
+    monkeypatch.setattr(native, "core_version", lambda: (1, 4, 0))
+    monkeypatch.setenv("COOLPLOT_NATIVE", "1")
+    with pytest.warns(native.CoreFallbackWarning, match="older than 1.5"):
+        items, _ = compose(spec, domain, curves)
+    assert any(i.id == "line/Relief valve" for i in items)   # drawn by the Python composer
+
 def _before_12(chart):
     """The chart with the label mode, legend and plain symbols of 1.1, which an older core understands."""
     chart.settings = chart.settings.with_(labels={"mode": "edge", "symbols": "ascii"})

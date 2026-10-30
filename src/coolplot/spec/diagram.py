@@ -15,9 +15,10 @@ Change it with the ``with_*`` methods, which return a new spec.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field, replace
 from numbers import Integral
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 
 from ..core.cycle import Cycle, StateInput, check_loops, check_paths, default_loops
 from ..core.diagram_type import DiagramType
@@ -168,6 +169,66 @@ class IsolineSet:
         data = dict(data)
         anchor = data.pop("anchor", None)
         return cls(**data, anchor=None if anchor is None else SaturationAnchor.from_dict(anchor))
+
+
+@dataclass(frozen=True)
+class LineSpec:
+    """One single line of constant ``key`` at ``value_SI``, drawn on top of the families
+
+    For example a design temperature or a relief pressure. ``key`` is a
+    quantity with a line family in the diagram ("T", "s", ...), or one of
+    its two axes: a line of an axis quantity (p or h in a log(p)-h chart)
+    is straight and spans the plot. ``label`` is True to write the line's
+    value on it, False for no label, or a text of its own. ``line_style``
+    None takes the style of the family (the theme's dark line colour for
+    an axis quantity) at twice its width. ``points`` overrides
+    ``Settings.calc`` for this line when given.
+    """
+    name: str
+    key: str
+    value_SI: float
+    label: Union[bool, str] = True
+    line_style: Optional[LineStyle] = None
+    points: Optional[int] = None
+
+    def __post_init__(self):
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise ValueError("A line needs a name, not {0!r}.".format(self.name))
+        object.__setattr__(self, "key", quantity_key(self.key))
+        # Snapped like isoline values, so that the line shares its curve with a family line of the same value
+        value = _snap(float(self.value_SI))
+        if not math.isfinite(value):
+            raise ValueError("Line '{0}': the value has to be a finite number, not {1}.".format(self.name,
+                                                                                               self.value_SI))
+        object.__setattr__(self, "value_SI", value)
+        if not isinstance(self.label, (bool, str)) or (isinstance(self.label, str) and not self.label.strip()):
+            raise ValueError("Line '{0}': label is True, False or a non-empty text, not {1!r}.".format(
+                self.name, self.label))
+        if self.line_style is not None and not isinstance(self.line_style, LineStyle):
+            raise TypeError("Line '{0}': line_style has to be a LineStyle, not {1}.".format(
+                self.name, type(self.line_style).__name__))
+        if self.points is not None:
+            if int(self.points) < 2:
+                raise ValueError("A line needs at least 2 points, not {0}.".format(self.points))
+            object.__setattr__(self, "points", int(self.points))
+
+    @property
+    def item_id(self) -> str:
+        """The id of the line in the scene and of its curve request: "line/<name>"."""
+        return "line/" + self.name
+
+    def to_dict(self) -> dict:
+        """The record of docs/reference/contracts.md for this line."""
+        return {"name": self.name, "key": self.key, "value_SI": self.value_SI, "label": self.label,
+                "line_style": None if self.line_style is None else style_to_dict(self.line_style),
+                "points": self.points}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "LineSpec":
+        """A line from its record, see :meth:`to_dict`."""
+        return cls(data["name"], data["key"], data["value_SI"], data.get("label", True),
+                   None if data.get("line_style") is None else style_from_dict(LineStyle, data["line_style"]),
+                   data.get("points"))
 
 
 @dataclass(frozen=True)
@@ -337,12 +398,13 @@ class DiagramSpec:
     ``style_overrides`` maps an isoline quantity, or "saturation" for the
     saturation curve, to LineStyle field changes on top of the theme,
     stored as sorted pairs so the spec stays hashable.
-    ``view_SI`` is the zoom window ((x_min, x_max), (y_min, y_max)) in SI
-    units, None for the full calculation region. ``show_saturation`` draws
-    the saturation curve (quality 0 and 1, or 100 % relative humidity)
-    whatever lines are set (True), hides it (False), or leaves it to the
-    values of the quality or humidity family (None, how a spec saved
-    before 1.2 reads).
+    ``lines`` are single lines (:class:`LineSpec`) drawn on top of the
+    families, each under its own name. ``view_SI`` is the zoom window
+    ((x_min, x_max), (y_min, y_max)) in SI units, None for the full
+    calculation region. ``show_saturation`` draws the saturation curve
+    (quality 0 and 1, or 100 % relative humidity) whatever lines are set
+    (True), hides it (False), or leaves it to the values of the quality or
+    humidity family (None, how a spec saved before 1.2 reads).
     """
     fluid: Any
     diagram: DiagramType = DiagramType("p", "h")
@@ -356,6 +418,7 @@ class DiagramSpec:
     view_SI: Tuple[Limits, Limits] = (None, None)
     title: str = ""
     show_saturation: Optional[bool] = True
+    lines: Tuple[LineSpec, ...] = ()
 
     def __post_init__(self):
         fluid = self.fluid if isinstance(self.fluid, HumidAirSpec) else FluidSpec.parse(self.fluid)
@@ -378,6 +441,12 @@ class DiagramSpec:
                                  "not of {0}.".format(fluid.name))
         _unique([p.name for p in self.processes], "Process names have to be unique")
         _unique([c.name for c in self.cycles], "Cycle names have to be unique")
+        _unique([line.name for line in self.lines], "Line names have to be unique")
+        for line in self.lines:
+            if not (diagram.supports(line.key) or line.key in (diagram.x, diagram.y)):
+                raise ValueError("Line '{0}': lines of constant '{1}' cannot be drawn in a {2} diagram.".format(
+                    line.name, line.key, diagram.name))
+        object.__setattr__(self, "lines", tuple(self.lines))
         object.__setattr__(self, "cycles", tuple(self.cycles))
         object.__setattr__(self, "view_SI", _checked_view(self.view_SI))
         if self.show_saturation not in (True, False, None):
@@ -433,6 +502,16 @@ class DiagramSpec:
         """A copy without the cycle called ``name``."""
         return replace(self, cycles=tuple(c for c in self.cycles if c.name != name))
 
+    def with_line(self, line: LineSpec) -> "DiagramSpec":
+        """Add a single line, or replace the line of the same name in place."""
+        if all(existing.name != line.name for existing in self.lines):
+            return replace(self, lines=self.lines + (line,))
+        return replace(self, lines=tuple(line if existing.name == line.name else existing for existing in self.lines))
+
+    def without_line(self, name: str) -> "DiagramSpec":
+        """A copy without the single line called ``name``."""
+        return replace(self, lines=tuple(line for line in self.lines if line.name != name))
+
     def with_style_override(self, key: str, **changes) -> "DiagramSpec":
         """Add LineStyle changes for one family or the saturation curve; without changes, remove its overrides."""
         key = override_key(key)
@@ -446,7 +525,7 @@ class DiagramSpec:
     # Storage ------------------------------------------------------------------
     def to_dict(self) -> dict:
         """Plain data, e.g. for json.dump. :meth:`from_dict` reverses it."""
-        return {"fluid": self.fluid.to_dict(), "diagram": self.diagram.name,
+        record = {"fluid": self.fluid.to_dict(), "diagram": self.diagram.name,
                 "units": _units_to_dict(self.units), "limits": _limits_to_dict(self.limits),
                 "settings": self.settings.to_dict(),
                 "isolines": [s.to_dict() for s in self.isolines],
@@ -456,6 +535,9 @@ class DiagramSpec:
                                     for k, changes in self.style_overrides},
                 "view_SI": [None if lim is None else list(lim) for lim in self.view_SI],
                 "title": self.title, "show_saturation": self.show_saturation}
+        if self.lines:   # left out when empty, so records without single lines stay as they were
+            record["lines"] = [line.to_dict() for line in self.lines]
+        return record
 
     @classmethod
     def from_dict(cls, data: dict) -> "DiagramSpec":
@@ -474,7 +556,8 @@ class DiagramSpec:
                    view_SI=_checked_view(data.get("view_SI", (None, None))),
                    title=data.get("title", ""),
                    # A record saved before 1.2 has no such field: its family values decide, as they did
-                   show_saturation=data.get("show_saturation"))
+                   show_saturation=data.get("show_saturation"),
+                   lines=tuple(LineSpec.from_dict(line) for line in data.get("lines", ())))
 
 
 # Validation helpers ----------------------------------------------------------

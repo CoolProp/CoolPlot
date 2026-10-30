@@ -66,8 +66,8 @@ class Item:
         example "iso/T" for all isotherms.
     role : str
         What the item means, independent of how it looks: "isoline",
-        "saturation", "quality", "isoline_label", "process", "state_points"
-        or "annotation". Backends that support external styling (CSS
+        "saturation", "quality", "isoline_label", "line", "line_label",
+        "process", "state_points" or "annotation". Backends that support external styling (CSS
         classes in SVG or HTML) expose it; see docs/contributing/writing_a_backend.md.
     legend : str, optional
         Text of a legend entry for this item. Usually only one item per

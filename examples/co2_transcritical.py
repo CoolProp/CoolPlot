@@ -15,10 +15,14 @@ States: 1 evaporator outlet at 30 bar and 0 deg C (evaporating at
 -5.6 deg C), 2 compressor outlet at 100 bar (isentropic efficiency 0.7),
 3 gas cooler outlet at 35 deg C, 4 after the expansion valve.
 
+Two single lines sit on top of the families: the isotherm of the gas
+cooler outlet, highlighted among the others, and the pressure at which
+the burst disks of the high pressure side open.
+
 Run with:  python examples/co2_transcritical.py
 Writes co2_transcritical.svg.
 """
-from coolplot import PropertyDiagram
+from coolplot import LineStyle, PropertyDiagram
 from coolplot.render.svg import SvgRenderer
 
 m_dot_kg_s = 0.05   # CO2 through the cycle
@@ -29,6 +33,8 @@ diagram.title = "CO2 heat pump, gas cooler at 100 bar"
 diagram.set_lines("Q", num=11, labels=True)
 diagram.set_lines("T", values=list(range(-30, 151, 20)), labels=True)
 diagram.set_lines("s", num=8, rounding=True, labels=True)
+diagram.add_line("T", 35, name="Gas cooler outlet")
+diagram.add_line("p", 130, name="Burst disk", line_style=LineStyle(color="#c00000", width_pt=1.5, dash="dashed"))
 
 states = [
     {"p": 30.0, "T": 0.0},                                # 1 evaporator outlet

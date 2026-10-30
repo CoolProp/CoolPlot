@@ -14,11 +14,45 @@ diagram.line_sets()                                    # what is set
 
 With `rounding=True` the values are round numbers in the chart's units
 with an even step (25 deg C, or 1-2-5 per decade on a log axis), as
-many as come close to `num`. Lines of a quantity that is an axis of the
-diagram (isobars in a p-h chart) are not offered: they are the grid.
+many as come close to `num`. Families of a quantity that is an axis of
+the diagram (isobars in a p-h chart) are not offered: they are the grid.
+A single line of an axis quantity is, see below.
 
 Which families a diagram offers, and in which quantity each is stepped,
 is in {doc}`../reference/tables`.
+
+## Single lines
+
+Since 1.5 `add_line` draws one line of constant value on top of the
+families, for a design temperature or the pressure at which a relief
+valve or burst disk opens. Each line has a name, shows in the legend and
+is independent of the families: `set_lines` and `set_default_lines`
+leave it alone.
+
+```python
+from coolplot import LineStyle
+
+diagram = PropertyDiagram("CO2", "ph", units="engineering")
+diagram.set_default_lines(labels=True, rounding=True)
+diagram.add_line("T", 22)                                   # named "T=22 deg C", labelled with its value
+diagram.add_line("p", 130, name="Burst disk",
+                 line_style=LineStyle(color="red", width_pt=2.0, dash="dashed"))
+diagram.add_line("h", 400, label="h max")                  # a text of its own; label=False for none
+diagram.remove_line("Burst disk")
+```
+
+The quantity is any that `set_lines` takes in the chart, or one of the
+two axis quantities (p and h in a log(p)-h chart). A line of an axis
+quantity is straight and spans the plot, and the axes widen to show it.
+Without `line_style` a line takes the style of its family at twice the
+width, so a highlighted isotherm keeps the colour of the isotherms; a
+line of an axis quantity takes the colour of the saturation curve.
+
+The label sits at `LabelSettings.position` along the visible part of the
+line, whatever the label mode, and takes the colour of the line when the
+theme colours its labels so (`isoline_label_color="line"`). A line that
+shares its value with a line of its family shares its curve too: it costs
+no extra calculation.
 
 ## The saturation curve
 

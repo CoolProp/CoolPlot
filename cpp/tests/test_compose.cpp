@@ -102,6 +102,24 @@ TEST_CASE("The saturation curve without its casing, and restyled quality lines",
     check_case("compose_r290_ph_restyled_dome.json");
 }
 
+TEST_CASE("Single lines: of a family, of an axis quantity, widened axes, zoomed", "[compose]") {
+    check_case("compose_r290_ph_single_lines.json");
+    check_case("compose_r290_ph_single_lines_widened.json");
+    check_case("compose_r290_ph_single_lines_zoomed.json");
+    check_case("compose_rails_r290_ph_single_lines.json");
+    check_case("compose_rails_psychrometric_single_lines.json");
+}
+
+TEST_CASE("A single line of a quantity the chart has no line of is refused", "[compose]") {
+    json input = load("compose_r290_ph_single_lines.json").at("input");
+    json changed = input;
+    changed["spec"]["lines"][0]["key"] = "RH";
+    CHECK_THROWS_AS(compose_json(changed.dump()), Error);
+    changed = input;
+    changed["spec"]["lines"][0]["label"] = 3;
+    CHECK_THROWS_AS(compose_json(changed.dump()), Error);
+}
+
 TEST_CASE("Labels on rails, with the legend in the emptiest corner", "[compose][rails]") {
     check_case("compose_rails_r290_ph.json");
     check_case("compose_rails_r290_ph_narrow.json");

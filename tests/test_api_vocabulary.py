@@ -15,7 +15,8 @@ from coolplot.core.floats import same_number
 #: Names importable from the package.
 PACKAGE_NAMES = {
     "__version__", "Chart", "PropertyDiagram", "PsychrometricChart", "save_pdf",
-    "Cycle", "CycleSpec", "StateInput", "DiagramSpec", "FluidSpec", "HumidAirSpec", "IsolineSet", "ProcessSpec",
+    "Cycle", "CycleSpec", "StateInput", "DiagramSpec", "FluidSpec", "HumidAirSpec", "IsolineSet", "LineSpec",
+    "ProcessSpec",
     "Settings", "CalcSettings", "LabelSettings", "PageSettings", "BrandingSettings", "Engine", "Fluid", "DiagramType",
     "TpLimits", "Relative", "Region", "StatePoint", "state_point", "process_path", "PropertyError",
     "Theme", "get_theme", "LineStyle", "MarkerStyle", "TextStyle", "Font", "AxesStyle", "LegendStyle",
@@ -25,7 +26,7 @@ PACKAGE_NAMES = {
 
 #: The verbs and properties of every chart.
 CHART_METHODS = {
-    "set_lines", "set_default_lines", "remove_lines", "line_sets", "set_line_style",
+    "set_lines", "set_default_lines", "remove_lines", "line_sets", "set_line_style", "add_line", "remove_line",
     "add_cycle", "remove_cycle", "move_cycle_state", "cycle_states",
     "set_view", "state", "state_at", "to_display", "update_scene", "draw", "show", "save",
     "refresh", "close", "wait", "from_spec", "uncached_curves",

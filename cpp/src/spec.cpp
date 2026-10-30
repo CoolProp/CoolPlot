@@ -151,6 +151,29 @@ DiagramSpec DiagramSpec::from_json(const json& data) {
         }
         spec.cycles.push_back(cycle);
     }
+    for (const json& l : data.value("lines", json::array())) {
+        LineSpec line;
+        line.name = l.at("name").get<std::string>();
+        line.key = quantity_key(l.at("key").get<std::string>());
+        line.value_SI = l.at("value_SI").get<double>();
+        if (!spec.diagram.family(line.key) && line.key != spec.diagram.x && line.key != spec.diagram.y)
+            throw Error("line '" + line.name + "': lines of constant '" + line.key + "' cannot be drawn in a " + spec.diagram.name() +
+                        " diagram");
+        const json label = l.contains("label") ? l.at("label") : json(true);
+        if (label.is_boolean()) {
+            line.has_label = label.get<bool>();
+        } else if (label.is_string()) {
+            line.label_is_value = false;
+            line.label = label.get<std::string>();
+        } else {
+            throw Error("line '" + line.name + "': label has to be true, false or a text, not " + label.dump());
+        }
+        if (l.contains("line_style") && !l.at("line_style").is_null()) {
+            line.has_line_style = true;
+            line.line_style = LineStyle::from_json(l.at("line_style"));
+        }
+        spec.lines.push_back(line);
+    }
     json overrides = data.value("style_overrides", json::object());
     for (auto it = overrides.begin(); it != overrides.end(); ++it) spec.style_overrides[override_key(it.key())] = it.value();
     if (data.contains("view_SI")) {

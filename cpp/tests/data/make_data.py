@@ -8,7 +8,7 @@ import json
 import os
 import sys
 
-from coolplot import PropertyDiagram, PsychrometricChart
+from coolplot import LineStyle, PropertyDiagram, PsychrometricChart
 from coolplot.compose.builder import compose
 from coolplot.engine import plan
 from coolplot.render.svg import SvgRenderer
@@ -176,6 +176,29 @@ def main():
     restyled.set_line_style("Q", color="#7a3cc8", dash="dotted")
     compose_case("compose_r290_ph_restyled_dome", restyled)
 
+    # Single lines (1.5): a highlighted isotherm and quality line in the
+    # style of their families, a line of each axis quantity, one with its own
+    # style and text, one without a label; labels in the colour of the lines
+    single = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    single.theme = single.theme.with_(isoline_label_color="line")
+    single.set_lines("T", num=5, labels=True)
+    single.set_lines("Q", num=6)
+    single.add_line("T", 22)
+    single.add_line("Q", 0.4, label=False)
+    single.add_line("p", 30, name="Relief valve", line_style=LineStyle(color="red", width_pt=2.0, dash="dashed"))
+    single.add_line("h", 900, label="h max")
+    compose_case("compose_r290_ph_single_lines", single)
+    # A line of an axis quantity outside the calculation region widens the
+    # axes; a zoom window cuts the other line out of view and drops its label
+    zoomed = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    zoomed.set_lines("T", num=5, labels=True)
+    zoomed.add_line("p", 60, name="Burst disk")
+    zoomed.add_line("s", 2.0)
+    compose_case("compose_r290_ph_single_lines_widened", zoomed)
+    zoomed.set_view(x_limits=(200, 400))
+    zoomed.add_line("h", 100, name="Outside")
+    compose_case("compose_r290_ph_single_lines_zoomed", zoomed)
+
     rails_cases()
 
 
@@ -225,6 +248,17 @@ def rails_cases():
     anchored.set_lines("rho", at_saturation={"T": 20, "Q": 0.5, "label": "saturation"}, labels=True)
     anchored.set_lines("T", at_saturation={"p": 2}, labels=True)
     compose_case("compose_rails_r290_ph_anchored", anchored, size)
+    # Single lines on rails, where the legend is placed by itself and counts them
+    single = r290()
+    single.add_line("T", 25, name="Ambient")
+    single.add_line("p", 20, name="Relief valve")
+    compose_case("compose_rails_r290_ph_single_lines", single, size)
+    # A line of dry-bulb temperature (an axis) and one of relative humidity on a psychrometric chart
+    air = rails(PsychrometricChart(T_range=(-10, 45), W_range=(0, 25), settings="interactive"))
+    air.set_default_lines()
+    air.add_line("T", 26, name="Room")
+    air.add_line("RH", 60, name="Upper comfort limit")
+    compose_case("compose_rails_psychrometric_single_lines", air, size)
 
 
 if __name__ == "__main__":
