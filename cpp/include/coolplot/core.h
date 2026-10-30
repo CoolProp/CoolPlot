@@ -104,6 +104,10 @@ double parse_number(const std::string& text);
 size_t text_length(const std::string& utf8);
 /// The first `count` characters of UTF-8 text, never cutting a character.
 std::string text_prefix(const std::string& utf8, size_t count);
+/// Width of one line of UTF-8 text in em of Helvetica, without margin (coolplot.core.textwidth).
+double text_width_em(const std::string& utf8);
+/// Estimated width of one line of text at `size_pt`, 15 % wider than Helvetica for wider fonts.
+double text_width_pt(const std::string& utf8, double size_pt);
 
 // ---------------------------------------------------------------------------
 // Quantities (coolplot.core.quantities)

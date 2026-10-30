@@ -10,6 +10,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+# The docs folder too, for the helper modules _tables and _gallery_order
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from coolplot import __version__  # noqa: E402
 
@@ -30,7 +32,9 @@ extensions = [
 
 source_suffix = {".md": "markdown", ".rst": "restructuredtext"}
 master_doc = "index"
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+# _generated holds the theme catalog's pictures and tables, written by setup()
+# below and included by the pages that show them, not pages of their own
+exclude_patterns = ["_build", "_generated", "Thumbs.db", ".DS_Store"]
 # The gallery configuration holds a function (the scraper below), which
 # Sphinx cannot cache between builds; that is a notice, not a problem
 suppress_warnings = ["config.cache"]
@@ -78,9 +82,13 @@ sphinx_gallery_conf = {
     "matplotlib_animations": False,
     "plot_gallery": "True",
     "reset_modules": ("matplotlib",),
-    "within_subsection_order": "FileNameSortKey",
+    # By file name, but the company chart last (docs/_gallery_order.py)
+    "within_subsection_order": "_gallery_order.company_chart_last",
     "min_reported_time": 1,
     "show_memory": False,
+    # Needed by the minigallery on the landing page (a few thumbnails that
+    # link to their examples); the files written there are not pages
+    "backreferences_dir": "gallery/backreferences",
 }
 
 html_theme = "pydata_sphinx_theme"
@@ -90,6 +98,9 @@ html_title = "CoolPlot {0}".format(__version__)
 html_theme_options = {
     "github_url": "https://github.com/CoolProp/CoolPlot",
     "show_toc_level": 2,
+    # The top bar shows the pages of the main toctree in its order, the first
+    # six as links (from Getting started to Reference), the rest under "More"
+    "header_links_before_dropdown": 6,
     "navigation_with_keys": False,
 }
 html_context = {"default_mode": "light"}
@@ -97,11 +108,12 @@ html_css_files = ["coolplot.css"]
 
 
 def setup(app):
-    """Write the generated reference tables, and clear the examples' old output files."""
+    """Write the generated reference tables and theme catalog, and clear the examples' old output files."""
     import glob
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import _tables
+    import _themes
     _tables.write(os.path.join(os.path.dirname(__file__), "reference", "tables.md"))
+    _themes.write(os.path.join(os.path.dirname(__file__), "_generated", "themes"))
     examples = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "examples")
     for pattern in ("*.svg", "*.png", "*.pdf", "*.html"):
         for path in glob.glob(os.path.join(examples, pattern)):

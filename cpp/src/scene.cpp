@@ -171,7 +171,89 @@ Range drawable_limits(Range limits, bool log) {
     return {lo, hi};
 }
 
+// ---------------------------------------------------------------------------
+// Badge
+// ---------------------------------------------------------------------------
+
+const char* const BADGE_CORNERS[4] = {"upper left", "upper right", "lower left", "lower right"};
+const double BADGE_LINE_HEIGHT = 1.25;
+const double BADGE_BASELINE = 0.95;
+
+double Badge::line_height_pt() const {
+    return BADGE_LINE_HEIGHT * text.font.size_pt;
+}
+
+std::pair<double, double> Badge::size_pt() const {
+    double text_w = 0.0;
+    for (const std::string& line : lines) text_w = std::max(text_w, text_width_pt(line, text.font.size_pt));
+    double content_h = static_cast<double>(lines.size()) * line_height_pt();
+    return {text_w + 2.0 * padding_pt, content_h + 2.0 * padding_pt};
+}
+
+void Badge::validate() const {
+    if (std::find(std::begin(BADGE_CORNERS), std::end(BADGE_CORNERS), location) == std::end(BADGE_CORNERS))
+        throw Error("Badge: location has to be one of upper left, upper right, lower left, lower right, not '" + location + "'.");
+    for (double v : {logo_width_pt, frame_width_pt, padding_pt, gap_pt, inset_pt})
+        if (!(v >= 0.0 && std::isfinite(v))) throw Error("Badge: sizes have to be finite and >= 0.");
+    if (!(background_alpha >= 0.0 && background_alpha <= 1.0)) throw Error("Badge: background_alpha has to be between 0 and 1.");
+    text.validate();
+}
+
+bool Badge::operator==(const Badge& o) const {
+    return location == o.location && same_number(logo_width_pt, o.logo_width_pt) && lines == o.lines && text == o.text
+           && background == o.background && same_number(background_alpha, o.background_alpha) && frame_color == o.frame_color
+           && same_number(frame_width_pt, o.frame_width_pt) && same_number(padding_pt, o.padding_pt) && same_number(gap_pt, o.gap_pt)
+           && same_number(inset_pt, o.inset_pt);
+}
+
+json Badge::to_json() const {
+    return json{{"location", location},
+                {"logo", json::array()},
+                {"logo_width_pt", logo_width_pt},
+                {"lines", lines},
+                {"text", text.to_json()},
+                {"background", background.present ? json(background.hex) : json(nullptr)},
+                {"background_alpha", background_alpha},
+                {"frame_color", frame_color.present ? json(frame_color.hex) : json(nullptr)},
+                {"frame_width_pt", frame_width_pt},
+                {"padding_pt", padding_pt},
+                {"gap_pt", gap_pt},
+                {"inset_pt", inset_pt}};
+}
+
+Badge Badge::from_json(const json& data) {
+    if (!data.value("logo", json::array()).empty())
+        throw Error("coolplot-core does not draw a badge logo; the Python writers do.");
+    Badge b;
+    b.location = data.value("location", "lower right");
+    b.logo_width_pt = data.value("logo_width_pt", 72.0);
+    // As coolplot.scene.Badge: a line holding line breaks is several drawn lines
+    for (const json& entry : data.value("lines", json::array())) {
+        std::string line = entry.get<std::string>(), part;
+        for (size_t i = 0; i <= line.size(); ++i) {
+            if (i == line.size() || line[i] == '\n') {
+                if (!part.empty() && part.back() == '\r') part.pop_back();
+                b.lines.push_back(part);
+                part.clear();
+            } else {
+                part += line[i];
+            }
+        }
+    }
+    if (data.contains("text")) b.text = TextStyle::from_json(data.at("text"));
+    if (data.contains("background")) b.background = opaque_color(data.at("background"), "Badge", "background");
+    b.background_alpha = data.value("background_alpha", 0.85);
+    if (data.contains("frame_color")) b.frame_color = opaque_color(data.at("frame_color"), "Badge", "frame_color");
+    b.frame_width_pt = data.value("frame_width_pt", 0.5);
+    b.padding_pt = data.value("padding_pt", 4.0);
+    b.gap_pt = data.value("gap_pt", 3.0);
+    b.inset_pt = data.value("inset_pt", 6.0);
+    b.validate();
+    return b;
+}
+
 void AxesSpec::validate() const {
+    if (has_badge) badge.validate();
     if (tick_digits < 1 || tick_digits > 12) throw Error("AxesSpec: tick_digits has to be between 1 and 12.");
     if (has_x_limits && !finite_pair(x_limits.lo, x_limits.hi)) throw Error("AxesSpec: x_limits have to be finite.");
     if (has_y_limits && !finite_pair(y_limits.lo, y_limits.hi)) throw Error("AxesSpec: y_limits have to be finite.");
@@ -184,11 +266,11 @@ bool AxesSpec::operator==(const AxesSpec& o) const {
            && has_y_limits == o.has_y_limits
            && (!has_y_limits || (same_number(y_limits.lo, o.y_limits.lo) && same_number(y_limits.hi, o.y_limits.hi))) && title == o.title
            && style == o.style
-           && tick_digits == o.tick_digits;
+           && tick_digits == o.tick_digits && has_badge == o.has_badge && (!has_badge || badge == o.badge);
 }
 
 json AxesSpec::to_json() const {
-    return json{{"x_label", x_label},
+    json out{{"x_label", x_label},
                 {"y_label", y_label},
                 {"x_log", x_log},
                 {"y_log", y_log},
@@ -197,6 +279,9 @@ json AxesSpec::to_json() const {
                 {"title", title},
                 {"style", style.to_json()},
                 {"tick_digits", tick_digits}};
+    // Only written when there is one, so the record of a chart without badge is the same as before 1.2
+    if (has_badge) out["badge"] = badge.to_json();
+    return out;
 }
 
 AxesSpec AxesSpec::from_json(const json& data) {
@@ -224,6 +309,12 @@ AxesSpec AxesSpec::from_json(const json& data) {
     // The composer gives an "auto" legend its corner; a scene made without it gets the upper right one
     if (a.style.legend.location == "auto") a.style.legend.location = "upper right";
     a.tick_digits = data.value("tick_digits", 6);
+    if (data.contains("badge") && !data.at("badge").is_null()) {
+        a.has_badge = true;
+        a.badge = Badge::from_json(data.at("badge"));
+    }
+    if (data.contains("watermark") && !data.at("watermark").is_null())
+        throw Error("coolplot-core does not draw a watermark; the Python writers do.");
     a.validate();
     return a;
 }

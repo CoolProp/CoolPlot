@@ -110,3 +110,16 @@ TEST_CASE("The conformance scene becomes one PDF page with embedded fonts", "[pd
     nowhere.font_dirs = {"/nonexistent"};
     CHECK_THROWS_AS(scene_to_pdf(scene, nowhere), Error);
 }
+
+TEST_CASE("The badge is drawn on the PDF page: a translucent box with a frame", "[pdf][badge]") {
+    FontIndex index(FontIndex::default_dirs());
+    if (index.find({"sans-serif"}, false, false).empty()) return;
+    Scene scene = Scene::from_json(load("compose_badge_r290_ph.json").at("scene_order"));
+    PdfOptions options;
+    options.compress = false;
+    std::string pdf = scene_to_pdf(scene, options);
+    CHECK(pdf.find("/CA 1 /ca 0.85") != std::string::npos);  // the box fill of the badge
+    CHECK(pdf.find(" re B\n") != std::string::npos);         // filled and framed
+    scene.axes.has_badge = false;
+    CHECK(scene_to_pdf(scene, options).find("/ca 0.85") == std::string::npos);
+}

@@ -520,6 +520,7 @@
       lines.push('<text class="cp-title" x="' + num(bx + bw / 2.0) + '" y="' + num(by - 8.0 - extra[2]) +
         '" text-anchor="middle" dominant-baseline="text-after-edge" ' + textAttrs(st.title) + ">" + xmlText(axes.title) + "</text>");
     }
+    if (axes.badge) { Array.prototype.push.apply(lines, badgeElements(axes.badge, bx, by, bw, bh)); }
     // Legend
     var size = legendSize();
     if (!(isZero(size[0]) || isNaN(size[0]))) {
@@ -560,6 +561,85 @@
     return asciiOnly(lines.join("\n"));
   }
 
+  // Text width (coolplot.core.textwidth) -----------------------------------
+
+  // Advance widths in 1/1000 em of the characters " " (32) to "~" (126), Helvetica
+  var HELVETICA_WIDTHS = [
+    278, 278, 355, 556, 556, 889, 667, 222, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556,
+    556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667,
+    611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667,
+    667, 611, 278, 278, 278, 469, 556, 222, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500,
+    222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584
+  ];
+  // The code points Python's unicodedata.east_asian_width calls "W" or "F" (Unicode 15.1), as sorted ranges
+  var WIDE_RANGES = [
+    [0x1100, 0x115F], [0x231A, 0x231B], [0x2329, 0x232A], [0x23E9, 0x23EC], [0x23F0, 0x23F0], [0x23F3, 0x23F3], [0x25FD, 0x25FE], [0x2614, 0x2615],
+    [0x2648, 0x2653], [0x267F, 0x267F], [0x2693, 0x2693], [0x26A1, 0x26A1], [0x26AA, 0x26AB], [0x26BD, 0x26BE], [0x26C4, 0x26C5], [0x26CE, 0x26CE],
+    [0x26D4, 0x26D4], [0x26EA, 0x26EA], [0x26F2, 0x26F3], [0x26F5, 0x26F5], [0x26FA, 0x26FA], [0x26FD, 0x26FD], [0x2705, 0x2705], [0x270A, 0x270B],
+    [0x2728, 0x2728], [0x274C, 0x274C], [0x274E, 0x274E], [0x2753, 0x2755], [0x2757, 0x2757], [0x2795, 0x2797], [0x27B0, 0x27B0], [0x27BF, 0x27BF],
+    [0x2B1B, 0x2B1C], [0x2B50, 0x2B50], [0x2B55, 0x2B55], [0x2E80, 0x2E99], [0x2E9B, 0x2EF3], [0x2F00, 0x2FD5], [0x2FF0, 0x303E], [0x3041, 0x3096],
+    [0x3099, 0x30FF], [0x3105, 0x312F], [0x3131, 0x318E], [0x3190, 0x31E3], [0x31EF, 0x321E], [0x3220, 0x3247], [0x3250, 0x4DBF], [0x4E00, 0xA48C],
+    [0xA490, 0xA4C6], [0xA960, 0xA97C], [0xAC00, 0xD7A3], [0xF900, 0xFAFF], [0xFE10, 0xFE19], [0xFE30, 0xFE52], [0xFE54, 0xFE66], [0xFE68, 0xFE6B],
+    [0xFF01, 0xFF60], [0xFFE0, 0xFFE6], [0x16FE0, 0x16FE4], [0x16FF0, 0x16FF1], [0x17000, 0x187F7], [0x18800, 0x18CD5], [0x18D00, 0x18D08],
+    [0x1AFF0, 0x1AFF3], [0x1AFF5, 0x1AFFB], [0x1AFFD, 0x1AFFE], [0x1B000, 0x1B122], [0x1B132, 0x1B132], [0x1B150, 0x1B152], [0x1B155, 0x1B155],
+    [0x1B164, 0x1B167], [0x1B170, 0x1B2FB], [0x1F004, 0x1F004], [0x1F0CF, 0x1F0CF], [0x1F18E, 0x1F18E], [0x1F191, 0x1F19A], [0x1F200, 0x1F202],
+    [0x1F210, 0x1F23B], [0x1F240, 0x1F248], [0x1F250, 0x1F251], [0x1F260, 0x1F265], [0x1F300, 0x1F320], [0x1F32D, 0x1F335], [0x1F337, 0x1F37C],
+    [0x1F37E, 0x1F393], [0x1F3A0, 0x1F3CA], [0x1F3CF, 0x1F3D3], [0x1F3E0, 0x1F3F0], [0x1F3F4, 0x1F3F4], [0x1F3F8, 0x1F43E], [0x1F440, 0x1F440],
+    [0x1F442, 0x1F4FC], [0x1F4FF, 0x1F53D], [0x1F54B, 0x1F54E], [0x1F550, 0x1F567], [0x1F57A, 0x1F57A], [0x1F595, 0x1F596], [0x1F5A4, 0x1F5A4],
+    [0x1F5FB, 0x1F64F], [0x1F680, 0x1F6C5], [0x1F6CC, 0x1F6CC], [0x1F6D0, 0x1F6D2], [0x1F6D5, 0x1F6D7], [0x1F6DC, 0x1F6DF], [0x1F6EB, 0x1F6EC],
+    [0x1F6F4, 0x1F6FC], [0x1F7E0, 0x1F7EB], [0x1F7F0, 0x1F7F0], [0x1F90C, 0x1F93A], [0x1F93C, 0x1F945], [0x1F947, 0x1F9FF], [0x1FA70, 0x1FA7C],
+    [0x1FA80, 0x1FA88], [0x1FA90, 0x1FABD], [0x1FABF, 0x1FAC5], [0x1FACE, 0x1FADB], [0x1FAE0, 0x1FAE8], [0x1FAF0, 0x1FAF8], [0x20000, 0x2FFFD],
+    [0x30000, 0x3FFFD]
+  ];
+
+  function isWide(code) {
+    for (var i = 0; i < WIDE_RANGES.length; i++) {
+      if (code < WIDE_RANGES[i][0]) { return false; }
+      if (code <= WIDE_RANGES[i][1]) { return true; }
+    }
+    return false;
+  }
+
+  // Estimated width of one line of text at sizePt: Helvetica, 15 % wider for wider fonts
+  function textWidthPt(text, sizePt) {
+    var total = 0.0;
+    for (var ch of text) {
+      var code = ch.codePointAt(0);
+      if (code >= 32 && code <= 126) { total += HELVETICA_WIDTHS[code - 32] / 1000.0; } else { total += isWide(code) ? 1.0 : 0.6; }
+    }
+    return 1.15 * sizePt * total;
+  }
+
+  // The badge of the branding: a box of text lines in a corner (coolplot.render.svg). The record
+  // holds its lines and styles; a logo is left out here (its height needs the picture's aspect).
+  var BADGE_LINE_HEIGHT = 1.25, BADGE_BASELINE = 0.95;
+
+  function badgeElements(badge, bx, by, bw, bh) {
+    var lines = [];
+    (badge.lines || []).forEach(function (line) { String(line).replace(/\r\n/g, "\n").split("\n").forEach(function (part) { lines.push(part); }); });
+    if (lines.length === 0) { return []; }
+    var sizePt = badge.text.font.size_pt, lineHeightPt = BADGE_LINE_HEIGHT * sizePt;
+    var textW = 0.0;
+    lines.forEach(function (line) { textW = Math.max(textW, textWidthPt(line, sizePt)); });
+    var width = (textW + 2.0 * badge.padding_pt) * PX_PER_PT, height = (lines.length * lineHeightPt + 2.0 * badge.padding_pt) * PX_PER_PT;
+    var inset = badge.inset_pt * PX_PER_PT;
+    var parts = badge.location.split(" ");
+    var x = parts[1] === "left" ? bx + inset : bx + bw - inset - width;
+    var y = parts[0] === "upper" ? by + inset : by + bh - inset - height;
+    var pad = badge.padding_pt * PX_PER_PT;
+    var out = ['<g class="cp-badge">',
+      '<rect class="cp-badge-box" x="' + num(x) + '" y="' + num(y) + '" width="' + num(width) + '" height="' + num(height) + '" fill="' +
+      color(badge.background) + '" fill-opacity="' + num(badge.background_alpha) + '" stroke="' + color(badge.frame_color) +
+      '" stroke-width="' + px(badge.frame_color ? badge.frame_width_pt : 0.0) + '"/>'];
+    var lineH = lineHeightPt * PX_PER_PT, sizePx = sizePt * PX_PER_PT;
+    lines.forEach(function (line, i) {
+      out.push('<text class="cp-badge-text" x="' + num(x + pad) + '" y="' + num(y + pad + i * lineH + BADGE_BASELINE * sizePx) +
+        '" text-anchor="start" ' + textAttrs(badge.text) + ">" + xmlText(line) + "</text>");
+    });
+    out.push("</g>");
+    return out;
+  }
+
   function defaultAxesStyle() {
     var font = function (size, weight) { return { family: ["DejaVu Sans", "Helvetica", "Arial", "sans-serif"], size_pt: size, weight: weight || "normal", style: "normal", files: [] }; };
     var text = function (size, weight) { return { font: font(size, weight), color: "#000000", alpha: 1.0, h_align: "center", v_align: "center", halo_color: null, halo_width_pt: 0.0 }; };
@@ -572,6 +652,6 @@
     };
   }
 
-  var api = { toSvg: toSvg, formatNumber: formatNumber, reprNumber: reprNumber, ticks: ticks, num: num };
+  var api = { toSvg: toSvg, formatNumber: formatNumber, reprNumber: reprNumber, ticks: ticks, num: num, textWidthPt: textWidthPt };
   if (typeof module === "object" && module.exports) { module.exports = api; } else { root.CoolPlotScene = api; }
 })(typeof window !== "undefined" ? window : this);

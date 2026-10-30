@@ -457,7 +457,7 @@ def test_an_older_core_refuses_unicode_symbols(monkeypatch):
     with pytest.warns(native.CoreFallbackWarning, match="older than 1.4"):
         _, axes = compose(spec, domain, curves)
     assert axes.x_label == "Density \u03c1 / kg/m\u00b3"   # drawn by the Python composer
-    chart.settings = chart.settings.with_(labels={"symbols": "ascii"})
+    chart.settings = chart.settings.with_(labels={"symbols": "ascii"}, branding={"references": "none"})
     assert native.compose(chart.spec, domain, curves) is not None   # plain letters: the older core composes it
 
 
@@ -478,8 +478,8 @@ def test_unicode_symbols_compose_the_same_through_the_port():
 
 
 def _before_12(chart):
-    """The chart with the label mode, legend and plain symbols of 1.1, which an older core understands."""
-    chart.settings = chart.settings.with_(labels={"mode": "edge", "symbols": "ascii"})
+    """The chart with the label mode, legend, plain symbols and no badge of 1.1, which an older core understands."""
+    chart.settings = chart.settings.with_(labels={"mode": "edge", "symbols": "ascii"}, branding={"references": "none"})
     legend = chart.theme.axes.legend.with_(location="outside right")
     chart.theme = chart.theme.with_(axes=chart.theme.axes.with_(legend=legend))
     return chart
@@ -570,3 +570,123 @@ def test_an_older_core_is_not_sent_the_label_colour(monkeypatch):
     spec = chart.spec
     with pytest.raises(native.CoreRefusal, match="older than 1.1"):
         native.compose(spec, domain, curves)
+
+
+def _branded(location="auto", **branding):
+    """A p-h chart with labels on rails, a cycle and a badge of text lines (references and two lines)."""
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    chart = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    chart.set_default_lines(labels=True)
+    chart.add_cycle("heat pump", [{"p": 3.0, "T": 0.0}, {"p": 15.0, "via": "compression", "eta_is": 0.7},
+                                  {"p": 15.0, "Q": 0.0}, {"p": 3.0, "via": "isenthalpic"}])
+    values = {"references": "short", "versions": True, "lines": ("Example Engineering\nsecond line",),
+              "location": location}
+    values.update(branding)
+    chart.settings = chart.settings.with_(branding=values)
+    return chart
+
+
+def _both_branded_scenes(chart):
+    """(Python scene, native scene) of a branded chart, with the source lines of the engine."""
+    from coolplot.engine import plan
+    spec = chart.spec
+    domain = chart.engine.domain(spec)
+    curves = chart.engine.curves(spec, domain, plan(spec, domain))
+    cycles = [chart.engine.cycle(spec, c) for c in spec.cycles]
+    sources = chart.engine.source_lines(spec)
+    items, axes = compose_python(spec, domain, curves, None, None, cycles, sources)
+    native_items, native_axes = native.compose(spec, domain, curves, None, None, cycles, sources)
+    return Scene(axes, items), Scene(native_axes, native_items)
+
+
+@needs_core
+def test_a_badge_composes_and_writes_the_same_through_the_port():
+    if native.core_version() < (1, 5):
+        pytest.skip("coolplot-core 1.5 draws the badge; an older one is refused (next test)")
+    from coolplot.render.svg import SvgRenderer
+    for location in ("auto", "upper left", "lower right"):
+        python, ported = _both_branded_scenes(_branded(location, font_size_pt=7.0, frame=location != "lower right"))
+        difference = _same(python.to_dict(), ported.to_dict())
+        assert difference == "", difference
+        badge = ported.axes.badge
+        assert badge is not None and badge.lines[-2:] == ("Example Engineering", "second line")
+        assert badge.location != ported.axes.style.legend.location
+        writers = SvgRenderer(native=False), SvgRenderer(native=True)
+        for writer in writers:
+            writer.sync(ported)
+        assert writers[1].to_svg() == writers[0].to_svg() and "cp-badge-text" in writers[0].to_svg()
+
+
+@needs_core
+def test_the_chart_takes_the_port_for_a_badge_and_python_for_pictures(monkeypatch):
+    if native.core_version() < (1, 5):
+        pytest.skip("coolplot-core 1.5 draws the badge")
+    import warnings
+    from coolplot.compose import compose
+    from coolplot.engine import plan
+    monkeypatch.setenv("COOLPLOT_NATIVE", "1")
+    calls = []
+    real = native.compose
+    monkeypatch.setattr(native, "compose", lambda *a, **k: calls.append(1) or real(*a, **k))
+    chart = _branded()
+    spec = chart.spec
+    domain = chart.engine.domain(spec)
+    curves = chart.engine.curves(spec, domain, plan(spec, domain))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _, axes = compose(spec, domain, curves, sources=chart.engine.source_lines(spec))
+    assert calls == [1] and axes.badge is not None
+    logo = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjIiLz4="
+    chart.settings = chart.settings.with_(branding={"logo": (logo,)})
+    _, axes = compose(chart.spec, domain, curves, sources=chart.engine.source_lines(chart.spec))
+    assert calls == [1] and axes.badge.logo   # composed in Python
+    assert not native.draws_branding(axes)
+
+
+def test_an_older_core_refuses_the_badge(monkeypatch):
+    """A core from before 1.5 would ignore the branding and draw the chart without its badge."""
+    from coolplot.compose import compose
+    from coolplot.engine import plan
+    chart = _branded()
+    spec = chart.spec
+    domain = chart.engine.domain(spec)
+    curves = chart.engine.curves(spec, domain, plan(spec, domain))
+    monkeypatch.setattr(native, "core_version", lambda: (1, 4, 0))
+    monkeypatch.setattr(native, "available", lambda: True)
+    monkeypatch.setenv("COOLPLOT_NATIVE", "1")
+    with pytest.warns(native.CoreFallbackWarning, match="older than 1.5"):
+        _, axes = compose(spec, domain, curves, sources=chart.engine.source_lines(spec))
+    assert axes.badge is not None   # drawn by the Python composer
+    assert not native.draws_branding(axes)   # and written by the Python SVG writer
+
+
+def test_the_core_record_keeps_the_text_of_a_badge_with_a_logo(monkeypatch):
+    """With a logo, coolplot-core 1.5 still gets the text lines (the references), only the pictures go."""
+    from dataclasses import replace
+    logo = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjIiLz4="
+    axes = _branded(logo=(logo,)).update_scene().axes
+    assert axes.badge.logo and axes.badge.lines
+    monkeypatch.setattr(native, "available", lambda: True)
+    monkeypatch.setattr(native, "core_version", lambda: (1, 5, 0))
+    record = native._axes_record(axes)
+    assert record["badge"]["logo"] == [] and record["badge"]["lines"] == list(axes.badge.lines)
+    # Without lines there is nothing left to draw, and a core before 1.5 draws no badge at all
+    assert "badge" not in native._axes_record(replace(axes, badge=replace(axes.badge, lines=())))
+    monkeypatch.setattr(native, "core_version", lambda: (1, 4, 0))
+    assert "badge" not in native._axes_record(axes)
+
+
+@needs_core
+def test_the_pdf_page_draws_the_badge_without_a_warning(tmp_path):
+    if native.core_version() < (1, 5) or not native.has_pdf():
+        pytest.skip("coolplot-core 1.5 with PDF output draws the badge")
+    import warnings
+    from coolplot.render.pdf import PdfRenderer
+    _, ported = _both_branded_scenes(_branded())
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        renderer = PdfRenderer()
+        renderer.sync(ported)
+        pdf = renderer.to_pdf()
+    assert pdf.startswith(b"%PDF") and b"/ca 0.85" in pdf

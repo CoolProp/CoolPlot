@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from typing import Optional
 
 from .core.implementation import native_mode
@@ -96,9 +97,13 @@ def _dumps(record) -> str:
     return json.dumps(_clean(record), allow_nan=False)
 
 
-def compose_record(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycles=None) -> dict:
-    """The compose record of coolplot-core (cpp/include/coolplot/compose.h) for the composer's arguments."""
-    return {
+def compose_record(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycles=None, sources=()) -> dict:
+    """The compose record of coolplot-core (cpp/include/coolplot/compose.h) for the composer's arguments.
+
+    ``sources`` are the badge lines naming the sources of the properties
+    (references and versions), which need CoolProp and so come from Python.
+    """
+    record = {
         "spec": spec.to_dict(),
         "domain": {"tp_box": list(domain.tp_box), "ranges_SI": {k: list(v) for k, v in domain.ranges_SI}},
         "curves": [{"request": {"item_id": r.item_id, "key": r.key, "value_SI": r.value_SI, "points": r.points,
@@ -109,6 +114,10 @@ def compose_record(spec, domain, curves, plot_size_pt=None, previous_labels=None
         "plot_size_pt": None if plot_size_pt is None else list(plot_size_pt),
         "previous_labels": None if previous_labels is None else [item_to_dict(t) for t in previous_labels.values()],
     }
+    if sources:
+        # Only written when there are some, so the record of a chart without badge is the same as before 1.5
+        record["sources"] = list(sources)
+    return record
 
 
 def _drop_mollier_scale(record: dict) -> None:
@@ -155,6 +164,7 @@ _NEEDS_A_NEWER_CORE = (
     ((1, 3), _restyles_the_dome, "restyle the saturation curve or the quality lines"),
     ((1, 4), lambda spec: spec.settings.labels.symbols == "unicode", "write symbols and units with their own "
      "characters (rho, deg C, m3)"),
+    ((1, 5), lambda spec: spec.settings.branding.has_badge, "draw the badge of the branding"),
 )
 
 
@@ -167,17 +177,19 @@ def _check_core_version(spec):
                 ".".join(str(v) for v in version), ".".join(str(v) for v in needed), what))
 
 
-def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycles=None):
+def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycles=None, sources=()):
     """(items, axes) of a chart from coolplot-core, or None when the module is absent.
 
     The arguments are those of :func:`coolplot.compose.builder.compose`.
+    coolplot-core draws a badge of text lines; a logo or a watermark it
+    refuses, and the caller takes the Python composer for those.
     A record the port refuses raises :class:`CoreRefusal`; any other error
     (a bug in the bridge or the port) raises as it is.
     """
     if not available():
         return None
     _check_core_version(spec)
-    record = compose_record(spec, domain, curves, plot_size_pt, previous_labels, cycles)
+    record = compose_record(spec, domain, curves, plot_size_pt, previous_labels, cycles, sources)
     if core_version() < (1, 2):
         _drop_mollier_scale(record)
     if core_version() < (1, 1):
@@ -196,6 +208,30 @@ def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycle
     return [item_from_dict(d) for d in scene["items"]], axes
 
 
+def draws_branding(axes: Optional[AxesSpec]) -> bool:
+    """Whether the installed coolplot-core draws the branding of these axes: a badge of text lines from
+    1.5 on, never a logo or a watermark. True when there is no branding."""
+    if axes is None or (axes.badge is None and axes.watermark is None):
+        return True
+    pictures = axes.watermark is not None or (axes.badge is not None and bool(axes.badge.logo))
+    return not pictures and available() and core_version() >= (1, 5)
+
+
+def _axes_record(axes: Optional[AxesSpec]) -> dict:
+    """The axes record for the core, without the branding it cannot draw (see :func:`draws_branding`).
+
+    From 1.5 the core draws the text lines of the badge, so only the logo
+    and the watermark are left out: a PDF keeps its references.
+    """
+    axes = axes or AxesSpec()
+    if not draws_branding(axes):
+        badge = None
+        if axes.badge is not None and axes.badge.lines and available() and core_version() >= (1, 5):
+            badge = replace(axes.badge, logo=())
+        axes = replace(axes, badge=badge, watermark=None)
+    return axes_to_dict(axes)
+
+
 def scene_to_svg(axes: Optional[AxesSpec], items, width: int, height: int, margins, id_prefix: str) -> Optional[str]:
     """The SVG document of a scene from coolplot-core, or None when the module is absent.
 
@@ -205,7 +241,7 @@ def scene_to_svg(axes: Optional[AxesSpec], items, width: int, height: int, margi
     """
     if not available():
         return None
-    scene = {"axes": axes_to_dict(axes or AxesSpec()), "items": [item_to_dict(item) for item in items]}
+    scene = {"axes": _axes_record(axes), "items": [item_to_dict(item) for item in items]}
     left, right, top, bottom = (float(m) for m in margins)
     return _core.scene_to_svg(_dumps(scene), int(width), int(height), (left, right), (top, bottom),
                               _LONE_SURROGATES.sub("", id_prefix))
@@ -222,7 +258,7 @@ def scene_to_pdf(axes: Optional[AxesSpec], items, width_pt: float, height_pt: fl
     """
     if not has_pdf():
         return None
-    scene = {"axes": axes_to_dict(axes or AxesSpec()), "items": [item_to_dict(item) for item in items]}
+    scene = {"axes": _axes_record(axes), "items": [item_to_dict(item) for item in items]}
     left, right, top, bottom = (float(m) for m in margins_pt)
     return _core.scene_to_pdf(_dumps(scene), float(width_pt), float(height_pt), (left, right),
                               (top, bottom), list(font_dirs), list(font_files), bool(compress))
@@ -232,6 +268,6 @@ def pdf_plot_size_pt(axes: Optional[AxesSpec], items, width_pt: float, height_pt
     """(width, height) of the plot area of the PDF page in points, or None when the module is absent."""
     if not has_pdf():
         return None
-    scene = {"axes": axes_to_dict(axes or AxesSpec()), "items": [item_to_dict(item) for item in items]}
+    scene = {"axes": _axes_record(axes), "items": [item_to_dict(item) for item in items]}
     left, right, top, bottom = (float(m) for m in margins_pt)
     return tuple(_core.pdf_plot_size_pt(_dumps(scene), float(width_pt), float(height_pt), (left, right), (top, bottom)))

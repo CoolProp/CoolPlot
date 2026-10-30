@@ -114,19 +114,13 @@ def test_ip_units(tmp_path):
 
 def test_themes(tmp_path):
     assert "Lines computed for the last theme: 0" in _run("themes.py", tmp_path)
-    for theme in ("default", "dark", "print", "classic"):
+    for theme in ("default", "dark", "print", "coolpack"):
         assert (tmp_path / "theme_{0}.svg".format(theme)).stat().st_size > 10000
 
 
 def test_label_modes(tmp_path):
     _run("label_modes.py", tmp_path)
     assert (tmp_path / "label_modes.png").stat().st_size > 10000
-
-
-def test_branding(tmp_path):
-    assert "Tillner-Roth and Yokozeki" in _run("branding.py", tmp_path)
-    svg = (tmp_path / "branding.svg").read_text()
-    assert "cp-badge" in svg and "Example Engineering" in svg and "data:image/svg+xml;base64," in svg
 
 
 def test_branding_chp(tmp_path):
@@ -136,6 +130,13 @@ def test_branding_chp(tmp_path):
     assert "cp-badge" in svg and "cp-watermark" in svg and "cleanheatpartners.com" in svg
     assert "Lemmon et al. (2009)" in svg
     assert "#00998b" in svg.lower()   # the company teal of the first line family
+
+
+def test_coolpack(tmp_path):
+    # The cycle of the CoolPack tutorial, which gives a COP of 3.31
+    assert "COP cooling: 3.30" in _run("coolpack.py", tmp_path)
+    svg = (tmp_path / "coolpack.svg").read_text()
+    assert "Times New Roman" in svg and "#ff0000" in svg.lower() and "#0000ff" in svg.lower()
 
 
 def _ports_installed() -> bool:
@@ -213,12 +214,12 @@ BOTH_PATHS = ["quickstart.py", "two_stage_cycles.py", "refrigerant_blend.py", "p
               "interactive_cycle.py", "saturation_lines.py", "psychrometric_processes.py",
               "psychrometric_air_handling.py", "psychrometric_evaporative_cooling.py", "psychrometric_mollier.py",
               "steam_rankine_ts.py", "steam_turbine_hs.py", "co2_transcritical.py", "orc_ts.py",
-              "refrigerant_comparison.py", "ip_units.py", "themes.py", "label_modes.py", "branding.py",
-              "branding_chp.py"]
+               "refrigerant_comparison.py", "ip_units.py", "themes.py", "label_modes.py", "branding_chp.py",
+               "coolpack.py"]
 
 #: Examples whose charts are all composed by Python also with coolplot-core:
-#: coolplot-core does not compose the branding (see coolplot.compose.compose).
-PYTHON_COMPOSER = {"branding.py", "branding_chp.py"}
+#: coolplot-core composes a badge of text lines but no logo or watermark (see coolplot.compose.compose).
+PYTHON_COMPOSER = {"branding_chp.py"}
 
 
 def test_the_list_of_examples_is_complete():

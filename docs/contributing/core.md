@@ -17,10 +17,10 @@ compared with it, number for number and byte for byte.
 
 | File | Port of | What it does |
 |---|---|---|
-| `include/coolplot/core.h` | `coolplot.core` | number format, quantities, unit systems, diagram types and families |
+| `include/coolplot/core.h` | `coolplot.core` | number format, text width estimate, quantities, unit systems, diagram types and families |
 | `include/coolplot/style.h` | `coolplot.style` | colours, line, marker and text styles, themes, their JSON |
-| `include/coolplot/scene.h` | `coolplot.scene` | items, axes, the scene and its JSON (the contract) |
-| `include/coolplot/spec.h` | `coolplot.spec` | the parts of the chart spec the composer needs |
+| `include/coolplot/scene.h` | `coolplot.scene` | items, axes and their badge of text lines, the scene and its JSON (the contract) |
+| `include/coolplot/spec.h` | `coolplot.spec` | the parts of the chart spec the composer needs, the branding without pictures |
 | `include/coolplot/layout.h` | `coolplot.compose.layout` | edge labels, margin labels, state numbers |
 | `include/coolplot/compose.h` | `coolplot.compose.builder` | the scene of a chart from spec, domain, curves and cycles |
 | `include/coolplot/svg.h` | `coolplot.render.svg` | the SVG document of a scene |
