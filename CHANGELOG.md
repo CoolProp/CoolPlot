@@ -19,7 +19,8 @@ guide in the documentation says what to change in your code.
   it, with a warning.
 - The plotly backend and the JavaScript writer (`scene_page`) draw the
   badge of text lines too; only a logo or a watermark is left out, with a
-  warning. `PdfRenderer` draws it through coolplot-core 1.5.
+  warning. `PdfRenderer` draws it through coolplot-core 1.5, also on a
+  chart with a logo or a watermark, which it leaves out with a warning.
 - Theme "coolpack": the look of the log(p),h-diagrams of CoolPack (DTU,
   "Refrigeration Utilities", late 1990s). Times on white with a dense
   light grey grid (major and minor ticks), a black saturation curve, red

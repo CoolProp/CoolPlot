@@ -43,7 +43,8 @@ ways.
 **A badge with the equation of state.** New charts carry a small badge in
 one corner that names the equation of state of the fluid ("R290: Lemmon
 et al. (2009)"), so that a chart always says where its properties come
-from. It takes the emptiest corner, and labels keep clear of it. For
+from. It takes the emptiest corner, and labels on rails or at the edges
+keep clear of it (inline labels and labels in the margin do not). For
 charts without it, as in 1.4:
 
 ```python
@@ -54,10 +55,12 @@ Specs saved before 1.2 (without a branding part) keep drawing without
 badge; specs saved by 1.2 to 1.4 hold `"references": "none"` and keep it.
 
 **One colour per quantity.** In the `default` and `dark` themes every
-quantity now has a colour of its own, the same on every chart:
-temperature red, pressure wine, enthalpy orchid, entropy blue, density
-teal, internal energy purple (1.4 gave the colours out by position:
-blue, orange, aqua). Why is in {doc}`explanation/accessibility`. For the
+quantity now has a colour of its own, the same on every chart. In
+`default`: temperature red, pressure wine, enthalpy orchid, entropy
+blue, density teal, internal energy purple. In `dark`: temperature
+coral, pressure periwinkle, enthalpy dusky rose, entropy blue, density
+aqua, internal energy yellow. 1.4 gave the colours out by position
+(blue, orange, aqua). Why is in {doc}`explanation/accessibility`. For the
 colours of 1.4:
 
 ```python

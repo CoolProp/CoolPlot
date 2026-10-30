@@ -661,6 +661,22 @@ def test_an_older_core_refuses_the_badge(monkeypatch):
     assert not native.draws_branding(axes)   # and written by the Python SVG writer
 
 
+def test_the_core_record_keeps_the_text_of_a_badge_with_a_logo(monkeypatch):
+    """With a logo, coolplot-core 1.5 still gets the text lines (the references), only the pictures go."""
+    from dataclasses import replace
+    logo = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjIiLz4="
+    axes = _branded(logo=(logo,)).update_scene().axes
+    assert axes.badge.logo and axes.badge.lines
+    monkeypatch.setattr(native, "available", lambda: True)
+    monkeypatch.setattr(native, "core_version", lambda: (1, 5, 0))
+    record = native._axes_record(axes)
+    assert record["badge"]["logo"] == [] and record["badge"]["lines"] == list(axes.badge.lines)
+    # Without lines there is nothing left to draw, and a core before 1.5 draws no badge at all
+    assert "badge" not in native._axes_record(replace(axes, badge=replace(axes.badge, lines=())))
+    monkeypatch.setattr(native, "core_version", lambda: (1, 4, 0))
+    assert "badge" not in native._axes_record(axes)
+
+
 @needs_core
 def test_the_pdf_page_draws_the_badge_without_a_warning(tmp_path):
     if native.core_version() < (1, 5) or not native.has_pdf():
