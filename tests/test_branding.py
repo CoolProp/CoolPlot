@@ -305,7 +305,7 @@ def test_plotly_draws_the_badge_and_warns_that_it_leaves_pictures_out(logo_files
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         figure = d.draw(PlotlyRenderer()).figure
-    texts = [a for a in figure.layout.annotations if (a.name or "").startswith("cp-badge/")]
+    texts = [a for a in figure.layout.annotations if a.name is None]   # every scene text is named by its id
     assert [a.text for a in texts] == ["first line", "second line"]
     (box,) = figure.layout.shapes
     assert box.x0 < texts[0].x < box.x1 and box.y0 < texts[1].y < texts[0].y < box.y1 and box.x0 < 0.1 < box.y0

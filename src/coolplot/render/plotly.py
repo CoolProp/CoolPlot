@@ -464,7 +464,9 @@ class PlotlyRenderer(Renderer):
 
         In paper coordinates (0 to 1 across the plot area). Plotly has no
         baseline alignment, so each line is centred on its line height; the
-        logo of a badge is left out (see warn_without_branding).
+        logo of a badge is left out (see warn_without_branding). The
+        annotations have no name: the name of every other annotation is the
+        id of its scene item.
         """
         badge = self._axes.badge if self._axes is not None else None
         if badge is None or not badge.lines:
@@ -490,7 +492,7 @@ class PlotlyRenderer(Renderer):
             middle_pt = first_pt + (i + 0.5) * badge.line_height_pt
             texts.append(dict(x=x0 + badge.padding_pt / width_pt, y=y1 - middle_pt / height_pt, xref="paper", yref="paper",
                               text=_escape(line), showarrow=False, xanchor="left", yanchor="middle", align="left",
-                              font=_font(badge.text), name="cp-badge/{0}".format(i), captureevents=False))
+                              font=_font(badge.text), captureevents=False))
         return [box], texts
 
     def _fit_margins(self, need) -> bool:
