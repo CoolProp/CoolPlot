@@ -11,8 +11,10 @@ R290 with a heat pump cycle.
 * The theme is CoolPlot's default with the company colours for the line
   families: teal for the isotherms, rust for the isentropes, dark teal for
   the isochores (ochre would colour a fourth family; the lines of constant
-  quality keep their grey). ``Theme.with_`` changes only what is given, so
-  every line width, font and the legend stay CoolPlot's.
+  quality keep their grey). The default pins one colour per quantity;
+  ``isoline_colors=None`` drops those, so that the families of each chart
+  take the company colours in turn. ``Theme.with_`` changes only what is
+  given, so every line width, font and the legend stay CoolPlot's.
 * The saturation line is drawn without its casing (the band in the
   background colour along it), as on the company's charts.
 * The badge holds the company logo, the reference of the equation of state
@@ -47,7 +49,7 @@ LOGO = os.path.join(DATA, "chp_logo.svg")
 BRANDMARK = os.path.join(DATA, "chp_brandmark_grey.svg")
 
 # The company colours: teal and dark teal differ in lightness, rust and ochre in hue
-CHP_THEME = DEFAULT.with_(name="chp", categorical=("#00998B", "#AB4729", "#0E4D45", "#A08C00"))
+CHP_THEME = DEFAULT.with_(name="chp", categorical=("#00998B", "#AB4729", "#0E4D45", "#A08C00"), isoline_colors=None)
 
 diagram = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP")
 diagram.theme = CHP_THEME

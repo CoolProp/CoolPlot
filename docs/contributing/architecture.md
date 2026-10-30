@@ -403,12 +403,14 @@ Summary of the how-to on themes:
   colours to `#rrggbb` plus alpha, all lengths in points, dashes resolved
   by one function (`dash_pattern_pt`) that every backend uses.
 * A `Theme` maps element kinds to styles. Presets: `default`, `dark`,
-  `print`, `classic`. Themes serialise to JSON.
-* Isoline colours are assigned per diagram type from three hues that stay
-  distinguishable in every pairing, also for colour vision deficiencies;
-  the assignment depends on what a diagram offers, so hiding a family
-  never repaints the others. The saturation dome and cycles use ink,
-  weight and casing, not a fourth hue.
+  `print`, `coolpack`. Themes serialise to JSON.
+* The default themes pin one isoline colour per quantity
+  (`Theme.isoline_colors`), the same on every chart, from colours that
+  stay distinguishable in every pairing, also for colour vision
+  deficiencies. A theme without pinned colours gives out its
+  `categorical` slots per diagram type, so hiding a family never
+  repaints the others. The saturation dome and cycles use ink, weight
+  and casing, not another hue.
 * Scene items carry a semantic `role` and a legend text; items sharing a
   legend text form one composite legend entry.
 * Changing the theme restyles items only; no property is recalculated.
