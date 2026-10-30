@@ -7,6 +7,17 @@ guide in the documentation says what to change in your code.
 ## [Unreleased]
 
 ### Added
+- coolplot-core 1.5 composes and writes the badge of the branding when it
+  holds text lines only (references, versions, lines of your own): the
+  compose record takes the source lines as `"sources"`, the scene record
+  carries the badge, and the SVG and PDF writers draw it as the Python SVG
+  writer does. A branded chart without logo or watermark therefore takes
+  the native path; one with pictures still takes Python. The bridge
+  refuses a badge for a core older than 1.5, so the Python composer draws
+  it, with a warning.
+- The plotly backend and the JavaScript writer (`scene_page`) draw the
+  badge of text lines too; only a logo or a watermark is left out, with a
+  warning. `PdfRenderer` draws it through coolplot-core 1.5.
 - Theme "coolpack": the look of the log(p),h-diagrams of CoolPack (DTU,
   "Refrigeration Utilities", late 1990s). Times on white with a dense
   light grey grid (major and minor ticks), a black saturation curve, red

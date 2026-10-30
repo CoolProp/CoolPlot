@@ -6,6 +6,7 @@
 #include "coolplot/style.h"
 
 using namespace coolplot;
+using Catch::Matchers::WithinRel;
 using Catch::Matchers::WithinULP;
 
 namespace {
@@ -217,4 +218,12 @@ TEST_CASE("Themes round-trip through JSON and give out colours per slot", "[styl
     CHECK_THAT(scaled.isoline_label.font.size_pt, WithinULP(15.0, 0));
     CHECK_THAT(scaled.axes.title.font.size_pt, WithinULP(22.0, 0));
     CHECK_THAT(scaled.isoline.width_pt, WithinULP(base.isoline.width_pt, 0));
+}
+
+TEST_CASE("Text widths are estimated as in Python", "[core][badge]") {
+    // coolplot.core.textwidth.text_width_pt(text, 6.0)
+    CHECK_THAT(text_width_pt("R290: Lemmon et al. (2009)", 6.0), WithinRel(85.905, 1e-12));
+    CHECK_THAT(text_width_pt("Kunz und W\xc3\xa4gner", 6.0), WithinRel(55.5312, 1e-12));        // an accented letter: 0.6 em
+    CHECK_THAT(text_width_pt("\xe4\xb8\x99\xe7\x83\xb7 R290", 6.0), WithinRel(32.2092, 1e-12));  // wide characters: 1 em
+    CHECK(text_width_pt("", 6.0) == 0.0);
 }

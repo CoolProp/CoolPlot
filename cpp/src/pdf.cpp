@@ -454,7 +454,11 @@ class Writer
         }
         double ascent = font.ascent() * scale, descent = -font.descent() * scale;
         double dx = style.h_align == "left" ? 0.0 : style.h_align == "center" ? -width / 2.0 : -width;
-        double dy = style.v_align == "bottom" ? descent : style.v_align == "center" ? -(ascent - descent) / 2.0 : -ascent;
+        // "baseline" (only used inside this writer, for the badge) puts the baseline at y, as SVG text without dominant-baseline
+        double dy = style.v_align == "baseline" ? 0.0
+                    : style.v_align == "bottom" ? descent
+                    : style.v_align == "center" ? -(ascent - descent) / 2.0
+                                                : -ascent;
         double c = std::cos(angle_deg * PI / 180.0), s = std::sin(angle_deg * PI / 180.0);
         std::string matrix = num(c) + " " + num(s) + " " + num(-s) + " " + num(c) + " " + num(x + dx * c - dy * s) + " " + num(y + dx * s + dy * c);
         std::string out = "q\n";
@@ -553,6 +557,32 @@ class Writer
         size_t longest = 0;
         for (const auto& entry : legend_entries_) longest = std::max(longest, text_length(legend_text(entry.first)));
         return {33.0 + 0.6 * size * longest, 6.0 + 1.6 * size * legend_entries_.size()};
+    }
+
+    /// The badge: its box and the text lines, left aligned, at the size the composer gave it, as the SVG writer draws it.
+    std::string badge() {
+        if (!scene_.axes.has_badge || scene_.axes.badge.lines.empty()) return "";
+        const Badge& b = scene_.axes.badge;
+        std::pair<double, double> size = b.size_pt();
+        bool left = b.location.compare(b.location.size() - 4, 4, "left") == 0, upper = b.location.compare(0, 5, "upper") == 0;
+        double x = left ? bx_ + b.inset_pt : bx_ + bw_ - b.inset_pt - size.first;
+        double bottom = upper ? by_ + bh_ - b.inset_pt - size.second : by_ + b.inset_pt;   // PDF y runs up
+        std::string out;
+        bool fill = b.background.present, stroke = b.frame_color.present && b.frame_width_pt > 0.0;
+        if (fill || stroke) {
+            out += "q\n" + state_for(1.0, b.background_alpha);
+            if (fill) out += color_ops(b.background, false);
+            if (stroke) out += stroke_style(b.frame_color, b.frame_width_pt, {}, "butt", "miter");
+            out += num(x) + " " + num(bottom) + " " + num(size.first) + " " + num(size.second) + " re " + (fill && stroke ? "B" : fill ? "f" : "S")
+                   + "\nQ\n";
+        }
+        TextStyle style = b.text;
+        style.h_align = "left";
+        style.v_align = "baseline";
+        double top = bottom + size.second - b.padding_pt;
+        for (size_t i = 0; i < b.lines.size(); ++i)
+            out += text_at(b.lines[i], style, x + b.padding_pt, top - i * b.line_height_pt() - BADGE_BASELINE * b.text.font.size_pt, 0.0, false);
+        return out;
     }
 
     std::string legend() {
@@ -672,6 +702,7 @@ class Writer
             title_style.v_align = "bottom";
             out += text_at(axes.title, title_style, bx_ + bw_ / 2.0, by_ + bh_ + 6.0 + extra_margins_[2], 0.0, false);
         }
+        out += badge();
         out += legend();
         return out;
     }
