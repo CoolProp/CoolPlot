@@ -217,7 +217,7 @@ BOTH_PATHS = ["quickstart.py", "two_stage_cycles.py", "refrigerant_blend.py", "p
               "branding_chp.py"]
 
 #: Examples whose charts are all composed by Python also with coolplot-core:
-#: coolplot-core does not compose the branding (see coolplot.compose.compose).
+#: coolplot-core composes a badge of text lines but no logo or watermark (see coolplot.compose.compose).
 PYTHON_COMPOSER = {"branding.py", "branding_chp.py"}
 
 

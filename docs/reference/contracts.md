@@ -198,10 +198,13 @@ writer draws the first one it can. `watermark` is a picture centred in
 the plot area, above its background and below the grid and the items.
 Sizes are in points; the heights follow from the pictures. The
 matplotlib and SVG writers (and the web renderer built on the latter)
-draw both. The SVG writer of coolplot-core does not: a scene with either is
-written by the Python SVG writer instead, without a warning, since the
-result is complete. The PDF writer of coolplot-core (`PdfRenderer`), the plotly backend and
-the JavaScript writer leave both out and warn once.
+draw both. coolplot-core (from 1.5), the plotly backend and the
+JavaScript writer draw a badge of text lines but no pictures: a scene
+with a logo or a watermark is written by the Python SVG writer instead,
+without a warning, since the result is complete; the PDF writer of
+coolplot-core (`PdfRenderer`), plotly and the JavaScript writer leave the
+pictures out and warn once. coolplot-core refuses a record whose badge
+has a logo, or that has a watermark, rather than leave them out.
 
 Item types: `line` (a polyline; `null` splits it), `markers` (points
 without a line) and `text` (one label; `direction` is a direction in

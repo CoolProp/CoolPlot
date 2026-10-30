@@ -223,11 +223,11 @@ def SVG_LOGO_URI():
     return "data:image/svg+xml;base64," + base64.b64encode(SVG_LOGO.encode()).decode()
 
 
-def test_branded_charts_are_composed_in_python(monkeypatch, logo_files):
+def test_charts_with_pictures_are_composed_in_python(monkeypatch, logo_files):
     from coolplot import corelib
 
     def refuse(*args, **kwargs):
-        raise AssertionError("coolplot-core cannot compose branding")
+        raise AssertionError("coolplot-core cannot compose a logo or a watermark")
 
     monkeypatch.setattr(corelib, "enabled", lambda: True)
     monkeypatch.setattr(corelib, "compose", refuse)
@@ -296,13 +296,21 @@ def test_matplotlib_warns_for_a_logo_given_only_as_svg(tmp_path, logo_files):
         d.save(str(tmp_path / "x.png"), dpi=50)
 
 
-def test_plotly_warns_that_it_leaves_the_branding_out(logo_files):
+def test_plotly_draws_the_badge_and_warns_that_it_leaves_pictures_out(logo_files):
     pytest.importorskip("plotly")
     from coolplot.render import base
     from coolplot.render.plotly import PlotlyRenderer
     base._branding_warned.discard("PlotlyRenderer")
-    d = _diagram(dict(lines=("x",)))
-    with pytest.warns(UserWarning, match="PlotlyRenderer does not draw the badge"):
+    d = _diagram(dict(lines=("first line", "second line"), location="upper left"))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        figure = d.draw(PlotlyRenderer()).figure
+    texts = [a for a in figure.layout.annotations if (a.name or "").startswith("cp-badge/")]
+    assert [a.text for a in texts] == ["first line", "second line"]
+    (box,) = figure.layout.shapes
+    assert box.x0 < texts[0].x < box.x1 and box.y0 < texts[1].y < texts[0].y < box.y1 and box.x0 < 0.1 < box.y0
+    d = _diagram(dict(logo=logo_files, lines=("x",)))
+    with pytest.warns(UserWarning, match="PlotlyRenderer does not draw the logo or the watermark"):
         d.draw(PlotlyRenderer())
 
 
@@ -423,7 +431,7 @@ def test_badge_drawn_where_the_labels_keep_clear(logo_files):
             (box.cx - box.half_w, box.cy - box.half_h, 2 * box.half_w, 2 * box.half_h), abs=0.5)
 
 
-def test_the_native_svg_writer_is_used_only_without_branding(monkeypatch, logo_files):
+def test_the_native_svg_writer_is_used_without_pictures(monkeypatch, logo_files):
     from coolplot import corelib
     from coolplot.render.svg import SvgRenderer
     calls = []
@@ -433,21 +441,36 @@ def test_the_native_svg_writer_is_used_only_without_branding(monkeypatch, logo_f
         return "<svg native/>"
 
     monkeypatch.setattr(corelib, "scene_to_svg", native)
+    monkeypatch.setattr(corelib, "available", lambda: True)
+    monkeypatch.setattr(corelib, "core_version", lambda: (1, 5, 0))
+    monkeypatch.setattr(corelib, "enabled", lambda: False)   # composed in Python: only the writer is tested
     plain = _diagram()
     assert plain.draw(SvgRenderer(native=True)).to_svg() == "<svg native/>" and len(calls) == 1
+    # A badge of text lines is written by coolplot-core 1.5, not by an older one
+    lines_only = _diagram(dict(lines=("x",)))
+    assert lines_only.draw(SvgRenderer(native=True)).to_svg() == "<svg native/>" and len(calls) == 2
+    monkeypatch.setattr(corelib, "core_version", lambda: (1, 4, 0))
+    assert "cp-badge" in lines_only.draw(SvgRenderer(native=True)).to_svg() and len(calls) == 2
+    monkeypatch.setattr(corelib, "core_version", lambda: (1, 5, 0))
+    # A logo, a physical unit or a fractional size: always the Python writer
     branded = _diagram(dict(logo=logo_files, lines=("x",)))
     text = branded.draw(SvgRenderer(native=True)).to_svg()
-    assert "cp-badge" in text and len(calls) == 1
-    assert "<svg native/>" != plain.draw(SvgRenderer(native=True, unit="pt")).to_svg() and len(calls) == 1
-    assert "<svg native/>" != plain.draw(SvgRenderer(native=True, width=800.5)).to_svg() and len(calls) == 1
+    assert "cp-badge" in text and len(calls) == 2
+    assert "<svg native/>" != plain.draw(SvgRenderer(native=True, unit="pt")).to_svg() and len(calls) == 2
+    assert "<svg native/>" != plain.draw(SvgRenderer(native=True, width=800.5)).to_svg() and len(calls) == 2
 
 
-def test_scene_page_warns_that_it_leaves_the_branding_out(logo_files):
+def test_scene_page_draws_the_badge_and_warns_that_it_leaves_pictures_out(logo_files):
     from coolplot.render import base
     from coolplot.render.web import scene_page
     base._branding_warned.discard("scene_page (the JavaScript writer)")
     scene = _diagram(dict(lines=("x",))).update_scene()
-    with pytest.warns(UserWarning, match="scene_page .the JavaScript writer. does not draw the badge"):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        page = scene_page(scene)
+    assert '"badge":' in page
+    scene = _diagram(dict(logo=logo_files, lines=("x",))).update_scene()
+    with pytest.warns(UserWarning, match="scene_page .the JavaScript writer. does not draw the logo or the watermark"):
         scene_page(scene)
 
 

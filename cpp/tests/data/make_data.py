@@ -50,13 +50,14 @@ def legacy(chart):
 
 def compose_case(name, chart, plot_size_pt=None, previous=None):
     """The input of the composer and the scene the Python composer makes of it."""
-    if not name.startswith("compose_rails_"):
+    if not name.startswith(("compose_rails_", "compose_badge_")):
         legacy(chart)
     spec = chart.spec
     domain = chart.engine.domain(spec)
     curves = chart.engine.curves(spec, domain, plan(spec, domain))
     cycles = [chart.engine.cycle(spec, c) for c in spec.cycles]
-    items, axes = compose(spec, domain, curves, plot_size_pt, previous, cycles)
+    sources = chart.engine.source_lines(spec)
+    items, axes = compose(spec, domain, curves, plot_size_pt, previous, cycles, sources)
     scene = Scene(axes, items)
     data = {
         "spec": spec.to_dict(),
@@ -67,6 +68,8 @@ def compose_case(name, chart, plot_size_pt=None, previous=None):
         "plot_size_pt": None if plot_size_pt is None else list(plot_size_pt),
         "previous_labels": None if previous is None else [item_to_dict(t) for t in previous.values()],
     }
+    if sources:
+        data["sources"] = list(sources)
     # "scene" is the record of the contract (items in drawing order), which
     # the composer has to match; "scene_order" holds the same items in scene
     # order, which the SVG writers get (the legend follows that order)
@@ -177,6 +180,7 @@ def main():
     compose_case("compose_r290_ph_restyled_dome", restyled)
 
     rails_cases()
+    badge_cases()
 
 
 def rails(chart, legend="auto"):
@@ -225,6 +229,29 @@ def rails_cases():
     anchored.set_lines("rho", at_saturation={"T": 20, "Q": 0.5, "label": "saturation"}, labels=True)
     anchored.set_lines("T", at_saturation={"p": 2}, labels=True)
     compose_case("compose_rails_r290_ph_anchored", anchored, size)
+
+
+def badge_cases():
+    """The badge of the branding (1.5): references and lines of text, placed with the legend.
+
+    No versions line, so that the files do not change with every release.
+    """
+    size = (600.0, 420.0)
+    chart = rails(PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive"))
+    chart.set_lines("T", values=list(range(-40, 181, 20)), labels=True)
+    chart.set_lines("s", values=[x / 100.0 for x in range(75, 301, 25)], labels=True)
+    chart.set_lines("rho", values=[1, 2, 5, 10, 20, 50, 100, 200, 500], labels=True)
+    chart.add_cycle("Heat pump", [{"p": 3.0, "T": 0.0}, {"p": 15.0, "via": "compression", "eta_is": 0.7},
+                                  {"p": 15.0, "Q": 0.0}, {"p": 3.0, "via": "isenthalpic"}])
+    # An automatic badge and an automatic legend take two different corners; a line holding a
+    # line break is two lines
+    chart.settings = chart.settings.with_(branding={"references": "short", "lines": ("Example Engineering\nTest line",)})
+    compose_case("compose_badge_r290_ph", chart, size)
+    # The badge in a set corner, without frame, with full references, a larger font and a dark theme
+    chart.theme = "dark"
+    chart.settings = chart.settings.with_(branding={"references": "full", "location": "upper left", "frame": False,
+                                                    "lines": ()}, page={"font_scale": 1.25})
+    compose_case("compose_badge_r290_ph_upper_left", chart, size)
 
 
 if __name__ == "__main__":

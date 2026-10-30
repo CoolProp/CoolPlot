@@ -46,11 +46,28 @@ struct PageSettings
     static PageSettings from_json(const json& data);
 };
 
+/// The badge part of the branding (coolplot.spec.settings.BrandingSettings).
+/// The references and versions lines need CoolProp, so the caller computes
+/// them and hands them over as the "sources" of the compose record; the
+/// core adds `lines` below them. Logos and watermarks are drawn by Python.
+struct BrandingSettings
+{
+    std::vector<std::string> lines;
+    std::string location = "auto";
+    double logo_width_pt = 60.0;
+    double font_size_pt = 6.0;
+    double background_alpha = 0.85;
+    bool frame = true;
+
+    static BrandingSettings from_json(const json& data);
+};
+
 struct Settings
 {
     Theme look;
     LabelSettings labels;
     PageSettings page;
+    BrandingSettings branding;
 
     static Settings from_json(const json& data);
 };

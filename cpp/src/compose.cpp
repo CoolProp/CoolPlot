@@ -401,7 +401,7 @@ std::vector<Item> labels_for(const DiagramSpec& spec, const std::vector<LabelReq
     return place_edge_labels(requests, frame, keep_out, settings.keep_out_pt, edges, previous, settings.fallback, occupied);
 }
 
-// Corners for a legend inside the plot area (coolplot.compose.corners; the badge is drawn by Python only)
+// Corners for a legend inside the plot area and for the badge (coolplot.compose.corners)
 
 const char* const AUTO_CORNERS[] = {"lower right", "upper left", "upper right", "lower left"};
 const double LEGEND_INSET_PT = 6.0;
@@ -436,17 +436,23 @@ void points_of(const Frame& frame, const std::vector<Item>& items, bool visible_
     }
 }
 
-/// The corner of an automatic legend: "outside right" when it would cover more than MAX_LEGEND_SHARE of the
-/// page's plot area, else the corner that covers the fewest points of cycles and processes, then of isolines.
-std::string auto_legend(const Frame& frame, double width, double height, const std::vector<double>& lx, const std::vector<double>& ly,
-                        const std::vector<double>& ox, const std::vector<double>& oy, double page_area_pt2) {
-    if (width * height > MAX_LEGEND_SHARE * page_area_pt2) return "outside right";
-    if (!frame.usable()) return AUTO_CORNERS[0];
+/// Points of the isolines and of the cycles and processes, for counting what a corner box covers.
+struct CornerPoints
+{
+    std::vector<double> lx, ly, ox, oy;
+};
+
+/// The corner, among those not `taken` (empty for none), whose box covers the fewest points of cycles and
+/// processes, then of isolines; the first of AUTO_CORNERS on a tie or when the frame cannot be used.
+std::string emptiest_corner(const Frame& frame, double width, double height, double inset, const CornerPoints& points,
+                            const std::string& taken) {
     std::string best;
     long best_overlays = -1, best_lines = -1;
     for (const char* corner : AUTO_CORNERS) {
-        TakenBox box = corner_box(frame, corner, width, height, LEGEND_INSET_PT);
-        long overlays = count_inside(box, ox, oy), lines = count_inside(box, lx, ly);
+        if (taken == corner) continue;
+        if (!frame.usable()) return corner;
+        TakenBox box = corner_box(frame, corner, width, height, inset);
+        long overlays = count_inside(box, points.ox, points.oy), lines = count_inside(box, points.lx, points.ly);
         if (best_overlays < 0 || overlays < best_overlays || (overlays == best_overlays && lines < best_lines)) {
             best = corner;
             best_overlays = overlays;
@@ -456,11 +462,24 @@ std::string auto_legend(const Frame& frame, double width, double height, const s
     return best;
 }
 
-/// Decide the corner of a legend inside the plot area; returns its box, if there is one, for the labels.
-std::vector<TakenBox> place_legend(AxesSpec& axes, const DiagramSpec& spec, const Theme& theme, const Frame& frame,
-                                   const std::vector<Item>& lines, const std::vector<Item>& parts, const std::vector<KeepOut>& overlays) {
+/// The corner of an automatic legend: "outside right" when it would cover more than MAX_LEGEND_SHARE of the
+/// page's plot area, else the emptiest corner the badge does not take.
+std::string auto_legend(const Frame& frame, double width, double height, const CornerPoints& points, const std::string& taken,
+                        double page_area_pt2) {
+    if (width * height > MAX_LEGEND_SHARE * page_area_pt2) return "outside right";
+    return emptiest_corner(frame, width, height, LEGEND_INSET_PT, points, taken);
+}
+
+/// Decide the corners of a legend inside the plot area and of the badge (`badge` may be null), together, so that
+/// an automatic one never takes the corner of the other; `badge_location` is the corner of the settings or "auto".
+/// Returns the boxes of both, for the labels: the legend's first.
+std::vector<TakenBox> place_corners(AxesSpec& axes, const DiagramSpec& spec, const Theme& theme, const Frame& frame,
+                                    const std::vector<Item>& lines, const std::vector<Item>& parts, const std::vector<KeepOut>& overlays,
+                                    Badge* badge, const std::string& badge_location) {
     std::vector<TakenBox> boxes;
     const LegendStyle& style = theme.axes.legend;
+    bool has_legend = false;
+    double legend_w = 0.0, legend_h = 0.0;
     if (style.visible && style.location != "outside right") {
         std::vector<std::string> texts;
         for (const std::vector<Item>* group : {&lines, &parts})
@@ -471,22 +490,66 @@ std::vector<TakenBox> place_legend(AxesSpec& axes, const DiagramSpec& spec, cons
             size_t longest = 0;
             for (const std::string& t : texts) longest = std::max(longest, text_length(t));
             double size = style.text.font.size_pt;
-            double width = 44.0 * (72.0 / 96.0) + 0.6 * size * longest, height = 8.0 * (72.0 / 96.0) + 1.6 * size * texts.size();
-            std::string location = style.location;
-            if (location == "auto") {
-                // Cycles count along their whole length, so that a long straight segment counts too
-                std::vector<double> lx, ly, ox, oy;
-                points_of(frame, lines, true, lx, ly);
-                if (frame.usable()) keep_out_points_pt(frame, overlays, ox, oy);
-                std::pair<double, double> page = default_plot_size_pt(spec);
-                location = auto_legend(frame, width, height, lx, ly, ox, oy, page.first * page.second);
-            }
-            axes.style.legend.location = location;
-            if (location != "outside right" && width > 0.0) boxes.push_back(corner_box(frame, location, width, height, LEGEND_INSET_PT));
+            legend_w = 44.0 * (72.0 / 96.0) + 0.6 * size * longest;
+            legend_h = 8.0 * (72.0 / 96.0) + 1.6 * size * texts.size();
+            has_legend = true;
         }
+    }
+    CornerPoints points;
+    if ((has_legend && style.location == "auto") || (badge != nullptr && badge_location == "auto")) {
+        // Cycles count along their whole length, so that a long straight segment counts too
+        points_of(frame, lines, true, points.lx, points.ly);
+        if (frame.usable()) keep_out_points_pt(frame, overlays, points.ox, points.oy);
+    }
+    std::string legend_at = has_legend ? style.location : "";
+    std::string badge_at = badge != nullptr ? badge_location : "";
+    if (has_legend && legend_at == "auto") {
+        std::pair<double, double> page = default_plot_size_pt(spec);
+        legend_at = auto_legend(frame, legend_w, legend_h, points, badge_at == "auto" ? "" : badge_at, page.first * page.second);
+    }
+    if (badge != nullptr) {
+        std::pair<double, double> size = badge->size_pt();
+        if (badge_at == "auto")
+            badge_at = emptiest_corner(frame, size.first, size.second, badge->inset_pt, points, legend_at == "outside right" ? "" : legend_at);
+        badge->location = badge_at;
+    }
+    if (has_legend) {
+        axes.style.legend.location = legend_at;
+        if (legend_at != "outside right" && legend_w > 0.0) boxes.push_back(corner_box(frame, legend_at, legend_w, legend_h, LEGEND_INSET_PT));
+    }
+    if (badge != nullptr) {
+        std::pair<double, double> size = badge->size_pt();
+        boxes.push_back(corner_box(frame, badge_at, size.first, size.second, badge->inset_pt));
     }
     if (axes.style.legend.location == "auto") axes.style.legend.location = "upper right";   // as AxesSpec reads it
     return boxes;
+}
+
+/// The badge of the branding settings, as coolplot.compose.branding makes it: the `sources` lines (references
+/// and versions, computed by the caller) above the lines of the settings. False when there is nothing to show.
+bool make_badge(const DiagramSpec& spec, const Theme& theme, const std::vector<std::string>& sources, Badge& badge) {
+    const BrandingSettings& settings = spec.settings.branding;
+    json lines = json::array();
+    for (const std::string& line : sources) lines.push_back(line);
+    for (const std::string& line : settings.lines) lines.push_back(line);
+    if (lines.empty()) return false;
+    const AxesStyle& axes_style = theme.axes;
+    TextStyle text;
+    text.font.family = axes_style.tick_label.font.family;
+    text.font.size_pt = settings.font_size_pt * spec.settings.page.font_scale;
+    text.color = axes_style.tick_label.color.present ? axes_style.tick_label.color : Color::of("#000000");
+    text.h_align = "left";
+    text.v_align = "bottom";
+    // Badge::from_json splits lines that hold line breaks, as coolplot.scene.Badge does
+    json record{{"location", settings.location == "auto" ? "lower right" : settings.location},
+                {"logo_width_pt", settings.logo_width_pt},
+                {"lines", lines},
+                {"text", text.to_json()},
+                {"background", axes_style.background.present ? axes_style.background.hex : std::string("#ffffff")},
+                {"background_alpha", settings.background_alpha},
+                {"frame_color", settings.frame && axes_style.frame_color.present ? json(axes_style.frame_color.hex) : json(nullptr)}};
+    badge = Badge::from_json(record);
+    return !badge.lines.empty();
 }
 
 std::vector<double> column(const std::vector<std::map<std::string, double>>& states, const std::string& key, const Unit& unit) {
@@ -667,13 +730,22 @@ Scene compose(const json& input) {
     Frame frame{axes.x_limits, axes.y_limits, axes.x_log, axes.y_log, size.first, size.second};
     process_parts = placed_state_numbers(process_parts, frame);
     std::vector<Item> lines = isoline_items(spec, theme, curves);
-    std::vector<TakenBox> boxes = place_legend(axes, spec, theme, frame, lines, process_parts, keep_out);
+    std::vector<std::string> sources;
+    for (const json& line : input.value("sources", json::array())) sources.push_back(line.get<std::string>());
+    Badge badge;
+    bool has_badge = make_badge(spec, theme, sources, badge);
+    std::vector<TakenBox> boxes = place_corners(axes, spec, theme, frame, lines, process_parts, keep_out, has_badge ? &badge : nullptr,
+                                                spec.settings.branding.location);
+    if (has_badge) {
+        axes.has_badge = true;
+        axes.badge = badge;
+    }
     Scene scene;
     scene.axes = axes;
     scene.items = lines;
     std::vector<LabelRequest> requests = label_requests(spec, theme, curves, lines);
     if (!requests.empty()) {
-        // Rail and edge labels keep clear of a legend inside the plot area
+        // Rail and edge labels keep clear of a legend inside the plot area and of the badge
         std::vector<Item> labels = labels_for(spec, requests, axes, keep_out, size, previous, boxes);
         scene.items.insert(scene.items.end(), labels.begin(), labels.end());
     }

@@ -14,7 +14,14 @@
 //    family is placed by saturation states, null otherwise; the label shows it)
 //    "cycles": [{"states": {"1": {key: value}}, "chains": [[{key: value}, ...]]}],
 //    "plot_size_pt": [width, height] or null,
-//    "previous_labels": [<text item>] or null}
+//    "previous_labels": [<text item>] or null,
+//    "sources": [<badge line>] (optional, since 1.5)}
+//
+// "sources" are the badge lines naming the sources of the properties (the
+// references of the equation of state and the versions line), which need
+// CoolProp, so the caller computes them as coolplot.engine.Engine.source_lines
+// does. The badge holds them above the lines of the spec's branding settings;
+// with neither there is no badge. A spec with a logo or a watermark is refused.
 #ifndef COOLPLOT_COMPOSE_H
 #define COOLPLOT_COMPOSE_H
 
