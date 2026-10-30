@@ -6,6 +6,14 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### Changed
+- Every chart names the equation of state of its fluid by default:
+  `BrandingSettings.references` is "short" instead of "none", so the
+  badge shows a line such as "R290: Lemmon et al. (2009)" in the
+  emptiest corner. `branding={"references": "none"}` removes it. Specs
+  saved before 1.2 keep drawing without badge, specs saved since hold
+  their setting.
+
 ### Added
 - coolplot-core 1.5 composes and writes the badge of the branding when it
   holds text lines only (references, versions, lines of your own): the

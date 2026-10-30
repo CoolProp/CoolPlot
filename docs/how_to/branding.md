@@ -5,6 +5,17 @@ it, and which equation of state the properties follow. `Settings.branding`
 adds both, the way printed charts do: a small badge in one corner of the
 plot area and, if you like, a faint picture behind the lines.
 
+Since 1.5 every chart names its equation of state by default
+(`references="short"`), so a chart never reaches a reader without its
+source. To draw a chart without the badge:
+
+```python
+diagram.settings = diagram.settings.with_(branding={"references": "none"})
+```
+
+Everything else (logo, versions, lines, watermark) stays off until you ask
+for it:
+
 ```python
 from coolplot import PropertyDiagram
 
@@ -42,8 +53,8 @@ removes the outline. The text uses the font family of the tick labels at
 
 ## References
 
-`references="short"` names first author and year, `"full"` adds journal,
-volume and pages. They come from CoolProp itself: the BibTeX key of each
+`references="short"` (the default) names first author and year, `"full"`
+adds journal, volume and pages, `"none"` leaves them out. They come from CoolProp itself: the BibTeX key of each
 equation of state (`CoolProp.CoolProp.get_BibTeXKey(fluid, "EOS")`) and
 the bibliography that ships in the CoolProp package.
 

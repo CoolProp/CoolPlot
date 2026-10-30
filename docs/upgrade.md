@@ -35,6 +35,21 @@ starting with an underscore, the helpers in `coolplot.core`,
 `coolplot.testing`, the scene item ids, and the exact coordinates of a
 chart (better numerics may move points).
 
+## From 1.4 to 1.5
+
+Nothing to change in your code, but new charts carry a small badge in
+one corner that names the equation of state of the fluid ("R290: Lemmon
+et al. (2009)"), so that a chart always says where its properties come
+from. It takes the emptiest corner, and labels keep clear of it. For
+charts without it, as in 1.4:
+
+```python
+diagram.settings = diagram.settings.with_(branding={"references": "none"})
+```
+
+Specs saved before 1.2 (without a branding part) keep drawing without
+badge; specs saved by 1.2 to 1.4 hold `"references": "none"` and keep it.
+
 ## From 1.3 to 1.4
 
 Nothing to change in your code. Axis titles, legends and labels of new

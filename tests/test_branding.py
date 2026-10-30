@@ -67,7 +67,8 @@ def test_other_files_are_refused(tmp_path):
 
 # Settings ------------------------------------------------------------------
 def test_branding_settings_validate_and_round_trip(logo_files):
-    assert not BrandingSettings().has_badge
+    assert BrandingSettings().has_badge and BrandingSettings().references == "short"   # the default since 1.5
+    assert not BrandingSettings(references="none").has_badge
     with pytest.raises(ValueError, match="badge location"):
         BrandingSettings(location="middle")
     with pytest.raises(ValueError, match="references style"):
@@ -77,14 +78,22 @@ def test_branding_settings_validate_and_round_trip(logo_files):
     settings = Settings().with_(branding=dict(logo=logo_files, references="full", lines="example.com"))
     assert settings.branding.lines == ("example.com",)
     assert Settings.from_dict(settings.to_dict()) == settings
-    # A record from before 1.2 has no branding part
+    # A record from before 1.2 has no branding part: it keeps the chart without badge it was drawn as
     old = settings.to_dict()
     del old["branding"]
-    assert Settings.from_dict(old).branding == BrandingSettings()
+    assert Settings.from_dict(old).branding == BrandingSettings(references="none")
+    # A record without any parts is not an old one: it takes the defaults
+    assert Settings.from_dict({}).branding == BrandingSettings()
+
+
+def test_a_chart_names_its_equation_of_state_by_default():
+    axes = _diagram().update_scene().axes
+    assert axes.badge is not None and axes.badge.lines == ("R290: Lemmon et al. (2009)",)
+    assert axes.watermark is None
 
 
 def test_an_unbranded_chart_has_no_badge_and_an_unchanged_record():
-    d = _diagram()
+    d = _diagram(dict(references="none"))
     axes = d.update_scene().axes
     assert axes.badge is None and axes.watermark is None
     record = axes_to_dict(axes)
@@ -209,7 +218,7 @@ def test_badge_lines_come_in_order_and_auto_takes_the_emptiest_corner(logo_files
 
 def test_the_watermark_fits_the_plot_area(logo_files):
     size = (600.0, 420.0)
-    d = _diagram(dict(watermark=logo_files[1], watermark_width=1.0, watermark_opacity=0.1))
+    d = _diagram(dict(watermark=logo_files[1], watermark_width=1.0, watermark_opacity=0.1, references="none"))
     mark = d.update_scene(size).axes.watermark
     assert mark.opacity == 0.1 and mark.width_pt == pytest.approx(600.0)
     assert d.update_scene(size).axes.badge is None
@@ -259,7 +268,7 @@ def test_svg_draws_the_badge_and_the_watermark(tmp_path, logo_files):
     assert 'opacity="0.06"' in watermark and "data:image/png;base64," in watermark
     # Below the grid and the items: the watermark comes before the first grid line and item
     assert text.index("cp-watermark") < text.index('class="cp-grid-major"') < text.index('class="cp-items"')
-    plain = _diagram()
+    plain = _diagram(dict(references="none"))
     plain.save(str(tmp_path / "plain.svg"))
     plain_text = (tmp_path / "plain.svg").read_text()
     assert "cp-badge" not in plain_text and "cp-watermark" not in plain_text and "xlink" not in plain_text
@@ -306,7 +315,7 @@ def test_plotly_draws_the_badge_and_warns_that_it_leaves_pictures_out(logo_files
         warnings.simplefilter("error")
         figure = d.draw(PlotlyRenderer()).figure
     texts = [a for a in figure.layout.annotations if a.name is None]   # every scene text is named by its id
-    assert [a.text for a in texts] == ["first line", "second line"]
+    assert [a.text for a in texts] == ["R290: Lemmon et al. (2009)", "first line", "second line"]
     (box,) = figure.layout.shapes
     assert box.x0 < texts[0].x < box.x1 and box.y0 < texts[1].y < texts[0].y < box.y1 and box.x0 < 0.1 < box.y0
     d = _diagram(dict(logo=logo_files, lines=("x",)))
@@ -531,7 +540,7 @@ def test_matplotlib_shrinks_the_badge_without_a_drawable_logo(logo_files):
     from coolplot.render.mpl import MatplotlibRenderer
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        only_logo = _diagram(dict(logo=logo_files[0])).draw(MatplotlibRenderer(use_pyplot=False))
+        only_logo = _diagram(dict(logo=logo_files[0], references="none")).draw(MatplotlibRenderer(use_pyplot=False))
         with_lines = _diagram(dict(logo=logo_files[0], lines=("x", "y"))).draw(MatplotlibRenderer(use_pyplot=False))
     assert only_logo.badge_extent_pt() is None   # no empty frame
     _, _, w, h = with_lines.badge_extent_pt()
