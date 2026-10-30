@@ -14,9 +14,11 @@ diagram.units = "SI"        # later: no new property calculations, the lines are
 | `"engineering"` | deg C | bar | kJ/kg, kJ/kg/K | g/kg, % |
 | `"IP"` | deg F | psi | Btu/lb, Btu/lb/R | grains/lb, % |
 
-Every value you pass to a chart method is in the chart's units, and so
-is every value a chart returns. `units=` on a call names another system
-for that call only: `diagram.add_cycle("measured", states, units="SI")`.
+Every value you pass to a chart method is in the chart's units. `units=`
+on a call names another system for that call only:
+`diagram.add_cycle("measured", states, units="SI")`. A state a chart
+returns is a StatePoint in SI units, whatever the chart's units (see
+"Read states in units" below).
 `"EUR"`, the name of `"engineering"` before 0.5, is refused in calls
 since 1.0; the constant `coolplot.EUR` still works with a warning until 2.0.
 
