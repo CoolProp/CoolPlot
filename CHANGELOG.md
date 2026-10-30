@@ -59,6 +59,13 @@ guide in the documentation says what to change in your code.
   still used by themes without pinned colours, are `#c72500`, `#2d03cd`,
   `#0ba589`, `#87459f` (dark: `#ee7a5a`, `#3a66d0`, `#7ee6d2`, `#f6c919`).
   coolplot-core has the same colours.
+- Documentation: the top bar lists the gallery right after Getting
+  started and shows six pages before "More", so the gallery no longer
+  hides behind it; the landing page shows thumbnails of four examples.
+- The gallery example "A chart with a logo, references and a watermark"
+  is gone: the company chart of Clean Heat Partners shows the same
+  (logo, references, versions, a line of text and a watermark) on a real
+  chart.
 
 ### Removed
 - Theme "classic" (and `coolplot.style.CLASSIC`). Its idea, a colour per
