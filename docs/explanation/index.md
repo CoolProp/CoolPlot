@@ -7,6 +7,8 @@ Why CoolPlot does what it does.
 
 what_a_change_costs
 colours
+theme_catalog
+accessibility
 label_placement
 numerics
 not_supported
