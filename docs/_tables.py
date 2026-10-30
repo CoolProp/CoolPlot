@@ -76,10 +76,12 @@ def write(path):
                        "{0:g} x {1:g}".format(s.page.width_pt, s.page.height_pt)))
 
     out.write("\n## Themes\n\n")
-    out.write(_row("Name", "Background", "Isoline colours (slots)", "Legend"))
-    out.write(_row(*["---"] * 4))
+    out.write(_row("Name", "Background", "Isoline colours (slots)", "Per quantity", "Legend"))
+    out.write(_row(*["---"] * 5))
     for name, t in THEMES.items():
-        out.write(_row("`{0}`".format(name), t.axes.background, ", ".join(t.categorical),
+        pinned = t.isoline_colors or {}
+        per_quantity = ", ".join("{0} {1}".format(q, pinned[q]) for q in ("T", "p", "h", "s", "rho") if q in pinned)
+        out.write(_row("`{0}`".format(name), t.axes.background, ", ".join(t.categorical), per_quantity or "-",
                        "yes" if t.axes.legend.visible else "no"))
     with open(path, "w") as f:
         f.write(out.getvalue())

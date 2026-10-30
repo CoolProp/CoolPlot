@@ -665,6 +665,14 @@ Font sans(double size_pt, const std::string& weight = "normal") {
     return f;
 }
 
+Font serif(double size_pt, const std::string& weight = "normal") {
+    Font f;
+    f.family = {"Times New Roman", "Times", "Liberation Serif", "Nimbus Roman", "DejaVu Serif", "serif"};
+    f.size_pt = size_pt;
+    f.weight = weight;
+    return f;
+}
+
 TextStyle text_of(const Font& font, const std::string& color, const std::string& halo = "", double halo_width = 0.0) {
     TextStyle t;
     t.font = font;
@@ -733,15 +741,27 @@ Theme screen_theme(const std::string& name, const std::string& surface, const st
     return t;
 }
 
+/// One isoline colour per quantity, as coolplot.style.theme._per_quantity: wet-bulb temperature takes the colour of
+/// entropy and specific volume that of density, which never appear on a psychrometric chart.
+void pin_per_quantity(Theme& t, const char* T, const char* p, const char* h, const char* s, const char* rho, const char* u) {
+    t.has_isoline_colors = true;
+    t.isoline_colors = {{"T", Color::of(T)},   {"p", Color::of(p)}, {"h", Color::of(h)},   {"s", Color::of(s)},
+                        {"rho", Color::of(rho)}, {"u", Color::of(u)}, {"Twb", Color::of(s)}, {"v", Color::of(rho)}};
+}
+
 const std::map<std::string, Theme>& themes() {
     static const std::map<std::string, Theme> table = [] {
         Theme light = screen_theme("default", "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7",
-                                   {"#2a78d6", "#eb6834", "#1baf7a", "#eda100"});
+                                   {"#c72500", "#2d03cd", "#0ba589", "#87459f"});
+        pin_per_quantity(light, "#c72500", "#621b40", "#ce52f9", "#2d03cd", "#0ba589", "#87459f");
         Theme dark = screen_theme("dark", "#1a1a19", "#ffffff", "#c3c2b7", "#898781", "#2c2c2a", "#383835",
-                                  {"#3987e5", "#d95926", "#199e70", "#c98500"});
+                                  {"#ee7a5a", "#3a66d0", "#7ee6d2", "#f6c919"});
+        pin_per_quantity(dark, "#ee7a5a", "#9a9ad8", "#9f4e64", "#3a66d0", "#7ee6d2", "#f6c919");
         Theme print = light;
         print.name = "print";
         print.categorical = {"#3a3a3a"};
+        print.has_isoline_colors = false;   // families differ by dash pattern only
+        print.isoline_colors.clear();
         print.slot_dashes = {{"solid", {}}, {"dashed", {}}, {"dotted", {}}, {"dashdot", {}}};
         print.isoline = line_of("#000000", 0.6);
         print.quality = line_of("#7a7a7a", 0.4);
@@ -750,29 +770,36 @@ const std::map<std::string, Theme>& themes() {
         print.axes.frame_color = Color::of("#000000");
         print.axes.tick_color = Color::of("#000000");
         print.axes.grid_major = line_of("#d0d0d0", 0.4);
-        Theme classic;
-        classic.name = "classic";
-        classic.categorical = {"#000000"};
-        classic.has_isoline_colors = true;
-        classic.isoline_colors = {{"T", Color::of("#8b0000")}, {"p", Color::of("#008b8b")},   {"h", Color::of("#006400")},
-                                  {"rho", Color::of("#00008b")}, {"s", Color::of("#ff8c00")}, {"u", Color::of("#800080")},
-                                  {"Twb", Color::of("#8b0000")}, {"v", Color::of("#00008b")}};
-        classic.isoline = line_of("#000000", 0.5);
-        classic.saturation = line_of("#000000", 1.0);
-        classic.quality = line_of("#000000", 0.5);
-        Font small;
-        small.size_pt = 7.0;
-        classic.isoline_label = text_of(small, "#000000", "#ffffff", 1.5);
-        classic.processes = {line_of("#ff0000", 1.5)};
-        classic.state_points = {marker_of("o", 5.0, "#ff0000", "#ff0000", 1.0)};
-        Font eight;
-        eight.size_pt = 8.0;
-        classic.state_number = text_of(eight, "#ff0000", "#ffffff", 1.5);
-        classic.axes = AxesStyle();
-        classic.axes.has_grid_major = false;
-        classic.axes.legend.visible = false;
+        // The CoolPack look, see COOLPACK in coolplot.style.theme
+        Theme coolpack;
+        coolpack.name = "coolpack";
+        coolpack.categorical = {"#000000"};
+        coolpack.has_isoline_colors = true;
+        coolpack.isoline_colors = {{"T", Color::of("#ff0000")},   {"s", Color::of("#0000ff")}, {"rho", Color::of("#008000")},
+                                    {"v", Color::of("#008000")},   {"p", Color::of("#800080")}, {"h", Color::of("#ff00ff")},
+                                    {"u", Color::of("#008080")},   {"Twb", Color::of("#ff0000")}};
+        coolpack.isoline = line_of("#000000", 0.5);
+        coolpack.saturation = line_of("#000000", 1.25);
+        coolpack.quality = line_of("#000080", 0.5);
+        coolpack.isoline_label = text_of(serif(6.5), "#000000", "#ffffff", 1.0);
+        coolpack.isoline_label_color = "line";
+        coolpack.processes = {line_of("#000000", 1.5), line_of("#800000", 1.5), line_of("#800080", 1.5)};
+        coolpack.state_points = {marker_of("s", 4.5, "#000000", "#000000", 1.0), marker_of("s", 4.5, "#800000", "#800000", 1.0),
+                                  marker_of("s", 4.5, "#800080", "#800080", 1.0)};
+        coolpack.state_number = text_of(serif(8.0, "bold"), "#000000", "#ffffff", 1.5);
+        coolpack.axes = AxesStyle();
+        coolpack.axes.frame_width_pt = 0.75;
+        coolpack.axes.tick_width_pt = 0.75;
+        coolpack.axes.tick_label = text_of(serif(8.0), "#000000");
+        coolpack.axes.axis_label = text_of(serif(9.5), "#000000");
+        coolpack.axes.title = text_of(serif(12.0, "bold"), "#000000");
+        coolpack.axes.has_grid_major = true;
+        coolpack.axes.grid_major = line_of("#c0c0c0", 0.4);
+        coolpack.axes.has_grid_minor = true;
+        coolpack.axes.grid_minor = line_of("#c0c0c0", 0.4);
+        coolpack.axes.legend.visible = false;
         std::map<std::string, Theme> presets;
-        for (const Theme& t : {light, dark, print, classic}) presets[t.name] = t;
+        for (const Theme& t : {light, dark, print, coolpack}) presets[t.name] = t;
         return presets;
     }();
     return table;

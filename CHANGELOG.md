@@ -18,6 +18,44 @@ guide in the documentation says what to change in your code.
 - The plotly backend and the JavaScript writer (`scene_page`) draw the
   badge of text lines too; only a logo or a watermark is left out, with a
   warning. `PdfRenderer` draws it through coolplot-core 1.5.
+- Theme "coolpack": the look of the log(p),h-diagrams of CoolPack (DTU,
+  "Refrigeration Utilities", late 1990s). Times on white with a dense
+  light grey grid (major and minor ticks), a black saturation curve, red
+  isotherms, blue isentropes, green isochores and navy lines of constant
+  quality in the colours of the 16 colour Windows palette, every label in
+  the colour of its line, no legend. Purple isobars and magenta
+  isenthalps for the other charts. coolplot-core has the same preset.
+- Documentation: a theme catalog with every theme on a log(p)-h and a T-s
+  chart, its isoline colours as seen with each kind of colour vision
+  deficiency and in greyscale, contrast and separation numbers, and why
+  its colours are what they are. Pictures and numbers are generated when
+  the documentation is built.
+- Documentation: "Colour and accessibility", the rules the themes are
+  measured against (WCAG 2.2 AA, the colour science literature), who they
+  are for, and how the default colours were chosen.
+- Gallery example "A CoolPack chart, for old times' sake": the R290 chart
+  of the CoolPack tutorial with its one stage cycle, in the new theme.
+
+### Changed
+- One colour per quantity in the `default` and `dark` themes, the same on
+  every chart: red isotherms, wine isobars, orchid isenthalps, blue
+  isentropes, teal isochores and purple lines of constant u (`#c72500`,
+  `#621b40`, `#ce52f9`, `#2d03cd`, `#0ba589`, `#87459f`; on the dark
+  surface `#ee7a5a`, `#9a9ad8`, `#9f4e64`, `#3a66d0`, `#7ee6d2`,
+  `#f6c919`). Up to 1.4 the colours went out by position, so the same
+  colour meant pressure on one chart and temperature on another. The
+  colours stay apart for every kind of colour vision deficiency (closest
+  of all ten pairs 15.0 in OKLab x100) and every one reaches 3:1 contrast
+  on its background (WCAG 2.2; the aqua isochores had 2.7:1). The slots,
+  still used by themes without pinned colours, are `#c72500`, `#2d03cd`,
+  `#0ba589`, `#87459f` (dark: `#ee7a5a`, `#3a66d0`, `#7ee6d2`, `#f6c919`).
+  coolplot-core has the same colours. The picture on the landing page and
+  in the README is drawn again with them.
+
+### Removed
+- Theme "classic" (and `coolplot.style.CLASSIC`). Its idea, a colour per
+  quantity, is now part of `default` and `dark`; `get_theme("classic")`
+  raises ValueError. Charts saved before keep their whole theme.
 
 ## [1.4.0] - 2026-10-24
 
