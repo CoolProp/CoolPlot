@@ -26,16 +26,25 @@ guide in the documentation says what to change in your code.
   of the CoolPack tutorial with its one stage cycle, in the new theme.
 
 ### Changed
-- New isoline colours in the `default` and `dark` themes: red isotherms,
-  blue isentropes and teal isochores on a log(p)-h chart (the slots, in
-  order: `#c72500`, `#2d03cd`, `#0ba589`, `#2d004b` on the light surface,
-  `#ee7a5a`, `#3a66d0`, `#7ee6d2`, `#ffff78` on the dark one). The colours
-  step in lightness, so the families stay apart for every kind of colour
-  vision deficiency and in a black and white print (closest pair 14.6 in
-  OKLab x100 instead of 3.3), and every one reaches 3:1 contrast on its
-  background (WCAG 2.2; the aqua isochores had 2.7:1). coolplot-core has
-  the same colours. The picture on the landing page and in the README is
-  drawn again with them.
+- One colour per quantity in the `default` and `dark` themes, the same on
+  every chart: red isotherms, wine isobars, orchid isenthalps, blue
+  isentropes, teal isochores and purple lines of constant u (`#c72500`,
+  `#621b40`, `#ce52f9`, `#2d03cd`, `#0ba589`, `#87459f`; on the dark
+  surface `#ee7a5a`, `#9a9ad8`, `#9f4e64`, `#3a66d0`, `#7ee6d2`,
+  `#f6c919`). Up to 1.4 the colours went out by position, so the same
+  colour meant pressure on one chart and temperature on another. The
+  colours stay apart for every kind of colour vision deficiency (closest
+  of all ten pairs 15.0 in OKLab x100) and every one reaches 3:1 contrast
+  on its background (WCAG 2.2; the aqua isochores had 2.7:1). The slots,
+  still used by themes without pinned colours, are `#c72500`, `#2d03cd`,
+  `#0ba589`, `#87459f` (dark: `#ee7a5a`, `#3a66d0`, `#7ee6d2`, `#f6c919`).
+  coolplot-core has the same colours. The picture on the landing page and
+  in the README is drawn again with them.
+
+### Removed
+- Theme "classic" (and `coolplot.style.CLASSIC`). Its idea, a colour per
+  quantity, is now part of `default` and `dark`; `get_theme("classic")`
+  raises ValueError. Charts saved before keep their whole theme.
 
 ## [1.4.0] - 2026-10-24
 

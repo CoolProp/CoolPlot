@@ -66,25 +66,41 @@ reached only 2.7:1 contrast, entropy and density turned into the same grey
 in a black and white print (3.3), and the dark theme gave all three
 colours the same lightness (1.7 in greyscale, 2.6 for tritanopia).
 
-The colours since then are red for temperature, blue for entropy and
-teal for density, the colours most engineers expect for them. They were
-found by a search in the OKLCH colour space, within a window of hue
-around red, blue and teal: of all colours with at least 3:1 contrast on
-the background, the three whose closest pair stays furthest apart for
-deuteranopia, protanopia, tritanopia and in greyscale. The answer steps
-in lightness: on the light surface the blue is dark, the red middle and
-the teal light.
+Since 1.5 every quantity has a colour of its own, the same on every
+chart. They were found in two steps, both by a search in the OKLCH colour
+space among colours with at least 3:1 contrast on the background:
 
-| Family on a log(p)-h chart | On a T-s chart | Light theme | Contrast | Dark theme | Contrast |
-|---------------------------|----------------|-------------|----------|------------|----------|
-| T, isotherms | p, isobars | `#c72500` red | 5.5 | `#ee7a5a` coral | 6.3 |
-| s, isentropes | h, isenthalps | `#2d03cd` blue | 10.2 | `#3a66d0` blue | 3.3 |
-| rho, isochores | rho, isochores | `#0ba589` teal | 3.0 | `#7ee6d2` aqua | 11.7 |
+1. Red for temperature, blue for entropy and teal for density, the
+   colours most engineers expect, for the log(p)-h chart: within a window
+   of hue around each, the three whose closest pair stays furthest apart
+   for deuteranopia, protanopia, tritanopia and in greyscale. The answer
+   steps in lightness: on the light surface the blue is dark, the red
+   middle and the teal light.
+2. Pressure and enthalpy, around those three: every pair of T, p, h, s
+   and rho meets on some chart type (and, with horizontal and vertical
+   isolines, on one chart), so the two were searched over all hues for
+   the largest closest pair of all ten, for normal vision and the three
+   deficiencies. Internal energy, rarely drawn, came last.
 
-The closest pair improves from 10.1 to 15.0 for deuteranopia and from
-3.3 to 14.6 in greyscale on the light surface, and from 1.7 to 15.8 in
-greyscale on the dark one. A deeper navy instead of the blue would give
-about 19, but reads as navy, not blue.
+| Quantity | Light theme | Contrast | Dark theme | Contrast |
+|----------|-------------|----------|------------|----------|
+| T, isotherms | `#c72500` red | 5.5 | `#ee7a5a` coral | 6.3 |
+| p, isobars | `#621b40` wine | 11.7 | `#9a9ad8` periwinkle | 6.6 |
+| h, isenthalps | `#ce52f9` orchid | 3.3 | `#9f4e64` dusky rose | 3.1 |
+| s, isentropes | `#2d03cd` blue | 10.2 | `#3a66d0` blue | 3.3 |
+| rho, isochores | `#0ba589` teal | 3.0 | `#7ee6d2` aqua | 11.7 |
+| u | `#87459f` purple | 6.0 | `#f6c919` yellow | 11.0 |
+
+The closest of the ten pairs stays at 15.0 for deuteranopia on the light
+surface (16.8 on the dark one), as far apart as red, blue and teal alone.
+What five colours cannot do is stay five greys: on a T-s chart printed
+in black and white, enthalpy and density look alike, so print in the
+`print` theme or with value labels.
+
+On the log(p)-h chart the closest pair improves from 10.1 to 15.0 for
+deuteranopia and from 3.3 to 14.6 in greyscale on the light surface, and
+from 1.7 to 15.8 in greyscale on the dark one. A deeper navy instead of
+the blue would give about 19, but reads as navy, not blue.
 
 :::{container} cp-pair
 ![The default theme up to 1.4 on a log(p)-h chart](../_generated/themes/previous_ph.svg)
@@ -108,22 +124,19 @@ three steps of grey.
 
 ### And the T-s chart?
 
-The T-s chart uses the same three colours, by position. Its isoline
-families are p, h and rho (T and s are the axes), and in the fixed order
-T, p, h, s, rho the isobars come first and take the red, the isenthalps
-the blue, the isochores the teal:
+The T-s chart keeps the colours of its quantities: its isoline families
+are p, h and rho (T and s are the axes), drawn wine, orchid and teal.
+Pressure is wine on every chart where it is an isoline, and so on for
+every quantity:
 
 ![The default theme on a T-s chart](../_generated/themes/default_Ts.svg)
 
-Giving every quantity a colour of its own instead, so that pressure had
-the same colour on every chart, would need six colours (T, p, h, s, rho,
-u) that stay apart in every pairing. Three is about the most that pass
-the tests above with enough contrast, so a fixed colour per quantity
-would make every chart worse for readers with a colour vision
-deficiency. The rules that hold instead: temperature is always red when
-it is an isoline, density always teal, and hiding a family never repaints
-the others. A user who prefers a colour per quantity can pin one with
-`theme.with_isoline_color("p", ...)`, as the `classic` theme does.
+Up to 1.4, and in a theme without pinned colours (the `print` theme, or
+one derived with `isoline_colors=None`), the colours went out by
+position instead: the first family a chart offered took the first
+colour. That needs only three colours, but the same colour then meant
+pressure on one chart and temperature on another. To change the colour
+of one quantity, use `theme.with_isoline_color("p", ...)`.
 
 ## More than colour
 

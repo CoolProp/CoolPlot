@@ -29,37 +29,37 @@ better, in {doc}`accessibility`.
 
 | Theme | Made for | Families told apart by |
 |-------|----------|------------------------|
-| `default` | screens with a light background, colour print | colour and lightness, checked for colour vision deficiencies and greyscale |
-| `dark` | screens with a dark background | colour and lightness, checked the same way |
+| `default` | screens with a light background, colour print | one colour per quantity, checked for colour vision deficiencies |
+| `dark` | screens with a dark background | one colour per quantity, checked the same way |
 | `print` | black and white print, photocopies | dash pattern only |
-| `classic` | continuity with CoolProp plots before 2026 | colour, pinned per quantity |
-| `coolpack` | the look of CoolPack's charts, late 1990s | colour, pinned per quantity, and labels in line colour |
+| `coolpack` | the look of CoolPack's charts, late 1990s | colour per quantity, and labels in line colour |
 
 ## default
 
 The default is built for the screen and for colour print, and for the
 roughly one in twelve men who see colours differently.
 
-**Why these colours.** Red for temperature, blue for entropy, teal for
-density, as most engineers expect them. The three differ in hue and also
-step in lightness (blue dark, red middle, teal light), so they stay apart
-for every kind of colour vision deficiency and even as three greys in a
-black and white print; each reaches at least 3:1 against the background,
-as WCAG 2.2 asks of lines. They are given out by position: the families a
-chart offers, in the fixed order T, p, h, s, rho, u, take the colours in
-turn. Temperature is therefore red wherever it is an isoline, density
-always teal, and on a T-s chart (where T and s are the axes) the isobars
-take the red and the isenthalps the blue. The saturation dome and the
-cycles are drawn in ink, heavier and with a band in the background colour
-along them (the casing), so they read as the subject and the coloured
-isolines as the reference behind them. Labels are dark grey ink (7.7:1),
-readable on every line they cross. How the colours were found is in
+**Why these colours.** Every quantity has a colour of its own, the same
+on every chart: red for temperature, wine for pressure, orchid for
+enthalpy, blue for entropy, teal for density, purple for internal energy.
+Red, blue and teal, the three families of the log(p)-h chart, also step
+in lightness (blue dark, red middle, teal light), so that chart keeps
+three greys even in a black and white print. Wine and orchid were chosen
+to stay apart from all of them, since every pair of the five meets on
+some chart type; each colour reaches at least 3:1 against the background,
+as WCAG 2.2 asks of lines. The saturation dome and the cycles are drawn
+in ink, heavier and with a band in the background colour along them (the
+casing), so they read as the subject and the coloured isolines as the
+reference behind them. Labels are dark grey ink (7.7:1), readable on
+every line they cross. How the colours were found is in
 {doc}`accessibility`.
 
-**Weak points.** The teal is just at 3:1, too light for text: labels in
-line colour (`isoline_label_color="line"`) are harder to read for the
-isochores. Colour is still the only cue between families unless value
-labels are switched on.
+**Weak points.** Five colours cannot also stay five greys: on a T-s chart
+printed in black and white, enthalpy and density look alike (use the
+`print` theme or value labels there). The teal is just at 3:1, too light
+for text: labels in line colour (`isoline_label_color="line"`) are harder
+to read for the isochores. Colour is the only cue between families unless
+value labels are switched on.
 
 :::{container} cp-pair
 ![The default theme on a log(p)-h chart](../_generated/themes/default_ph.svg)
@@ -75,15 +75,16 @@ labels are switched on.
 
 The default for a dark background, for dark mode screens and slides.
 
-**Why these colours.** The same families on a near-black surface: coral
-for temperature, blue for entropy, aqua for density. On a dark surface
-the light colours stand out, so the lightness steps the other way round
-(blue dark, coral middle, aqua light), again so that the three stay apart
-for every kind of colour vision deficiency and in greyscale. Each reaches
-at least 3:1. Ink becomes white, the casing dark.
+**Why these colours.** The same quantities on a near-black surface:
+coral for temperature, periwinkle for pressure, dusky rose for enthalpy,
+blue for entropy, aqua for density, yellow for internal energy, searched
+for the dark surface in the same way. On a dark surface the light colours
+stand out, so on the log(p)-h chart the lightness steps the other way
+round (blue dark, coral middle, aqua light). Each reaches at least 3:1.
+Ink becomes white, the casing dark.
 
-**Weak points.** The blue is just above 3:1 and the dimmest of the
-three; on a projector in a lit room the `default` theme reads better.
+**Weak points.** The blue and the dusky rose are just above 3:1 and the
+dimmest; on a projector in a lit room the `default` theme reads better.
 
 :::{container} cp-pair
 ![The dark theme on a log(p)-h chart](../_generated/themes/dark_ph.svg)
@@ -118,34 +119,6 @@ grey that a printer still reproduces.
 ```{include} ../_generated/themes/print_scores.md
 ```
 
-## classic
-
-The look of the CoolProp plots before 2026, for charts that should match
-older reports and slides.
-
-**Why these colours.** They are the colours the old CoolProp plotting
-code used: CSS named colours, dark red for temperature, dark cyan for
-pressure, dark green for enthalpy, dark orange for entropy, dark blue for
-density, purple for internal energy. Unlike the slots of the default,
-each colour is pinned to its quantity, so a quantity has the same colour
-on every chart. The dark colours differ strongly in lightness, which is
-why this theme separates families well, even in greyscale. No grid, no
-legend, as before.
-
-**Weak points.** The dark orange of the isentropes has only 2.3:1
-contrast on white. The theme was not designed for accessibility and
-makes no promise.
-
-:::{container} cp-pair
-![The classic theme on a log(p)-h chart](../_generated/themes/classic_ph.svg)
-![The classic theme on a T-s chart](../_generated/themes/classic_Ts.svg)
-:::
-
-![Isoline colours of the classic theme under five kinds of colour vision](../_generated/themes/classic_swatches.svg)
-
-```{include} ../_generated/themes/classic_scores.md
-```
-
 ## coolpack
 
 The look of the log(p),h-diagrams of CoolPack, the refrigeration
@@ -165,10 +138,10 @@ chart, so the purple isobars and magenta isenthalps were chosen from the
 same palette to stay apart from the green isochores; they are not copied.
 See it on a full chart in the gallery: {doc}`../gallery/coolpack`.
 
-**Weak points.** Red and green, the classic combination to avoid, are
+**Weak points.** Red and green, the best-known combination to avoid, are
 hard to tell apart with protanopia. Red labels reach 4.0:1, below the
-4.5:1 WCAG asks for text. Like `classic`, the theme makes no promise on
-accessibility.
+4.5:1 WCAG asks for text. The theme recreates a look and makes no promise
+on accessibility.
 
 :::{container} cp-pair
 ![The coolpack theme on a log(p)-h chart](../_generated/themes/coolpack_ph.svg)

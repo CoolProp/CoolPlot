@@ -155,7 +155,7 @@ def simulated_theme(theme, kind):
 def previous_default_theme():
     """The default theme with the colours it had up to 1.4, as a Theme."""
     from coolplot.style.theme import DEFAULT
-    return DEFAULT.with_(name="previous", categorical=PREVIOUS_DEFAULT_COLORS)
+    return DEFAULT.with_(name="previous", categorical=PREVIOUS_DEFAULT_COLORS, isoline_colors=None)
 
 
 def isoline_colors(theme, chart):

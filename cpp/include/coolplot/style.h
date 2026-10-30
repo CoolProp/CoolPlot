@@ -178,7 +178,7 @@ struct AxesStyle
 struct Theme
 {
     std::string name = "custom";
-    std::vector<std::string> categorical = {"#c72500", "#2d03cd", "#0ba589", "#2d004b"};
+    std::vector<std::string> categorical = {"#c72500", "#2d03cd", "#0ba589", "#87459f"};
     std::vector<Dash> slot_dashes = {{"solid", {}}, {"solid", {}}, {"solid", {}}, {"solid", {}}};
     bool has_isoline_colors = false;
     std::map<std::string, Color> isoline_colors;
@@ -208,7 +208,7 @@ struct Theme
     static Theme from_json(const json& data);
 };
 
-/// A preset by name: "default", "dark", "print", "classic", "coolpack".
+/// A preset by name: "default", "dark", "print", "coolpack".
 const Theme& get_theme(const std::string& name);
 
 /// Apply LineStyle field changes from a JSON record (a style override of a spec).

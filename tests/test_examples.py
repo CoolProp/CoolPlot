@@ -114,7 +114,7 @@ def test_ip_units(tmp_path):
 
 def test_themes(tmp_path):
     assert "Lines computed for the last theme: 0" in _run("themes.py", tmp_path)
-    for theme in ("default", "dark", "print", "classic"):
+    for theme in ("default", "dark", "print", "coolpack"):
         assert (tmp_path / "theme_{0}.svg".format(theme)).stat().st_size > 10000
 
 

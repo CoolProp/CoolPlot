@@ -11,22 +11,26 @@ How isoline colours are chosen
 ------------------------------
 Isolines of different families cross each other everywhere, so any two
 family colours have to stay distinguishable, also for readers with a colour
-vision deficiency and in a black and white print. The default colours (red,
-blue, teal) differ in hue and also step in lightness, so every pair stays
-apart for each kind of colour vision deficiency and in greyscale, and each
-colour has at least 3:1 contrast on the background (WCAG 2.2). Three
-colours is about the most that pass these tests together. Fortunately
-every diagram type offers exactly three coloured isoline families (plus
-vapour quality, drawn in ink, and the rarely used internal energy).
-Colours are therefore given out per diagram type: the families the diagram
-offers, in the fixed order T, p, h, s, rho, u, take the palette slots one
-after another. Temperature is always the first slot (red) wherever it
-appears and density always the third (teal), and hiding a family never
-repaints the others.
+vision deficiency. The default themes give every quantity a colour of its
+own, the same on every chart: temperature red, pressure wine, enthalpy
+orchid, entropy blue, density teal, internal energy purple (on the dark
+surface: coral, periwinkle, dusky rose, blue, aqua, yellow). Every pair of
+temperature, pressure, enthalpy, entropy and density meets on some chart
+type, so all five stay apart for each kind of colour vision deficiency
+(closest pair 15.0 in OKLab x100 on the light surface, 16.8 on the dark
+one), and each colour has at least 3:1 contrast on the background (WCAG
+2.2). On a psychrometric chart, wet-bulb temperature takes the blue and
+specific volume the teal: entropy and density never appear there.
 
-A theme can instead pin a colour to a quantity with ``isoline_colors``, as
-the "classic" theme does to reproduce the old CoolProp look and the
-"coolpack" theme does to reproduce the CoolPack charts of the late 1990s.
+Five colours cannot also stay apart in greyscale; for black and white
+print the "print" theme tells the families apart by dash pattern.
+
+A theme pins these colours with ``isoline_colors``. A quantity it does not
+pin takes the slots of ``categorical``, given out per diagram type: the
+families the diagram offers, in the fixed order T, p, h, s, rho, u, take
+the slots one after another, so hiding a family never repaints the others.
+The "print" theme uses slots only, the "coolpack" theme pins its own
+colours.
 
 Changing the theme of a diagram only restyles items in the scene; it never
 triggers a property calculation.
@@ -104,7 +108,7 @@ class Theme:
         Background, frame, ticks, grid, fonts and legend.
     """
     name: str = "custom"
-    categorical: Tuple[str, ...] = ("#c72500", "#2d03cd", "#0ba589", "#2d004b")
+    categorical: Tuple[str, ...] = ("#c72500", "#2d03cd", "#0ba589", "#87459f")
     slot_dashes: Tuple[Dash, ...] = ("solid", "solid", "solid", "solid")
     isoline_colors: Optional[Mapping[str, str]] = field(default=None, hash=False)
     isoline: LineStyle = LineStyle(width_pt=0.75)
@@ -191,10 +195,10 @@ def _sans(size_pt, **kwargs):
                 size_pt=size_pt, **kwargs)
 
 
-def _screen_theme(name, surface, ink, ink_secondary, ink_muted, gridline, baseline, categorical):
+def _screen_theme(name, surface, ink, ink_secondary, ink_muted, gridline, baseline, categorical, isoline_colors):
     """Light and dark screen themes share their structure; only colours differ.
 
-    Isolines are thin reference lines in the categorical colours. The
+    Isolines are thin reference lines, one colour per quantity. The
     saturation dome and cycles are drawn in ink, made heavier and given a
     casing in the surface colour, so they read as the subject of the chart.
     Text uses ink colours, not series colours (isoline_label_color="line"
@@ -204,6 +208,7 @@ def _screen_theme(name, surface, ink, ink_secondary, ink_muted, gridline, baseli
     return Theme(
         name=name,
         categorical=categorical,
+        isoline_colors=isoline_colors,
         isoline=LineStyle(width_pt=0.75),
         saturation=LineStyle(color=ink, width_pt=1.5, casing_color=surface, casing_width_pt=1.0),
         quality=LineStyle(color=ink_muted, width_pt=0.5),
@@ -238,51 +243,44 @@ def _screen_theme(name, surface, ink, ink_secondary, ink_muted, gridline, baseli
     )
 
 
-#: Light screen theme. Red isotherms, blue isentropes, teal isochores (on
-#: a log(p)-h chart): hues that also step in lightness (blue dark, red
-#: middle, teal light), so that every pair stays apart for each kind of
-#: colour vision deficiency and in greyscale (worst pair 14.6 in OKLab x100,
-#: 32.3 for normal vision), each with at least 3:1 contrast on the surface.
-#: The fourth slot (aubergine) is for internal energy.
-#: docs/explanation/theme_catalog.md has all the numbers.
+def _per_quantity(T, p, h, s, rho, u):
+    """The isoline colours of a screen theme, one per quantity. Wet-bulb
+    temperature takes the colour of entropy and specific volume that of
+    density: neither entropy nor density appears on a psychrometric chart."""
+    return {"T": T, "p": p, "h": h, "s": s, "rho": rho, "u": u, "Twb": s, "v": rho}
+
+
+#: Light screen theme. Red, blue and teal for temperature, entropy and
+#: density (a log(p)-h chart), wine and orchid for pressure and enthalpy,
+#: purple for internal energy: every pair of the first five stays apart for
+#: each kind of colour vision deficiency (closest pair 15.0 in OKLab x100),
+#: each colour with at least 3:1 contrast on the surface. The categorical
+#: slots hold the same colours for quantities a derived theme leaves
+#: unpinned. docs/explanation/theme_catalog.md has all the numbers.
 DEFAULT = _screen_theme(
     "default", surface="#fcfcfb", ink="#0b0b0b", ink_secondary="#52514e", ink_muted="#898781",
     gridline="#e1e0d9", baseline="#c3c2b7",
-    categorical=("#c72500", "#2d03cd", "#0ba589", "#2d004b"))
+    categorical=("#c72500", "#2d03cd", "#0ba589", "#87459f"),
+    isoline_colors=_per_quantity(T="#c72500", p="#621b40", h="#ce52f9", s="#2d03cd", rho="#0ba589", u="#87459f"))
 
-#: The same families on a dark surface: coral, blue and aqua, stepped in
-#: lightness the other way round (blue dark, coral middle, aqua light) and
-#: checked there in the same way (worst pair 15.8).
+#: The same quantities on a dark surface: coral, periwinkle, dusky rose,
+#: blue, aqua and yellow, checked there in the same way (closest pair 16.8).
 DARK = _screen_theme(
     "dark", surface="#1a1a19", ink="#ffffff", ink_secondary="#c3c2b7", ink_muted="#898781",
     gridline="#2c2c2a", baseline="#383835",
-    categorical=("#ee7a5a", "#3a66d0", "#7ee6d2", "#ffff78"))
+    categorical=("#ee7a5a", "#3a66d0", "#7ee6d2", "#f6c919"),
+    isoline_colors=_per_quantity(T="#ee7a5a", p="#9a9ad8", h="#9f4e64", s="#3a66d0", rho="#7ee6d2", u="#f6c919"))
 
 #: Black and white for printing: families differ by dash pattern only.
 PRINT = DEFAULT.with_(
     name="print",
     categorical=("#3a3a3a",),
+    isoline_colors=None,
     slot_dashes=("solid", "dashed", "dotted", "dashdot"),
     isoline=LineStyle(width_pt=0.6),
     quality=LineStyle(color="#7a7a7a", width_pt=0.4),
     axes=replace(DEFAULT.axes, background="white", figure_background="white", frame_color="black",
                  tick_color="black", grid_major=LineStyle(color="#d0d0d0", width_pt=0.4)),
-)
-
-#: The colours of the CoolProp plots before 2026, for continuity.
-CLASSIC = Theme(
-    name="classic",
-    categorical=("black",),
-    isoline_colors={"T": "darkred", "p": "darkcyan", "h": "darkgreen", "rho": "darkblue",
-                    "s": "darkorange", "u": "purple", "Twb": "darkred", "v": "darkblue"},
-    isoline=LineStyle(width_pt=0.5),
-    saturation=LineStyle(color="black", width_pt=1.0),
-    quality=LineStyle(color="black", width_pt=0.5),
-    isoline_label=TextStyle(font=Font(size_pt=7.0), halo_color="white", halo_width_pt=1.5),
-    processes=(LineStyle(color="red", width_pt=1.5),),
-    state_points=(MarkerStyle(shape="o", size_pt=5.0, face_color="red", edge_color="red"),),
-    state_number=TextStyle(font=Font(size_pt=8.0), color="red", halo_color="white", halo_width_pt=1.5),
-    axes=AxesStyle(grid_major=None, legend=LegendStyle(visible=False)),
 )
 
 def _serif(size_pt, **kwargs):
@@ -328,12 +326,11 @@ COOLPACK = Theme(
     ),
 )
 
-THEMES = {t.name: t for t in (DEFAULT, DARK, PRINT, CLASSIC, COOLPACK)}
+THEMES = {t.name: t for t in (DEFAULT, DARK, PRINT, COOLPACK)}
 
 
 def get_theme(theme: Union[str, Theme, None]) -> Theme:
-    """Accept a Theme or the name of a preset: 'default', 'dark', 'print', 'classic',
-    'coolpack'."""
+    """Accept a Theme or the name of a preset: 'default', 'dark', 'print', 'coolpack'."""
     if isinstance(theme, Theme):
         return theme
     if theme is None:
