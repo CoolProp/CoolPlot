@@ -457,7 +457,7 @@ def test_an_older_core_refuses_unicode_symbols(monkeypatch):
     with pytest.warns(native.CoreFallbackWarning, match="older than 1.4"):
         _, axes = compose(spec, domain, curves)
     assert axes.x_label == "Density \u03c1 / kg/m\u00b3"   # drawn by the Python composer
-    chart.settings = chart.settings.with_(labels={"symbols": "ascii"})
+    chart.settings = chart.settings.with_(labels={"symbols": "ascii"}, branding={"references": "none"})
     assert native.compose(chart.spec, domain, curves) is not None   # plain letters: the older core composes it
 
 
@@ -478,8 +478,8 @@ def test_unicode_symbols_compose_the_same_through_the_port():
 
 
 def _before_12(chart):
-    """The chart with the label mode, legend and plain symbols of 1.1, which an older core understands."""
-    chart.settings = chart.settings.with_(labels={"mode": "edge", "symbols": "ascii"})
+    """The chart with the label mode, legend, plain symbols and no badge of 1.1, which an older core understands."""
+    chart.settings = chart.settings.with_(labels={"mode": "edge", "symbols": "ascii"}, branding={"references": "none"})
     legend = chart.theme.axes.legend.with_(location="outside right")
     chart.theme = chart.theme.with_(axes=chart.theme.axes.with_(legend=legend))
     return chart
