@@ -269,7 +269,7 @@ def label_style(theme: Theme, line_color: Optional[str]) -> TextStyle:
     return style
 
 
-#: Where a label sits on a line: (x, y, direction) in display units, see label_spot.
+# Where a label sits on a line: (x, y, direction) in display units, see label_spot.
 Spot = Tuple[float, float, Optional[Tuple[float, float]]]
 
 
