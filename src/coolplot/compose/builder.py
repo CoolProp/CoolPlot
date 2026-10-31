@@ -484,7 +484,8 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Optional[
     """All scene items and the axes for a diagram.
 
     ``curves`` are (CurveRequest, Curve) pairs as returned by
-    :meth:`coolplot.engine.Engine.curves`. ``plot_size_pt`` is the size of
+    :meth:`coolplot.engine.Engine.curves`, for the families and for the
+    single lines (``LineSpec.item_id``) alike. ``plot_size_pt`` is the size of
     the plot area as a renderer reports it, needed to place labels; without
     it the size is estimated from ``Settings.page``. ``previous_labels``
     maps label ids to the label items of the previous scene, so that labels

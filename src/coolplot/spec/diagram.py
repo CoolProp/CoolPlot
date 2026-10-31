@@ -180,8 +180,8 @@ class LineSpec:
     its two axes: a line of an axis quantity (p or h in a log(p)-h chart)
     is straight and spans the plot. ``label`` is True to write the line's
     value on it, False for no label, or a text of its own. ``line_style``
-    None takes the style of the family (the theme's dark line colour for
-    an axis quantity) at twice its width. ``points`` overrides
+    None takes the style of the family (the colour of the saturation curve
+    for an axis quantity) at twice its width. ``points`` overrides
     ``Settings.calc`` for this line when given.
     """
     name: str
