@@ -29,9 +29,9 @@ computed (:class:`coolplot.core.errors.PropertyError`) are written in
 the chart's units too.
 
 The verbs of a chart are ``set_lines``, ``remove_lines``,
-``set_line_style``, ``add_cycle``, ``remove_cycle``, ``set_view``,
-``update_scene``, ``draw`` and ``save``; the older names still work and
-warn (see the CHANGELOG for 0.5).
+``set_line_style``, ``add_line``, ``remove_line``, ``add_cycle``,
+``remove_cycle``, ``set_view``, ``update_scene``, ``draw`` and ``save``;
+the older names still work and warn (see the CHANGELOG for 0.5).
 """
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ from typing import (TYPE_CHECKING, Any, Callable, Dict, Mapping, Optional, Seque
 
 import numpy as np
 
-from .compose import compose
+from .compose import compose, label_text
 from .core.cycle import Cycle, StateInput
 from .core.diagram_type import DiagramType, Family
 from .core.errors import PropertyError
@@ -53,9 +53,10 @@ from .core.quantities import quantity_key
 from .core.state import StatePoint, with_mollier_temperature
 from .core.units import Unit, UnitsLike, UnitSystem, get_unit_system
 from .engine import BackgroundEngine, CurveCache, Engine, plan
+from .engine.planning import snap
 from .scene import Scene
-from .spec import (CycleSpec, DiagramSpec, FluidSpec, HumidAirSpec, IsolineSet, SaturationAnchor, Settings,
-                   get_settings)
+from .spec import (CycleSpec, DiagramSpec, FluidSpec, HumidAirSpec, IsolineSet, LineSpec, SaturationAnchor,
+                   Settings, get_settings)
 from .spec.diagram import ANCHOR_KEYS
 from .style.theme import Theme, get_theme
 from .style.values import LineStyle, MarkerStyle
@@ -325,6 +326,7 @@ class Chart:
         if isinstance(self.engine, BackgroundEngine):
             return self.engine.progress
         n = sum(len(s.values_SI or ()) or s.num for s in self.spec.isolines)
+        n += sum(1 for line in self.spec.lines if not self.spec.diagram.is_axis(line.key))   # axis lines need no curve
         return n, n
 
     def wait(self, timeout: Optional[float] = None) -> bool:
@@ -591,6 +593,90 @@ class Chart:
     def line_sets(self) -> Dict[str, IsolineSet]:
         """The families of lines by quantity key, as :class:`coolplot.spec.IsolineSet` values."""
         return {s.key: s for s in self.spec.isolines}
+
+    def add_line(self, key: str, value: float, name: Optional[str] = None, line_style: Optional[LineStyle] = None,
+                 label: Union[bool, str] = True, units: Optional[UnitsLike] = None,
+                 points: Optional[int] = None) -> str:
+        """Add or replace a single line of constant ``key``, drawn on top of the families.
+
+        For example a design temperature, or the pressure at which a relief
+        valve or burst disk opens. The line is independent of the families:
+        :meth:`set_lines` and :meth:`set_default_lines` leave it alone.
+
+        Parameters
+        ----------
+        key : str
+            Quantity held constant: any quantity :meth:`set_lines` takes in
+            this chart, or one of the two axis quantities (p and h in a
+            log(p)-h chart). A line of an axis quantity is a straight line
+            across the plot, and the axes widen to show it.
+        value : float
+            The constant value, in the chart's units or in ``units``.
+        name : str, optional
+            Shown in the legend; adding a line under a name that is taken
+            replaces that line. Default: the label text, e.g. "p=130 bar",
+            numbered ("p=130 bar (2)") when a line of another value has it.
+            A name may not end in "/label".
+        line_style : LineStyle, optional
+            Default: the style of the family (the colour of the saturation
+            curve for an axis quantity) at twice its width.
+        label : bool or str
+            True writes the value on the line, False nothing; a text is
+            written instead of the value.
+        units : str or UnitSystem, optional
+            Units of ``value``; default the chart's units.
+        points : int, optional
+            Points of a curved line; default from ``settings.calc``.
+
+        Returns
+        -------
+        str
+            The name of the line, for :meth:`remove_line`.
+
+        Examples
+        --------
+        One isotherm highlighted among the default lines, and the pressure at
+        which the burst disks of a CO2 plant open:
+
+        >>> diagram.set_default_lines(labels=True, rounding=True)   # doctest: +SKIP
+        >>> diagram.add_line("T", 22)                               # doctest: +SKIP
+        >>> red = LineStyle(color="red", width_pt=2.0)                  # doctest: +SKIP
+        >>> diagram.add_line("p", 130, name="Burst disk", line_style=red)   # doctest: +SKIP
+        """
+        key = quantity_key(key)
+        diagram = self.spec.diagram
+        unit = self._units(units)[key]
+        values_SI = np.atleast_1d(unit.to_SI(np.asarray(value, dtype=float)))
+        if len(values_SI) != 1:
+            raise ValueError("A line has one value, not {0}; give a family of lines with set_lines.".format(value))
+        value_SI = float(values_SI[0])
+        if not diagram.is_axis(key):
+            self._family(key).check_values((value_SI,), diagram.quantity_label(key))
+        if name is None:
+            name = self._line_name(key, snap(value_SI))   # the value as the line holds it
+        self.spec = self.spec.with_line(LineSpec(name=name, key=key, value_SI=value_SI, label=label,
+                                                 line_style=line_style, points=points))
+        return name
+
+    def _line_name(self, key: str, value_SI: float) -> str:
+        """The default name of a line: its label text, e.g. "p=30 bar".
+
+        A line of another value can have the same label text (30.001 and
+        30.002 bar both read "p=30 bar"); the new line then gets a number,
+        "p=30 bar (2)", and does not replace it. A line of the same value
+        keeps its name and is replaced.
+        """
+        text = label_text(self.spec, key, value_SI)
+        taken = {line.name: (line.key, line.value_SI) for line in self.spec.lines}
+        name, number = text, 1
+        while name in taken and taken[name] != (key, value_SI):
+            number += 1
+            name = "{0} ({1})".format(text, number)
+        return name
+
+    def remove_line(self, name: str) -> None:
+        """Remove the single line called ``name``; nothing happens if there is none."""
+        self.spec = self.spec.without_line(name)
 
     # Names removed in 1.0 for this kind of chart, see REMOVED_NAMES
     _removed_names = REMOVED_NAMES
@@ -989,8 +1075,8 @@ class Chart:
         but no line is calculated. An application can use it to tell a
         request that only draws from one that calculates.
 
-        It counts the final lines of the isoline families only: cycles are
-        left out, and with a background engine a line counts until its
+        It counts the final lines of the isoline families and the single
+        lines of :meth:`add_line`: cycles are left out, and with a background engine a line counts until its
         final version is in the cache, also while a job for it is running.
         """
         spec = self.spec
