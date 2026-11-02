@@ -194,6 +194,8 @@ class LineSpec:
     def __post_init__(self):
         if not isinstance(self.name, str) or not self.name.strip():
             raise ValueError("A line needs a name, not {0!r}.".format(self.name))
+        if self.name.endswith("/label"):   # the id of its label would be that of another line's label
+            raise ValueError("A line name may not end in '/label', not {0!r}.".format(self.name))
         object.__setattr__(self, "key", quantity_key(self.key))
         # Snapped like isoline values, so that the line shares its curve with a family line of the same value
         value = _snap(float(self.value_SI))

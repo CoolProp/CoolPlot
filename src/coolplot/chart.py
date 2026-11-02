@@ -613,7 +613,9 @@ class Chart:
             The constant value, in the chart's units or in ``units``.
         name : str, optional
             Shown in the legend; adding a line under a name that is taken
-            replaces that line. Default: the label text, e.g. "p=130 bar".
+            replaces that line. Default: the label text, e.g. "p=130 bar",
+            numbered ("p=130 bar (2)") when a line of another value has it.
+            A name may not end in "/label".
         line_style : LineStyle, optional
             Default: the style of the family (the colour of the saturation
             curve for an axis quantity) at twice its width.
@@ -650,9 +652,25 @@ class Chart:
         if not diagram.is_axis(key):
             self._family(key).check_values((value_SI,), diagram.quantity_label(key))
         if name is None:
-            name = label_text(self.spec, key, snap(value_SI))   # the value as the line holds it
+            name = self._line_name(key, snap(value_SI))   # the value as the line holds it
         self.spec = self.spec.with_line(LineSpec(name=name, key=key, value_SI=value_SI, label=label,
                                                  line_style=line_style, points=points))
+        return name
+
+    def _line_name(self, key: str, value_SI: float) -> str:
+        """The default name of a line: its label text, e.g. "p=30 bar".
+
+        A line of another value can have the same label text (30.001 and
+        30.002 bar both read "p=30 bar"); the new line then gets a number,
+        "p=30 bar (2)", and does not replace it. A line of the same value
+        keeps its name and is replaced.
+        """
+        text = label_text(self.spec, key, value_SI)
+        taken = {line.name: (line.key, line.value_SI) for line in self.spec.lines}
+        name, number = text, 1
+        while name in taken and taken[name] != (key, value_SI):
+            number += 1
+            name = "{0} ({1})".format(text, number)
         return name
 
     def remove_line(self, name: str) -> None:

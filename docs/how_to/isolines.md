@@ -30,7 +30,7 @@ is independent of the families: `set_lines` and `set_default_lines`
 leave it alone.
 
 ```python
-from coolplot import LineStyle
+from coolplot import LineStyle, PropertyDiagram
 
 diagram = PropertyDiagram("CO2", "ph", units="engineering")
 diagram.set_default_lines(labels=True, rounding=True)

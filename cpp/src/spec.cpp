@@ -154,6 +154,9 @@ DiagramSpec DiagramSpec::from_json(const json& data) {
     for (const json& l : data.value("lines", json::array())) {
         LineSpec line;
         line.name = l.at("name").get<std::string>();
+        const std::string suffix = "/label";  // the id of its label would be that of another line's label
+        if (line.name.size() >= suffix.size() && line.name.compare(line.name.size() - suffix.size(), suffix.size(), suffix) == 0)
+            throw Error("line '" + line.name + "': a line name may not end in '/label'");
         line.key = quantity_key(l.at("key").get<std::string>());
         line.value_SI = l.at("value_SI").get<double>();
         if (!spec.diagram.family(line.key) && !spec.diagram.is_axis(line.key))

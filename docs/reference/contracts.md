@@ -237,14 +237,16 @@ an item in place:
 | `line/<name>/label` | its label |
 
 Groups collect what is styled and toggled together (`iso/T`,
-`iso/T/label`, `cycle/<name>`, `cycle/<name>/numbers`). Roles say what
+`iso/T/label`, `cycle/<name>`, `cycle/<name>/numbers`, and for a single
+line `line/<name>` and its label's `line/<name>/label`). Roles say what
 an item means: `isoline`, `saturation` (the phase boundary: quality 0
 and 1, relative humidity 100 %), `quality` (the other lines of the
 boundary family), `isoline_label`, `label_tick` (since 1.2: the short
 line on the frame where a line with an outer rail label leaves, id
 `iso/<key>/<value>/tick`, in the group of the labels), `cycle`, `process`, `state_points`,
 `state_number`, `annotation`, and since 1.5 `line` and `line_label` (a
-single line and its label, group `line/<name>`). Z order: isolines 1,
+single line and its label, in the groups `line/<name>` and
+`line/<name>/label`). Z order: isolines 1,
 saturation 2, single lines 3, labels 4, cycles and processes 5, state
 points 6, state numbers 7; backends keep everything below 0 for grid and
 background.

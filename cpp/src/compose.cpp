@@ -367,14 +367,15 @@ struct Spot
 };
 
 /// The point at `position` (0 to 1) along the visible points of a line, with the direction of the line
-/// there; false when fewer than 3 are visible.
-bool label_spot(const std::vector<double>& x, const std::vector<double>& y, const AxesSpec& axes, double position, Spot& spot) {
+/// there; false when fewer than `min_points` are visible.
+bool label_spot(const std::vector<double>& x, const std::vector<double>& y, const AxesSpec& axes, double position, Spot& spot,
+                size_t min_points = 3) {
     double x_lo = axes.x_limits.lo, x_hi = axes.x_limits.hi, y_lo = axes.y_limits.lo, y_hi = axes.y_limits.hi;
     std::vector<size_t> inside;
     for (size_t i = 0; i < x.size(); ++i)
         if (std::isfinite(x[i]) && std::isfinite(y[i]) && x[i] >= x_lo && x[i] <= x_hi && y[i] >= y_lo && y[i] <= y_hi)
             inside.push_back(i);
-    if (inside.size() < 3) return false;
+    if (inside.size() < min_points) return false;
     size_t pick = static_cast<size_t>(position * inside.size());
     size_t i = inside[std::min(pick, inside.size() - 1)];
     size_t i0 = i > 0 ? i - 1 : 0, i1 = std::min(i + 1, x.size() - 1);
@@ -435,13 +436,16 @@ std::vector<Item> labels_for(const DiagramSpec& spec, const std::vector<LabelReq
 
 /// (style, role, legend text, z order) of a single line, as isoline_look for a family. The style is the
 /// line's own, or else its family's at twice the width. A line of an axis quantity has no family; it takes
-/// the colour of the saturation curve, the darkest line of the theme.
+/// the colour of the saturation curve (with the changes of set_line_style("saturation")), the darkest line
+/// of the theme.
 Look line_look(const DiagramSpec& spec, const Theme& theme, const LineSpec& line) {
     LineStyle style = line.line_style;
     if (!line.has_line_style) {
         if (spec.diagram.is_axis(line.key)) {
+            json overrides = spec.style_override("saturation");
+            LineStyle saturation = overrides.empty() ? theme.saturation : with_overrides(theme.saturation, overrides);
             style = theme.isoline;
-            style.color = theme.saturation.color;
+            style.color = saturation.color;
         } else {
             style = isoline_look(spec, theme, line.key, line.value_SI).style;
         }
@@ -507,7 +511,7 @@ std::vector<Item> line_items(const DiagramSpec& spec, const Theme& theme, const 
             if (found == by_id.end()) continue;
             x = converted(ux, found->second->x);
             y = converted(uy, found->second->y);
-            has_spot = label_spot(x, y, axes, spec.settings.labels.position, spot);
+            has_spot = label_spot(x, y, axes, spec.settings.labels.position, spot, 2);  // a line may have only 2 points
         }
         Look look = line_look(spec, theme, line);
         items.push_back(line_item(line.item_id(), line.item_id(), look.role, true, look.legend, x, y, look.style, look.z_order));

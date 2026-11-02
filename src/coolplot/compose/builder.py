@@ -273,13 +273,14 @@ def label_style(theme: Theme, line_color: Optional[str]) -> TextStyle:
 Spot = Tuple[float, float, Optional[Tuple[float, float]]]
 
 
-def label_spot(x, y, frame: Frame, position: float) -> Optional[Spot]:
+def label_spot(x, y, frame: Frame, position: float, min_points: int = 3) -> Optional[Spot]:
     """The point at ``position`` (0 to 1) along the visible points of a line,
-    with the direction of the line there; None when fewer than 3 are visible."""
+    with the direction of the line there; None when fewer than ``min_points``
+    are visible."""
     (x_lo, x_hi), (y_lo, y_hi) = frame.x_limits, frame.y_limits
     inside = np.flatnonzero(np.isfinite(x) & np.isfinite(y) &
                             (x >= x_lo) & (x <= x_hi) & (y >= y_lo) & (y <= y_hi))
-    if len(inside) < 3:
+    if len(inside) < min_points:
         return None
     i = int(inside[min(int(position * len(inside)), len(inside) - 1)])
     i0, i1 = max(i - 1, 0), min(i + 1, len(x) - 1)
@@ -339,12 +340,14 @@ def line_look(spec: DiagramSpec, theme: Theme, line: LineSpec):
 
     The style is the line's own, or else its family's at twice the width.
     A line of an axis quantity has no family; it takes the colour of the
-    saturation curve, the darkest line of the theme.
+    saturation curve (with the changes of ``set_line_style("saturation")``),
+    the darkest line of the theme.
     """
     style = line.line_style
     if style is None:
         if spec.diagram.is_axis(line.key):
-            base = theme.isoline.with_(color=theme.saturation.color)
+            saturation = theme.saturation.with_(**spec.style_override(SATURATION_KEY))
+            base = theme.isoline.with_(color=saturation.color)
         else:
             base = isoline_look(spec, theme, line.key, line.value_SI)[0]
         style = base.with_(width_pt=2.0 * base.width_pt)
@@ -394,7 +397,7 @@ def line_items(spec: DiagramSpec, theme: Theme, curves, frame: Frame) -> List[Sc
             if curve is None:
                 continue
             x, y = ux.from_SI(curve.x), uy.from_SI(curve.y)
-            spot = label_spot(x, y, frame, position)
+            spot = label_spot(x, y, frame, position, min_points=2)   # a line may have only 2 points
         style, role, legend, z_order = line_look(spec, theme, line)
         items.append(Line(id=line.item_id, group=line.item_id, role=role, legend=legend, x=x, y=y,
                           style=style, z_order=z_order))

@@ -489,6 +489,8 @@ def test_single_lines_compose_the_same_through_the_port():
     diagram.add_line("p", 30, name="Relief valve", line_style=LineStyle(color="red", width_pt=2.0))
     diagram.add_line("h", 1500, label="beyond the region")
     diagram.add_line("Q", 0.4, label=False)
+    diagram.add_line("s", 2.0, name="Two points", points=2)
+    diagram.set_line_style("saturation", color="#7a3cc8")   # the colour of the lines of an axis quantity
     chart = PsychrometricChart(T_range=(-10, 45), W_range=(0, 25), settings="interactive")
     chart.settings = chart.settings.with_(labels={"mode": "inline"})
     chart.set_default_lines()
@@ -499,6 +501,9 @@ def test_single_lines_compose_the_same_through_the_port():
         difference = _same(python.to_dict(), ported.to_dict())
         assert difference == "", difference
         assert {i.role for i in ported if i.id.startswith("line/")} == {"line", "line_label"}
+    ported = _both_scenes(diagram)[1]
+    assert ported["line/h=1500 kJ/kg"].style.color == "#7a3cc8"
+    assert ported["line/Two points/label"].text.startswith("s=2")
 
 
 @needs_core

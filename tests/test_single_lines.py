@@ -97,6 +97,33 @@ def test_labels_names_and_removal():
     assert not any(i.startswith("line/Evaporator") for i in _items(chart))
 
 
+def test_default_names_of_different_values_do_not_replace_each_other():
+    chart = _co2()
+    assert chart.add_line("p", 30.001) == "p=30 bar"
+    assert chart.add_line("p", 30.002) == "p=30 bar (2)"   # the same label text, another value
+    assert chart.add_line("p", 30.001) == "p=30 bar"       # the same value: replaced, as with a given name
+    assert [line.name for line in chart.spec.lines] == ["p=30 bar", "p=30 bar (2)"]
+
+
+def test_an_axis_line_takes_the_restyled_saturation_colour():
+    chart = _co2()
+    chart.set_line_style("saturation", color="#7a3cc8")
+    chart.add_line("p", 130, name="Burst disk")
+    assert chart.update_scene()["line/Burst disk"].style.color == "#7a3cc8"
+
+
+def test_a_line_of_two_points_is_labelled():
+    from coolplot.compose.builder import label_spot
+    from coolplot.compose.layout import Frame
+    frame = Frame((0.0, 10.0), (0.0, 10.0), False, False, 400.0, 300.0)
+    x, y = np.array([2.0, 8.0]), np.array([2.0, 8.0])
+    assert label_spot(x, y, frame, 0.5) is None   # a family line needs 3 visible points for a label
+    assert label_spot(x, y, frame, 0.5, min_points=2) == (8.0, 8.0, (6.0, 6.0))
+    chart = _co2()
+    chart.add_line("s", 2.0, name="Isentrope", points=2)
+    assert _items(chart)["line/Isentrope/label"].text == "s=2 kJ/kg/K"
+
+
 def test_units_of_the_value():
     chart = _co2()
     name = chart.add_line("p", 13e6, units="SI")
@@ -116,6 +143,8 @@ def test_bad_lines_are_refused():
         chart.add_line("T", float("nan"))
     with pytest.raises(ValueError, match="label"):
         chart.add_line("T", 10, label="")
+    with pytest.raises(ValueError, match="/label"):
+        chart.add_line("T", 10, name="Evaporator/label")   # its id would be the id of a label
     with pytest.raises(ValueError, match="unique"):
         DiagramSpec("CO2", lines=(LineSpec("a", "T", 300.0), LineSpec("a", "T", 310.0)))
     assert chart.spec.lines == ()

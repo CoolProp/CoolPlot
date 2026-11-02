@@ -118,6 +118,9 @@ TEST_CASE("A single line of a quantity the chart has no line of is refused", "[c
     changed = input;
     changed["spec"]["lines"][0]["label"] = 3;
     CHECK_THROWS_AS(compose_json(changed.dump()), Error);
+    changed = input;
+    changed["spec"]["lines"][0]["name"] = "T=22/label";  // its id would be the id of a label
+    CHECK_THROWS_AS(compose_json(changed.dump()), Error);
 }
 
 TEST_CASE("Labels on rails, with the legend in the emptiest corner", "[compose][rails]") {
