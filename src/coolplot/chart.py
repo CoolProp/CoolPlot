@@ -326,6 +326,7 @@ class Chart:
         if isinstance(self.engine, BackgroundEngine):
             return self.engine.progress
         n = sum(len(s.values_SI or ()) or s.num for s in self.spec.isolines)
+        n += sum(1 for line in self.spec.lines if not self.spec.diagram.is_axis(line.key))   # axis lines need no curve
         return n, n
 
     def wait(self, timeout: Optional[float] = None) -> bool:

@@ -124,6 +124,13 @@ def test_a_line_of_two_points_is_labelled():
     assert _items(chart)["line/Isentrope/label"].text == "s=2 kJ/kg/K"
 
 
+def test_progress_counts_the_lines_that_need_a_curve():
+    chart = PropertyDiagram("CO2", "ph", units="engineering")
+    chart.add_line("T", 22)
+    chart.add_line("p", 130)   # straight, no curve
+    assert chart.progress == (1, 1)
+
+
 def test_units_of_the_value():
     chart = _co2()
     name = chart.add_line("p", 13e6, units="SI")
