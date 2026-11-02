@@ -155,9 +155,10 @@ class SvgRenderer(Renderer):
         Write the document with coolplot-core (:mod:`coolplot.corelib`).
         None (the default) follows the native mode, see
         :func:`coolplot.corelib.enabled`; the document is the same either way.
-        coolplot-core draws neither the badge nor the watermark, nor a
-        physical ``unit`` or a size in fractions of a pixel: a document with
-        any of them is always written here.
+        coolplot-core draws a badge of text lines (from 1.5 on) but neither
+        a logo nor a watermark, nor a physical ``unit`` or a size in
+        fractions of a pixel: a document with any of them is always written
+        here.
     unit : str
         Unit of the ``width`` and ``height`` attributes of the document:
         "px" (the default, the size in pixels), or "pt" or "mm" for the
@@ -341,11 +342,10 @@ class SvgRenderer(Renderer):
         return "\n".join([head, '<g class="cp-items">'] + [e for _, e in items] + ['</g>', tail])
 
     def _needs_python_writer(self) -> bool:
-        """Whether the document has parts coolplot-core does not write (branding, a physical unit)."""
-        axes = self._axes
-        branded = axes is not None and (axes.badge is not None or axes.watermark is not None)
+        """Whether the document has parts coolplot-core does not write (a logo or watermark, a physical unit)."""
+        from .. import corelib
         whole = float(self.width).is_integer() and float(self.height).is_integer()
-        return branded or self.unit != "px" or not whole
+        return not corelib.draws_branding(self._axes) or self.unit != "px" or not whole
 
     def _use_native(self) -> bool:
         if self.native is None:

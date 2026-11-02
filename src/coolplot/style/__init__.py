@@ -9,7 +9,7 @@ from .values import (AxesStyle, CSS_COLORS, DASH_NAMES, Font, GENERIC_FONTS, LEG
                      LegendStyle, LineStyle, MARKER_SHAPES, MarkerStyle, TextStyle, dash_pattern_pt,
                      opaque_color, parse_color, style_from_dict, style_to_dict)
 
-_THEME_NAMES = ("Theme", "THEMES", "DEFAULT", "DARK", "PRINT", "CLASSIC", "get_theme")
+_THEME_NAMES = ("Theme", "THEMES", "DEFAULT", "DARK", "PRINT", "COOLPACK", "get_theme")
 
 
 def __getattr__(name):

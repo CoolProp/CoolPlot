@@ -279,6 +279,7 @@ class Writer
         lines.push_back("<rect class=\"cp-frame\" x=\"" + num(bx_) + "\" y=\"" + num(by_) + "\" width=\"" + num(bw_) + "\" height=\"" + num(bh_)
                         + "\" fill=\"none\" stroke=\"" + st.frame_color.text() + "\" stroke-width=\"" + px(st.frame_width_pt) + "\"/>");
         ticks_and_labels(lines);
+        badge(lines);
         legend(lines);
         lines.push_back("</svg>");
         std::string out;
@@ -525,6 +526,30 @@ class Writer
                                 + "\" " + attrs + "/>");
             }
         }
+    }
+
+    /// The badge: its box and the text lines, left aligned (coolplot.render.svg, without logo).
+    void badge(std::vector<std::string>& lines) const {
+        if (!scene_.axes.has_badge || scene_.axes.badge.lines.empty()) return;
+        const Badge& b = scene_.axes.badge;
+        std::pair<double, double> size = b.size_pt();
+        double width = size.first * PX_PER_PT, height = size.second * PX_PER_PT;
+        double inset = b.inset_pt * PX_PER_PT;
+        bool left = b.location.compare(b.location.size() - 4, 4, "left") == 0, upper = b.location.compare(0, 5, "upper") == 0;
+        double x = left ? bx_ + inset : bx_ + bw_ - inset - width;
+        double y = upper ? by_ + inset : by_ + bh_ - inset - height;
+        double pad = b.padding_pt * PX_PER_PT;
+        lines.push_back("<g class=\"cp-badge\">");
+        lines.push_back("<rect class=\"cp-badge-box\" x=\"" + num(x) + "\" y=\"" + num(y) + "\" width=\"" + num(width) + "\" height=\"" + num(height)
+                        + "\" fill=\"" + b.background.text() + "\" fill-opacity=\"" + num(b.background_alpha) + "\" stroke=\"" + b.frame_color.text()
+                        + "\" stroke-width=\"" + px(b.frame_color.present ? b.frame_width_pt : 0.0) + "\"/>");
+        double top = y + pad;
+        double line_h = b.line_height_pt() * PX_PER_PT;
+        double font_px = b.text.font.size_pt * PX_PER_PT;
+        for (size_t i = 0; i < b.lines.size(); ++i)
+            lines.push_back("<text class=\"cp-badge-text\" x=\"" + num(x + pad) + "\" y=\"" + num(top + i * line_h + BADGE_BASELINE * font_px)
+                            + "\" text-anchor=\"start\" " + text_attrs(b.text) + ">" + xml_text(b.lines[i]) + "</text>");
+        lines.push_back("</g>");
     }
 
     void ticks_and_labels(std::vector<std::string>& lines) const {

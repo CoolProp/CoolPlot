@@ -105,5 +105,6 @@ docs/gallery/
 docs/reference/generated/
 docs/sg_execution_times.rst
 docs/reference/tables.md
+docs/_generated/
 cpp/build/
 cpp/build_py/

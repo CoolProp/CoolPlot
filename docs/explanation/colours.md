@@ -2,39 +2,56 @@
 
 Isolines of different families cross each other everywhere, so every
 pair of family colours has to stay distinguishable, including for
-readers with a colour vision deficiency. Of the eight hues in the
-default palette only three pass that test for all pairs (worst pair:
-CVD Delta E 9.2, normal vision 24.0 in OKLab x100, light surface). Every
-diagram type offers exactly three coloured isoline families (plus
-quality, drawn in ink, and the rarely used internal energy), so three
-are enough. On the dark surface the stepped hues give a worst pair of
-CVD Delta E 9.4 for deuteranopia and 12.6 for protanopia, and 20.9 for
-normal vision. Tritanopia, which is very rare, separates blue and aqua
-less well in the dark theme (Delta E 4.0); labels or the dash-based
-`print` theme cover that case.
+readers with a colour vision deficiency. The default themes give every
+quantity a colour of its own, the same on every chart, so a reader who
+has learned that temperature is red finds it red on a log(p)-h, a T-s or
+an h-s chart alike:
 
-| Slot | Light | Dark | Families that land here |
-|------|-------|------|-------------------------|
-| 1 | `#2a78d6` blue | `#3987e5` | T wherever offered; p in Ts, Trho; h in pT |
-| 2 | `#eb6834` orange | `#d95926` | s in ph, pT; p in hs; h in Ts, ps, prho, Trho |
-| 3 | `#1baf7a` aqua | `#199e70` | rho wherever offered; s in prho, Trho |
-| 4 | `#eda100` yellow | `#c98500` | u, only if requested |
+| Quantity | Light | Dark |
+|----------|-------|------|
+| T, temperature | `#c72500` red | `#ee7a5a` coral |
+| p, pressure | `#621b40` wine | `#9a9ad8` periwinkle |
+| h, enthalpy | `#ce52f9` orchid | `#9f4e64` dusky rose |
+| s, entropy | `#2d03cd` blue | `#3a66d0` blue |
+| rho, density | `#0ba589` teal | `#7ee6d2` aqua |
+| u, internal energy | `#87459f` purple | `#f6c919` yellow |
+| T_wb, wet-bulb temperature | as entropy | as entropy |
+| v, specific volume | as density | as density |
 
-The families a diagram offers, in the fixed order T, p, h, s, rho, u,
-take the slots in turn. The consequences:
+Every pair of T, p, h, s and rho meets on some chart type (with
+horizontal and vertical isolines, on one chart), so all five have to
+stay apart from each other. Red, blue and teal were chosen first, for the
+log(p)-h chart, by a search for the three colours whose closest pair
+stays furthest apart; wine and orchid were then searched to fit around
+them. Each reaches at least 3:1 contrast against the background, which
+WCAG 2.2 asks of lines that carry meaning. The closest pair of the five,
+as a distance in OKLab x100 (below about 10, two thin lines are hard to
+tell apart):
 
-* temperature is always blue and density always aqua;
-* hiding a family never repaints the others, because the assignment
-  depends on what the diagram offers, not on what is shown;
-* the fourth slot (u) does not pass the all-pairs test against the
-  others; isolines of u should carry labels if they are shown with three
-  other families.
+| Surface | Normal vision | Deuteranopia | Protanopia | Tritanopia | Greyscale |
+|---------|---------------|--------------|------------|------------|-----------|
+| light | 23.1 | 15.0 | 17.6 | 17.0 | 2.3 |
+| dark | 19.4 | 16.8 | 17.1 | 17.0 | 1.4 |
 
-The light aqua and yellow have less than 3:1 contrast against the light
-surface. Where those families matter, switch on value labels, which then
-carry the information. To pin a colour to a quantity regardless of the
-diagram, use `theme.with_isoline_color("T", "#c00000")`; the `classic`
-theme does this for every family.
+Five colours cannot also stay apart as greys: on the light T-s chart,
+enthalpy and density become nearly the same grey. For black and white
+print, use the `print` theme, which tells the families apart by dash
+pattern, or switch on value labels. On the log(p)-h chart, red, blue and
+teal still keep three steps of grey (14.6 light, 15.8 dark). The
+{doc}`theme_catalog` shows these numbers per chart for every theme,
+computed when the documentation is built, and {doc}`accessibility` how
+the colours were found and what they replaced.
+
+Wet-bulb temperature takes the colour of entropy and specific volume
+that of density, since neither entropy nor density appears on a
+psychrometric chart.
+
+A theme pins its colours with `isoline_colors`. A theme without them
+(the `print` theme, or one derived with `isoline_colors=None`) gives out
+the colours of `categorical` by position instead: the families a diagram
+offers, in the fixed order T, p, h, s, rho, u, take the slots in turn, so
+hiding a family never repaints the others. To change the colour of one
+quantity, use `theme.with_isoline_color("p", "#7a3cc8")`.
 
 ## Ink and reference lines
 

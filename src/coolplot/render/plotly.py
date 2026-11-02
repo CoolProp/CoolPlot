@@ -240,7 +240,7 @@ class PlotlyRenderer(Renderer):
 
     # Backend hooks ------------------------------------------------------
     def _set_axes(self, axes: AxesSpec):
-        warn_without_branding(self, axes)
+        warn_without_branding(self, axes, draws_text_badge=True)
         st: AxesStyle = axes.style
         layout = self.figure.layout
         self.figure.update_layout(
@@ -453,9 +453,47 @@ class PlotlyRenderer(Renderer):
             if item.visible and not item.clip and math.isfinite(fx) and math.isfinite(fy):
                 need = [max(n, r) for n, r in zip(need, margin_reach(item, fx, fy))]
             annotations.append(self._annotation_of(item_id, item, x_log, y_log, inside))
-        self.figure.layout.annotations = annotations
+        badge_box, badge_texts = self._badge()
+        self.figure.layout.annotations = annotations + badge_texts
+        self.figure.layout.shapes = badge_box
         if self._fit_margins(need):
             self._annotate()   # the angles of turned texts follow the size of the plot area
+
+    def _badge(self) -> Tuple[List[dict], List[dict]]:
+        """([box shape], [one annotation per line]) of the badge, at the size and corner of the SVG writer.
+
+        In paper coordinates (0 to 1 across the plot area). Plotly has no
+        baseline alignment, so each line is centred on its line height; the
+        logo of a badge is left out (see warn_without_branding). The
+        annotations have no name: the name of every other annotation is the
+        id of its scene item.
+        """
+        badge = self._axes.badge if self._axes is not None else None
+        if badge is None or not badge.lines:
+            return [], []
+        width_pt, height_pt = self.plot_size_pt()
+        if not (width_pt > 0.0 and height_pt > 0.0):
+            return [], []
+        box_w, box_h = badge.size_pt()
+        # The box keeps the size of the SVG writer; with a logo the lines start below where it would be
+        first_pt = badge.padding_pt + (badge.logo_height_pt() + badge.gap_pt if badge.logo else 0.0)
+        vertical, horizontal = badge.location.split()
+        x0 = badge.inset_pt / width_pt if horizontal == "left" else 1.0 - (badge.inset_pt + box_w) / width_pt
+        y1 = 1.0 - badge.inset_pt / height_pt if vertical == "upper" else (badge.inset_pt + box_h) / height_pt
+        fill = badge.background
+        if fill is not None:
+            r, g, b = (int(fill[i:i + 2], 16) for i in (1, 3, 5))
+            fill = "rgba({0},{1},{2},{3})".format(r, g, b, badge.background_alpha)
+        box = dict(type="rect", xref="paper", yref="paper", x0=x0, x1=x0 + box_w / width_pt, y0=y1 - box_h / height_pt,
+                   y1=y1, fillcolor=fill or "rgba(0,0,0,0)", layer="above",
+                   line=dict(color=_color(badge.frame_color), width=badge.frame_width_pt * PX_PER_PT if badge.frame_color else 0))
+        texts = []
+        for i, line in enumerate(badge.lines):
+            middle_pt = first_pt + (i + 0.5) * badge.line_height_pt
+            texts.append(dict(x=x0 + badge.padding_pt / width_pt, y=y1 - middle_pt / height_pt, xref="paper", yref="paper",
+                              text=_escape(line), showarrow=False, xanchor="left", yanchor="middle", align="left",
+                              font=_font(badge.text), captureevents=False))
+        return [box], texts
 
     def _fit_margins(self, need) -> bool:
         """Widen the margins for texts outside the frame (labels on rails, margin labels), like the SVG writer.

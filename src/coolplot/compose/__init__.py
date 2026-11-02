@@ -19,14 +19,14 @@ def compose(spec, domain, curves, plot_size_pt=None, previous_labels=None, cycle
 
     Composed by coolplot-core when it is installed and the native mode is
     "on" (see :func:`coolplot.corelib.enabled`), by the Python composer
-    otherwise; both give the same scene. coolplot-core does not compose
-    the branding (badge and watermark), so a branded chart always takes
-    the Python composer.
+    otherwise; both give the same scene. coolplot-core composes a badge of
+    text lines (references, versions, lines of your own) but no pictures,
+    so a chart with a logo or a watermark always takes the Python composer.
     """
     branding = spec.settings.branding
-    if corelib.enabled() and not (branding.has_badge or branding.watermark):
+    if corelib.enabled() and not (branding.logo or branding.watermark):
         try:
-            result = corelib.compose(spec, domain, curves, plot_size_pt, previous_labels, cycles)
+            result = corelib.compose(spec, domain, curves, plot_size_pt, previous_labels, cycles, sources)
         except corelib.CoreRefusal as error:
             # Something the port does not know (yet). The Python composer is
             # the reference: it draws the chart, or raises the real error.

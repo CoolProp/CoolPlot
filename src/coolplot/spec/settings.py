@@ -248,8 +248,11 @@ def _sources(value) -> Tuple[str, ...]:
 class BrandingSettings:
     """Who made a chart and where its data come from
 
-    Everything here is off by default. A change only affects the layout
-    of the page, like :class:`PageSettings`; nothing is recalculated.
+    By default the badge names the equation of state of the fluid
+    (``references="short"``), so that a chart says where its properties
+    come from; everything else is off. ``references="none"`` removes the
+    badge. A change only affects the layout of the page, like
+    :class:`PageSettings`; nothing is recalculated.
 
     The badge is a box in one corner of the plot area. It holds, from top
     to bottom, the logo, the references, the versions line and the
@@ -267,10 +270,11 @@ class BrandingSettings:
     logo_width_pt : float
         Width of the logo in points.
     references : str
-        "none"; "short" for the equation of state of every fluid as first
-        author and year ("n-Propane: Lemmon et al. (2009)"); "full" with
-        the journal, volume and pages as well. Mixtures add the
-        reference of their mixing model, humid air that of ASHRAE RP-1485.
+        "short" (the default since 1.5) for the equation of state of every
+        fluid as first author and year ("n-Propane: Lemmon et al. (2009)");
+        "full" with the journal, volume and pages as well; "none" for no
+        references. Mixtures add the reference of their mixing model,
+        humid air that of ASHRAE RP-1485.
     versions : bool
         Add a line with the CoolProp and CoolPlot versions.
     lines : tuple of str
@@ -296,7 +300,7 @@ class BrandingSettings:
     """
     logo: Tuple[str, ...] = ()
     logo_width_pt: float = 60.0
-    references: str = "none"
+    references: str = "short"
     versions: bool = False
     lines: Tuple[str, ...] = ()
     location: str = "auto"
@@ -407,11 +411,16 @@ class Settings:
             # A record before 1.4 always holds its labels, never the symbol
             # style: it keeps the plain spelling it was drawn with
             labels["symbols"] = "ascii"
+        branding = data.get("branding")
+        if branding is None and data.get("calc") is not None:
+            # A record before 1.2 always holds its other parts, never the
+            # branding: it keeps the chart without badge it was drawn as
+            branding = {"references": "none"}
         return cls(calc=part(CalcSettings, data.get("calc")),
                    look=Theme.from_dict(look) if isinstance(look, dict) else get_theme(look or "default"),
                    labels=part(LabelSettings, labels),
                    page=part(PageSettings, data.get("page")),
-                   branding=part(BrandingSettings, data.get("branding")))
+                   branding=part(BrandingSettings, branding))
 
 
 #: Ready-made settings. "interactive" uses few points so that dragging

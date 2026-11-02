@@ -121,15 +121,15 @@ One record describes a property diagram and a psychrometric chart alike;
   0 and 1, or 100 % relative humidity) whatever lines are set, `false`
   hides it, `null` leaves it to the values of the family. A record of 1.1
   has no such field and reads as `null`, so it draws as it did.
-* `lines` (since 1.5): single lines of constant `key` at `value_SI`,
+* `lines` (since 1.6): single lines of constant `key` at `value_SI`,
   each under its own `name` (`coolplot.spec.LineSpec`). `key` is a
   quantity with a family in the diagram, or one of its two axes: such a
   line is straight and spans the plot, and the axes widen to show it.
   `label` is `true` (the value), `false` (none) or a text; `line_style`
   `null` takes the family's style at twice the width (the colour of the
   saturation curve for an axis quantity). The key is left out when a
-  chart has no single lines, so records of 1.4 read as they were; a
-  coolplot-core older than 1.5 is not asked to compose a spec with lines.
+  chart has no single lines, so records of 1.5 read as they were; a
+  coolplot-core older than 1.6 is not asked to compose a spec with lines.
 
 ## 2. The curve record
 
@@ -209,10 +209,13 @@ writer draws the first one it can. `watermark` is a picture centred in
 the plot area, above its background and below the grid and the items.
 Sizes are in points; the heights follow from the pictures. The
 matplotlib and SVG writers (and the web renderer built on the latter)
-draw both. The SVG writer of coolplot-core does not: a scene with either is
-written by the Python SVG writer instead, without a warning, since the
-result is complete. The PDF writer of coolplot-core (`PdfRenderer`), the plotly backend and
-the JavaScript writer leave both out and warn once.
+draw both. coolplot-core (from 1.5), the plotly backend and the
+JavaScript writer draw a badge of text lines but no pictures: a scene
+with a logo or a watermark is written by the Python SVG writer instead,
+without a warning, since the result is complete; the PDF writer of
+coolplot-core (`PdfRenderer`), plotly and the JavaScript writer leave the
+pictures out and warn once. coolplot-core refuses a record whose badge
+has a logo, or that has a watermark, rather than leave them out.
 
 Item types: `line` (a polyline; `null` splits it), `markers` (points
 without a line) and `text` (one label; `direction` is a direction in
@@ -233,7 +236,7 @@ an item in place:
 | `cycle/<name>/states` | the markers of all states of a cycle, in ascending state number |
 | `cycle/<name>/number/<n>` | the number of state n |
 | `process/<name>/line`, `process/<name>/points` | a legacy process |
-| `line/<name>` | a single line (1.5), also the item id of its curve request |
+| `line/<name>` | a single line (1.6), also the item id of its curve request |
 | `line/<name>/label` | its label |
 
 Groups collect what is styled and toggled together (`iso/T`,
@@ -244,7 +247,7 @@ and 1, relative humidity 100 %), `quality` (the other lines of the
 boundary family), `isoline_label`, `label_tick` (since 1.2: the short
 line on the frame where a line with an outer rail label leaves, id
 `iso/<key>/<value>/tick`, in the group of the labels), `cycle`, `process`, `state_points`,
-`state_number`, `annotation`, and since 1.5 `line` and `line_label` (a
+`state_number`, `annotation`, and since 1.6 `line` and `line_label` (a
 single line and its label, in the groups `line/<name>` and
 `line/<name>/label`). Z order: isolines 1,
 saturation 2, single lines 3, labels 4, cycles and processes 5, state

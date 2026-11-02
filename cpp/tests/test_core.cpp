@@ -6,6 +6,7 @@
 #include "coolplot/style.h"
 
 using namespace coolplot;
+using Catch::Matchers::WithinRel;
 using Catch::Matchers::WithinULP;
 
 namespace {
@@ -159,7 +160,7 @@ TEST_CASE("Dash patterns scale with the width but not below one point", "[style]
 }
 
 TEST_CASE("Themes round-trip through JSON and give out colours per slot", "[style]") {
-    for (const char* name : {"default", "dark", "print", "classic"}) {
+    for (const char* name : {"default", "dark", "print", "coolpack"}) {
         const Theme& theme = get_theme(name);
         json record = theme.to_json();
         Theme again = Theme::from_json(json::parse(record.dump()));
@@ -180,16 +181,35 @@ TEST_CASE("Themes round-trip through JSON and give out colours per slot", "[styl
     CHECK_THROWS_AS(Theme::from_json(record), Error);
     const Theme& base = get_theme("default");
     std::vector<std::string> ph = {"T", "s", "rho"}, hs = {"T", "p", "rho"}, ts = {"p", "h", "rho"};
-    CHECK(base.isoline_style("T", ph).color.hex == base.categorical[0]);
-    CHECK(base.isoline_style("T", hs).color.hex == base.categorical[0]);
-    CHECK(base.isoline_style("rho", ph).color.hex == base.categorical[2]);
-    CHECK(base.isoline_style("rho", ts).color.hex == base.categorical[2]);
-    CHECK(base.isoline_style("p", ts).color.hex == base.categorical[0]);
+    // Slots, for a theme without pinned colours: given out per diagram type
+    Theme slots = base;
+    slots.has_isoline_colors = false;
+    slots.isoline_colors.clear();
+    CHECK(slots.isoline_style("T", ph).color.hex == slots.categorical[0]);
+    CHECK(slots.isoline_style("T", hs).color.hex == slots.categorical[0]);
+    CHECK(slots.isoline_style("rho", ph).color.hex == slots.categorical[2]);
+    CHECK(slots.isoline_style("rho", ts).color.hex == slots.categorical[2]);
+    CHECK(slots.isoline_style("p", ts).color.hex == slots.categorical[0]);
     const Theme& print = get_theme("print");
     CHECK(print.isoline_style("T", ph).dash.name == "solid");
     CHECK(print.isoline_style("s", ph).dash.name == "dashed");
     CHECK(print.isoline_style("rho", ph).dash.name == "dotted");
-    CHECK(get_theme("classic").isoline_style("T", ph).color.hex == "#8b0000");
+    // The default themes pin one colour per quantity, the same on every chart
+    CHECK(base.isoline_style("T", ph).color.hex == "#c72500");
+    CHECK(base.isoline_style("p", ts).color.hex == "#621b40");
+    CHECK(base.isoline_style("p", hs).color.hex == "#621b40");
+    CHECK(base.isoline_style("h", ts).color.hex == "#ce52f9");
+    CHECK(base.isoline_style("rho", ts).color.hex == base.isoline_style("rho", ph).color.hex);
+    CHECK(get_theme("dark").isoline_style("Twb", {"RH", "Twb", "h", "v"}).color.hex == "#3a66d0");
+    CHECK_FALSE(print.has_isoline_colors);
+    CHECK_THROWS_AS(get_theme("classic"), Error);
+    const Theme& coolpack = get_theme("coolpack");
+    CHECK(coolpack.isoline_style("T", ph).color.hex == "#ff0000");
+    CHECK(coolpack.isoline_style("s", ph).color.hex == "#0000ff");
+    CHECK(coolpack.isoline_style("rho", ph).color.hex == "#008000");
+    CHECK(coolpack.isoline_label_color == "line");
+    CHECK(coolpack.axes.has_grid_minor);
+    CHECK_FALSE(coolpack.axes.legend.visible);
     CHECK_THROWS_AS(Theme::from_json({{"categorical", {"nope"}}}), Error);
     CHECK_THROWS_AS(Theme::from_json({{"slot_dashes", {"wavy"}}}), Error);
     CHECK_THROWS_AS(AxesStyle::from_json({{"tick_direction", "sideways"}}), Error);
@@ -198,4 +218,12 @@ TEST_CASE("Themes round-trip through JSON and give out colours per slot", "[styl
     CHECK_THAT(scaled.isoline_label.font.size_pt, WithinULP(15.0, 0));
     CHECK_THAT(scaled.axes.title.font.size_pt, WithinULP(22.0, 0));
     CHECK_THAT(scaled.isoline.width_pt, WithinULP(base.isoline.width_pt, 0));
+}
+
+TEST_CASE("Text widths are estimated as in Python", "[core][badge]") {
+    // coolplot.core.textwidth.text_width_pt(text, 6.0)
+    CHECK_THAT(text_width_pt("R290: Lemmon et al. (2009)", 6.0), WithinRel(85.905, 1e-12));
+    CHECK_THAT(text_width_pt("Kunz und W\xc3\xa4gner", 6.0), WithinRel(55.5312, 1e-12));        // an accented letter: 0.6 em
+    CHECK_THAT(text_width_pt("\xe4\xb8\x99\xe7\x83\xb7 R290", 6.0), WithinRel(32.2092, 1e-12));  // wide characters: 1 em
+    CHECK(text_width_pt("", 6.0) == 0.0);
 }

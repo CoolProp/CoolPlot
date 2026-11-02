@@ -23,7 +23,7 @@ is in {doc}`../reference/tables`.
 
 ## Single lines
 
-Since 1.5 `add_line` draws one line of constant value on top of the
+Since 1.6 `add_line` draws one line of constant value on top of the
 families, for a design temperature or the pressure at which a relief
 valve or burst disk opens. Each line has a name, shows in the legend and
 is independent of the families: `set_lines` and `set_default_lines`

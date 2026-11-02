@@ -51,8 +51,9 @@ diagram.theme = diagram.theme.with_(isoline_label_color="line")
 ```
 
 The label keeps its halo, and a colour set with `set_line_style` carries
-over to the labels of that family. Light line colours, such as the yellow
-of the fourth family in the default theme, are harder to read as text.
+over to the labels of that family. Light line colours, such as the teal
+of the isochores in the default theme (3:1 against the background, where
+text should have 4.5:1), are harder to read as text.
 
 Labels are laid out for the size of the plot area. `diagram.draw()` and
 `save()` take it from the plotting library; if you drive a renderer

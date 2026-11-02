@@ -62,8 +62,10 @@ class PdfRenderer(SvgRenderer):
                                         self.margins_pt)
 
     def to_pdf(self) -> bytes:
-        """The PDF file of the last synchronised scene (without badge and watermark, see BrandingSettings)."""
-        warn_without_branding(self, self._axes)
+        """The PDF file of the last synchronised scene, with its badge of text lines (not a logo or watermark,
+        see BrandingSettings)."""
+        warn_without_branding(self, self._axes, draws_text_badge=corelib.draws_branding(self._axes) or
+                              corelib.core_version() >= (1, 5))
         items = self._scene_items()
         font_files = []
         for item in items:

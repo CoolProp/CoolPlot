@@ -194,11 +194,11 @@ def scene_page(scene, width: int = 800, height: int = 600, margins=(80, 20, 40, 
 
     The page holds the scene record (docs/reference/contracts.md) and the
     JavaScript renderer; nothing is computed on a server, and the page
-    shows the same SVG the SVG backend would write, except for the
-    branding: the JavaScript writer does not draw the badge or the
-    watermark yet, and a branded scene warns once. ASCII only.
+    shows the same SVG the SVG backend would write, badge included, except
+    for pictures: the JavaScript writer draws neither the logo of the badge
+    nor a watermark, and a scene with either warns once. ASCII only.
     """
-    _warn_without_branding("scene_page (the JavaScript writer)", scene.axes)
+    _warn_without_branding("scene_page (the JavaScript writer)", scene.axes, draws_text_badge=True)
     # In scene order: the JavaScript writer takes the legend from that order
     # and sorts by z order for drawing, like the SVG backend
     record = json.dumps(scene.to_dict(in_draw_order=False), allow_nan=False, separators=(",", ":"))

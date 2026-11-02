@@ -1,2 +1,7 @@
 /* A little more room for the chart pictures of the gallery */
 .sphx-glr-thumbcontainer { min-height: 180px; }
+
+/* The theme catalog shows a log(p)-h and a T-s chart side by side, one above
+   the other on a narrow screen */
+.cp-pair p { display: flex; flex-wrap: wrap; gap: 1%; }
+.cp-pair img { width: 49%; min-width: 280px; height: auto; }

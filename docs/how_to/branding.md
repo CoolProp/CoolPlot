@@ -5,6 +5,17 @@ it, and which equation of state the properties follow. `Settings.branding`
 adds both, the way printed charts do: a small badge in one corner of the
 plot area and, if you like, a faint picture behind the lines.
 
+Since 1.5 every chart names its equation of state by default
+(`references="short"`), so a chart never reaches a reader without its
+source. To draw a chart without the badge:
+
+```python
+diagram.settings = diagram.settings.with_(branding={"references": "none"})
+```
+
+Everything else (logo, versions, lines, watermark) stays off until you ask
+for it:
+
 ```python
 from coolplot import PropertyDiagram
 
@@ -31,9 +42,9 @@ Rail and edge labels keep clear of the badge; inline and margin labels
 do not. The badge and a legend inside the plot area are given their
 corners together: a corner you name is kept, and "auto" takes the
 emptiest of the others (preferring corners without cycles), so the two
-share a corner only when you name the same one for both. matplotlib and the SVG writer draw the badge at
-the same size, the one the label layout keeps clear; the text widths are
-estimated, generously for common sans-serif fonts.
+share a corner only when you name the same one for both. Every backend
+draws the badge at the same size, the one the label layout keeps clear;
+the text widths are estimated, generously for common sans-serif fonts.
 
 The background has the colour of the plot area at `background_alpha`
 (0.85), so lines under the badge stay faintly visible; `frame=False`
@@ -42,8 +53,8 @@ removes the outline. The text uses the font family of the tick labels at
 
 ## References
 
-`references="short"` names first author and year, `"full"` adds journal,
-volume and pages. They come from CoolProp itself: the BibTeX key of each
+`references="short"` (the default) names first author and year, `"full"`
+adds journal, volume and pages, `"none"` leaves them out. They come from CoolProp itself: the BibTeX key of each
 equation of state (`CoolProp.CoolProp.get_BibTeXKey(fluid, "EOS")`) and
 the bibliography that ships in the CoolProp package.
 
@@ -99,11 +110,11 @@ background works best.
 | matplotlib: PNG, PDF, windows | drawn |
 | matplotlib: PS and EPS | badge drawn with an opaque background and the logo's transparent pixels filled with that background colour; the watermark is left out with a warning (PostScript has no transparency) |
 | SVG writer, web renderer (`WebRenderer`) | drawn |
-| coolplot-core | a branded chart is composed and written by Python instead |
-| plotly, coolplot-core PDF writer (`PdfRenderer`), JavaScript writer (`scene_page`) | not yet; they warn once and leave them out |
+| coolplot-core 1.5: composer, SVG writer, PDF writer (`PdfRenderer`) | badge of text lines drawn; a chart with a logo or a watermark is composed and written by Python (`PdfRenderer` leaves them out with a warning) |
+| plotly, JavaScript writer (`scene_page`) | badge of text lines drawn (plotly centres each line in its line height, it has no baseline alignment); logo and watermark left out with a warning |
 
 ## In the gallery
 
-A chart with a logo, the full references and a watermark: {doc}`../gallery/branding`.
-A company chart with its own theme colours, logo and brandmark (Clean Heat
-Partners): {doc}`../gallery/branding_chp`.
+A company chart with its own theme colours, logo, references, versions,
+web address and brandmark as watermark (Clean Heat Partners):
+{doc}`../gallery/branding_chp`.

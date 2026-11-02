@@ -61,7 +61,7 @@ class PropertyDiagram(Chart):
         The temperature and pressure region to cover, see
         :mod:`coolplot.core.limits`.
     theme : str or Theme, optional
-        "default", "dark", "print", "classic" or a Theme; see docs/how_to/themes.md.
+        "default", "dark", "print", "coolpack" or a Theme; see docs/how_to/themes.md.
         Replaces the theme of ``settings``.
     settings : str or Settings, optional
         "screen" (default), "print", "publication", "interactive" or a

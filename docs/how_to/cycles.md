@@ -74,7 +74,9 @@ as dew points (EN 12900).
 ## Change, read, remove
 
 `add_cycle` with the same name replaces the cycle and redraws only it.
-`cycle_states(name, units=...)` returns the computed states,
+`cycle_states(name)` returns the computed states as StatePoints in SI
+units (`cycle_states(name, units="engineering")` as dicts of values in
+that unit system, see {doc}`units`),
 `move_cycle_state(name, number, x, y)` moves one state (states that
 follow it with `"via"` move along), `remove_cycle(name)` removes it.
 Without a zoom window the axes grow so that every state is inside the

@@ -21,6 +21,13 @@ diagram.save("R290_ph.png")
 Where to go next:
 
 * {doc}`getting_started`: install CoolPlot and draw a first chart.
+* {doc}`gallery/index`: every kind of chart CoolPlot draws, each with the
+  script that made it. A few of them:
+
+```{eval-rst}
+.. minigallery:: ../examples/two_stage_cycles.py ../examples/psychrometric_air_handling.py ../examples/steam_rankine_ts.py ../examples/co2_transcritical.py
+```
+
 * {doc}`tutorials/index`: a chart step by step, a heat pump from measured
   states, a psychrometric chart for an air handling unit, figures for a
   paper.
@@ -30,19 +37,20 @@ Where to go next:
   are chosen, how the lines are computed, what is not supported.
 * {doc}`reference/index`: every class and function, the tables of
   diagram types, units and presets, the file formats.
-* {doc}`gallery/index`: the examples, run and rendered.
+* {doc}`upgrade`: what changes between versions and how to keep the old
+  behaviour.
 
 ```{toctree}
 :maxdepth: 2
 :hidden:
 
 getting_started
+gallery/index
 tutorials/index
 how_to/index
 explanation/index
 reference/index
-gallery/index
-changelog
 upgrade
+changelog
 contributing/index
 ```

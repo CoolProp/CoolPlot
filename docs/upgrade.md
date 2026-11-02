@@ -35,6 +35,49 @@ starting with an underscore, the helpers in `coolplot.core`,
 `coolplot.testing`, the scene item ids, and the exact coordinates of a
 chart (better numerics may move points).
 
+## From 1.4 to 1.5
+
+Nothing to change in your code, but new charts look different in two
+ways.
+
+**A badge with the equation of state.** New charts carry a small badge in
+one corner that names the equation of state of the fluid ("R290: Lemmon
+et al. (2009)"), so that a chart always says where its properties come
+from. It takes the emptiest corner, and labels on rails or at the edges
+keep clear of it (inline labels and labels in the margin do not). For
+charts without it, as in 1.4:
+
+```python
+diagram.settings = diagram.settings.with_(branding={"references": "none"})
+```
+
+Specs saved before 1.2 (without a branding part) keep drawing without
+badge; specs saved by 1.2 to 1.4 hold `"references": "none"` and keep it.
+
+**One colour per quantity.** In the `default` and `dark` themes every
+quantity now has a colour of its own, the same on every chart. In
+`default`: temperature red, pressure wine, enthalpy orchid, entropy
+blue, density teal, internal energy purple. In `dark`: temperature
+coral, pressure periwinkle, enthalpy dusky rose, entropy blue, density
+aqua, internal energy yellow. 1.4 gave the colours out by position
+(blue, orange, aqua). Why is in {doc}`explanation/accessibility`. For the
+colours of 1.4:
+
+```python
+from coolplot.style.theme import DEFAULT
+diagram.theme = DEFAULT.with_(categorical=("#2a78d6", "#eb6834", "#1baf7a", "#eda100"), isoline_colors=None)
+```
+
+For the dark theme of 1.4, use `DARK` with
+`("#3987e5", "#d95926", "#199e70", "#c98500")`. A theme of your own
+derived from `DEFAULT` or `DARK` with new `categorical` colours needs
+`isoline_colors=None` as well, or the pinned colours win.
+
+The `classic` theme is gone; its idea, one colour per quantity, is now
+the default. Code that asks for `theme="classic"` gets a `ValueError`;
+a chart saved with it keeps its colours, since a saved chart holds its
+whole theme.
+
 ## From 1.3 to 1.4
 
 Nothing to change in your code. Axis titles, legends and labels of new

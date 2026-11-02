@@ -11,11 +11,18 @@
 //    "domain": {"tp_box": [T_min, T_max, p_min, p_max], "ranges_SI": {key: [min, max]}},
 //    "curves": [{"request": {"item_id", "key", "value_SI", "points", "labels", "anchor_SI"}, "curve": <curve record>}],
 //    (anchor_SI, since 1.1: the saturation temperature or pressure the line passes through when its
-//    family is placed by saturation states, null otherwise; the label shows it. Since 1.5 the curves
+//    family is placed by saturation states, null otherwise; the label shows it. Since 1.6 the curves
 //    of the single lines of the spec come here too, with the item id "line/<name>")
 //    "cycles": [{"states": {"1": {key: value}}, "chains": [[{key: value}, ...]]}],
 //    "plot_size_pt": [width, height] or null,
-//    "previous_labels": [<text item>] or null}
+//    "previous_labels": [<text item>] or null,
+//    "sources": [<badge line>] (optional, since 1.5)}
+//
+// "sources" are the badge lines naming the sources of the properties (the
+// references of the equation of state and the versions line), which need
+// CoolProp, so the caller computes them as coolplot.engine.Engine.source_lines
+// does. The badge holds them above the lines of the spec's branding settings;
+// with neither there is no badge. A spec with a logo or a watermark is refused.
 #ifndef COOLPLOT_COMPOSE_H
 #define COOLPLOT_COMPOSE_H
 

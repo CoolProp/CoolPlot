@@ -77,12 +77,39 @@ PageSettings PageSettings::from_json(const json& data) {
     return p;
 }
 
+BrandingSettings BrandingSettings::from_json(const json& data) {
+    BrandingSettings b;
+    if (!data.value("logo", json::array()).empty() || !data.value("watermark", json::array()).empty())
+        throw Error("coolplot-core does not draw a logo or a watermark; the Python composer does.");
+    const json& lines = data.contains("lines") ? data.at("lines") : json::array();
+    if (lines.is_string())
+        b.lines.push_back(lines.get<std::string>());
+    else
+        for (const json& line : lines) b.lines.push_back(line.get<std::string>());
+    b.location = data.value("location", "auto");
+    if (b.location != "auto" && b.location != "upper left" && b.location != "upper right" && b.location != "lower left"
+        && b.location != "lower right")
+        throw Error("Unknown badge location '" + b.location + "'.");
+    std::string references = data.value("references", "none");
+    if (references != "none" && references != "short" && references != "full")
+        throw Error("Unknown references style '" + references + "'.");
+    b.logo_width_pt = data.value("logo_width_pt", 60.0);
+    b.font_size_pt = data.value("font_size_pt", 6.0);
+    b.background_alpha = data.value("background_alpha", 0.85);
+    b.frame = data.value("frame", true);
+    if (!(b.logo_width_pt > 0.0 && b.font_size_pt > 0.0)) throw Error("BrandingSettings: sizes have to be positive.");
+    if (!(b.background_alpha >= 0.0 && b.background_alpha <= 1.0))
+        throw Error("BrandingSettings.background_alpha has to be between 0 and 1.");
+    return b;
+}
+
 Settings Settings::from_json(const json& data) {
     Settings s;
     const json& look = data.contains("look") ? data.at("look") : json("default");
     s.look = look.is_object() ? Theme::from_json(look) : get_theme(look.is_null() ? "default" : look.get<std::string>());
     if (data.contains("labels")) s.labels = LabelSettings::from_json(data.at("labels"));
     if (data.contains("page")) s.page = PageSettings::from_json(data.at("page"));
+    if (data.contains("branding") && !data.at("branding").is_null()) s.branding = BrandingSettings::from_json(data.at("branding"));
     return s;
 }
 
