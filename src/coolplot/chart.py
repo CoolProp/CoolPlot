@@ -777,9 +777,14 @@ class Chart:
                      units: Optional[UnitsLike] = None) -> Union[Dict[int, StatePoint], Dict[int, Dict[str, float]]]:
         """The states of a cycle by state number in ascending order.
 
-        StatePoints in SI units, or with ``units`` dicts of values in that
-        unit system (``cycle_states("hp", units="engineering")[2]["T"]``
-        is in deg C).
+        Without ``units`` the states are StatePoints in SI units. With
+        ``units`` they are plain dicts of values in that unit system
+        (``cycle_states("hp", units="engineering")[2]["T"]`` is in deg C).
+        A StatePoint always holds SI values, so converted values come as
+        dicts and cannot be mistaken for SI states. Both are read by key,
+        ``states[2]["T"]``; only a StatePoint also allows ``states[2].T``.
+        To keep the StatePoints and still read converted values, convert
+        one state with ``states[2].in_units("engineering")``.
         """
         cycle = next((c for c in self.spec.cycles if c.name == name), None)
         if cycle is None:
@@ -800,6 +805,10 @@ class Chart:
         engineering units, or a StatePoint (returned as it is, after a
         check that it belongs to this chart). A "via" needs a state before
         it and is not accepted here.
+
+        ``units`` applies to ``entry`` only; the StatePoint returned is
+        always in SI units. ``state.in_units("engineering")`` gives its
+        values in another unit system.
         """
         given = state_input(entry, self._units(units), self.fluid)
         if given.via is not None:
@@ -815,7 +824,11 @@ class Chart:
     # ------------------------------------------------------------------
     def state_at(self, x: float, y: float, units: Optional[UnitsLike] = None) -> StatePoint:
         """The full state (SI units) at a point given in the chart's units or
-        in ``units``, e.g. under the mouse."""
+        in ``units``, e.g. under the mouse.
+
+        ``units`` applies to ``x`` and ``y`` only; the StatePoint returned
+        is always in SI units (``state.in_units(...)`` converts it).
+        """
         diagram, unit_system = self.spec.diagram, self._units(units)
         x_SI = float(unit_system[diagram.x].to_SI(x))
         y_SI = float(unit_system[diagram.y].to_SI(y))
