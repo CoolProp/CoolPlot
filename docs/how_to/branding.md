@@ -7,8 +7,8 @@ plot area and, if you like, a faint picture behind the lines.
 
 Since 1.5 every chart names its equation of state by default
 (`references="short"`), so a chart never reaches a reader without its
-source, and since 1.6 the versions of CoolProp and CoolPlot that drew it
-(`versions=True`, "CoolProp 8.0.0, CoolPlot 1.6.0"). To draw a chart
+source, and the versions of CoolProp and CoolPlot that drew it
+(`versions=True`, "CoolProp 8.0.0, CoolPlot 1.5.0"). To draw a chart
 without the badge:
 
 ```python

@@ -86,7 +86,7 @@ One record describes a property diagram and a psychrometric chart alike;
   `symbols`, "unicode" (the default: rho, deg C and m3 written with
   their own characters) or "ascii"; a `labels` record without it was
   written before 1.4 and reads as "ascii", so it draws as before. Since
-  1.6 `labels` may hold `dome`, `true` for labels inside the dome; it is
+  1.5 `labels` may hold `dome`, `true` for labels inside the dome; it is
   written only when true, so a record without it reads as `false`.
 * `isolines`: one entry per family, in drawing order. `values_SI` lists
   explicit values; `anchor` (since 1.1) places the lines through
@@ -123,21 +123,21 @@ One record describes a property diagram and a psychrometric chart alike;
   0 and 1, or 100 % relative humidity) whatever lines are set, `false`
   hides it, `null` leaves it to the values of the family. A record of 1.1
   has no such field and reads as `null`, so it draws as it did.
-* `lines` (since 1.6): single lines of constant `key` at `value_SI`,
+* `lines` (since 1.5): single lines of constant `key` at `value_SI`,
   each under its own `name` (`coolplot.spec.LineSpec`). `key` is a
   quantity with a family in the diagram, or one of its two axes: such a
   line is straight and spans the plot, and the axes widen to show it.
   `label` is `true` (the value), `false` (none) or a text; `line_style`
   `null` takes the family's style at twice the width (the colour of the
   saturation curve for an axis quantity). The key is left out when a
-  chart has no single lines, so records of 1.5 read as they were; a
-  coolplot-core older than 1.6 is not asked to compose a spec with lines.
-* `marked_points` (since 1.6, charts of a fluid only): the special states
+  chart has no single lines, so records of 1.4 read as they were; a
+  coolplot-core older than 1.5 is not asked to compose a spec with lines.
+* `marked_points` (since 1.5, charts of a fluid only): the special states
   marked with a dot, `"critical"` and or `"triple"` (the two ends of the
   saturation curve at the triple point). A point outside the chart's T-p
   box is not drawn. The key is left out when nothing is marked, so a
-  record of 1.5 reads as it was.
-* `saturation_scale` (since 1.6, charts of a fluid with pressure or
+  record of 1.4 reads as it was.
+* `saturation_scale` (since 1.5, charts of a fluid with pressure or
   temperature on the vertical axis): `{"step_SI": 10.0, "Q": 1.0}`
   draws a scale of saturation temperatures next to a pressure axis, or
   of saturation pressures next to a temperature axis, with a tick every
@@ -260,7 +260,7 @@ and 1, relative humidity 100 %), `quality` (the other lines of the
 boundary family), `isoline_label`, `label_tick` (since 1.2: the short
 line on the frame where a line with an outer rail label leaves, id
 `iso/<key>/<value>/tick`, in the group of the labels), `cycle`, `process`, `state_points`,
-`state_number`, `annotation`, and since 1.6 `line` and `line_label` (a
+`state_number`, `annotation`, and since 1.5 `line` and `line_label` (a
 single line and its label, in the groups `line/<name>` and
 `line/<name>/label`). Z order: isolines 1,
 saturation 2, single lines 3, labels 4, cycles and processes 5, state

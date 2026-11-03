@@ -23,7 +23,7 @@ is in {doc}`../reference/tables`.
 
 ## Single lines
 
-Since 1.6 `add_line` draws one line of constant value on top of the
+Since 1.5 `add_line` draws one line of constant value on top of the
 families, for a design temperature or the pressure at which a relief
 valve or burst disk opens. Each line has a name, shows in the legend and
 is independent of the families: `set_lines` and `set_default_lines`
@@ -72,7 +72,7 @@ values decide, as they did then.
 
 ## Mark the critical and triple points
 
-Since 1.6 a chart of a fluid can mark the critical point and the triple
+Since 1.5 a chart of a fluid can mark the critical point and the triple
 point with a dot in the colour of the saturation curve:
 
 ```python
@@ -102,7 +102,7 @@ follows `set_line_style("saturation", ...)`.
 
 ## A saturation scale next to the axis
 
-Since 1.6 a chart with pressure on the vertical axis can show the
+Since 1.5 a chart with pressure on the vertical axis can show the
 saturation temperature at each pressure on a scale just inside the frame,
 right of the axis; a chart with temperature on the vertical axis shows the
 saturation pressure at each temperature:

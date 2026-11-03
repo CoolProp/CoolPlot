@@ -45,7 +45,7 @@ n-th line), `digits`, `show_units`, `tick_digits`.
 
 ## Labels inside the dome
 
-Since 1.6 each labelled line that runs through the two-phase region can
+Since 1.5 each labelled line that runs through the two-phase region can
 carry two more labels inside the dome, one just right of the bubble line
 and one just left of the dew line, as on the printed refrigerant charts:
 
