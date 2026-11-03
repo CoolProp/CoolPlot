@@ -20,6 +20,8 @@ from typing import List, Optional, Set, Tuple
 
 from ..spec.diagram import SCALE_TICKS, CycleSpec, DiagramSpec, scale_key
 from ..thermo.cycles import cycle_paths, resolve_states
+from ..core.units import Unit
+from ..thermo.fluid import Fluid
 from ..thermo.isolines import Curve
 from ..thermo import native
 from ..thermo.references import fluid_references, versions_line
@@ -128,11 +130,13 @@ class Engine:
         self._anchors.move_to_end(cache_key)
         return self._anchors[cache_key]
 
-    def _compute_scale_ticks(self, spec, domain, by, key, unit, margin) -> Tuple[Tuple[float, float], ...]:
+    def _compute_scale_ticks(self, spec: DiagramSpec, domain: Domain, by: str, key: str, unit: Unit,
+                             margin: float) -> Tuple[Tuple[float, float], ...]:
         provider = self.fluid(spec.fluid)
-        if not getattr(provider, "has_critical_point", False):
+        if not isinstance(provider, Fluid) or not provider.has_critical_point:
             return ()   # no saturation curve, no scale
         scale = spec.saturation_scale
+        assert scale is not None   # asked for only when the spec has a scale
         if scale.step_SI is not None:
             return saturation_anchor_values(provider, key, by, scale.step_SI, scale.Q, None, domain.tp_box, margin,
                                             unit)

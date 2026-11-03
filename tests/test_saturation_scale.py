@@ -34,7 +34,7 @@ def test_a_pressure_axis_gets_saturation_temperatures():
     # Every 20 K within the pressures the axis shows (from 0.25 bar) up to the critical point
     assert _values(diagram) == [str(v) for v in range(-60, 81, 20)]
     title = next(i for i in diagram.scene if i.id == "scale/title")
-    assert title.text == "T_sat / °C"
+    assert title.text == "T_sat / \u00b0C"
     # Each tick sits at the saturation pressure of its temperature
     label = next(i for i in diagram.scene if i.id.startswith("scale/label/") and i.text == "0")
     p_sat_bar = diagram.fluid.state_point("T", 273.15, "Q", 1.0).p / 1e5
@@ -88,7 +88,7 @@ def test_a_blend_shows_dew_or_bubble_points():
     dew = {i.text: i.y for i in _scale(diagram) if i.id.startswith("scale/label/")}
     diagram.saturation_scale = {"step": 20, "Q": 0}
     bubble = {i.text: i.y for i in _scale(diagram) if i.id.startswith("scale/label/")}
-    assert next(i.text for i in diagram.scene if i.id == "scale/title") == "T_sat,liq / °C"
+    assert next(i.text for i in diagram.scene if i.id == "scale/title") == "T_sat,liq / \u00b0C"
     assert bubble["0"] > dew["0"]   # the bubble point of a temperature lies at a higher pressure
 
 

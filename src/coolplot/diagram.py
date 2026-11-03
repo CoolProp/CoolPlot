@@ -174,7 +174,8 @@ class PropertyDiagram(Chart):
     def saturation_scale(self, value: Union[bool, Mapping[str, float], SaturationScale, None]) -> None:
         self.spec = self.spec.with_(saturation_scale=self._saturation_scale(value))
 
-    def _saturation_scale(self, value) -> Optional[SaturationScale]:
+    def _saturation_scale(self, value: Union[bool, Mapping[str, float], SaturationScale, None]
+                          ) -> Optional[SaturationScale]:
         """A SaturationScale from what saturation_scale is given, with a step in the chart's units converted to SI."""
         if value is None or value is False:
             return None

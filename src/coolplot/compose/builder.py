@@ -429,7 +429,7 @@ def saturation_scale_parts(spec: DiagramSpec, theme: Theme, domain, frame: Frame
     unit_by, unit_y = spec.units[by], spec.units[key]
     st = theme.axes
     labels = spec.settings.labels
-    ticks = []   # (y in display units, y in points, saturation value in SI units)
+    ticks: List[Tuple[float, float, float]] = []   # (y in display units, y in points, saturation value in SI)
     for saturation_SI, value_SI in domain.scale:
         y = float(unit_y.from_SI(value_SI))
         py = float(frame.to_pt([frame.x_limits[0]], [y])[1][0])
@@ -442,7 +442,7 @@ def saturation_scale_parts(spec: DiagramSpec, theme: Theme, domain, frame: Frame
     value_style = st.tick_label.with_(h_align="left", v_align="center", halo_color=theme.isoline_label.halo_color,
                                       halo_width_pt=theme.isoline_label.halo_width_pt)
     text_h = text_size_pt("0", value_style)[1]
-    kept = []
+    kept: List[Tuple[float, float, float]] = []
     for tick in sorted(ticks, key=lambda t: -t[1]):
         if not kept or kept[-1][1] - tick[1] >= text_h:
             kept.append(tick)
@@ -458,10 +458,10 @@ def saturation_scale_parts(spec: DiagramSpec, theme: Theme, domain, frame: Frame
         tick_y += [y, y, math.nan]
     group = "scale"
     items: List[SceneItem] = [
-        Line(id="scale/line", group=group, role="scale", x=[x_line, x_line], y=[y_low, y_high], style=line_style,
-             z_order=Z_SCALE),
-        Line(id="scale/ticks", group=group, role="scale", x=tick_x[:-1], y=tick_y[:-1], style=line_style,
-             z_order=Z_SCALE)]
+        Line(id="scale/line", group=group, role="scale", x=np.array([x_line, x_line]), y=np.array([y_low, y_high]),
+             style=line_style, z_order=Z_SCALE),
+        Line(id="scale/ticks", group=group, role="scale", x=np.array(tick_x[:-1]), y=np.array(tick_y[:-1]),
+             style=line_style, z_order=Z_SCALE)]
     widest = 0.0
     for y, _, saturation_SI in ticks:
         text = labels.format_value(unit_by.label_value(saturation_SI))
