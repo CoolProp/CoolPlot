@@ -184,8 +184,8 @@ points = (
     ("Critical point\n{0:.1f} \u00b0C, {1:.1f} bar", T_crit_K, p_crit_Pa, (-96, 4)),
     ("Dry ice at 1 atm\n{0:.1f} \u00b0C", T_dry_ice_K, p_atm_Pa, (8, -16)),
 )
-for text, T_K, p_Pa, offset in points:
-    x, y = to_chart(T_K, p_Pa)
+for text, T_point_K, p_point_Pa, offset in points:
+    x, y = to_chart(T_point_K, p_point_Pa)
     ax.plot(x, y, zorder=3, **marker_kwargs(theme.state_points[0]))
     ax.annotate(text.format(float(x), float(y)), (x, y), xytext=offset, textcoords="offset points", zorder=3,
                 **text_kwargs(theme.isoline_label))

@@ -187,8 +187,8 @@ points = (
     ("Boiling at 1 atm\n{0:.1f} \u00b0C", T_boil_atm_K, p_atm_Pa, (8, -22)),
     ("Melting at 1 atm\n{0:.1f} \u00b0C", T_melt_atm_K, p_atm_Pa, (8, 4)),
 )
-for text, T_K, p_Pa, offset in points:
-    x, y = to_chart(T_K, p_Pa)
+for text, T_point_K, p_point_Pa, offset in points:
+    x, y = to_chart(T_point_K, p_point_Pa)
     ax.plot(x, y, zorder=3, **marker_kwargs(theme.state_points[0]))
     ax.annotate(text.format(float(x), float(y)), (x, y), xytext=offset, textcoords="offset points", zorder=3,
                 **text_kwargs(theme.isoline_label))
@@ -201,8 +201,8 @@ ice_points = (
     ("III / V", 350.1e6, (6, -6)),
     ("V / VI", 632.4e6, (6, -6)),
 )
-for text, p_Pa, offset in ice_points:
-    x, y = to_chart(T_melting_K(p_Pa), p_Pa)
+for text, p_point_Pa, offset in ice_points:
+    x, y = to_chart(T_melting_K(p_point_Pa), p_point_Pa)
     ax.plot(x, y, zorder=3, **marker_kwargs(theme.state_points[0], scale=0.6))
     ax.annotate(text, (x, y), xytext=offset, textcoords="offset points", zorder=3,
                 **text_kwargs(theme.isoline_label))
