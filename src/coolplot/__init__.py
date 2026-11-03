@@ -46,8 +46,8 @@ if TYPE_CHECKING:
     from .scene import Scene as Scene
     from .spec import (BrandingSettings as BrandingSettings, CalcSettings as CalcSettings, CycleSpec as CycleSpec,
                        DiagramSpec as DiagramSpec, FluidSpec as FluidSpec, HumidAirSpec as HumidAirSpec,
-                       IsolineSet as IsolineSet, LabelSettings as LabelSettings, PageSettings as PageSettings,
-                       ProcessSpec as ProcessSpec, Settings as Settings)
+                       IsolineSet as IsolineSet, LabelSettings as LabelSettings, LineSpec as LineSpec,
+                       PageSettings as PageSettings, ProcessSpec as ProcessSpec, Settings as Settings)
     from .style.theme import Theme as Theme, get_theme as get_theme
     from .style.values import (AxesStyle as AxesStyle, Font as Font, LegendStyle as LegendStyle,
                                LineStyle as LineStyle, MarkerStyle as MarkerStyle, TextStyle as TextStyle)
@@ -67,6 +67,7 @@ _LAZY = {
     "DiagramSpec": ".spec",
     "FluidSpec": ".spec",
     "IsolineSet": ".spec",
+    "LineSpec": ".spec",
     "ProcessSpec": ".spec",
     "Settings": ".spec",
     "CalcSettings": ".spec",
