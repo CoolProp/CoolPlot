@@ -24,7 +24,7 @@ from ..thermo.isolines import Curve
 from ..thermo import native
 from ..thermo.references import fluid_references, versions_line
 from ..thermo.provider import (PropertyProvider, chart_domain, compute_curve, make_provider,
-                               saturation_anchor_values)
+                               marked_point_states, saturation_anchor_values)
 from .cache import CurveCache
 from .planning import CurveRequest, Domain
 
@@ -45,7 +45,8 @@ class Engine:
         self.max_fluids = max_fluids
         self._fluids: "OrderedDict[object, PropertyProvider]" = OrderedDict()
         self._domains: "OrderedDict[Tuple, Domain]" = OrderedDict()
-        self._anchors: "OrderedDict[Tuple, Tuple]" = OrderedDict()   # values of lines placed by saturation states
+        # values of lines placed by saturation states, and the marked critical and triple points
+        self._anchors: "OrderedDict[Tuple, Tuple]" = OrderedDict()
         self._cycles: "OrderedDict[Tuple, Tuple]" = OrderedDict()
         self._warned: Set[Tuple] = set()
 
@@ -105,7 +106,23 @@ class Engine:
         domain = self._domains[key]
         anchored = tuple(((s.key, s.anchor), self._anchor_values(spec, domain, s))
                          for s in spec.isolines if s.anchor is not None)
-        return replace(domain, anchored=anchored) if anchored else domain
+        if anchored:
+            domain = replace(domain, anchored=anchored)
+        if spec.marked_points:
+            domain = replace(domain, points=self._marked_points(spec))
+        return domain
+
+    def _marked_points(self, spec: DiagramSpec) -> Tuple:
+        """The states of the critical and triple points the spec marks, computed once per fluid."""
+        margin = spec.settings.calc.critical_margin
+        # Kept with the anchored values: both are saturation states that go with their fluid
+        key = (spec.fluid, "marked points", margin, spec.marked_points)
+        if key not in self._anchors:
+            self._anchors[key] = marked_point_states(self.fluid(spec.fluid), spec.marked_points, margin)
+            if len(self._anchors) > 256:
+                self._anchors.popitem(last=False)
+        self._anchors.move_to_end(key)
+        return self._anchors[key]
 
     def _anchor_values(self, spec: DiagramSpec, domain: Domain, iso_set) -> Tuple[Tuple[float, float], ...]:
         """The values of one family placed by saturation states, computed once per fluid, region and unit."""

@@ -121,7 +121,10 @@ struct DiagramSpec
     bool has_y_view = false;
     Range y_view_SI;
     std::string title;
+    /// The special states marked with a dot: "critical" and or "triple", in that order (since 1.6)
+    std::vector<std::string> marked_points;
 
+    bool marks(const std::string& point) const;
     /// LineStyle changes for one family (a quantity key) or the saturation curve ("saturation"),
     /// an empty object if none.
     json style_override(const std::string& key) const;

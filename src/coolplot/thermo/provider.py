@@ -148,6 +148,48 @@ def saturation_anchor_values(provider, key: str, by: str, step_SI: float, Q: flo
     return tuple(values)
 
 
+def marked_point_states(provider, names, margin: float) -> Tuple[Tuple[str, Tuple[Tuple[str, float], ...]], ...]:
+    """The states of the special points a chart marks, as (name, ((key, value_SI), ...)) pairs.
+
+    ``names`` holds "critical" and or "triple". The critical point gives
+    one state, "critical". The triple point gives two, the ends of the
+    saturation curve at the triple temperature: "triple_liquid" (quality
+    0) and "triple_vapour" (quality 1). A point the fluid does not have is
+    left out without a word: the triple point of a mixture or of a
+    pseudo-pure blend, or one below
+    the lowest temperature of the equation of state, where the saturation
+    curve does not reach. ``margin`` is ``Settings.calc.critical_margin``.
+    """
+    if provider.kind != "fluid" or not provider.has_critical_point:
+        return ()
+    states = []
+    if "critical" in names:
+        critical = dict(provider.critical)
+        if math.isfinite(critical.get("rho", float("nan"))) and critical["rho"] > 0.0:
+            critical["v"] = 1.0 / critical["rho"]
+        values = tuple((k, float(v)) for k, v in critical.items() if math.isfinite(v))
+        states.append(("critical", values))
+    # A pseudo-pure blend (R407C in HEOS) is one component to CoolProp, but its lowest temperature is where
+    # the fit ends, not a triple point
+    pure = provider.is_pure and provider.pseudo_pure_blend is None
+    T_triple_K = provider.T_triple_K if pure else None
+    if "triple" in names and T_triple_K is not None:
+        T_min_K = provider.T_min_K
+        # The saturation curve starts at the triple point only when the equation of state reaches down to
+        # it. The states are taken where the curve starts, a margin above the triple temperature, as the
+        # saturation curve itself is.
+        if T_min_K is None or T_triple_K >= T_min_K:
+            T_lo_K = provider.saturation_range("T", margin)[0]
+            for name, Q in (("triple_liquid", 0.0), ("triple_vapour", 1.0)):
+                try:
+                    state = provider.state_point("T", T_lo_K, "Q", Q)
+                except ValueError:
+                    continue
+                values = tuple((k, float(state[k])) for k in state.keys() if math.isfinite(state[k]))
+                states.append((name, values))
+    return tuple(states)
+
+
 def compute_curve(provider, diagram, key: str, value_SI: float, tp_box, points: int, solver: str,
                   margin: float, spacing: str, ranges=None, use_native: Optional[bool] = None) -> Curve:
     """One line of constant ``key`` for any provider.

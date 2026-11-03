@@ -8,7 +8,7 @@
 
 namespace coolplot {
 
-const double Z_ISOLINE = 1.0, Z_SATURATION = 2.0, Z_LABEL = 4.0, Z_PROCESS = 5.0, Z_STATES = 6.0;
+const double Z_ISOLINE = 1.0, Z_SATURATION = 2.0, Z_POINT = 3.0, Z_LABEL = 4.0, Z_PROCESS = 5.0, Z_STATES = 6.0;
 
 namespace {
 
@@ -41,6 +41,9 @@ struct CycleInput
 struct Domain
 {
     std::map<std::string, Range> ranges_SI;
+    double tp_box[4] = {0.0, 0.0, 0.0, 0.0};  ///< T_min, T_max, p_min, p_max (read when points are marked)
+    /// States of the marked points by name: "critical", "triple_liquid", "triple_vapour" (since 1.6)
+    std::map<std::string, std::map<std::string, double>> points;
 
     Range range_SI(const std::string& key) const {
         auto found = ranges_SI.find(key);
@@ -237,7 +240,11 @@ std::pair<double, double> default_plot_size_pt(const DiagramSpec& spec) {
 
 namespace {
 
-AxesSpec axes_spec(const DiagramSpec& spec, const Domain& domain, const Theme& theme, const std::vector<Item>& shown) {
+/// Room kept around the marked critical and triple points, as a fraction of the axis span
+const double MARKED_POINT_PAD = 0.015;
+
+AxesSpec axes_spec(const DiagramSpec& spec, const Domain& domain, const Theme& theme, const std::vector<Item>& shown,
+                   const std::vector<Item>& marked) {
     const DiagramType& diagram = spec.diagram;
     std::pair<bool, bool> logs = axis_scales(spec);
     AxesSpec axes;
@@ -257,6 +264,12 @@ AxesSpec axes_spec(const DiagramSpec& spec, const Domain& domain, const Theme& t
                 values.insert(values.end(), v.begin(), v.end());
             }
             lo_hi = include(lo_hi, values, log);
+            std::vector<double> points;
+            for (const Item& item : marked) {
+                const std::vector<double>& v = axis == 0 ? item.x : item.y;
+                points.insert(points.end(), v.begin(), v.end());
+            }
+            lo_hi = include(lo_hi, points, log, MARKED_POINT_PAD);
         }
         // What the backends will draw, so that labels are laid out in that frame
         Range drawn = drawable_limits(lo_hi, log);
@@ -638,6 +651,66 @@ std::vector<Item> cycle_items(const DiagramSpec& spec, const Theme& theme, const
     return items;
 }
 
+// The marked critical and triple points (since 1.6) ----------------------------
+
+/// The marker of the critical and triple points: a dot in the colour of the saturation curve, with its casing as edge.
+MarkerStyle marked_point_style(const DiagramSpec& spec, const Theme& theme) {
+    json overrides = spec.style_override("saturation");
+    LineStyle saturation = overrides.empty() ? theme.saturation : with_overrides(theme.saturation, overrides);
+    bool casing = saturation.casing_color.present && saturation.casing_width_pt > 0.0;
+    MarkerStyle style;
+    style.shape = "o";
+    style.size_pt = 2.0 * saturation.width_pt + 3.0;
+    style.face_color = saturation.color;
+    style.edge_color = casing ? saturation.casing_color : Color::none();
+    style.edge_width_pt = casing ? saturation.casing_width_pt : 0.0;
+    style.alpha = saturation.alpha;
+    return style;
+}
+
+bool inside(double value, double lo, double hi) {
+    return lo * (1.0 - 1e-9) <= value && value <= hi * (1.0 + 1e-9);
+}
+
+struct MarkedPoint
+{
+    std::string name;
+    std::vector<std::map<std::string, double>> states;
+};
+
+/// Each marked point with its states inside the chart's T-p box that hold both axis quantities.
+std::vector<MarkedPoint> marked_states(const DiagramSpec& spec, const Domain& domain) {
+    static const std::vector<std::pair<std::string, std::vector<std::string>>> POINT_STATES = {
+        {"critical", {"critical"}}, {"triple", {"triple_liquid", "triple_vapour"}}};
+    std::vector<MarkedPoint> found;
+    for (const auto& entry : POINT_STATES) {
+        if (!spec.marks(entry.first)) continue;
+        MarkedPoint point{entry.first, {}};
+        for (const std::string& name : entry.second) {
+            auto state = domain.points.find(name);
+            if (state == domain.points.end()) continue;
+            const std::map<std::string, double>& s = state->second;
+            if (!s.count(spec.diagram.x) || !s.count(spec.diagram.y) || !s.count("T") || !s.count("p")) continue;
+            if (inside(s.at("T"), domain.tp_box[0], domain.tp_box[1]) && inside(s.at("p"), domain.tp_box[2], domain.tp_box[3]))
+                point.states.push_back(s);
+        }
+        if (!point.states.empty()) found.push_back(point);
+    }
+    return found;
+}
+
+/// One set of markers for the critical point and one for the two ends of the triple line, without legend.
+std::vector<Item> marked_point_items(const DiagramSpec& spec, const Theme& theme, const Domain& domain) {
+    const Unit& ux = spec.units.at(spec.diagram.x);
+    const Unit& uy = spec.units.at(spec.diagram.y);
+    MarkerStyle style = marked_point_style(spec, theme);
+    std::vector<Item> items;
+    for (const MarkedPoint& point : marked_states(spec, domain))
+        items.push_back(markers_item("point/" + point.name, "points", "marked_point", false, "", column(point.states, spec.diagram.x, ux),
+                                     column(point.states, spec.diagram.y, uy), style, Z_POINT));
+    return items;
+}
+
 std::vector<Item> overlay_items(const DiagramSpec& spec, const Theme& theme, const std::vector<CycleInput>& cycles) {
     std::vector<Item> parts;
     for (size_t i = 0; i < spec.processes.size(); ++i) {
@@ -680,6 +753,12 @@ Scene compose(const json& input) {
     const json& ranges = input.at("domain").at("ranges_SI");
     for (auto it = ranges.begin(); it != ranges.end(); ++it)
         domain.ranges_SI[quantity_key(it.key())] = {it.value().at(0).get<double>(), it.value().at(1).get<double>()};
+    if (input.at("domain").contains("points")) {
+        const json& box = input.at("domain").at("tp_box");
+        for (int i = 0; i < 4; ++i) domain.tp_box[i] = box.at(i).get<double>();
+        const json& points = input.at("domain").at("points");
+        for (auto it = points.begin(); it != points.end(); ++it) domain.points[it.key()] = state_from(it.value());
+    }
     std::vector<CurveInput> curves;
     for (const json& entry : input.value("curves", json::array())) {
         const json& r = entry.at("request");
@@ -723,7 +802,8 @@ Scene compose(const json& input) {
             drawn.push_back(p);
             keep_out.push_back({p.x, p.y, p.type == ItemType::Line});
         }
-    AxesSpec axes = axes_spec(spec, domain, theme, drawn);
+    std::vector<Item> marked = marked_point_items(spec, theme, domain);
+    AxesSpec axes = axes_spec(spec, domain, theme, drawn, marked);
     std::pair<double, double> size = default_plot_size_pt(spec);
     if (input.contains("plot_size_pt") && !input.at("plot_size_pt").is_null())
         size = {input.at("plot_size_pt").at(0).get<double>(), input.at("plot_size_pt").at(1).get<double>()};
@@ -743,6 +823,7 @@ Scene compose(const json& input) {
     Scene scene;
     scene.axes = axes;
     scene.items = lines;
+    scene.items.insert(scene.items.end(), marked.begin(), marked.end());
     std::vector<LabelRequest> requests = label_requests(spec, theme, curves, lines);
     if (!requests.empty()) {
         // Rail and edge labels keep clear of a legend inside the plot area and of the badge

@@ -118,6 +118,10 @@ TEST_CASE("Rails on psychrometric and Mollier charts", "[compose][rails]") {
     check_case("compose_rails_mollier.json");
 }
 
+TEST_CASE("The critical and triple points are marked with a dot", "[compose][points]") {
+    check_case("compose_rails_water_ts_marked_points.json");
+}
+
 TEST_CASE("The badge of the branding takes a corner with the legend, as in Python", "[compose][badge]") {
     check_case("compose_badge_r290_ph.json");
     check_case("compose_badge_r290_ph_upper_left.json");

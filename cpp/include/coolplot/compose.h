@@ -8,7 +8,8 @@
 // The input is one JSON record, so that any caller can hand it over:
 //
 //   {"spec": <chart spec>,
-//    "domain": {"tp_box": [T_min, T_max, p_min, p_max], "ranges_SI": {key: [min, max]}},
+//    "domain": {"tp_box": [T_min, T_max, p_min, p_max], "ranges_SI": {key: [min, max]},
+//               "points": {name: {key: value}} (optional, since 1.6)},
 //    "curves": [{"request": {"item_id", "key", "value_SI", "points", "labels", "anchor_SI"}, "curve": <curve record>}],
 //    (anchor_SI, since 1.1: the saturation temperature or pressure the line passes through when its
 //    family is placed by saturation states, null otherwise; the label shows it)
@@ -16,6 +17,12 @@
 //    "plot_size_pt": [width, height] or null,
 //    "previous_labels": [<text item>] or null,
 //    "sources": [<badge line>] (optional, since 1.5)}
+//
+// "points" holds the states of the critical and triple points the spec marks
+// ("marked_points"), by name: "critical", "triple_liquid" and "triple_vapour".
+// They need CoolProp, so the caller computes them as
+// coolplot.thermo.provider.marked_point_states does. The composer draws those
+// inside the T-p box and widens the axes a little to show their dots whole.
 //
 // "sources" are the badge lines naming the sources of the properties (the
 // references of the equation of state and the versions line), which need
@@ -30,7 +37,7 @@
 
 namespace coolplot {
 
-extern const double Z_ISOLINE, Z_SATURATION, Z_LABEL, Z_PROCESS, Z_STATES;
+extern const double Z_ISOLINE, Z_SATURATION, Z_POINT, Z_LABEL, Z_PROCESS, Z_STATES;
 
 /// The scene of a chart from the compose record above.
 Scene compose(const json& input);

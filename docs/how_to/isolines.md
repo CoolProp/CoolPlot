@@ -36,6 +36,36 @@ Incompressible liquids have no saturation curve. A chart saved before 1.2
 reads with `show_saturation = None`: there the quality (or humidity)
 values decide, as they did then.
 
+## Mark the critical and triple points
+
+Since 1.6 a chart of a fluid can mark the critical point and the triple
+point with a dot in the colour of the saturation curve:
+
+```python
+diagram.marked_points = ("critical", "triple")
+diagram.marked_points = "critical"                  # the critical point only
+diagram.marked_points = ()                          # none, the default
+```
+
+In a property diagram the triple point is not one point but the line
+where the saturation curve ends, so "triple" marks both of its ends: the
+saturated liquid and the saturated vapour at the triple temperature. A
+point is drawn only when it lies inside the region of the chart. The
+default region (`tp_limits="DEF"`) starts 1 % above the triple point,
+so to see the triple point, let the region reach down to the limit of
+the equation of state:
+
+```python
+diagram = PropertyDiagram("Water", "Ts", tp_limits=[None, None, None, None])
+diagram.marked_points = ("critical", "triple")
+```
+
+The axes are then widened a little, so that the dots are drawn whole. A
+mixture has no triple point, and neither has CoolProp's pseudo-pure
+model of a blend (R407C): its lowest temperature is where the fit of the
+equation ends. Their charts mark the critical point only. The dot
+follows `set_line_style("saturation", ...)`.
+
 ## Place lines through saturation states
 
 Engineers read a log(p)-h chart at round evaporating and condensing

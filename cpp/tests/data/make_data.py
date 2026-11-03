@@ -70,6 +70,8 @@ def compose_case(name, chart, plot_size_pt=None, previous=None):
     }
     if sources:
         data["sources"] = list(sources)
+    if spec.marked_points and domain.points:
+        data["domain"]["points"] = {name: dict(values) for name, values in domain.points}
     # "scene" is the record of the contract (items in drawing order), which
     # the composer has to match; "scene_order" holds the same items in scene
     # order, which the SVG writers get (the legend follows that order)
@@ -181,6 +183,15 @@ def main():
 
     rails_cases()
     badge_cases()
+    marked_point_cases()
+
+
+def marked_point_cases():
+    """The critical and triple points marked with a dot (1.6), the axes widened to show the triple points whole."""
+    water = PropertyDiagram("Water", "Ts", tp_limits=[None, None, None, None], settings="interactive")
+    water.set_lines("p", num=5, labels=True)
+    water.marked_points = ("critical", "triple")
+    compose_case("compose_rails_water_ts_marked_points", water)
 
 
 def rails(chart, legend="auto"):

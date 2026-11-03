@@ -6,6 +6,20 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### Added
+- The critical point and the triple point can be marked with a dot in the
+  colour of the saturation curve: `diagram.marked_points = ("critical",
+  "triple")` (#39). The triple point marks both ends of the saturation
+  curve at the triple temperature. A point outside the region of the
+  chart is not drawn, and the axes are widened a little to show the dots
+  whole. Mixtures and pseudo-pure blends mark the critical point only.
+  The spec record holds `marked_points` only when it is set, so records
+  of 1.5 read as before.
+- coolplot-core 1.6 composes the marked points; the compose record
+  carries their states as `"points"` of the domain. The bridge refuses
+  marked points for a core older than 1.6, so the Python composer draws
+  them, with a warning.
+
 ## [1.5.0] - 2026-10-30
 
 ### Added

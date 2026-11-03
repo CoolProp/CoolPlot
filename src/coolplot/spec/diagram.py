@@ -342,7 +342,10 @@ class DiagramSpec:
     the saturation curve (quality 0 and 1, or 100 % relative humidity)
     whatever lines are set (True), hides it (False), or leaves it to the
     values of the quality or humidity family (None, how a spec saved
-    before 1.2 reads).
+    before 1.2 reads). ``marked_points`` names the special states marked
+    on a chart of a fluid: "critical" for the critical point, "triple"
+    for the two ends of the saturation curve at the triple point (the
+    saturated liquid and vapour).
     """
     fluid: Any
     diagram: DiagramType = DiagramType("p", "h")
@@ -356,6 +359,7 @@ class DiagramSpec:
     view_SI: Tuple[Limits, Limits] = (None, None)
     title: str = ""
     show_saturation: Optional[bool] = True
+    marked_points: Tuple[str, ...] = ()
 
     def __post_init__(self):
         fluid = self.fluid if isinstance(self.fluid, HumidAirSpec) else FluidSpec.parse(self.fluid)
@@ -382,6 +386,7 @@ class DiagramSpec:
         object.__setattr__(self, "view_SI", _checked_view(self.view_SI))
         if self.show_saturation not in (True, False, None):
             raise ValueError("show_saturation is True, False or None, not {0!r}.".format(self.show_saturation))
+        object.__setattr__(self, "marked_points", _checked_points(self.marked_points, fluid))
         object.__setattr__(self, "isolines", tuple(self.isolines))
         object.__setattr__(self, "processes", tuple(self.processes))
         object.__setattr__(self, "style_overrides", tuple(sorted(
@@ -446,7 +451,7 @@ class DiagramSpec:
     # Storage ------------------------------------------------------------------
     def to_dict(self) -> dict:
         """Plain data, e.g. for json.dump. :meth:`from_dict` reverses it."""
-        return {"fluid": self.fluid.to_dict(), "diagram": self.diagram.name,
+        record = {"fluid": self.fluid.to_dict(), "diagram": self.diagram.name,
                 "units": _units_to_dict(self.units), "limits": _limits_to_dict(self.limits),
                 "settings": self.settings.to_dict(),
                 "isolines": [s.to_dict() for s in self.isolines],
@@ -456,6 +461,10 @@ class DiagramSpec:
                                     for k, changes in self.style_overrides},
                 "view_SI": [None if lim is None else list(lim) for lim in self.view_SI],
                 "title": self.title, "show_saturation": self.show_saturation}
+        if self.marked_points:
+            # Only written when set, so the record of a chart without them is the same as before 1.6
+            record["marked_points"] = list(self.marked_points)
+        return record
 
     @classmethod
     def from_dict(cls, data: dict) -> "DiagramSpec":
@@ -474,10 +483,32 @@ class DiagramSpec:
                    view_SI=_checked_view(data.get("view_SI", (None, None))),
                    title=data.get("title", ""),
                    # A record saved before 1.2 has no such field: its family values decide, as they did
-                   show_saturation=data.get("show_saturation"))
+                   show_saturation=data.get("show_saturation"),
+                   marked_points=tuple(data.get("marked_points", ())))
 
 
 # Validation helpers ----------------------------------------------------------
+#: The special states a chart of a fluid can mark, see DiagramSpec.marked_points
+MARKED_POINTS = ("critical", "triple")
+
+
+def _checked_points(points, fluid) -> Tuple[str, ...]:
+    """The marked points as a tuple in the order of MARKED_POINTS, each once."""
+    if isinstance(points, str):
+        points = (points,)
+    names = []
+    for name in points:
+        name = str(name).strip().lower()
+        if name not in MARKED_POINTS:
+            raise ValueError("A chart marks the points {0}, not '{1}'.".format(
+                ", ".join("'{0}'".format(p) for p in MARKED_POINTS), name))
+        names.append(name)
+    if names and fluid.kind != "fluid":
+        raise ValueError("Critical and triple points are marked only in charts of a fluid, not of {0}.".format(
+            fluid.name))
+    return tuple(p for p in MARKED_POINTS if p in names)
+
+
 def _checked_limits(diagram: DiagramType, limits):
     """The limits value of a spec: TpLimits for a fluid, a Region on the axes for humid air."""
     if diagram.kind == "fluid":

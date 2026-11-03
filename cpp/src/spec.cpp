@@ -118,11 +118,24 @@ json DiagramSpec::style_override(const std::string& key) const {
     return found == style_overrides.end() ? json::object() : found->second;
 }
 
+bool DiagramSpec::marks(const std::string& point) const {
+    return std::find(marked_points.begin(), marked_points.end(), point) != marked_points.end();
+}
+
 DiagramSpec DiagramSpec::from_json(const json& data) {
     DiagramSpec spec;
     spec.diagram = DiagramType::parse(data.value("diagram", "ph"));
     spec.units = UnitSystem::from_json(data.contains("units") ? data.at("units") : json("engineering"));
     spec.settings = Settings::from_json(data.value("settings", json::object()));
+    // The marked points in a fixed order, each once, as coolplot.spec.diagram keeps them
+    std::vector<std::string> marked;
+    for (const json& point : data.value("marked_points", json::array())) {
+        std::string name = point.get<std::string>();
+        if (name != "critical" && name != "triple") throw Error("A chart marks the points 'critical', 'triple', not '" + name + "'.");
+        marked.push_back(name);
+    }
+    for (const char* name : {"critical", "triple"})
+        if (std::find(marked.begin(), marked.end(), name) != marked.end()) spec.marked_points.push_back(name);
     for (const json& iso : data.value("isolines", json::array())) {
         IsolineSet set;
         set.key = quantity_key(iso.at("key").get<std::string>());

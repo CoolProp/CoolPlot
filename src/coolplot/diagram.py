@@ -10,7 +10,7 @@ units, styling, drawing) is what every chart offers. See
 from __future__ import annotations
 
 import warnings
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Sequence, Tuple, Union
 
 from CoolProp import AbstractState
 
@@ -130,6 +130,26 @@ class PropertyDiagram(Chart):
         # Families that cannot be drawn in the new diagram are dropped
         kept = tuple(s for s in self.spec.isolines if diagram.supports(s.key))
         self.spec = self.spec.with_(diagram=diagram, isolines=kept, view_SI=(None, None))
+
+    @property
+    def marked_points(self) -> Tuple[str, ...]:
+        """The special states marked with a dot on a chart of a fluid.
+
+        "critical" marks the critical point, "triple" the two ends of the
+        saturation curve at the triple point (saturated liquid and
+        vapour). Empty by default. A point is drawn only inside the region
+        of the chart: the default region ("DEF") starts 1 % above the
+        triple point, ``tp_limits=[None, None, None, None]`` reaches down to
+        it. A point the fluid does not have is left out: a mixture or a
+        pseudo-pure blend has no triple point.
+
+        >>> diagram.marked_points = ("critical", "triple")   # doctest: +SKIP
+        """
+        return self.spec.marked_points
+
+    @marked_points.setter
+    def marked_points(self, value: Union[str, Sequence[str], None]) -> None:
+        self.spec = self.spec.with_(marked_points=() if value is None else value)
 
     @property
     def tp_limits(self) -> TpLimits:

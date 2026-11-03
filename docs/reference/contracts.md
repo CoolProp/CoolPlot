@@ -119,6 +119,11 @@ One record describes a property diagram and a psychrometric chart alike;
   0 and 1, or 100 % relative humidity) whatever lines are set, `false`
   hides it, `null` leaves it to the values of the family. A record of 1.1
   has no such field and reads as `null`, so it draws as it did.
+* `marked_points` (since 1.6, charts of a fluid only): the special states
+  marked with a dot, `"critical"` and or `"triple"` (the two ends of the
+  saturation curve at the triple point). A point outside the chart's T-p
+  box is not drawn. The key is left out when nothing is marked, so a
+  record of 1.5 reads as it was.
 
 ## 2. The curve record
 

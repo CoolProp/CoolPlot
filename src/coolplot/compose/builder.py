@@ -28,16 +28,16 @@ from ..core.symbols import symbol_text, unit_text
 from ..scene import AxesSpec, SceneItem, Line, Markers, Text, drawable_limits
 from ..spec.diagram import SATURATION_KEY, CycleSpec, DiagramSpec, ProcessSpec
 from ..style.theme import Theme
-from ..style.values import Font
+from ..style.values import Font, MarkerStyle
 from .branding import branding
 from .corners import legend_size_pt, place_corners
 from .layout import Frame, LabelRequest, place_edge_labels, place_margin_labels, place_state_numbers
 from .rails import place_rail_labels
 from ..core.floats import is_zero, same_number
 
-# Drawing order: isolines, saturation dome, labels, processes and cycles,
-# state points, state numbers.
-Z_ISOLINE, Z_SATURATION, Z_LABEL, Z_PROCESS, Z_STATES = 1.0, 2.0, 4.0, 5.0, 6.0
+# Drawing order: isolines, saturation dome, marked critical and triple
+# points, labels, processes and cycles, state points, state numbers.
+Z_ISOLINE, Z_SATURATION, Z_POINT, Z_LABEL, Z_PROCESS, Z_STATES = 1.0, 2.0, 3.0, 4.0, 5.0, 6.0
 
 
 def _scaled(value, factor: float):
@@ -91,12 +91,17 @@ def _include(limits, values, log: bool, pad: float = 0.04):
     return lo, hi
 
 
-def axes_spec(spec: DiagramSpec, domain, theme: Theme, shown=()) -> AxesSpec:
+#: Room kept around the marked critical and triple points, as a fraction of the axis span
+MARKED_POINT_PAD = 0.015
+
+
+def axes_spec(spec: DiagramSpec, domain, theme: Theme, shown=(), marked=()) -> AxesSpec:
     """Axis titles, scales, limits and style of the diagram.
 
     Without a zoom window the axes cover the calculation domain, widened
     where needed so that every point in ``shown`` (display-unit (x, y)
-    arrays of processes and cycles) is visible.
+    arrays of processes and cycles) is visible, and every point in
+    ``marked`` (the critical and triple points) with a smaller margin.
     """
     diagram = spec.diagram
     limits = []
@@ -106,6 +111,8 @@ def axes_spec(spec: DiagramSpec, domain, theme: Theme, shown=()) -> AxesSpec:
         lo_hi = tuple(sorted(spec.units[key].from_SI(lo_hi).tolist()))
         if view is None:
             lo_hi = _include(lo_hi, [v for xy in shown for v in np.asarray(xy[axis], dtype=float)], log)
+            lo_hi = _include(lo_hi, [v for xy in marked for v in np.asarray(xy[axis], dtype=float)], log,
+                             MARKED_POINT_PAD)
         # What the backends will draw, so that labels are laid out in that frame
         limits.append(drawable_limits(lo_hi, log))
     return AxesSpec(x_label=axis_label(spec, diagram.x), y_label=axis_label(spec, diagram.y),
@@ -313,6 +320,81 @@ def labels_for(spec: DiagramSpec, requests, axes: AxesSpec, keep_out_lines, plot
                              settings.fallback, occupied)
 
 
+def marked_point_style(spec: DiagramSpec, theme: Theme) -> MarkerStyle:
+    """The marker of the critical and triple points: a dot in the colour of the saturation curve.
+
+    The dot is a little more than twice as wide as the curve, and its edge
+    is the curve's casing, so it stands out where lines cross it as the
+    curve does.
+    """
+    saturation = theme.saturation.with_(**spec.style_override(SATURATION_KEY))
+    casing = saturation.casing_color is not None and saturation.casing_width_pt > 0.0
+    return MarkerStyle(shape="o", size_pt=2.0 * saturation.width_pt + 3.0, face_color=saturation.color,
+                       edge_color=saturation.casing_color if casing else None,
+                       edge_width_pt=saturation.casing_width_pt if casing else 0.0, alpha=saturation.alpha)
+
+
+#: The marked points of the spec and the states that draw them, see Domain.points
+_POINT_STATES = (("critical", ("critical",)), ("triple", ("triple_liquid", "triple_vapour")))
+
+
+def _inside(value: float, lo: float, hi: float) -> bool:
+    """Whether a value lies in [lo, hi], with room for rounding noise."""
+    return lo * (1.0 - 1e-9) <= value <= hi * (1.0 + 1e-9)
+
+
+def _marked_states(spec: DiagramSpec, domain) -> List[Tuple[str, List[Dict[str, float]]]]:
+    """(name, states) of each marked point inside the chart's T-p box.
+
+    A state needs both axis quantities. Points outside the box are left
+    out: the default region ("DEF") starts 1 % above the triple point, so
+    its triple point is not on the chart; a region down to the limit of
+    the equation of state (``tp_limits=[None, ...]``) shows it.
+    """
+    states = dict(getattr(domain, "points", ()))
+    kx, ky = spec.diagram.x, spec.diagram.y
+    T_lo, T_hi, p_lo, p_hi = domain.tp_box
+    found = []
+    for name, state_names in _POINT_STATES:
+        if name not in spec.marked_points:
+            continue
+        points = [dict(states[n]) for n in state_names if n in states]
+        points = [p for p in points if kx in p and ky in p and "T" in p and "p" in p
+                  and _inside(p["T"], T_lo, T_hi) and _inside(p["p"], p_lo, p_hi)]
+        if points:
+            found.append((name, points))
+    return found
+
+
+def marked_points_shown(spec: DiagramSpec, domain) -> List[Tuple[np.ndarray, np.ndarray]]:
+    """Display-unit (x, y) arrays of the marked points, which the axes are widened to show whole.
+
+    The triple point lies on the lower edge of the region, where half of
+    its dot would be cut off otherwise.
+    """
+    ux, uy = spec.units[spec.diagram.x], spec.units[spec.diagram.y]
+    return [(ux.from_SI([p[spec.diagram.x] for p in points]), uy.from_SI([p[spec.diagram.y] for p in points]))
+            for _, points in _marked_states(spec, domain)]
+
+
+def marked_point_items(spec: DiagramSpec, theme: Theme, domain) -> List[Markers]:
+    """One set of markers for the critical point and one for the two ends of the triple line.
+
+    The states come with the domain (:attr:`coolplot.engine.planning.Domain.points`);
+    a point the fluid does not have, or whose state lacks a quantity of the
+    axes, is left out. The markers have no legend entry.
+    """
+    kx, ky = spec.diagram.x, spec.diagram.y
+    ux, uy = spec.units[kx], spec.units[ky]
+    style = marked_point_style(spec, theme)
+    items = []
+    for name, points in _marked_states(spec, domain):
+        items.append(Markers(id="point/" + name, group="points", role="marked_point",
+                             x=ux.from_SI([p[kx] for p in points]), y=uy.from_SI([p[ky] for p in points]),
+                             style=style, z_order=Z_POINT))
+    return items
+
+
 def process_items(spec: DiagramSpec, theme: Theme, process: ProcessSpec, index: int) -> List[SceneItem]:
     """The line and the state markers of one process."""
     ux, uy = spec.units[spec.diagram.x], spec.units[spec.diagram.y]
@@ -403,7 +485,7 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Optional[
     theme = scaled_theme(spec.settings.look, spec.settings.page.font_scale)
     process_parts = overlay_items(spec, theme, cycles or ())
     drawn = [(p.x, p.y, isinstance(p, Line)) for p in process_parts if not isinstance(p, Text)]
-    axes = axes_spec(spec, domain, theme, drawn)
+    axes = axes_spec(spec, domain, theme, drawn, marked_points_shown(spec, domain))
     size = plot_size_pt or default_plot_size_pt(spec)
     frame = Frame.from_axes(axes, size)
     process_parts = placed_state_numbers(process_parts, frame)
@@ -413,6 +495,7 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Optional[
     if badge is not None or watermark is not None:
         axes = replace(axes, badge=badge, watermark=watermark)
     items: List[SceneItem] = list(lines)
+    items.extend(marked_point_items(spec, theme, domain))
     requests = label_requests(spec, theme, curves, lines)
     if requests:
         # Rail and edge labels keep clear of a legend inside the plot area and of the badge

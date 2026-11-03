@@ -74,7 +74,7 @@ def test_chart_vocabulary_is_frozen():
 def test_constructors_add_only_their_own_names():
     from coolplot.diagram import PropertyDiagram
     from coolplot.psychrometric import PsychrometricChart
-    assert _public(PropertyDiagram) == {"kind", "fluid", "diagram_type", "tp_limits"}
+    assert _public(PropertyDiagram) == {"kind", "fluid", "diagram_type", "tp_limits", "marked_points"}
     assert _public(PsychrometricChart) == {"kind", "p_Pa", "points", "add_zone", "mix", "style"}
 
 

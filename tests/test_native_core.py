@@ -690,3 +690,44 @@ def test_the_pdf_page_draws_the_badge_without_a_warning(tmp_path):
         renderer.sync(ported)
         pdf = renderer.to_pdf()
     assert pdf.startswith(b"%PDF") and b"/ca 0.85" in pdf
+
+
+@needs_core
+@pytest.mark.parametrize("fluid, diagram_type, limits", [
+    ("R290", "ph", "ACHP"),                       # the triple point is below the region: the critical point only
+    ("Water", "Ts", [None, None, None, None]),     # both points, the axes widened to show them whole
+    ("CO2", "ph", [200.0, 330.0, 4e5, 1.5e7]),
+])
+def test_marked_points_compose_the_same_through_the_port(fluid, diagram_type, limits):
+    pytest.importorskip("CoolProp")
+    if native.core_version() < (1, 6):
+        pytest.skip("coolplot-core 1.6 marks the critical and triple points; an older one is refused (next test)")
+    from coolplot import PropertyDiagram
+    chart = PropertyDiagram(fluid, diagram_type, tp_limits=limits, settings="interactive")
+    chart.set_default_lines(labels=True)
+    chart.marked_points = ("critical", "triple")
+    python, ported = _both_scenes(chart)
+    difference = _same(python.to_dict(), ported.to_dict())
+    assert difference == "", difference
+    marked = [i.id for i in python if i.role == "marked_point"]
+    assert "point/critical" in marked
+    assert [i.id for i in ported if i.role == "marked_point"] == marked
+
+
+@needs_core
+def test_an_older_core_refuses_marked_points(monkeypatch):
+    """A core from before 1.6 would ignore the marked points and draw the chart without them."""
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    from coolplot.compose import compose
+    from coolplot.engine import plan
+    chart = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    chart.marked_points = "critical"
+    spec = chart.spec
+    domain = chart.engine.domain(spec)
+    curves = chart.engine.curves(spec, domain, plan(spec, domain))
+    monkeypatch.setattr(native, "core_version", lambda: (1, 5, 0))
+    monkeypatch.setenv("COOLPLOT_NATIVE", "1")
+    with pytest.warns(native.CoreFallbackWarning, match="older than 1.6"):
+        items, _ = compose(spec, domain, curves)
+    assert [i.id for i in items if i.role == "marked_point"] == ["point/critical"]   # drawn by Python
