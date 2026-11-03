@@ -31,6 +31,20 @@ def test_two_stage_cycles(tmp_path):
     assert (tmp_path / "two_stage_cycles.png").stat().st_size > 10000
 
 
+def test_co2_phase_diagram(tmp_path):
+    out = _run("co2_phase_diagram.py", tmp_path)
+    assert "Triple point -56.56 deg C, 5.180 bar" in out
+    assert "Dry ice at 1 atm -78.5 deg C" in out   # the sublimation line of Span and Wagner
+    assert (tmp_path / "co2_phase_diagram.png").stat().st_size > 10000
+
+
+def test_h2o_phase_diagram(tmp_path):
+    out = _run("h2o_phase_diagram.py", tmp_path)
+    assert "Triple point 0.01 deg C, 611.65 Pa" in out
+    assert "At 1 atm: melting at 0.003 deg C, boiling at 99.97 deg C" in out
+    assert (tmp_path / "h2o_phase_diagram.png").stat().st_size > 10000
+
+
 def test_refrigerant_blend(tmp_path):
     _run("refrigerant_blend.py", tmp_path)
     assert (tmp_path / "R32_R125_ph.svg").stat().st_size > 10000
@@ -213,7 +227,8 @@ def _same(a, b, path="", rel=1e-9):
 BOTH_PATHS = ["quickstart.py", "two_stage_cycles.py", "refrigerant_blend.py", "psychrometric.py",
               "interactive_cycle.py", "saturation_lines.py", "psychrometric_processes.py",
               "psychrometric_air_handling.py", "psychrometric_evaporative_cooling.py", "psychrometric_mollier.py",
-              "steam_rankine_ts.py", "steam_turbine_hs.py", "co2_transcritical.py", "orc_ts.py",
+              "steam_rankine_ts.py", "steam_turbine_hs.py", "co2_transcritical.py", "co2_phase_diagram.py",
+              "h2o_phase_diagram.py", "orc_ts.py",
                "refrigerant_comparison.py", "ip_units.py", "themes.py", "label_modes.py", "branding_chp.py",
                "coolpack.py"]
 

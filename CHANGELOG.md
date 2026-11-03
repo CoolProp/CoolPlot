@@ -58,6 +58,14 @@ guide in the documentation says what to change in your code.
   `"points"`, `"scale"` and `"dome"` of the domain. The bridge refuses
   any of them for a core older than 1.6, so the Python composer draws
   them, with a warning.
+- Example `examples/co2_phase_diagram.py`: a full phase diagram of CO2 on
+  the p-T chart. CoolPlot draws the vapour pressure curve; the example
+  adds the melting line from CoolProp, the sublimation line of Span and
+  Wagner (1996), the four regions and the triple and critical points with
+  matplotlib (issue #40).
+- Example `examples/h2o_phase_diagram.py`: the same for water, with the
+  melting line of the ices from CoolProp and the sublimation line of ice
+  Ih from IAPWS R14-08 (2011).
 
 ## [1.5.0] - 2026-10-30
 
