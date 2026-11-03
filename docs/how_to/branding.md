@@ -7,14 +7,15 @@ plot area and, if you like, a faint picture behind the lines.
 
 Since 1.5 every chart names its equation of state by default
 (`references="short"`), so a chart never reaches a reader without its
-source. To draw a chart without the badge:
+source, and since 1.6 the versions of CoolProp and CoolPlot that drew it
+(`versions=True`, "CoolProp 8.0.0, CoolPlot 1.6.0"). To draw a chart
+without the badge:
 
 ```python
-diagram.settings = diagram.settings.with_(branding={"references": "none"})
+diagram.settings = diagram.settings.with_(branding={"references": "none", "versions": False})
 ```
 
-Everything else (logo, versions, lines, watermark) stays off until you ask
-for it:
+Everything else (logo, lines, watermark) stays off until you ask for it:
 
 ```python
 from coolplot import PropertyDiagram

@@ -6,6 +6,13 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### Changed
+- The badge names the CoolProp and CoolPlot versions by default
+  (`BrandingSettings.versions=True`), below the equation of state, so a
+  chart says what drew it. Specs saved before hold `"versions": false`
+  and keep their badge; `{"references": "none", "versions": False}`
+  draws a chart without badge.
+
 ### Added
 - The critical point and the triple point can be marked with a dot in the
   colour of the saturation curve: `diagram.marked_points = ("critical",

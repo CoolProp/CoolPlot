@@ -257,9 +257,10 @@ class BrandingSettings:
     """Who made a chart and where its data come from
 
     By default the badge names the equation of state of the fluid
-    (``references="short"``), so that a chart says where its properties
-    come from; everything else is off. ``references="none"`` removes the
-    badge. A change only affects the layout of the page, like
+    (``references="short"``) and the CoolProp and CoolPlot versions
+    (``versions=True``, since 1.6), so that a chart says where its
+    properties come from and what drew it; everything else is off.
+    ``references="none"`` with ``versions=False`` removes the badge. A change only affects the layout of the page, like
     :class:`PageSettings`; nothing is recalculated.
 
     The badge is a box in one corner of the plot area. It holds, from top
@@ -284,7 +285,8 @@ class BrandingSettings:
         references. Mixtures add the reference of their mixing model,
         humid air that of ASHRAE RP-1485.
     versions : bool
-        Add a line with the CoolProp and CoolPlot versions.
+        Add a line with the CoolProp and CoolPlot versions (the default
+        since 1.6).
     lines : tuple of str
         Further lines, for example a web address and a date.
     location : str
@@ -309,7 +311,7 @@ class BrandingSettings:
     logo: Tuple[str, ...] = ()
     logo_width_pt: float = 60.0
     references: str = "short"
-    versions: bool = False
+    versions: bool = True
     lines: Tuple[str, ...] = ()
     location: str = "auto"
     font_size_pt: float = 6.0
@@ -426,7 +428,7 @@ class Settings:
         if branding is None and data.get("calc") is not None:
             # A record before 1.2 always holds its other parts, never the
             # branding: it keeps the chart without badge it was drawn as
-            branding = {"references": "none"}
+            branding = {"references": "none", "versions": False}
         return cls(calc=part(CalcSettings, data.get("calc")),
                    look=Theme.from_dict(look) if isinstance(look, dict) else get_theme(look or "default"),
                    labels=part(LabelSettings, labels),
