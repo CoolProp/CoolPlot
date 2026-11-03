@@ -140,9 +140,11 @@ p_vap_Pa = np.array([CoolProp.CoolProp.PropsSI("P", "T", T, "Q", 0, "Water") for
 p_vap_Pa[-1] = p_crit_Pa
 # Many points: the melting line has sharp corners where the kind of ice changes.
 # It starts at its own lowest pressure, 611.657 Pa, a hair above the triple
-# point pressure of the equation of state (611.655 Pa).
+# point pressure of the equation of state (611.655 Pa), and ends at its
+# highest pressure, 21845 bar, if the view goes further than that.
 p_melt_min_Pa = state.melting_line(CoolProp.iP_min, CoolProp.iT, 0.0)
-p_melt_Pa = np.geomspace(p_melt_min_Pa, p_view_max_Pa, 600)
+p_melt_max_Pa = min(p_view_max_Pa, state.melting_line(CoolProp.iP_max, CoolProp.iT, 0.0))
+p_melt_Pa = np.geomspace(p_melt_min_Pa, p_melt_max_Pa, 600)
 T_melt_K = np.array([T_melting_K(p) for p in p_melt_Pa])
 
 # Shade the regions of the solid, the liquid and the supercritical fluid; the
@@ -176,11 +178,14 @@ ax.plot([x_crit, T_view_C[1]], [y_crit, y_crit], zorder=2.4, **line_kwargs(theme
 
 # Triple point, critical point, and melting and boiling at atmospheric
 # pressure, drawn like the state points of a cycle
+p_atm_Pa = 101325.0
+T_boil_atm_K = CoolProp.CoolProp.PropsSI("T", "P", p_atm_Pa, "Q", 0, "Water")
+T_melt_atm_K = T_melting_K(p_atm_Pa)
 points = (
     ("Triple point\n{0:.2f} \u00b0C, {1:.4f} bar", T_triple_K, p_triple_Pa, (8, -22)),
     ("Critical point\n{0:.1f} \u00b0C, {1:.1f} bar", T_crit_K, p_crit_Pa, (-100, 4)),
-    ("Boiling at 1 atm\n{0:.1f} \u00b0C", 373.124, 101325.0, (8, -22)),
-    ("Melting at 1 atm\n{0:.1f} \u00b0C", T_melting_K(101325.0), 101325.0, (8, 4)),
+    ("Boiling at 1 atm\n{0:.1f} \u00b0C", T_boil_atm_K, p_atm_Pa, (8, -22)),
+    ("Melting at 1 atm\n{0:.1f} \u00b0C", T_melt_atm_K, p_atm_Pa, (8, 4)),
 )
 for text, T_K, p_Pa, offset in points:
     x, y = to_chart(T_K, p_Pa)
@@ -188,15 +193,16 @@ for text, T_K, p_Pa, offset in points:
     ax.annotate(text.format(float(x), float(y)), (x, y), xytext=offset, textcoords="offset points", zorder=3,
                 **text_kwargs(theme.isoline_label))
 
-# The triple points where liquid water meets two kinds of ice, IAPWS R14-08,
-# as smaller points
+# The triple points where liquid water meets two kinds of ice, as smaller
+# points. The pressures are those of IAPWS R14-08; the temperatures come
+# from CoolProp's melting line, so that each point sits on the drawn corner.
 ice_points = (
-    ("Ih / III", 251.165, 208.566e6, (-36, -3)),
-    ("III / V", 256.164, 350.1e6, (6, -6)),
-    ("V / VI", 273.31, 632.4e6, (6, -6)),
+    ("Ih / III", 208.566e6, (-36, -3)),
+    ("III / V", 350.1e6, (6, -6)),
+    ("V / VI", 632.4e6, (6, -6)),
 )
-for text, T_K, p_Pa, offset in ice_points:
-    x, y = to_chart(T_K, p_Pa)
+for text, p_Pa, offset in ice_points:
+    x, y = to_chart(T_melting_K(p_Pa), p_Pa)
     ax.plot(x, y, zorder=3, **marker_kwargs(theme.state_points[0], scale=0.6))
     ax.annotate(text, (x, y), xytext=offset, textcoords="offset points", zorder=3,
                 **text_kwargs(theme.isoline_label))
@@ -212,3 +218,7 @@ for text, x, y, angle in (("melting line", 8.0, 0.08, 90), ("sublimation line", 
     ax.text(x, y, text, rotation=angle, ha="center", va="center", zorder=3, **text_kwargs(theme.isoline_label))
 
 renderer.save("h2o_phase_diagram.png", dpi=150)
+
+print("Triple point {0:.2f} deg C, {1:.2f} Pa".format(T_triple_K - 273.15, p_triple_Pa))
+print("At 1 atm: melting at {0:.3f} deg C, boiling at {1:.2f} deg C".format(
+    T_melt_atm_K - 273.15, T_boil_atm_K - 273.15))

@@ -32,12 +32,16 @@ def test_two_stage_cycles(tmp_path):
 
 
 def test_co2_phase_diagram(tmp_path):
-    _run("co2_phase_diagram.py", tmp_path)
+    out = _run("co2_phase_diagram.py", tmp_path)
+    assert "Triple point -56.56 deg C, 5.180 bar" in out
+    assert "Dry ice at 1 atm -78.5 deg C" in out   # the sublimation line of Span and Wagner
     assert (tmp_path / "co2_phase_diagram.png").stat().st_size > 10000
 
 
 def test_h2o_phase_diagram(tmp_path):
-    _run("h2o_phase_diagram.py", tmp_path)
+    out = _run("h2o_phase_diagram.py", tmp_path)
+    assert "Triple point 0.01 deg C, 611.65 Pa" in out
+    assert "At 1 atm: melting at 0.003 deg C, boiling at 99.97 deg C" in out
     assert (tmp_path / "h2o_phase_diagram.png").stat().st_size > 10000
 
 

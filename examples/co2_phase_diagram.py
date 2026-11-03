@@ -49,7 +49,6 @@ T_crit_K = state.T_critical()
 p_crit_Pa = state.p_critical()
 
 # The part of the chart to show, in the chart's units (deg C and bar).
-# The melting line of CoolProp ends at 8227 bar.
 T_view_C = (-110.0, 80.0)
 p_view_bar = (0.05, 8000.0)
 
@@ -134,7 +133,10 @@ p_sub_Pa = p_sublimation_Pa(T_sub_K)
 T_vap_K = np.linspace(T_triple_K, T_crit_K, 100)
 p_vap_Pa = np.array([CoolProp.CoolProp.PropsSI("P", "T", T, "Q", 0, "CO2") for T in T_vap_K])
 p_vap_Pa[-1] = p_crit_Pa
-p_melt_Pa = np.geomspace(p_triple_Pa, p_view_max_Pa, 100)
+# CoolProp's melting line of CO2 ends at 8227 bar; a view that goes higher
+# shows the line up to there
+p_melt_max_Pa = min(p_view_max_Pa, state.melting_line(CoolProp.iP_max, CoolProp.iT, 0.0))
+p_melt_Pa = np.geomspace(p_triple_Pa, p_melt_max_Pa, 100)
 T_melt_K = np.array([T_melting_K(p) for p in p_melt_Pa])
 
 # The melting line runs past the critical temperature: split it there
@@ -173,11 +175,14 @@ ax.plot([x_crit, x_mc], [y_crit, y_mc], zorder=2.4, **line_kwargs(theme.quality,
 ax.plot([x_crit, T_view_C[1]], [y_crit, y_crit], zorder=2.4, **line_kwargs(theme.quality, dash="--"))
 
 # The triple point, the critical point and dry ice at atmospheric pressure,
-# drawn like the state points of a cycle
+# drawn like the state points of a cycle. The dry ice temperature is read
+# from the sublimation line (the pressure rises with temperature along it).
+p_atm_Pa = 101325.0
+T_dry_ice_K = np.interp(np.log(p_atm_Pa), np.log(p_sub_Pa), T_sub_K)
 points = (
     ("Triple point\n{0:.1f} \u00b0C, {1:.2f} bar", T_triple_K, p_triple_Pa, (8, -22)),
     ("Critical point\n{0:.1f} \u00b0C, {1:.1f} bar", T_crit_K, p_crit_Pa, (-96, 4)),
-    ("Dry ice at 1 atm\n{0:.1f} \u00b0C", 194.69, 101325.0, (8, -16)),
+    ("Dry ice at 1 atm\n{0:.1f} \u00b0C", T_dry_ice_K, p_atm_Pa, (8, -16)),
 )
 for text, T_K, p_Pa, offset in points:
     x, y = to_chart(T_K, p_Pa)
@@ -195,3 +200,6 @@ for text, x, y, angle in (("melting line", -60.0, 100.0, 88), ("sublimation line
     ax.text(x, y, text, rotation=angle, ha="center", va="center", zorder=3, **text_kwargs(theme.isoline_label))
 
 renderer.save("co2_phase_diagram.png", dpi=150)
+
+print("Triple point {0:.2f} deg C, {1:.3f} bar".format(T_triple_K - 273.15, p_triple_Pa * 1e-5))
+print("Dry ice at 1 atm {0:.1f} deg C".format(T_dry_ice_K - 273.15))
