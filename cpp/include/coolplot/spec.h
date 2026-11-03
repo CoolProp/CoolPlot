@@ -28,6 +28,8 @@ struct LabelSettings
     int tick_digits = 6;
     /// "unicode" (rho, deg C and m3 with their own characters) or "ascii"; a labels record without it is "ascii"
     std::string symbols = "unicode";
+    /// Label the lines of the dome family once more inside the dome, next to the bubble and dew lines (since 1.6)
+    bool dome = false;
 
     /// The edges set for a family, or the family's own.
     std::vector<std::string> preferred_edges(const std::string& family, const std::vector<std::string>& fallback_edges) const;
@@ -128,6 +130,8 @@ struct DiagramSpec
     bool has_saturation_scale = false;
     double saturation_scale_Q = 1.0;  ///< vapour quality of the saturation states the scale shows
 
+    /// The family labelled inside the dome: "T", or "p" where temperature is an axis; empty for the p-T chart.
+    std::string dome_key() const;
     /// The quantity of the saturation scale: "T" next to a pressure axis, "p" next to a temperature axis.
     std::string scale_key() const;
 

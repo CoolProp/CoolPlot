@@ -157,6 +157,12 @@ class LabelSettings:
     tick_digits : int
         Significant digits of tick labels; every backend writes them with
         :func:`coolplot.core.numbers.format_number`.
+    dome : bool
+        Since 1.6: label each labelled line that crosses the two-phase
+        region once more inside the dome, just right of the bubble line
+        and just left of the dew line, in addition to the labels of
+        ``mode``. The isotherms of a chart without temperature on an axis
+        (p-h, h-s), the isobars of one with it (T-s).
     """
     mode: str = "rails"
     keep_out_pt: float = 12.0
@@ -169,6 +175,7 @@ class LabelSettings:
     show_units: bool = True
     tick_digits: int = 6
     symbols: str = "unicode"
+    dome: bool = False
 
     def __post_init__(self):
         if self.mode not in LABEL_MODES:
@@ -190,6 +197,7 @@ class LabelSettings:
         object.__setattr__(self, "margin_edges", margin_edges)
         object.__setattr__(self, "every", int(self.every))
         object.__setattr__(self, "position", float(self.position))
+        object.__setattr__(self, "dome", bool(self.dome))
 
     def preferred_edges(self, family: str, default: Tuple[str, ...] = EDGES) -> Tuple[str, ...]:
         """The edges set for a family, or ``default`` (usually the family's own)."""
@@ -392,8 +400,11 @@ class Settings:
 
     def to_dict(self) -> dict:
         """The settings record of docs/reference/contracts.md."""
+        labels = asdict(self.labels)
+        if not labels["dome"]:
+            del labels["dome"]   # written only when set, so a record without it is the same as before 1.6
         return {"calc": asdict(self.calc), "look": self.look.to_dict(),
-                "labels": asdict(self.labels), "page": asdict(self.page),
+                "labels": labels, "page": asdict(self.page),
                 "branding": asdict(self.branding)}
 
     @classmethod

@@ -561,6 +561,20 @@ class DiagramSpec:
 MARKED_POINTS = ("critical", "triple")
 
 
+def dome_key(diagram: DiagramType) -> Optional[str]:
+    """The family whose lines are labelled inside the dome (LabelSettings.dome).
+
+    The lines that run through the two-phase region from the bubble line
+    to the dew line: the isotherms, or the isobars where temperature is an
+    axis. None for the p-T chart, which has both on its axes.
+    """
+    if "T" not in (diagram.x, diagram.y):
+        return "T"
+    if "p" not in (diagram.x, diagram.y):
+        return "p"
+    return None
+
+
 def scale_key(diagram: DiagramType, fluid) -> str:
     """The quantity of the saturation scale of a chart: "T" next to a pressure axis, "p" next to a temperature axis.
 

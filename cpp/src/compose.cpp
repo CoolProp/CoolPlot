@@ -47,6 +47,13 @@ struct Domain
     std::map<std::string, std::map<std::string, double>> points;
     /// Ticks of the saturation scale: (saturation value, value on the vertical axis) in SI units (since 1.6)
     std::vector<std::pair<double, double>> scale;
+    struct DomeLine
+    {
+        double value_SI;
+        std::map<std::string, double> bubble, dew;
+    };
+    /// Where the labelled lines of the dome family meet the bubble and dew lines (since 1.6)
+    std::vector<DomeLine> dome;
 
     Range range_SI(const std::string& key) const {
         auto found = ranges_SI.find(key);
@@ -828,6 +835,27 @@ ScaleParts saturation_scale_parts(const DiagramSpec& spec, const Theme& theme, c
     return parts;
 }
 
+/// The labels inside the dome, as coolplot.compose.builder.dome_labels places them.
+std::vector<Item> dome_labels(const DiagramSpec& spec, const Domain& domain, const std::vector<LabelRequest>& requests, const Frame& frame,
+                              const std::vector<KeepOut>& keep_out, const std::vector<TakenBox>& occupied, const std::vector<Item>& labels) {
+    std::string key = spec.dome_key();
+    if (!spec.settings.labels.dome || key.empty() || domain.dome.empty()) return {};
+    const std::string &kx = spec.diagram.x, &ky = spec.diagram.y;
+    const Unit& ux = spec.units.at(kx);
+    const Unit& uy = spec.units.at(ky);
+    std::map<std::string, DomeEnds> ends;
+    for (const Domain::DomeLine& line : domain.dome) {
+        if (!line.bubble.count(kx) || !line.bubble.count(ky) || !line.dew.count(kx) || !line.dew.count(ky)) continue;
+        std::string line_id = "iso/" + key + "/" + number_12g(line.value_SI);  // the item id of a planned value
+        ends[line_id + "/label"] = {ux.from_SI(line.bubble.at(kx)), uy.from_SI(line.bubble.at(ky)), ux.from_SI(line.dew.at(kx)),
+                                    uy.from_SI(line.dew.at(ky))};
+    }
+    std::vector<LabelRequest> family;
+    for (const LabelRequest& r : requests)
+        if (r.family == key) family.push_back(r);
+    return place_dome_labels(family, ends, frame, keep_out, spec.settings.labels.keep_out_pt, occupied, labels);
+}
+
 std::vector<Item> overlay_items(const DiagramSpec& spec, const Theme& theme, const std::vector<CycleInput>& cycles) {
     std::vector<Item> parts;
     for (size_t i = 0; i < spec.processes.size(); ++i) {
@@ -878,6 +906,8 @@ Scene compose(const json& input) {
     }
     for (const json& tick : input.at("domain").value("scale", json::array()))
         domain.scale.push_back({tick.at(0).get<double>(), tick.at(1).get<double>()});
+    for (const json& line : input.at("domain").value("dome", json::array()))
+        domain.dome.push_back({line.at(0).get<double>(), state_from(line.at(1)), state_from(line.at(2))});
     std::vector<CurveInput> curves;
     for (const json& entry : input.value("curves", json::array())) {
         const json& r = entry.at("request");
@@ -953,6 +983,9 @@ Scene compose(const json& input) {
         boxes.insert(boxes.end(), scale.boxes.begin(), scale.boxes.end());
         std::vector<Item> labels = labels_for(spec, requests, axes, keep_out, size, previous, boxes);
         scene.items.insert(scene.items.end(), labels.begin(), labels.end());
+        Frame label_frame{axes.x_limits, axes.y_limits, axes.x_log, axes.y_log, size.first, size.second};
+        std::vector<Item> dome = dome_labels(spec, domain, requests, label_frame, keep_out, boxes, labels);
+        scene.items.insert(scene.items.end(), dome.begin(), dome.end());
     }
     scene.items.insert(scene.items.end(), process_parts.begin(), process_parts.end());
     return scene;

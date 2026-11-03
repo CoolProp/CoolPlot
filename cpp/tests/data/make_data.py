@@ -74,6 +74,8 @@ def compose_case(name, chart, plot_size_pt=None, previous=None):
         data["domain"]["points"] = {name: dict(values) for name, values in domain.points}
     if spec.saturation_scale is not None and domain.scale:
         data["domain"]["scale"] = [list(pair) for pair in domain.scale]
+    if spec.settings.labels.dome and domain.dome:
+        data["domain"]["dome"] = [[value, dict(bubble), dict(dew)] for value, bubble, dew in domain.dome]
     # "scene" is the record of the contract (items in drawing order), which
     # the composer has to match; "scene_order" holds the same items in scene
     # order, which the SVG writers get (the legend follows that order)
@@ -187,6 +189,7 @@ def main():
     badge_cases()
     marked_point_cases()
     saturation_scale_cases()
+    dome_label_cases()
 
 
 def marked_point_cases():
@@ -288,3 +291,23 @@ def badge_cases():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def dome_label_cases():
+    """Labels inside the dome (1.6): isotherms of a p-h chart with a cycle and the scale, isobars of a T-s chart,
+    the sloped isotherms of a blend in edge mode."""
+    r290 = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    r290.set_default_lines(labels=True)
+    r290.add_cycle("heat pump", [{"p": 3.0, "T": 0.0}, {"p": 15.0, "via": "compression", "eta_is": 0.7},
+                                 {"p": 15.0, "Q": 0.0}, {"p": 3.0, "via": "isenthalpic"}])
+    r290.saturation_scale = {"step": 10}
+    r290.settings = r290.settings.with_(labels={"dome": True})
+    compose_case("compose_rails_r290_ph_dome_labels", r290)
+    water = PropertyDiagram("Water", "Ts", settings="interactive")
+    water.set_lines("p", num=10, rounding=True, labels=True)
+    water.settings = water.settings.with_(labels={"dome": True})
+    compose_case("compose_rails_water_ts_dome_labels", water)
+    blend = PropertyDiagram("HEOS::R32[0.5]&R1234yf[0.5]", "ph", tp_limits="ACHP", settings="interactive")
+    blend.set_lines("T", num=10, rounding=True, labels=True)
+    blend.settings = blend.settings.with_(labels={"mode": "edge", "dome": True})
+    compose_case("compose_rails_blend_ph_dome_labels_edge", blend)

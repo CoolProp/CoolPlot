@@ -770,3 +770,43 @@ def test_an_older_core_refuses_a_saturation_scale(monkeypatch):
     with pytest.warns(native.CoreFallbackWarning, match="older than 1.6"):
         items, _ = compose(spec, domain, curves)
     assert any(i.id == "scale/title" for i in items)   # drawn by Python
+
+
+@needs_core
+@pytest.mark.parametrize("fluid, diagram_type, family, mode", [
+    ("R290", "ph", "T", "rails"),
+    ("Water", "Ts", "p", "rails"),
+    ("HEOS::R32[0.5]&R1234yf[0.5]", "ph", "T", "edge"),   # sloped isotherms of a blend
+])
+def test_dome_labels_compose_the_same_through_the_port(fluid, diagram_type, family, mode):
+    pytest.importorskip("CoolProp")
+    if native.core_version() < (1, 6):
+        pytest.skip("coolplot-core 1.6 labels lines inside the dome; an older one is refused (next test)")
+    from coolplot import PropertyDiagram
+    chart = PropertyDiagram(fluid, diagram_type, tp_limits="ACHP", settings="interactive")
+    chart.set_lines(family, num=10, rounding=True, labels=True)
+    chart.settings = chart.settings.with_(labels={"mode": mode, "dome": True})
+    python, ported = _both_scenes(chart)
+    difference = _same(python.to_dict(), ported.to_dict())
+    assert difference == "", difference
+    assert any("/dome/" in i.id for i in python)
+
+
+@needs_core
+def test_an_older_core_refuses_dome_labels(monkeypatch):
+    """A core from before 1.6 would ignore the setting and draw the chart without the labels inside the dome."""
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    from coolplot.compose import compose
+    from coolplot.engine import plan
+    chart = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    chart.set_lines("T", num=6, rounding=True, labels=True)
+    chart.settings = chart.settings.with_(labels={"dome": True})
+    spec = chart.spec
+    domain = chart.engine.domain(spec)
+    curves = chart.engine.curves(spec, domain, plan(spec, domain))
+    monkeypatch.setattr(native, "core_version", lambda: (1, 5, 0))
+    monkeypatch.setenv("COOLPLOT_NATIVE", "1")
+    with pytest.warns(native.CoreFallbackWarning, match="older than 1.6"):
+        items, _ = compose(spec, domain, curves)
+    assert any("/dome/" in i.id for i in items)   # drawn by Python

@@ -64,6 +64,7 @@ LabelSettings LabelSettings::from_json(const json& data) {
         throw Error("LabelSettings.digits and tick_digits have to be between 1 and 12.");
     // A record before 1.4 always holds its labels, never the symbol style: it keeps the plain spelling
     s.symbols = data.value("symbols", "ascii");
+    s.dome = data.value("dome", false);
     check_symbol_style(s.symbols);
     return s;
 }
@@ -120,6 +121,12 @@ json DiagramSpec::style_override(const std::string& key) const {
 
 bool DiagramSpec::marks(const std::string& point) const {
     return std::find(marked_points.begin(), marked_points.end(), point) != marked_points.end();
+}
+
+std::string DiagramSpec::dome_key() const {
+    if (diagram.x != "T" && diagram.y != "T") return "T";
+    if (diagram.x != "p" && diagram.y != "p") return "p";
+    return "";
 }
 
 std::string DiagramSpec::scale_key() const {

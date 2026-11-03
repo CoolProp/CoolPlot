@@ -83,7 +83,9 @@ One record describes a property diagram and a psychrometric chart alike;
   always a corner or "outside right". Since 1.4 `labels` holds
   `symbols`, "unicode" (the default: rho, deg C and m3 written with
   their own characters) or "ascii"; a `labels` record without it was
-  written before 1.4 and reads as "ascii", so it draws as before.
+  written before 1.4 and reads as "ascii", so it draws as before. Since
+  1.6 `labels` may hold `dome`, `true` for labels inside the dome; it is
+  written only when true, so a record without it reads as `false`.
 * `isolines`: one entry per family, in drawing order. `values_SI` lists
   explicit values; `anchor` (since 1.1) places the lines through
   saturation states every `step_SI` of saturation temperature or

@@ -18,17 +18,17 @@ from collections import OrderedDict
 from dataclasses import replace
 from typing import List, Optional, Set, Tuple
 
-from ..spec.diagram import SCALE_TICKS, CycleSpec, DiagramSpec, scale_key
+from ..spec.diagram import SCALE_TICKS, CycleSpec, DiagramSpec, dome_key, scale_key
 from ..thermo.cycles import cycle_paths, resolve_states
 from ..core.units import Unit
 from ..thermo.fluid import Fluid
 from ..thermo.isolines import Curve
 from ..thermo import native
 from ..thermo.references import fluid_references, versions_line
-from ..thermo.provider import (PropertyProvider, chart_domain, compute_curve, make_provider,
+from ..thermo.provider import (PropertyProvider, chart_domain, compute_curve, dome_ends, make_provider,
                                marked_point_states, saturation_anchor_values, saturation_pairs)
 from .cache import CurveCache
-from .planning import CurveRequest, Domain, _round_values
+from .planning import CurveRequest, Domain, _round_values, plan
 
 
 class Engine:
@@ -114,7 +114,26 @@ class Engine:
             domain = replace(domain, points=self._marked_points(spec))
         if spec.saturation_scale is not None:
             domain = replace(domain, scale=self._scale_ticks(spec, domain))
+        if spec.settings.labels.dome:
+            domain = replace(domain, dome=self._dome_ends(spec, domain))
         return domain
+
+    def _dome_ends(self, spec: DiagramSpec, domain: Domain) -> Tuple:
+        """Where the labelled lines of the dome family meet the bubble and dew lines, once per fluid and values."""
+        key = dome_key(spec.diagram)
+        if key is None or spec.fluid.kind != "fluid":
+            return ()
+        values = tuple(r.value_SI for r in plan(spec, domain) if r.key == key and r.labels)
+        if not values:
+            return ()
+        margin = spec.settings.calc.critical_margin
+        cache_key = (spec.fluid, "dome", margin, key, values)
+        if cache_key not in self._anchors:
+            self._anchors[cache_key] = dome_ends(self.fluid(spec.fluid), key, values, margin)
+            if len(self._anchors) > 256:
+                self._anchors.popitem(last=False)
+        self._anchors.move_to_end(cache_key)
+        return self._anchors[cache_key]
 
     def _scale_ticks(self, spec: DiagramSpec, domain: Domain) -> Tuple[Tuple[float, float], ...]:
         """The ticks of the saturation scale, computed once per fluid, region, scale and unit."""

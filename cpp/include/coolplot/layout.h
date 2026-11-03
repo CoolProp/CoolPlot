@@ -116,6 +116,19 @@ std::vector<Item> place_margin_labels(const std::vector<LabelRequest>& requests,
                                       double gap_pt = 3.0);
 
 /// State numbers moved around their markers so they do not cover each other.
+/// Where a line meets the bubble line (xb, yb) and the dew line (xd, yd), in display units.
+struct DomeEnds
+{
+    double xb, yb, xd, yd;
+};
+
+/// Two more labels for each request with ends, inside the dome next to the bubble and dew lines (LabelSettings.dome, 1.6):
+/// on the chord between the ends, DOME_GAP_PT from each end, upright; left out where they do not fit, leave the frame,
+/// come near a cycle or overlap a placed label (``labels``), a box of ``occupied`` or an earlier dome label.
+std::vector<Item> place_dome_labels(const std::vector<LabelRequest>& requests, const std::map<std::string, DomeEnds>& ends, const Frame& frame,
+                                    const std::vector<KeepOut>& keep_out, double keep_out_pt, const std::vector<TakenBox>& occupied,
+                                    const std::vector<Item>& labels);
+
 std::vector<Item> place_state_numbers(const std::vector<Item>& numbers, const Frame& frame, const std::vector<double>& marker_x,
                                       const std::vector<double>& marker_y);
 

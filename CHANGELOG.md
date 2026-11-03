@@ -23,10 +23,19 @@ guide in the documentation says what to change in your code.
   Overlapping values are thinned out; labels, the legend and the badge
   keep clear of the scale. The spec record holds `saturation_scale`
   only when it is set.
-- coolplot-core 1.6 composes the marked points and the saturation
-  scale; the compose record carries their states as `"points"` and
-  `"scale"` of the domain. The bridge refuses either for a core older
-  than 1.6, so the Python composer draws them, with a warning.
+- Labels inside the dome (#39): `settings.with_(labels={"dome": True})`
+  labels each labelled isotherm (isobar on a T-s chart) once more just
+  right of the bubble line and just left of the dew line, on top of the
+  labels of the label mode. They follow the slope of a blend's
+  isotherms, keep clear of other labels, the legend, the badge, the
+  saturation scale and cycles, and are left out where they do not fit,
+  as near the critical point. `LabelSettings.dome` is written to the
+  record only when true.
+- coolplot-core 1.6 composes the marked points, the saturation scale and
+  the labels inside the dome; the compose record carries their states as
+  `"points"`, `"scale"` and `"dome"` of the domain. The bridge refuses
+  any of them for a core older than 1.6, so the Python composer draws
+  them, with a warning.
 
 ## [1.5.0] - 2026-10-30
 

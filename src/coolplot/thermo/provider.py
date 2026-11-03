@@ -172,6 +172,31 @@ def saturation_pairs(provider, by: str, key: str, values_SI, Q: float) -> Tuple[
     return tuple(pairs)
 
 
+def dome_ends(provider, key: str, values_SI, margin: float):
+    """Where lines of constant ``key`` ("T" or "p") meet the bubble line and the dew line.
+
+    Returns (value_SI, bubble state, dew state) for each value inside the
+    saturation range (less ``margin`` at the critical point), each state as
+    ((key, value_SI), ...) pairs. Values outside the range, and states
+    CoolProp cannot compute, are left out without a word: they only lose an
+    extra label.
+    """
+    if provider.kind != "fluid" or not provider.has_critical_point:
+        return ()
+    lo, hi = provider.saturation_range(key, margin)
+    ends = []
+    for value in values_SI:
+        if not lo <= value <= hi:
+            continue
+        try:
+            states = [provider.state_point(key, float(value), "Q", Q) for Q in (0.0, 1.0)]
+        except ValueError:
+            continue
+        pairs = [tuple((k, float(s[k])) for k in s.keys() if math.isfinite(s[k])) for s in states]
+        ends.append((float(value), pairs[0], pairs[1]))
+    return tuple(ends)
+
+
 def marked_point_states(provider, names, margin: float) -> Tuple[Tuple[str, Tuple[Tuple[str, float], ...]], ...]:
     """The states of the special points a chart marks, as (name, ((key, value_SI), ...)) pairs.
 

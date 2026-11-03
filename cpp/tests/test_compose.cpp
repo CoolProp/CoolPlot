@@ -128,6 +128,12 @@ TEST_CASE("The saturation scale next to a pressure or a temperature axis", "[com
     check_case("compose_rails_blend_ph_bubble_scale.json");
 }
 
+TEST_CASE("Labels inside the dome, next to the bubble and dew lines", "[compose][dome]") {
+    check_case("compose_rails_r290_ph_dome_labels.json");
+    check_case("compose_rails_water_ts_dome_labels.json");
+    check_case("compose_rails_blend_ph_dome_labels_edge.json");
+}
+
 TEST_CASE("The badge of the branding takes a corner with the legend, as in Python", "[compose][badge]") {
     check_case("compose_badge_r290_ph.json");
     check_case("compose_badge_r290_ph_upper_left.json");

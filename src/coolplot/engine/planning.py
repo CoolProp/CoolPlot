@@ -53,6 +53,10 @@ class Domain:
     ``scale`` holds the ticks of the saturation scale, as pairs
     (saturation value, value on the vertical axis) in SI units: (T_sat,
     p) next to a pressure axis, (p_sat, T) next to a temperature axis.
+    ``dome`` holds, for each line labelled inside the dome
+    (``LabelSettings.dome``), its value and the states where it meets the
+    bubble line and the dew line: (value_SI, ((key, value_SI), ...) at
+    quality 0, ((key, value_SI), ...) at quality 1).
     """
     tp_box: Tuple[float, float, float, float]
     ranges_SI: Tuple[Tuple[str, Tuple[float, float]], ...]
@@ -60,6 +64,7 @@ class Domain:
     saturation: bool = False
     points: Tuple[Tuple[str, Tuple[Tuple[str, float], ...]], ...] = ()
     scale: Tuple[Tuple[float, float], ...] = ()
+    dome: Tuple[Tuple[float, Tuple[Tuple[str, float], ...], Tuple[Tuple[str, float], ...]], ...] = ()
 
     def range_SI(self, key: str) -> Tuple[float, float]:
         """(min, max) of quantity ``key`` over the region, in SI units."""

@@ -498,6 +498,88 @@ def _text(request: LabelRequest, frame: Frame, box: Box, direction_pt) -> Text:
 
 
 # ---------------------------------------------------------------------------
+# Labels inside the dome (LabelSettings.dome, 1.6)
+# ---------------------------------------------------------------------------
+#: Distance of a dome label from the bubble or dew line, in points
+DOME_GAP_PT = 3.0
+
+
+def label_box(frame: Frame, label: Text) -> Optional[Box]:
+    """The box of a placed label in points, for labels drawn at their point (no offset); else None.
+
+    The angle comes from the label's direction the way a renderer turns it
+    into one: from the point (x, y) to (x + dx, y + dy) on screen.
+    """
+    if not (is_zero(label.offset_pt[0]) and is_zero(label.offset_pt[1])):
+        return None
+    px, py = frame.to_pt([label.x], [label.y])
+    cx, cy = float(px[0]), float(py[0])
+    if not (math.isfinite(cx) and math.isfinite(cy)):
+        return None
+    angle = 0.0
+    if label.direction is not None:
+        dx, dy = label.direction
+        qx, qy = frame.to_pt([label.x + dx], [label.y + dy])
+        ax, ay = float(qx[0]) - cx, float(qy[0]) - cy
+        if math.isfinite(ax) and math.isfinite(ay) and (ax != 0.0 or ay != 0.0):
+            angle = math.atan2(ay, ax)
+    width, height = text_size_pt(label.text, label.style)
+    return Box(cx, cy, angle, 0.5 * width, 0.5 * height)
+
+
+def place_dome_labels(requests: Sequence[LabelRequest], ends: Dict[str, Tuple[Tuple[float, float], Tuple[float, float]]],
+                      frame: Frame, keep_out_lines, keep_out_pt: float, occupied: Sequence[Box] = (),
+                      labels: Sequence[Text] = ()) -> List[Text]:
+    """Two more labels for each request with ends: inside the dome, next to the bubble line and the dew line.
+
+    ``ends`` maps a request id to the points (display units) where its line
+    meets the bubble line and the dew line. Inside the dome the line runs
+    from the one to the other; each label sits on that chord,
+    :data:`DOME_GAP_PT` from its end, turned along it (upright). A label
+    that would reach past the other end, leave the frame, come closer to a
+    cycle than ``keep_out_pt`` or overlap a label placed before (``labels``,
+    the boxes in ``occupied``, the dome labels of earlier requests) is left
+    out; near the critical point, where the two ends meet, that leaves one
+    label or none. Ids end in "/dome/liquid" and "/dome/vapour".
+    """
+    if not frame.usable:
+        return []
+    kx, ky = keep_out_points(frame, keep_out_lines)
+    placed: List[Box] = list(occupied)
+    for label in labels:
+        box = label_box(frame, label)
+        if box is not None:
+            placed.append(box)
+    out = []
+    for request in requests:
+        if request.id not in ends:
+            continue
+        (xb, yb), (xd, yd) = ends[request.id]
+        px, py = frame.to_pt([xb, xd], [yb, yd])
+        bx, by, dx, dy = float(px[0]), float(py[0]), float(px[1]), float(py[1])   # bubble end, dew end
+        if not all(math.isfinite(v) for v in (bx, by, dx, dy)):
+            continue
+        length = math.hypot(dx - bx, dy - by)
+        if not length > 0.0:
+            continue
+        ux, uy = (dx - bx) / length, (dy - by) / length
+        upright = (ux, uy) if ux >= 0.0 else (-ux, -uy)
+        angle = math.atan2(upright[1], upright[0])
+        width, height = text_size_pt(request.text, request.style)
+        half_w, half_h = 0.5 * width, 0.5 * height
+        if DOME_GAP_PT + width > length:
+            continue   # the label would reach past the other end
+        along = DOME_GAP_PT + half_w
+        for side, (sx, sy, sign) in (("liquid", (bx, by, 1.0)), ("vapour", (dx, dy, -1.0))):
+            box = Box(sx + sign * along * ux, sy + sign * along * uy, angle, half_w, half_h)
+            if not _free(box, frame, kx, ky, keep_out_pt, placed):
+                continue
+            placed.append(box)
+            out.append(_text(replace(request, id=request.id + "/dome/" + side), frame, box, upright))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Margin labels
 # ---------------------------------------------------------------------------
 def place_margin_labels(requests: Sequence[LabelRequest], frame: Frame, edges: Sequence[str],

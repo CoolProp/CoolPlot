@@ -1205,4 +1205,72 @@ std::vector<Item> place_state_numbers(const std::vector<Item>& numbers, const Fr
     return out;
 }
 
+// Labels inside the dome (LabelSettings.dome, 1.6) -----------------------------
+
+namespace {
+
+const double DOME_GAP_PT = 3.0;
+
+/// The box of a placed label drawn at its point (no offset), in points; false for one with an offset.
+bool label_box(const Frame& frame, const Item& label, Box& box) {
+    if (!(is_zero(label.offset_x_pt) && is_zero(label.offset_y_pt))) return false;
+    double cx = frame.x_to_pt(label.text_x), cy = frame.y_to_pt(label.text_y);
+    if (!(std::isfinite(cx) && std::isfinite(cy))) return false;
+    double angle = 0.0;
+    if (label.has_direction) {
+        double ax = frame.x_to_pt(label.text_x + label.direction_x) - cx, ay = frame.y_to_pt(label.text_y + label.direction_y) - cy;
+        if (std::isfinite(ax) && std::isfinite(ay) && (ax != 0.0 || ay != 0.0)) angle = std::atan2(ay, ax);
+    }
+    std::pair<double, double> size = text_size_pt(label.text, label.text_style);
+    box = Box{cx, cy, angle, 0.5 * size.first, 0.5 * size.second};
+    return true;
+}
+
+}  // namespace
+
+std::vector<Item> place_dome_labels(const std::vector<LabelRequest>& requests, const std::map<std::string, DomeEnds>& ends, const Frame& frame,
+                                    const std::vector<KeepOut>& keep_out, double keep_out_pt, const std::vector<TakenBox>& occupied,
+                                    const std::vector<Item>& labels) {
+    std::vector<Item> out;
+    if (!frame.usable()) return out;
+    std::vector<double> kx, ky;
+    keep_out_points(frame, keep_out, kx, ky);
+    std::vector<Box> placed;
+    for (const TakenBox& b : occupied) placed.push_back(Box{b.cx, b.cy, 0.0, b.half_w, b.half_h});
+    for (const Item& label : labels) {
+        Box box;
+        if (label.type == ItemType::Text && label_box(frame, label, box)) placed.push_back(box);
+    }
+    for (const LabelRequest& request : requests) {
+        auto found = ends.find(request.id);
+        if (found == ends.end()) continue;
+        const DomeEnds& e = found->second;
+        double bx = frame.x_to_pt(e.xb), by = frame.y_to_pt(e.yb), dx = frame.x_to_pt(e.xd), dy = frame.y_to_pt(e.yd);
+        if (!(std::isfinite(bx) && std::isfinite(by) && std::isfinite(dx) && std::isfinite(dy))) continue;
+        double length = std::hypot(dx - bx, dy - by);
+        if (!(length > 0.0)) continue;
+        double ux = (dx - bx) / length, uy = (dy - by) / length;
+        double up_x = ux >= 0.0 ? ux : -ux, up_y = ux >= 0.0 ? uy : -uy;
+        double angle = std::atan2(up_y, up_x);
+        std::pair<double, double> size = text_size_pt(request.text, request.style);
+        double half_w = 0.5 * size.first, half_h = 0.5 * size.second;
+        if (DOME_GAP_PT + size.first > length) continue;  // the label would reach past the other end
+        double along = DOME_GAP_PT + half_w;
+        struct Side
+        {
+            const char* name;
+            double sx, sy, sign;
+        };
+        for (const Side& side : {Side{"liquid", bx, by, 1.0}, Side{"vapour", dx, dy, -1.0}}) {
+            Box box{side.sx + side.sign * along * ux, side.sy + side.sign * along * uy, angle, half_w, half_h};
+            if (!is_free(box, frame, kx, ky, keep_out_pt, placed)) continue;
+            placed.push_back(box);
+            LabelRequest named = request;
+            named.id = request.id + "/dome/" + side.name;
+            out.push_back(edge_text(named, frame, box, up_x, up_y));
+        }
+    }
+    return out;
+}
+
 }  // namespace coolplot

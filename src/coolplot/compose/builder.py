@@ -26,13 +26,13 @@ import numpy as np
 from ..core.quantities import get_quantity
 from ..core.symbols import symbol_text, unit_text
 from ..scene import AxesSpec, SceneItem, Line, Markers, Text, drawable_limits
-from ..spec.diagram import SATURATION_KEY, CycleSpec, DiagramSpec, ProcessSpec, scale_key
+from ..spec.diagram import SATURATION_KEY, CycleSpec, DiagramSpec, ProcessSpec, dome_key, scale_key
 from ..style.theme import Theme
 from ..style.values import Font, LineStyle, MarkerStyle
 from .branding import branding
 from .corners import legend_size_pt, place_corners
-from .layout import (Box, Frame, LabelRequest, place_edge_labels, place_margin_labels, place_state_numbers,
-                     text_size_pt)
+from .layout import (Box, Frame, LabelRequest, place_dome_labels, place_edge_labels, place_margin_labels,
+                     place_state_numbers, text_size_pt)
 from .rails import place_rail_labels
 from ..core.floats import is_zero, same_number
 
@@ -291,6 +291,30 @@ def inline_labels(spec: DiagramSpec, requests: Sequence[LabelRequest], frame: Fr
         labels.append(Text(id=r.id, group=r.group, role="isoline_label", x=float(x[i]), y=float(y[i]),
                            text=r.text, direction=direction, style=r.style, z_order=Z_LABEL))
     return labels
+
+
+def dome_labels(spec: DiagramSpec, domain, requests: Sequence[LabelRequest], frame: Frame, keep_out_lines,
+                occupied, labels: Sequence[Text]) -> List[Text]:
+    """The labels inside the dome (``LabelSettings.dome``), see :func:`coolplot.compose.layout.place_dome_labels`.
+
+    The family is :func:`coolplot.spec.diagram.dome_key`; its lines are
+    matched to the states of ``domain.dome`` by their item ids.
+    """
+    key = dome_key(spec.diagram)
+    if not spec.settings.labels.dome or key is None or not domain.dome:
+        return []
+    kx, ky = spec.diagram.x, spec.diagram.y
+    ux, uy = spec.units[kx], spec.units[ky]
+    ends = {}
+    for value_SI, bubble, dew in domain.dome:
+        b, d = dict(bubble), dict(dew)
+        if not all(k in state for state in (b, d) for k in (kx, ky)):
+            continue
+        line_id = "iso/{0}/{1:.12g}".format(key, value_SI)   # coolplot.engine.planning.isoline_id of a planned value
+        ends[line_id + "/label"] = ((float(ux.from_SI(b[kx])), float(uy.from_SI(b[ky]))),
+                                    (float(ux.from_SI(d[kx])), float(uy.from_SI(d[ky]))))
+    family = [r for r in requests if r.family == key]
+    return place_dome_labels(family, ends, frame, keep_out_lines, spec.settings.labels.keep_out_pt, occupied, labels)
 
 
 def default_plot_size_pt(spec: DiagramSpec) -> Tuple[float, float]:
@@ -593,7 +617,10 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Optional[
     requests = label_requests(spec, theme, curves, lines)
     if requests:
         # Rail and edge labels keep clear of a legend inside the plot area, of the badge and of the scale
-        items.extend(labels_for(spec, requests, axes, drawn, size, previous_labels, tuple(boxes + scale_boxes)))
+        placed = labels_for(spec, requests, axes, drawn, size, previous_labels, tuple(boxes + scale_boxes))
+        items.extend(placed)
+        items.extend(dome_labels(spec, domain, requests, Frame.from_axes(axes, size), drawn, boxes + scale_boxes,
+                                 [t for t in placed if isinstance(t, Text)]))   # rails also give tick lines
     items.extend(process_parts)
     return items, axes
 
