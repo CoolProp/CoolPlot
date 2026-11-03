@@ -2,13 +2,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <charconv>
 #include <set>
 
 #include "coolplot/layout.h"
 
 namespace coolplot {
 
-const double Z_ISOLINE = 1.0, Z_SATURATION = 2.0, Z_POINT = 3.0, Z_LABEL = 4.0, Z_PROCESS = 5.0, Z_STATES = 6.0;
+const double Z_ISOLINE = 1.0, Z_SATURATION = 2.0, Z_SCALE = 2.5, Z_POINT = 3.0, Z_LABEL = 4.0, Z_PROCESS = 5.0, Z_STATES = 6.0;
 
 namespace {
 
@@ -44,6 +45,8 @@ struct Domain
     double tp_box[4] = {0.0, 0.0, 0.0, 0.0};  ///< T_min, T_max, p_min, p_max (read when points are marked)
     /// States of the marked points by name: "critical", "triple_liquid", "triple_vapour" (since 1.6)
     std::map<std::string, std::map<std::string, double>> points;
+    /// Ticks of the saturation scale: (saturation value, value on the vertical axis) in SI units (since 1.6)
+    std::vector<std::pair<double, double>> scale;
 
     Range range_SI(const std::string& key) const {
         auto found = ranges_SI.find(key);
@@ -190,12 +193,17 @@ const IsolineSet* saturation_anchor(const DiagramSpec& spec, const std::string& 
     return nullptr;
 }
 
+/// The symbol of quantity key at saturation with vapour quality Q: "T_sat", "T_sat,liq" or "T(x=0.5)".
+std::string state_symbol(const DiagramSpec& spec, const std::string& key, double Q) {
+    std::string symbol = shown_symbol(spec, key);
+    if (same_number(Q, 1.0)) return symbol + "_sat";
+    if (is_zero(Q)) return symbol + "_sat,liq";
+    return symbol + "(" + get_quantity("Q").symbol + "=" + spec.settings.labels.format_value(Q) + ")";
+}
+
 /// The symbol of the saturation state lines are labelled by: "T_sat", "T_sat,liq" or "T(x=0.5)".
 std::string saturation_symbol(const DiagramSpec& spec, const IsolineSet& anchored) {
-    std::string symbol = shown_symbol(spec, anchored.anchor_by);
-    if (same_number(anchored.anchor_Q, 1.0)) return symbol + "_sat";
-    if (is_zero(anchored.anchor_Q)) return symbol + "_sat,liq";
-    return symbol + "(" + get_quantity("Q").symbol + "=" + spec.settings.labels.format_value(anchored.anchor_Q) + ")";
+    return state_symbol(spec, anchored.anchor_by, anchored.anchor_Q);
 }
 
 /// A family's legend text with its symbol and unit, e.g. "Temperature T / deg C" (the "rails" mode); a family
@@ -711,6 +719,115 @@ std::vector<Item> marked_point_items(const DiagramSpec& spec, const Theme& theme
     return items;
 }
 
+// The saturation scale (since 1.6) ----------------------------------------------
+
+const double SCALE_INSET_PT = 10.0;  ///< distance of the scale from the left edge of the plot area
+const double SCALE_GAP_PT = 2.0;     ///< gap between a tick of the scale and its label
+
+/// "%.12g" without the C locale
+std::string number_12g(double value) {
+    char buffer[64];
+    std::to_chars_result result = std::to_chars(buffer, buffer + sizeof(buffer), value, std::chars_format::general, 12);
+    return std::string(buffer, result.ptr);
+}
+
+Item text_item(const std::string& id, const std::string& group, const std::string& role, double x, double y, const std::string& text,
+               double offset_x_pt, double offset_y_pt, const TextStyle& style, double z_order) {
+    Item t;
+    t.type = ItemType::Text;
+    t.id = id;
+    t.group = group;
+    t.role = role;
+    t.text_x = x;
+    t.text_y = y;
+    t.text = text;
+    t.offset_x_pt = offset_x_pt;
+    t.offset_y_pt = offset_y_pt;
+    t.text_style = style;
+    t.z_order = z_order;
+    return t;
+}
+
+struct ScaleParts
+{
+    std::vector<Item> items;
+    std::vector<KeepOut> overlays;  ///< the line of the scale, which the legend, the badge and the labels avoid
+    std::vector<TakenBox> boxes;    ///< the box of the scale with its values and title, in points
+};
+
+/// The saturation scale, as coolplot.compose.builder.saturation_scale_parts draws it.
+ScaleParts saturation_scale_parts(const DiagramSpec& spec, const Theme& theme, const Domain& domain, const Frame& frame) {
+    ScaleParts parts;
+    if (!spec.has_saturation_scale || domain.scale.empty() || !frame.usable()) return parts;
+    std::string by = spec.scale_key();
+    const Unit& unit_by = spec.units.at(by);
+    const Unit& unit_y = spec.units.at(spec.diagram.y);
+    const AxesStyle& st = theme.axes;
+    struct Tick
+    {
+        double y, py, saturation_SI;
+    };
+    std::vector<Tick> ticks;
+    for (const auto& pair : domain.scale) {
+        double y = unit_y.from_SI(pair.second);
+        double py = frame.y_to_pt(y);
+        if (std::isfinite(py) && -1e-9 <= py && py <= frame.height_pt + 1e-9) ticks.push_back({y, py, pair.first});
+    }
+    if (ticks.empty()) return parts;
+    // Ticks whose values would overlap are left out, from the top down
+    TextStyle value_style = st.tick_label;
+    value_style.h_align = "left";
+    value_style.v_align = "center";
+    value_style.halo_color = theme.isoline_label.halo_color;
+    value_style.halo_width_pt = theme.isoline_label.halo_width_pt;
+    double text_h = text_size_pt("0", value_style).second;
+    std::stable_sort(ticks.begin(), ticks.end(), [](const Tick& a, const Tick& b) { return -a.py < -b.py; });
+    std::vector<Tick> kept;
+    for (const Tick& tick : ticks)
+        if (kept.empty() || kept.back().py - tick.py >= text_h) kept.push_back(tick);
+    ticks.assign(kept.rbegin(), kept.rend());
+    double length = st.tick_length_pt, px = SCALE_INSET_PT;
+    double x_line = frame.x_to_data(px), x_left = frame.x_to_data(px - length), x_right = frame.x_to_data(px + length);
+    LineStyle line_style;
+    line_style.color = st.tick_color;
+    line_style.width_pt = st.tick_width_pt;
+    double y_low = ticks.front().y, y_high = ticks.back().y;
+    std::vector<double> tick_x, tick_y;
+    for (size_t i = 0; i < ticks.size(); ++i) {
+        if (i > 0) {
+            tick_x.push_back(NaN);
+            tick_y.push_back(NaN);
+        }
+        tick_x.insert(tick_x.end(), {x_left, x_right});
+        tick_y.insert(tick_y.end(), {ticks[i].y, ticks[i].y});
+    }
+    std::string group = "scale";
+    parts.items.push_back(line_item("scale/line", group, "scale", false, "", {x_line, x_line}, {y_low, y_high}, line_style, Z_SCALE));
+    parts.items.push_back(line_item("scale/ticks", group, "scale", false, "", tick_x, tick_y, line_style, Z_SCALE));
+    double widest = 0.0;
+    for (const Tick& tick : ticks) {
+        std::string text = spec.settings.labels.format_value(unit_by.label_value(tick.saturation_SI));
+        widest = std::max(widest, text_size_pt(text, value_style).first);
+        parts.items.push_back(text_item("scale/label/" + number_12g(tick.saturation_SI), group + "/labels", "scale_label", x_line, tick.y, text,
+                                        length + SCALE_GAP_PT, 0.0, value_style, Z_LABEL));
+    }
+    std::string title = state_symbol(spec, by, spec.saturation_scale_Q) + " / " + shown_unit(spec, by);
+    std::pair<double, double> title_size = text_size_pt(title, value_style);
+    double gap = length + SCALE_GAP_PT;
+    bool above = ticks.back().py + 0.5 * text_h + gap + title_size.second <= frame.height_pt;
+    TextStyle title_style = value_style;
+    title_style.v_align = above ? "bottom" : "top";
+    parts.items.push_back(text_item("scale/title", group + "/labels", "scale_label", x_line, above ? ticks.back().y : ticks.front().y, title,
+                                    -length, above ? gap : -gap, title_style, Z_LABEL));
+    double left = px - length;
+    double right = px + std::max(gap + widest, title_size.first - length);
+    double bottom = ticks.front().py - 0.5 * text_h - (above ? 0.0 : gap + title_size.second);
+    double top = ticks.back().py + 0.5 * text_h + (above ? gap + title_size.second : 0.0);
+    parts.boxes.push_back({0.5 * (left + right), 0.5 * (bottom + top), 0.5 * (right - left), 0.5 * (top - bottom)});
+    parts.overlays.push_back({{x_line, x_line}, {y_low, y_high}, true});
+    return parts;
+}
+
 std::vector<Item> overlay_items(const DiagramSpec& spec, const Theme& theme, const std::vector<CycleInput>& cycles) {
     std::vector<Item> parts;
     for (size_t i = 0; i < spec.processes.size(); ++i) {
@@ -759,6 +876,8 @@ Scene compose(const json& input) {
         const json& points = input.at("domain").at("points");
         for (auto it = points.begin(); it != points.end(); ++it) domain.points[it.key()] = state_from(it.value());
     }
+    for (const json& tick : input.at("domain").value("scale", json::array()))
+        domain.scale.push_back({tick.at(0).get<double>(), tick.at(1).get<double>()});
     std::vector<CurveInput> curves;
     for (const json& entry : input.value("curves", json::array())) {
         const json& r = entry.at("request");
@@ -810,6 +929,9 @@ Scene compose(const json& input) {
     Frame frame{axes.x_limits, axes.y_limits, axes.x_log, axes.y_log, size.first, size.second};
     process_parts = placed_state_numbers(process_parts, frame);
     std::vector<Item> lines = isoline_items(spec, theme, curves);
+    // The legend, the badge and the labels keep clear of the saturation scale as of a cycle
+    ScaleParts scale = saturation_scale_parts(spec, theme, domain, frame);
+    keep_out.insert(keep_out.end(), scale.overlays.begin(), scale.overlays.end());
     std::vector<std::string> sources;
     for (const json& line : input.value("sources", json::array())) sources.push_back(line.get<std::string>());
     Badge badge;
@@ -823,10 +945,12 @@ Scene compose(const json& input) {
     Scene scene;
     scene.axes = axes;
     scene.items = lines;
+    scene.items.insert(scene.items.end(), scale.items.begin(), scale.items.end());
     scene.items.insert(scene.items.end(), marked.begin(), marked.end());
     std::vector<LabelRequest> requests = label_requests(spec, theme, curves, lines);
     if (!requests.empty()) {
-        // Rail and edge labels keep clear of a legend inside the plot area and of the badge
+        // Rail and edge labels keep clear of a legend inside the plot area, of the badge and of the scale
+        boxes.insert(boxes.end(), scale.boxes.begin(), scale.boxes.end());
         std::vector<Item> labels = labels_for(spec, requests, axes, keep_out, size, previous, boxes);
         scene.items.insert(scene.items.end(), labels.begin(), labels.end());
     }

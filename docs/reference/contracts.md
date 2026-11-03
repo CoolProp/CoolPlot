@@ -124,6 +124,12 @@ One record describes a property diagram and a psychrometric chart alike;
   saturation curve at the triple point). A point outside the chart's T-p
   box is not drawn. The key is left out when nothing is marked, so a
   record of 1.5 reads as it was.
+* `saturation_scale` (since 1.6, charts of a fluid with pressure or
+  temperature on the vertical axis): `{"step_SI": 10.0, "Q": 1.0}`
+  draws a scale of saturation temperatures next to a pressure axis, or
+  of saturation pressures next to a temperature axis, with a tick every
+  `step_SI` (K or Pa; `null` for round values chosen by the chart) at
+  vapour quality `Q`. The key is left out when there is no scale.
 
 ## 2. The curve record
 

@@ -72,6 +72,8 @@ def compose_case(name, chart, plot_size_pt=None, previous=None):
         data["sources"] = list(sources)
     if spec.marked_points and domain.points:
         data["domain"]["points"] = {name: dict(values) for name, values in domain.points}
+    if spec.saturation_scale is not None and domain.scale:
+        data["domain"]["scale"] = [list(pair) for pair in domain.scale]
     # "scene" is the record of the contract (items in drawing order), which
     # the composer has to match; "scene_order" holds the same items in scene
     # order, which the SVG writers get (the legend follows that order)
@@ -184,6 +186,7 @@ def main():
     rails_cases()
     badge_cases()
     marked_point_cases()
+    saturation_scale_cases()
 
 
 def marked_point_cases():
@@ -192,6 +195,24 @@ def marked_point_cases():
     water.set_lines("p", num=5, labels=True)
     water.marked_points = ("critical", "triple")
     compose_case("compose_rails_water_ts_marked_points", water)
+
+
+def saturation_scale_cases():
+    """The saturation scale (1.6): T_sat on a pressure axis with a cycle, p_sat on a temperature axis, crowded."""
+    r290 = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    r290.set_default_lines(labels=True)
+    r290.add_cycle("heat pump", [{"p": 3.0, "T": 0.0}, {"p": 15.0, "via": "compression", "eta_is": 0.7},
+                                 {"p": 15.0, "Q": 0.0}, {"p": 3.0, "via": "isenthalpic"}])
+    r290.saturation_scale = {"step": 10}
+    compose_case("compose_rails_r290_ph_saturation_scale", r290)
+    water = PropertyDiagram("Water", "Ts", settings="interactive")
+    water.set_default_lines(labels=True)
+    water.saturation_scale = True
+    compose_case("compose_rails_water_ts_saturation_scale", water)
+    blend = PropertyDiagram("HEOS::R32[0.7]&R125[0.3]", "ph", tp_limits="ACHP", settings="interactive")
+    blend.set_lines("T", num=8, labels=True)
+    blend.saturation_scale = {"Q": 0}
+    compose_case("compose_rails_blend_ph_bubble_scale", blend, (300.0, 200.0))
 
 
 def rails(chart, legend="auto"):

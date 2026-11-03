@@ -731,3 +731,42 @@ def test_an_older_core_refuses_marked_points(monkeypatch):
     with pytest.warns(native.CoreFallbackWarning, match="older than 1.6"):
         items, _ = compose(spec, domain, curves)
     assert [i.id for i in items if i.role == "marked_point"] == ["point/critical"]   # drawn by Python
+
+
+@needs_core
+@pytest.mark.parametrize("fluid, diagram_type, scale", [
+    ("R290", "ph", {"step": 10}),                        # T_sat next to the pressure axis
+    ("Water", "Ts", True),                               # p_sat next to the temperature axis, thinned at the bottom
+    ("HEOS::R32[0.7]&R125[0.3]", "ph", {"Q": 0}),        # the bubble points of a blend
+])
+def test_a_saturation_scale_composes_the_same_through_the_port(fluid, diagram_type, scale):
+    pytest.importorskip("CoolProp")
+    if native.core_version() < (1, 6):
+        pytest.skip("coolplot-core 1.6 draws the saturation scale; an older one is refused (next test)")
+    from coolplot import PropertyDiagram
+    chart = PropertyDiagram(fluid, diagram_type, tp_limits="ACHP", settings="interactive")
+    chart.set_default_lines(labels=True)
+    chart.saturation_scale = scale
+    python, ported = _both_scenes(chart)
+    difference = _same(python.to_dict(), ported.to_dict())
+    assert difference == "", difference
+    assert any(i.id == "scale/title" for i in python)
+
+
+@needs_core
+def test_an_older_core_refuses_a_saturation_scale(monkeypatch):
+    """A core from before 1.6 would ignore the scale and draw the chart without it."""
+    pytest.importorskip("CoolProp")
+    from coolplot import PropertyDiagram
+    from coolplot.compose import compose
+    from coolplot.engine import plan
+    chart = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
+    chart.saturation_scale = True
+    spec = chart.spec
+    domain = chart.engine.domain(spec)
+    curves = chart.engine.curves(spec, domain, plan(spec, domain))
+    monkeypatch.setattr(native, "core_version", lambda: (1, 5, 0))
+    monkeypatch.setenv("COOLPLOT_NATIVE", "1")
+    with pytest.warns(native.CoreFallbackWarning, match="older than 1.6"):
+        items, _ = compose(spec, domain, curves)
+    assert any(i.id == "scale/title" for i in items)   # drawn by Python

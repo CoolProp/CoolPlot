@@ -15,10 +15,18 @@ guide in the documentation says what to change in your code.
   whole. Mixtures and pseudo-pure blends mark the critical point only.
   The spec record holds `marked_points` only when it is set, so records
   of 1.5 read as before.
-- coolplot-core 1.6 composes the marked points; the compose record
-  carries their states as `"points"` of the domain. The bridge refuses
-  marked points for a core older than 1.6, so the Python composer draws
-  them, with a warning.
+- A saturation scale just inside the frame, right of the vertical axis
+  (#39): `diagram.saturation_scale = True`, or `{"step": 10, "Q": 0}`
+  for a tick every 10 K at the bubble points of a blend. Next to a
+  pressure axis it shows the saturation temperatures, next to a
+  temperature axis the saturation pressures, up to the critical point.
+  Overlapping values are thinned out; labels, the legend and the badge
+  keep clear of the scale. The spec record holds `saturation_scale`
+  only when it is set.
+- coolplot-core 1.6 composes the marked points and the saturation
+  scale; the compose record carries their states as `"points"` and
+  `"scale"` of the domain. The bridge refuses either for a core older
+  than 1.6, so the Python composer draws them, with a warning.
 
 ## [1.5.0] - 2026-10-30
 

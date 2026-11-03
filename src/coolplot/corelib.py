@@ -120,6 +120,8 @@ def compose_record(spec, domain, curves, plot_size_pt=None, previous_labels=None
     if spec.marked_points and domain.points:
         # The same for the states of the marked critical and triple points (1.6)
         record["domain"]["points"] = {name: dict(values) for name, values in domain.points}
+    if spec.saturation_scale is not None and domain.scale:
+        record["domain"]["scale"] = [list(pair) for pair in domain.scale]
     return record
 
 
@@ -169,6 +171,7 @@ _NEEDS_A_NEWER_CORE = (
      "characters (rho, deg C, m3)"),
     ((1, 5), lambda spec: spec.settings.branding.has_badge, "draw the badge of the branding"),
     ((1, 6), lambda spec: bool(spec.marked_points), "mark the critical and triple points"),
+    ((1, 6), lambda spec: spec.saturation_scale is not None, "draw a saturation scale"),
 )
 
 

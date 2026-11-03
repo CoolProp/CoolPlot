@@ -148,6 +148,30 @@ def saturation_anchor_values(provider, key: str, by: str, step_SI: float, Q: flo
     return tuple(values)
 
 
+def saturation_pairs(provider, by: str, key: str, values_SI, Q: float) -> Tuple[Tuple[float, float], ...]:
+    """(saturation value, value of ``key``) at each saturation state ``by`` = value, vapour quality ``Q``.
+
+    For a saturation scale: by "T" and key "p" gives the saturation
+    pressure at each temperature. States CoolProp cannot compute are left
+    out, with one warning.
+    """
+    pairs = []
+    failed = 0
+    for value in values_SI:
+        try:
+            result = float(provider.state_point(by, float(value), "Q", Q)[key])
+        except (ValueError, KeyError):
+            result = float("nan")
+        if math.isfinite(result):
+            pairs.append((float(value), result))
+        else:
+            failed += 1
+    if failed:
+        warnings.warn("{0} of {1} saturation states of the saturation scale of {2} could not be computed; they have "
+                      "no tick.".format(failed, len(values_SI), provider.name), UserWarning, stacklevel=2)
+    return tuple(pairs)
+
+
 def marked_point_states(provider, names, margin: float) -> Tuple[Tuple[str, Tuple[Tuple[str, float], ...]], ...]:
     """The states of the special points a chart marks, as (name, ((key, value_SI), ...)) pairs.
 
