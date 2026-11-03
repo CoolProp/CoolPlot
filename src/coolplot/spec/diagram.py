@@ -112,6 +112,62 @@ class SaturationAnchor:
         return cls(**data)
 
 
+#: The quantity a saturation scale shows next to each axis quantity: T_sat on a pressure axis, p_sat on a
+#: temperature axis
+SCALE_KEYS = {"p": "T", "T": "p"}
+
+
+@dataclass(frozen=True)
+class SaturationScale:
+    """A scale of saturation states next to the vertical axis
+
+    On a pressure axis the scale shows the saturation temperature at each
+    pressure, on a temperature axis the saturation pressure. It is drawn
+    just inside the frame, right of the axis, with a tick at every round
+    value of the saturation quantity between the lowest saturation state
+    of the chart and the critical point.
+
+    Attributes
+    ----------
+    step_SI : float or None
+        The step between ticks as a difference in SI units (K or Pa); the
+        ticks land on round multiples of the step in the chart's units.
+        None chooses round values by itself, about :data:`SCALE_TICKS` of
+        them (1-2-5 per decade for pressures).
+    Q : float
+        Vapour quality of the saturation states: 1 the dew point of a
+        blend (the default), 0 the bubble point. A pure fluid has the
+        same saturation temperature at either.
+    """
+    step_SI: Optional[float] = None
+    Q: float = 1.0
+
+    def __post_init__(self):
+        if self.step_SI is not None:
+            step = _snap(float(self.step_SI))
+            if not step > 0.0:
+                raise ValueError("The step of the saturation scale has to be positive, not {0}.".format(self.step_SI))
+            object.__setattr__(self, "step_SI", step)
+        Q = float(self.Q)
+        if not 0.0 <= Q <= 1.0:
+            raise ValueError("The vapour quality of the saturation scale has to lie between 0 and 1, "
+                             "not {0}.".format(self.Q))
+        object.__setattr__(self, "Q", Q)
+
+    def to_dict(self) -> dict:
+        """The record of docs/reference/contracts.md for this scale."""
+        return {"step_SI": self.step_SI, "Q": self.Q}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SaturationScale":
+        """A scale from its record, see :meth:`to_dict`."""
+        return cls(step_SI=data.get("step_SI"), Q=data.get("Q", 1.0))
+
+
+#: The number of ticks a saturation scale aims for when no step is given
+SCALE_TICKS = 10
+
+
 @dataclass(frozen=True)
 class IsolineSet:
     """One family of isolines, values in SI units
@@ -408,6 +464,12 @@ class DiagramSpec:
     (quality 0 and 1, or 100 % relative humidity) whatever lines are set
     (True), hides it (False), or leaves it to the values of the quality or
     humidity family (None, how a spec saved before 1.2 reads).
+    ``marked_points`` names the special states marked on a chart of a
+    fluid: "critical" for the critical point, "triple" for the two ends of
+    the saturation curve at the triple point (the saturated liquid and
+    vapour). ``saturation_scale`` draws a scale of saturation temperatures
+    next to a pressure axis, or of saturation pressures next to a
+    temperature axis (:class:`SaturationScale`), or None for none.
     """
     fluid: Any
     diagram: DiagramType = DiagramType("p", "h")
@@ -422,6 +484,8 @@ class DiagramSpec:
     title: str = ""
     show_saturation: Optional[bool] = True
     lines: Tuple[LineSpec, ...] = ()
+    marked_points: Tuple[str, ...] = ()
+    saturation_scale: Optional[SaturationScale] = None
 
     def __post_init__(self):
         fluid = self.fluid if isinstance(self.fluid, HumidAirSpec) else FluidSpec.parse(self.fluid)
@@ -454,6 +518,12 @@ class DiagramSpec:
         object.__setattr__(self, "view_SI", _checked_view(self.view_SI))
         if self.show_saturation not in (True, False, None):
             raise ValueError("show_saturation is True, False or None, not {0!r}.".format(self.show_saturation))
+        object.__setattr__(self, "marked_points", _checked_points(self.marked_points, fluid))
+        if self.saturation_scale is not None:
+            if not isinstance(self.saturation_scale, SaturationScale):
+                raise ValueError("saturation_scale is a SaturationScale or None, not {0!r}.".format(
+                    self.saturation_scale))
+            scale_key(diagram, fluid)   # raises for a chart without a scale
         object.__setattr__(self, "isolines", tuple(self.isolines))
         object.__setattr__(self, "processes", tuple(self.processes))
         object.__setattr__(self, "style_overrides", tuple(sorted(
@@ -540,6 +610,11 @@ class DiagramSpec:
                 "title": self.title, "show_saturation": self.show_saturation}
         if self.lines:   # left out when empty, so records without single lines stay as they were
             record["lines"] = [line.to_dict() for line in self.lines]
+        if self.marked_points:
+            # Only written when set, so the record of a chart without them is the same as before 1.6
+            record["marked_points"] = list(self.marked_points)
+        if self.saturation_scale is not None:
+            record["saturation_scale"] = self.saturation_scale.to_dict()   # the same (1.6)
         return record
 
     @classmethod
@@ -560,10 +635,63 @@ class DiagramSpec:
                    title=data.get("title", ""),
                    # A record saved before 1.2 has no such field: its family values decide, as they did
                    show_saturation=data.get("show_saturation"),
-                   lines=tuple(LineSpec.from_dict(line) for line in data.get("lines", ())))
+                   lines=tuple(LineSpec.from_dict(line) for line in data.get("lines", ())),
+                   marked_points=tuple(data.get("marked_points", ())),
+                   saturation_scale=None if data.get("saturation_scale") is None
+                   else SaturationScale.from_dict(data["saturation_scale"]))
 
 
 # Validation helpers ----------------------------------------------------------
+#: The special states a chart of a fluid can mark, see DiagramSpec.marked_points
+MARKED_POINTS = ("critical", "triple")
+
+
+def dome_key(diagram: DiagramType) -> Optional[str]:
+    """The family whose lines are labelled inside the dome (LabelSettings.dome).
+
+    The lines that run through the two-phase region from the bubble line
+    to the dew line: the isotherms, or the isobars where temperature is an
+    axis. None for the p-T chart, which has both on its axes.
+    """
+    if "T" not in (diagram.x, diagram.y):
+        return "T"
+    if "p" not in (diagram.x, diagram.y):
+        return "p"
+    return None
+
+
+def scale_key(diagram: DiagramType, fluid) -> str:
+    """The quantity of the saturation scale of a chart: "T" next to a pressure axis, "p" next to a temperature axis.
+
+    Raises ValueError for a chart that cannot have one: humid air, a
+    vertical axis that is neither pressure nor temperature, or the p-T
+    chart, whose saturation curve is the scale already.
+    """
+    if fluid.kind != "fluid":
+        raise ValueError("A saturation scale is drawn only in charts of a fluid, not of {0}.".format(fluid.name))
+    if diagram.y not in SCALE_KEYS or diagram.x in SCALE_KEYS:
+        raise ValueError("A saturation scale needs pressure or temperature on the vertical axis and the other "
+                         "quantities on the horizontal one; a {0} diagram has none.".format(diagram.name))
+    return SCALE_KEYS[diagram.y]
+
+
+def _checked_points(points, fluid) -> Tuple[str, ...]:
+    """The marked points as a tuple in the order of MARKED_POINTS, each once."""
+    if isinstance(points, str):
+        points = (points,)
+    names = []
+    for name in points:
+        name = str(name).strip().lower()
+        if name not in MARKED_POINTS:
+            raise ValueError("A chart marks the points {0}, not '{1}'.".format(
+                ", ".join("'{0}'".format(p) for p in MARKED_POINTS), name))
+        names.append(name)
+    if names and fluid.kind != "fluid":
+        raise ValueError("Critical and triple points are marked only in charts of a fluid, not of {0}.".format(
+            fluid.name))
+    return tuple(p for p in MARKED_POINTS if p in names)
+
+
 def _checked_limits(diagram: DiagramType, limits):
     """The limits value of a spec: TpLimits for a fluid, a Region on the axes for humid air."""
     if diagram.kind == "fluid":

@@ -26,18 +26,20 @@ import numpy as np
 from ..core.quantities import get_quantity
 from ..core.symbols import symbol_text, unit_text
 from ..scene import AxesSpec, SceneItem, Line, Markers, Text, drawable_limits
-from ..spec.diagram import SATURATION_KEY, CycleSpec, DiagramSpec, LineSpec, ProcessSpec
+from ..spec.diagram import SATURATION_KEY, CycleSpec, DiagramSpec, LineSpec, ProcessSpec, dome_key, scale_key
 from ..style.theme import Theme
-from ..style.values import Font, TextStyle
+from ..style.values import Font, LineStyle, MarkerStyle, TextStyle
 from .branding import branding
 from .corners import legend_size_pt, place_corners
-from .layout import Frame, LabelRequest, place_edge_labels, place_margin_labels, place_state_numbers
+from .layout import (Box, Frame, LabelRequest, place_dome_labels, place_edge_labels, place_margin_labels,
+                     place_state_numbers, text_size_pt)
 from .rails import place_rail_labels
 from ..core.floats import is_zero, same_number
 
-# Drawing order: isolines, saturation dome, single lines, labels, processes
-# and cycles, state points, state numbers.
-Z_ISOLINE, Z_SATURATION, Z_LINE, Z_LABEL, Z_PROCESS, Z_STATES = 1.0, 2.0, 3.0, 4.0, 5.0, 6.0
+# Drawing order: isolines, saturation dome, the saturation scale, single
+# lines, marked critical and triple points, labels (and those of the
+# scale), processes and cycles, state points, state numbers.
+Z_ISOLINE, Z_SATURATION, Z_SCALE, Z_LINE, Z_POINT, Z_LABEL, Z_PROCESS, Z_STATES = 1.0, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0
 
 
 def _scaled(value, factor: float):
@@ -91,13 +93,18 @@ def _include(limits, values, log: bool, pad: float = 0.04):
     return lo, hi
 
 
-def axes_spec(spec: DiagramSpec, domain, theme: Theme, shown=()) -> AxesSpec:
+#: Room kept around the marked critical and triple points, as a fraction of the axis span
+MARKED_POINT_PAD = 0.015
+
+
+def axes_spec(spec: DiagramSpec, domain, theme: Theme, shown=(), marked=()) -> AxesSpec:
     """Axis titles, scales, limits and style of the diagram.
 
     Without a zoom window the axes cover the calculation domain, widened
     where needed so that every point in ``shown`` (display-unit (x, y)
     arrays of processes and cycles) and every single line of an axis
-    quantity is visible.
+    quantity is visible, and every point in ``marked`` (the critical and
+    triple points) with a smaller margin.
     """
     diagram = spec.diagram
     limits = []
@@ -109,6 +116,8 @@ def axes_spec(spec: DiagramSpec, domain, theme: Theme, shown=()) -> AxesSpec:
             values = [v for xy in shown for v in np.asarray(xy[axis], dtype=float)]
             values += [float(spec.units[key].from_SI(line.value_SI)) for line in spec.lines if line.key == key]
             lo_hi = _include(lo_hi, values, log)
+            lo_hi = _include(lo_hi, [v for xy in marked for v in np.asarray(xy[axis], dtype=float)], log,
+                             MARKED_POINT_PAD)
         # What the backends will draw, so that labels are laid out in that frame
         limits.append(drawable_limits(lo_hi, log))
     return AxesSpec(x_label=axis_label(spec, diagram.x), y_label=axis_label(spec, diagram.y),
@@ -163,12 +172,17 @@ def legend_with_unit(spec: DiagramSpec, key: str, legend: str) -> str:
 
 def saturation_symbol(spec: DiagramSpec, anchor) -> str:
     """The symbol of the saturation state lines are labelled by: "T_sat", "T_sat,liq" or "T(x=0.5)"."""
-    symbol = shown_symbol(spec, anchor.by)
-    if same_number(anchor.Q, 1.0):
+    return state_symbol(spec, anchor.by, anchor.Q)
+
+
+def state_symbol(spec: DiagramSpec, key: str, Q: float) -> str:
+    """The symbol of quantity ``key`` at saturation with vapour quality ``Q``: "T_sat", "T_sat,liq" or "T(x=0.5)"."""
+    symbol = shown_symbol(spec, key)
+    if same_number(Q, 1.0):
         return symbol + "_sat"
-    if is_zero(anchor.Q):
+    if is_zero(Q):
         return symbol + "_sat,liq"
-    return symbol + "({0}={1})".format(get_quantity("Q").symbol, spec.settings.labels.format_value(anchor.Q))
+    return symbol + "({0}={1})".format(get_quantity("Q").symbol, spec.settings.labels.format_value(Q))
 
 
 def _saturation_anchor(spec: DiagramSpec, key: str):
@@ -301,6 +315,30 @@ def inline_labels(spec: DiagramSpec, requests: Sequence[LabelRequest], frame: Fr
     return labels
 
 
+def dome_labels(spec: DiagramSpec, domain, requests: Sequence[LabelRequest], frame: Frame, keep_out_lines,
+                occupied, labels: Sequence[Text]) -> List[Text]:
+    """The labels inside the dome (``LabelSettings.dome``), see :func:`coolplot.compose.layout.place_dome_labels`.
+
+    The family is :func:`coolplot.spec.diagram.dome_key`; its lines are
+    matched to the states of ``domain.dome`` by their item ids.
+    """
+    key = dome_key(spec.diagram)
+    if not spec.settings.labels.dome or key is None or not domain.dome:
+        return []
+    kx, ky = spec.diagram.x, spec.diagram.y
+    ux, uy = spec.units[kx], spec.units[ky]
+    ends = {}
+    for value_SI, bubble, dew in domain.dome:
+        b, d = dict(bubble), dict(dew)
+        if not all(k in state for state in (b, d) for k in (kx, ky)):
+            continue
+        line_id = "iso/{0}/{1:.12g}".format(key, value_SI)   # coolplot.engine.planning.isoline_id of a planned value
+        ends[line_id + "/label"] = ((float(ux.from_SI(b[kx])), float(uy.from_SI(b[ky]))),
+                                    (float(ux.from_SI(d[kx])), float(uy.from_SI(d[ky]))))
+    family = [r for r in requests if r.family == key]
+    return place_dome_labels(family, ends, frame, keep_out_lines, spec.settings.labels.keep_out_pt, occupied, labels)
+
+
 def default_plot_size_pt(spec: DiagramSpec) -> Tuple[float, float]:
     """Estimated size of the plot area before a renderer reports the real one.
 
@@ -333,6 +371,165 @@ def labels_for(spec: DiagramSpec, requests, axes: AxesSpec, keep_out_lines, plot
              for family in {r.family for r in requests}}
     return place_edge_labels(requests, frame, keep_out_lines, settings.keep_out_pt, edges, previous,
                              settings.fallback, occupied)
+
+
+def marked_point_style(spec: DiagramSpec, theme: Theme) -> MarkerStyle:
+    """The marker of the critical and triple points: a dot in the colour of the saturation curve.
+
+    The dot is a little more than twice as wide as the curve, and its edge
+    is the curve's casing, so it stands out where lines cross it as the
+    curve does.
+    """
+    saturation = theme.saturation.with_(**spec.style_override(SATURATION_KEY))
+    casing = saturation.casing_color is not None and saturation.casing_width_pt > 0.0
+    return MarkerStyle(shape="o", size_pt=2.0 * saturation.width_pt + 3.0, face_color=saturation.color,
+                       edge_color=saturation.casing_color if casing else None,
+                       edge_width_pt=saturation.casing_width_pt if casing else 0.0, alpha=saturation.alpha)
+
+
+#: The marked points of the spec and the states that draw them, see Domain.points
+_POINT_STATES = (("critical", ("critical",)), ("triple", ("triple_liquid", "triple_vapour")))
+
+
+def _inside(value: float, lo: float, hi: float) -> bool:
+    """Whether a value lies in [lo, hi], with room for rounding noise."""
+    return lo * (1.0 - 1e-9) <= value <= hi * (1.0 + 1e-9)
+
+
+def _marked_states(spec: DiagramSpec, domain) -> List[Tuple[str, List[Dict[str, float]]]]:
+    """(name, states) of each marked point inside the chart's T-p box.
+
+    A state needs both axis quantities. Points outside the box are left
+    out: the default region ("DEF") starts 1 % above the triple point, so
+    its triple point is not on the chart; a region down to the limit of
+    the equation of state (``tp_limits=[None, ...]``) shows it.
+    """
+    states = dict(getattr(domain, "points", ()))
+    kx, ky = spec.diagram.x, spec.diagram.y
+    T_lo, T_hi, p_lo, p_hi = domain.tp_box
+    found = []
+    for name, state_names in _POINT_STATES:
+        if name not in spec.marked_points:
+            continue
+        points = [dict(states[n]) for n in state_names if n in states]
+        points = [p for p in points if kx in p and ky in p and "T" in p and "p" in p
+                  and _inside(p["T"], T_lo, T_hi) and _inside(p["p"], p_lo, p_hi)]
+        if points:
+            found.append((name, points))
+    return found
+
+
+def marked_points_shown(spec: DiagramSpec, domain) -> List[Tuple[np.ndarray, np.ndarray]]:
+    """Display-unit (x, y) arrays of the marked points, which the axes are widened to show whole.
+
+    The triple point lies on the lower edge of the region, where half of
+    its dot would be cut off otherwise.
+    """
+    ux, uy = spec.units[spec.diagram.x], spec.units[spec.diagram.y]
+    return [(ux.from_SI([p[spec.diagram.x] for p in points]), uy.from_SI([p[spec.diagram.y] for p in points]))
+            for _, points in _marked_states(spec, domain)]
+
+
+def marked_point_items(spec: DiagramSpec, theme: Theme, domain) -> List[Markers]:
+    """One set of markers for the critical point and one for the two ends of the triple line.
+
+    The states come with the domain (:attr:`coolplot.engine.planning.Domain.points`);
+    a point the fluid does not have, or whose state lacks a quantity of the
+    axes, is left out. The markers have no legend entry.
+    """
+    kx, ky = spec.diagram.x, spec.diagram.y
+    ux, uy = spec.units[kx], spec.units[ky]
+    style = marked_point_style(spec, theme)
+    items = []
+    for name, points in _marked_states(spec, domain):
+        items.append(Markers(id="point/" + name, group="points", role="marked_point",
+                             x=ux.from_SI([p[kx] for p in points]), y=uy.from_SI([p[ky] for p in points]),
+                             style=style, z_order=Z_POINT))
+    return items
+
+
+#: Distance of the saturation scale from the left edge of the plot area, in points
+SCALE_INSET_PT = 10.0
+#: Gap between a tick of the saturation scale and its label, in points
+SCALE_GAP_PT = 2.0
+
+
+def saturation_scale_parts(spec: DiagramSpec, theme: Theme, domain, frame: Frame):
+    """(items, overlays, boxes) of the saturation scale, see :class:`coolplot.spec.diagram.SaturationScale`.
+
+    The scale is a vertical line ``SCALE_INSET_PT`` inside the left edge
+    of the plot area, with a tick across it at every saturation state of
+    ``domain.scale`` that lies within the vertical axis, the value right of
+    each tick and a title ("T_sat / deg C") above the top tick, or below
+    the lowest one where there is no room above. It takes the colour,
+    width and length of the axis ticks and the font of the tick labels,
+    with the halo of the isoline labels, as lines run through it.
+
+    It does not widen the axes. ``overlays`` holds the line of the scale,
+    which the legend and the badge avoid like a cycle, ``boxes`` the box
+    in points (layout coordinates) that the isoline labels keep clear of.
+    """
+    if spec.saturation_scale is None or not domain.scale or not frame.usable:
+        return [], [], []
+    by, key = scale_key(spec.diagram, spec.fluid), spec.diagram.y
+    unit_by, unit_y = spec.units[by], spec.units[key]
+    st = theme.axes
+    labels = spec.settings.labels
+    ticks: List[Tuple[float, float, float]] = []   # (y in display units, y in points, saturation value in SI)
+    for saturation_SI, value_SI in domain.scale:
+        y = float(unit_y.from_SI(value_SI))
+        py = float(frame.to_pt([frame.x_limits[0]], [y])[1][0])
+        if math.isfinite(py) and -1e-9 <= py <= frame.height_pt + 1e-9:
+            ticks.append((y, py, saturation_SI))
+    if not ticks:
+        return [], [], []
+    # Ticks whose values would overlap are left out, from the top down: on a temperature axis the saturation
+    # pressures crowd together at the bottom
+    value_style = st.tick_label.with_(h_align="left", v_align="center", halo_color=theme.isoline_label.halo_color,
+                                      halo_width_pt=theme.isoline_label.halo_width_pt)
+    text_h = text_size_pt("0", value_style)[1]
+    kept: List[Tuple[float, float, float]] = []
+    for tick in sorted(ticks, key=lambda t: -t[1]):
+        if not kept or kept[-1][1] - tick[1] >= text_h:
+            kept.append(tick)
+    ticks = kept[::-1]
+    length = st.tick_length_pt
+    px = SCALE_INSET_PT
+    x_line, x_left, x_right = (float(v) for v in frame.to_data([px, px - length, px + length], [0.0, 0.0, 0.0])[0])
+    line_style = LineStyle(color=st.tick_color, width_pt=st.tick_width_pt)
+    y_low, y_high = ticks[0][0], ticks[-1][0]
+    tick_x, tick_y = [], []
+    for y, _, _ in ticks:
+        tick_x += [x_left, x_right, math.nan]
+        tick_y += [y, y, math.nan]
+    group = "scale"
+    items: List[SceneItem] = [
+        Line(id="scale/line", group=group, role="scale", x=np.array([x_line, x_line]), y=np.array([y_low, y_high]),
+             style=line_style, z_order=Z_SCALE),
+        Line(id="scale/ticks", group=group, role="scale", x=np.array(tick_x[:-1]), y=np.array(tick_y[:-1]),
+             style=line_style, z_order=Z_SCALE)]
+    widest = 0.0
+    for y, _, saturation_SI in ticks:
+        text = labels.format_value(unit_by.label_value(saturation_SI))
+        widest = max(widest, text_size_pt(text, value_style)[0])
+        items.append(Text(id="scale/label/{0:.12g}".format(saturation_SI), group=group + "/labels",
+                          role="scale_label", x=x_line, y=y, text=text, offset_pt=(length + SCALE_GAP_PT, 0.0),
+                          style=value_style, z_order=Z_LABEL))
+    title = "{0} / {1}".format(state_symbol(spec, by, spec.saturation_scale.Q), shown_unit(spec, by))
+    title_w, title_h = text_size_pt(title, value_style)
+    gap = length + SCALE_GAP_PT
+    above = ticks[-1][1] + 0.5 * text_h + gap + title_h <= frame.height_pt
+    title_y = ticks[-1][0] if above else ticks[0][0]
+    items.append(Text(id="scale/title", group=group + "/labels", role="scale_label", x=x_line, y=title_y,
+                      text=title, offset_pt=(-length, gap if above else -gap),
+                      style=value_style.with_(v_align="bottom" if above else "top"), z_order=Z_LABEL))
+    # The box the scale takes, with its values and title, for the label layout
+    left = px - length
+    right = px + max(gap + widest, title_w - length)
+    bottom = ticks[0][1] - 0.5 * text_h - (0.0 if above else gap + title_h)
+    top = ticks[-1][1] + 0.5 * text_h + (gap + title_h if above else 0.0)
+    box = Box(0.5 * (left + right), 0.5 * (bottom + top), 0.0, 0.5 * (right - left), 0.5 * (top - bottom))
+    return items, [(np.array([x_line, x_line]), np.array([y_low, y_high]))], [box]
 
 
 def line_look(spec: DiagramSpec, theme: Theme, line: LineSpec):
@@ -505,11 +702,13 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Optional[
     curves = [(r, c) for r, c in curves if r.item_id not in single_ids]
     process_parts = overlay_items(spec, theme, cycles or ())
     drawn = [(p.x, p.y, isinstance(p, Line)) for p in process_parts if not isinstance(p, Text)]
-    axes = axes_spec(spec, domain, theme, drawn)
+    axes = axes_spec(spec, domain, theme, drawn, marked_points_shown(spec, domain))
     size = plot_size_pt or default_plot_size_pt(spec)
     frame = Frame.from_axes(axes, size)
     process_parts = placed_state_numbers(process_parts, frame)
     lines = isoline_items(spec, theme, curves)
+    scale_items, scale_lines, scale_boxes = saturation_scale_parts(spec, theme, domain, frame)
+    drawn = drawn + scale_lines   # the legend, the badge and the labels keep clear of the scale as of a cycle
     single_lines = line_items(spec, theme, line_curves, frame)
     badge, watermark = branding(spec, theme, frame, sources)
     axes, badge, boxes = corners_for(spec, theme, axes, frame, badge,
@@ -518,10 +717,15 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Optional[
     if badge is not None or watermark is not None:
         axes = replace(axes, badge=badge, watermark=watermark)
     items: List[SceneItem] = list(lines)
+    items.extend(scale_items)
+    items.extend(marked_point_items(spec, theme, domain))
     requests = label_requests(spec, theme, curves, lines)
     if requests:
-        # Rail and edge labels keep clear of a legend inside the plot area and of the badge
-        items.extend(labels_for(spec, requests, axes, drawn, size, previous_labels, tuple(boxes)))
+        # Rail and edge labels keep clear of a legend inside the plot area, of the badge and of the scale
+        placed = labels_for(spec, requests, axes, drawn, size, previous_labels, tuple(boxes + scale_boxes))
+        items.extend(placed)
+        items.extend(dome_labels(spec, domain, requests, Frame.from_axes(axes, size), drawn, boxes + scale_boxes,
+                                 [t for t in placed if isinstance(t, Text)]))   # rails also give tick lines
     items.extend(single_lines)
     items.extend(process_parts)
     return items, axes

@@ -6,6 +6,17 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### Changed
+- The badge names the CoolProp and CoolPlot versions by default
+  (`BrandingSettings.versions=True`), below the equation of state, so a
+  chart says what drew it. Specs saved before hold `"versions": false`
+  and keep their badge; `{"references": "none", "versions": False}`
+  draws a chart without badge.
+- `cycle_states`, `state`, `state_at` and `mix` say which way `units=`
+  works: on `cycle_states` it converts the states returned (as dicts),
+  on the others it only sets the units of the input and the StatePoint
+  returned stays in SI units. The how-to on units explains why (#33).
+
 ### Added
 - `Chart.add_line` and `Chart.remove_line` (issue #32): single lines of
   constant value drawn on top of the families, each with its own name,
@@ -18,6 +29,35 @@ guide in the documentation says what to change in your code.
   `lines`), drawn with the scene roles `line` and `line_label`, and
   composed the same by coolplot-core 1.6; an older core leaves charts
   with single lines to the Python composer.
+- The critical point and the triple point can be marked with a dot in the
+  colour of the saturation curve: `diagram.marked_points = ("critical",
+  "triple")` (#39). The triple point marks both ends of the saturation
+  curve at the triple temperature. A point outside the region of the
+  chart is not drawn, and the axes are widened a little to show the dots
+  whole. Mixtures and pseudo-pure blends mark the critical point only.
+  The spec record holds `marked_points` only when it is set, so records
+  of 1.5 read as before.
+- A saturation scale just inside the frame, right of the vertical axis
+  (#39): `diagram.saturation_scale = True`, or `{"step": 10, "Q": 0}`
+  for a tick every 10 K at the bubble points of a blend. Next to a
+  pressure axis it shows the saturation temperatures, next to a
+  temperature axis the saturation pressures, up to the critical point.
+  Overlapping values are thinned out; labels, the legend and the badge
+  keep clear of the scale. The spec record holds `saturation_scale`
+  only when it is set.
+- Labels inside the dome (#39): `settings.with_(labels={"dome": True})`
+  labels each labelled isotherm (isobar on a T-s chart) once more just
+  right of the bubble line and just left of the dew line, on top of the
+  labels of the label mode. They follow the slope of a blend's
+  isotherms, keep clear of other labels, the legend, the badge, the
+  saturation scale and cycles, and are left out where they do not fit,
+  as near the critical point. `LabelSettings.dome` is written to the
+  record only when true.
+- coolplot-core 1.6 composes the marked points, the saturation scale and
+  the labels inside the dome; the compose record carries their states as
+  `"points"`, `"scale"` and `"dome"` of the domain. The bridge refuses
+  any of them for a core older than 1.6, so the Python composer draws
+  them, with a warning.
 - Example `examples/co2_phase_diagram.py`: a full phase diagram of CO2 on
   the p-T chart. CoolPlot draws the vapour pressure curve; the example
   adds the melting line from CoolProp, the sublimation line of Span and
@@ -26,12 +66,6 @@ guide in the documentation says what to change in your code.
 - Example `examples/h2o_phase_diagram.py`: the same for water, with the
   melting line of the ices from CoolProp and the sublimation line of ice
   Ih from IAPWS R14-08 (2011).
-
-### Changed
-- `cycle_states`, `state`, `state_at` and `mix` say which way `units=`
-  works: on `cycle_states` it converts the states returned (as dicts),
-  on the others it only sets the units of the input and the StatePoint
-  returned stays in SI units. The how-to on units explains why (#33).
 
 ## [1.5.0] - 2026-10-30
 

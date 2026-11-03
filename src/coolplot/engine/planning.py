@@ -46,12 +46,25 @@ class Domain:
     engine computes them with the region, because they need property calls
     and :func:`plan` makes none. ``saturation`` says whether the chart has a
     saturation curve at all (humid air, or a fluid with a critical point;
-    not an incompressible liquid).
+    not an incompressible liquid). ``points`` holds the states of the
+    critical and triple points the spec marks, as pairs (name, ((key,
+    value_SI), ...)) with the names "critical", "triple_liquid" and
+    "triple_vapour" (see :func:`coolplot.thermo.provider.marked_point_states`).
+    ``scale`` holds the ticks of the saturation scale, as pairs
+    (saturation value, value on the vertical axis) in SI units: (T_sat,
+    p) next to a pressure axis, (p_sat, T) next to a temperature axis.
+    ``dome`` holds, for each line labelled inside the dome
+    (``LabelSettings.dome``), its value and the states where it meets the
+    bubble line and the dew line: (value_SI, ((key, value_SI), ...) at
+    quality 0, ((key, value_SI), ...) at quality 1).
     """
     tp_box: Tuple[float, float, float, float]
     ranges_SI: Tuple[Tuple[str, Tuple[float, float]], ...]
     anchored: Tuple[Tuple[Tuple[str, SaturationAnchor], Tuple[Tuple[float, float], ...]], ...] = ()
     saturation: bool = False
+    points: Tuple[Tuple[str, Tuple[Tuple[str, float], ...]], ...] = ()
+    scale: Tuple[Tuple[float, float], ...] = ()
+    dome: Tuple[Tuple[float, Tuple[Tuple[str, float], ...], Tuple[Tuple[str, float], ...]], ...] = ()
 
     def range_SI(self, key: str) -> Tuple[float, float]:
         """(min, max) of quantity ``key`` over the region, in SI units."""

@@ -85,7 +85,9 @@ One record describes a property diagram and a psychrometric chart alike;
   always a corner or "outside right". Since 1.4 `labels` holds
   `symbols`, "unicode" (the default: rho, deg C and m3 written with
   their own characters) or "ascii"; a `labels` record without it was
-  written before 1.4 and reads as "ascii", so it draws as before.
+  written before 1.4 and reads as "ascii", so it draws as before. Since
+  1.6 `labels` may hold `dome`, `true` for labels inside the dome; it is
+  written only when true, so a record without it reads as `false`.
 * `isolines`: one entry per family, in drawing order. `values_SI` lists
   explicit values; `anchor` (since 1.1) places the lines through
   saturation states every `step_SI` of saturation temperature or
@@ -130,6 +132,17 @@ One record describes a property diagram and a psychrometric chart alike;
   saturation curve for an axis quantity). The key is left out when a
   chart has no single lines, so records of 1.5 read as they were; a
   coolplot-core older than 1.6 is not asked to compose a spec with lines.
+* `marked_points` (since 1.6, charts of a fluid only): the special states
+  marked with a dot, `"critical"` and or `"triple"` (the two ends of the
+  saturation curve at the triple point). A point outside the chart's T-p
+  box is not drawn. The key is left out when nothing is marked, so a
+  record of 1.5 reads as it was.
+* `saturation_scale` (since 1.6, charts of a fluid with pressure or
+  temperature on the vertical axis): `{"step_SI": 10.0, "Q": 1.0}`
+  draws a scale of saturation temperatures next to a pressure axis, or
+  of saturation pressures next to a temperature axis, with a tick every
+  `step_SI` (K or Pa; `null` for round values chosen by the chart) at
+  vapour quality `Q`. The key is left out when there is no scale.
 
 ## 2. The curve record
 

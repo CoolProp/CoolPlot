@@ -157,6 +157,12 @@ class LabelSettings:
     tick_digits : int
         Significant digits of tick labels; every backend writes them with
         :func:`coolplot.core.numbers.format_number`.
+    dome : bool
+        Since 1.6: label each labelled line that crosses the two-phase
+        region once more inside the dome, just right of the bubble line
+        and just left of the dew line, in addition to the labels of
+        ``mode``. The isotherms of a chart without temperature on an axis
+        (p-h, h-s), the isobars of one with it (T-s).
     """
     mode: str = "rails"
     keep_out_pt: float = 12.0
@@ -169,6 +175,7 @@ class LabelSettings:
     show_units: bool = True
     tick_digits: int = 6
     symbols: str = "unicode"
+    dome: bool = False
 
     def __post_init__(self):
         if self.mode not in LABEL_MODES:
@@ -190,6 +197,7 @@ class LabelSettings:
         object.__setattr__(self, "margin_edges", margin_edges)
         object.__setattr__(self, "every", int(self.every))
         object.__setattr__(self, "position", float(self.position))
+        object.__setattr__(self, "dome", bool(self.dome))
 
     def preferred_edges(self, family: str, default: Tuple[str, ...] = EDGES) -> Tuple[str, ...]:
         """The edges set for a family, or ``default`` (usually the family's own)."""
@@ -249,9 +257,10 @@ class BrandingSettings:
     """Who made a chart and where its data come from
 
     By default the badge names the equation of state of the fluid
-    (``references="short"``), so that a chart says where its properties
-    come from; everything else is off. ``references="none"`` removes the
-    badge. A change only affects the layout of the page, like
+    (``references="short"``) and the CoolProp and CoolPlot versions
+    (``versions=True``, since 1.6), so that a chart says where its
+    properties come from and what drew it; everything else is off.
+    ``references="none"`` with ``versions=False`` removes the badge. A change only affects the layout of the page, like
     :class:`PageSettings`; nothing is recalculated.
 
     The badge is a box in one corner of the plot area. It holds, from top
@@ -276,7 +285,8 @@ class BrandingSettings:
         references. Mixtures add the reference of their mixing model,
         humid air that of ASHRAE RP-1485.
     versions : bool
-        Add a line with the CoolProp and CoolPlot versions.
+        Add a line with the CoolProp and CoolPlot versions (the default
+        since 1.6).
     lines : tuple of str
         Further lines, for example a web address and a date.
     location : str
@@ -301,7 +311,7 @@ class BrandingSettings:
     logo: Tuple[str, ...] = ()
     logo_width_pt: float = 60.0
     references: str = "short"
-    versions: bool = False
+    versions: bool = True
     lines: Tuple[str, ...] = ()
     location: str = "auto"
     font_size_pt: float = 6.0
@@ -392,8 +402,11 @@ class Settings:
 
     def to_dict(self) -> dict:
         """The settings record of docs/reference/contracts.md."""
+        labels = asdict(self.labels)
+        if not labels["dome"]:
+            del labels["dome"]   # written only when set, so a record without it is the same as before 1.6
         return {"calc": asdict(self.calc), "look": self.look.to_dict(),
-                "labels": asdict(self.labels), "page": asdict(self.page),
+                "labels": labels, "page": asdict(self.page),
                 "branding": asdict(self.branding)}
 
     @classmethod
@@ -415,7 +428,7 @@ class Settings:
         if branding is None and data.get("calc") is not None:
             # A record before 1.2 always holds its other parts, never the
             # branding: it keeps the chart without badge it was drawn as
-            branding = {"references": "none"}
+            branding = {"references": "none", "versions": False}
         return cls(calc=part(CalcSettings, data.get("calc")),
                    look=Theme.from_dict(look) if isinstance(look, dict) else get_theme(look or "default"),
                    labels=part(LabelSettings, labels),

@@ -43,6 +43,32 @@ family, e.g. `{"T": ("top", "right")}`), `fallback` (allow positions
 further along the line when the edge is taken), `every` (label every
 n-th line), `digits`, `show_units`, `tick_digits`.
 
+## Labels inside the dome
+
+Since 1.6 each labelled line that runs through the two-phase region can
+carry two more labels inside the dome, one just right of the bubble line
+and one just left of the dew line, as on the printed refrigerant charts:
+
+```python
+diagram.set_lines("T", num=12, rounding=True, labels=True)
+diagram.settings = diagram.settings.with_(labels={"dome": True})
+```
+
+They come on top of the labels of the label mode, which stay as they
+are, and say the same (the bare value on rails). The family is the one
+that crosses the dome from the bubble to the dew line: the isotherms of a
+p-h, p-s or h-s chart, the isobars of a T-s chart, where the temperatures
+are on the axis already. Only lines with labels get them, and `every`
+thins them as it thins the others. Each label sits on its line and turns
+with it, so on a blend, where the glide makes the isotherms slope through
+the dome, it follows the slope. The usual rules apply: no label overlaps
+another or the legend, the badge or the saturation scale, none comes
+closer to a cycle than `keep_out_pt`, and a label that does not fit is
+left out. Near the critical point, where the bubble and dew lines meet,
+that leaves one label of a line, then none.
+
+## Label colours
+
 Labels are drawn in the theme's label colour (ink). To match each label
 to its family at a glance, draw it in the colour of its line instead:
 

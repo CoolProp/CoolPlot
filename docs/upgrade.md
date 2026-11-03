@@ -35,6 +35,21 @@ starting with an underscore, the helpers in `coolplot.core`,
 `coolplot.testing`, the scene item ids, and the exact coordinates of a
 chart (better numerics may move points).
 
+## From 1.5 to 1.6
+
+Nothing to change in your code. The badge of a new chart has one more
+line: the versions of CoolProp and CoolPlot that drew it ("CoolProp
+8.0.0, CoolPlot 1.6.0"), below the equation of state. For the badge of
+1.5, without that line:
+
+```python
+diagram.settings = diagram.settings.with_(branding={"versions": False})
+```
+
+and for no badge at all, `{"references": "none", "versions": False}`
+(`"references": "none"` alone now leaves the versions line). Specs saved
+before 1.6 hold `"versions": false` and keep their badge as it was.
+
 ## From 1.4 to 1.5
 
 Nothing to change in your code, but new charts look different in two
@@ -45,7 +60,7 @@ one corner that names the equation of state of the fluid ("R290: Lemmon
 et al. (2009)"), so that a chart always says where its properties come
 from. It takes the emptiest corner, and labels on rails or at the edges
 keep clear of it (inline labels and labels in the margin do not). For
-charts without it, as in 1.4:
+charts without it, as in 1.4 (since 1.6 with `"versions": False` as well):
 
 ```python
 diagram.settings = diagram.settings.with_(branding={"references": "none"})

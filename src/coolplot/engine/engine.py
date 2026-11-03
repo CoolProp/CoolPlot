@@ -18,15 +18,17 @@ from collections import OrderedDict
 from dataclasses import replace
 from typing import List, Optional, Set, Tuple
 
-from ..spec.diagram import CycleSpec, DiagramSpec
+from ..spec.diagram import SCALE_TICKS, CycleSpec, DiagramSpec, dome_key, scale_key
 from ..thermo.cycles import cycle_paths, resolve_states
+from ..core.units import Unit
+from ..thermo.fluid import Fluid
 from ..thermo.isolines import Curve
 from ..thermo import native
 from ..thermo.references import fluid_references, versions_line
-from ..thermo.provider import (PropertyProvider, chart_domain, compute_curve, make_provider,
-                               saturation_anchor_values)
+from ..thermo.provider import (PropertyProvider, chart_domain, compute_curve, dome_ends, make_provider,
+                               marked_point_states, saturation_anchor_values, saturation_pairs)
 from .cache import CurveCache
-from .planning import CurveRequest, Domain
+from .planning import CurveRequest, Domain, _round_values, plan
 
 
 class Engine:
@@ -45,7 +47,8 @@ class Engine:
         self.max_fluids = max_fluids
         self._fluids: "OrderedDict[object, PropertyProvider]" = OrderedDict()
         self._domains: "OrderedDict[Tuple, Domain]" = OrderedDict()
-        self._anchors: "OrderedDict[Tuple, Tuple]" = OrderedDict()   # values of lines placed by saturation states
+        # values of lines placed by saturation states, and the marked critical and triple points
+        self._anchors: "OrderedDict[Tuple, Tuple]" = OrderedDict()
         self._cycles: "OrderedDict[Tuple, Tuple]" = OrderedDict()
         self._warned: Set[Tuple] = set()
 
@@ -105,7 +108,77 @@ class Engine:
         domain = self._domains[key]
         anchored = tuple(((s.key, s.anchor), self._anchor_values(spec, domain, s))
                          for s in spec.isolines if s.anchor is not None)
-        return replace(domain, anchored=anchored) if anchored else domain
+        if anchored:
+            domain = replace(domain, anchored=anchored)
+        if spec.marked_points:
+            domain = replace(domain, points=self._marked_points(spec))
+        if spec.saturation_scale is not None:
+            domain = replace(domain, scale=self._scale_ticks(spec, domain))
+        if spec.settings.labels.dome:
+            domain = replace(domain, dome=self._dome_ends(spec, domain))
+        return domain
+
+    def _dome_ends(self, spec: DiagramSpec, domain: Domain) -> Tuple:
+        """Where the labelled lines of the dome family meet the bubble and dew lines, once per fluid and values."""
+        key = dome_key(spec.diagram)
+        if key is None or spec.fluid.kind != "fluid":
+            return ()
+        values = tuple(r.value_SI for r in plan(spec, domain) if r.key == key and r.labels)
+        if not values:
+            return ()
+        margin = spec.settings.calc.critical_margin
+        cache_key = (spec.fluid, "dome", margin, key, values)
+        if cache_key not in self._anchors:
+            self._anchors[cache_key] = dome_ends(self.fluid(spec.fluid), key, values, margin)
+            if len(self._anchors) > 256:
+                self._anchors.popitem(last=False)
+        self._anchors.move_to_end(cache_key)
+        return self._anchors[cache_key]
+
+    def _scale_ticks(self, spec: DiagramSpec, domain: Domain) -> Tuple[Tuple[float, float], ...]:
+        """The ticks of the saturation scale, computed once per fluid, region, scale and unit."""
+        scale = spec.saturation_scale
+        by, key = scale_key(spec.diagram, spec.fluid), spec.diagram.y
+        unit = spec.units[by]   # the ticks are round in the units shown
+        margin = spec.settings.calc.critical_margin
+        cache_key = (spec.fluid, "saturation scale", spec.limits, margin, scale, by, key, unit)
+        if cache_key not in self._anchors:
+            self._anchors[cache_key] = self._compute_scale_ticks(spec, domain, by, key, unit, margin)
+            if len(self._anchors) > 256:
+                self._anchors.popitem(last=False)
+        self._anchors.move_to_end(cache_key)
+        return self._anchors[cache_key]
+
+    def _compute_scale_ticks(self, spec: DiagramSpec, domain: Domain, by: str, key: str, unit: Unit,
+                             margin: float) -> Tuple[Tuple[float, float], ...]:
+        provider = self.fluid(spec.fluid)
+        if not isinstance(provider, Fluid) or not provider.has_critical_point:
+            return ()   # no saturation curve, no scale
+        scale = spec.saturation_scale
+        assert scale is not None   # asked for only when the spec has a scale
+        if scale.step_SI is not None:
+            return saturation_anchor_values(provider, key, by, scale.step_SI, scale.Q, None, domain.tp_box, margin,
+                                            unit)
+        # Round values over the saturation states of the chart: 1-2-5 per decade for pressures
+        lo, hi = provider.saturation_range(by, margin)
+        box_lo, box_hi = (domain.tp_box[0], domain.tp_box[1]) if by == "T" else (domain.tp_box[2], domain.tp_box[3])
+        lo, hi = max(lo, box_lo), min(hi, box_hi)
+        if not hi > lo:
+            return ()
+        values = [v for v in _round_values(unit, lo, hi, SCALE_TICKS, by == "p") if lo <= v <= hi]
+        return saturation_pairs(provider, by, key, values, scale.Q)
+
+    def _marked_points(self, spec: DiagramSpec) -> Tuple:
+        """The states of the critical and triple points the spec marks, computed once per fluid."""
+        margin = spec.settings.calc.critical_margin
+        # Kept with the anchored values: both are saturation states that go with their fluid
+        key = (spec.fluid, "marked points", margin, spec.marked_points)
+        if key not in self._anchors:
+            self._anchors[key] = marked_point_states(self.fluid(spec.fluid), spec.marked_points, margin)
+            if len(self._anchors) > 256:
+                self._anchors.popitem(last=False)
+        self._anchors.move_to_end(key)
+        return self._anchors[key]
 
     def _anchor_values(self, spec: DiagramSpec, domain: Domain, iso_set) -> Tuple[Tuple[float, float], ...]:
         """The values of one family placed by saturation states, computed once per fluid, region and unit."""

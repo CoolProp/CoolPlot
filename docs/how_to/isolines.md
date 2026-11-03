@@ -70,6 +70,62 @@ Incompressible liquids have no saturation curve. A chart saved before 1.2
 reads with `show_saturation = None`: there the quality (or humidity)
 values decide, as they did then.
 
+## Mark the critical and triple points
+
+Since 1.6 a chart of a fluid can mark the critical point and the triple
+point with a dot in the colour of the saturation curve:
+
+```python
+diagram.marked_points = ("critical", "triple")
+diagram.marked_points = "critical"                  # the critical point only
+diagram.marked_points = ()                          # none, the default
+```
+
+In a property diagram the triple point is not one point but the line
+where the saturation curve ends, so "triple" marks both of its ends: the
+saturated liquid and the saturated vapour at the triple temperature. A
+point is drawn only when it lies inside the region of the chart. The
+default region (`tp_limits="DEF"`) starts 1 % above the triple point,
+so to see the triple point, let the region reach down to the limit of
+the equation of state:
+
+```python
+diagram = PropertyDiagram("Water", "Ts", tp_limits=[None, None, None, None])
+diagram.marked_points = ("critical", "triple")
+```
+
+The axes are then widened a little, so that the dots are drawn whole. A
+mixture has no triple point, and neither has CoolProp's pseudo-pure
+model of a blend (R407C): its lowest temperature is where the fit of the
+equation ends. Their charts mark the critical point only. The dot
+follows `set_line_style("saturation", ...)`.
+
+## A saturation scale next to the axis
+
+Since 1.6 a chart with pressure on the vertical axis can show the
+saturation temperature at each pressure on a scale just inside the frame,
+right of the axis; a chart with temperature on the vertical axis shows the
+saturation pressure at each temperature:
+
+```python
+diagram.saturation_scale = True                   # round values chosen by the chart
+diagram.saturation_scale = {"step": 10}           # a tick every 10 K: -40, -30, ... deg C
+diagram.saturation_scale = {"step": 10, "Q": 0}   # the bubble points of a blend
+diagram.saturation_scale = None                   # no scale, the default
+```
+
+The step is in the chart's units of the scale quantity (K or deg C, bar,
+deg F in an IP chart). The scale runs up to the critical point, within
+the pressures (or temperatures) the axis shows. A blend has two
+saturation temperatures at each pressure; the scale shows the dew point
+("T_sat") unless `"Q": 0` asks for the bubble point ("T_sat,liq"). Where
+values would overlap, as the saturation pressures of a T-s chart do at
+low temperatures, some are left out. The scale takes the colour and
+length of the axis ticks; labels, the legend and the badge keep clear of
+it. Charts with pressure or temperature on the vertical axis have one
+(p-h, p-s, p-rho, T-s, T-rho); a p-T chart does not, since its saturation
+curve is the scale.
+
 ## Place lines through saturation states
 
 Engineers read a log(p)-h chart at round evaporating and condensing

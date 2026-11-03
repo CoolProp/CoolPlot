@@ -64,6 +64,7 @@ LabelSettings LabelSettings::from_json(const json& data) {
         throw Error("LabelSettings.digits and tick_digits have to be between 1 and 12.");
     // A record before 1.4 always holds its labels, never the symbol style: it keeps the plain spelling
     s.symbols = data.value("symbols", "ascii");
+    s.dome = data.value("dome", false);
     check_symbol_style(s.symbols);
     return s;
 }
@@ -118,11 +119,43 @@ json DiagramSpec::style_override(const std::string& key) const {
     return found == style_overrides.end() ? json::object() : found->second;
 }
 
+bool DiagramSpec::marks(const std::string& point) const {
+    return std::find(marked_points.begin(), marked_points.end(), point) != marked_points.end();
+}
+
+std::string DiagramSpec::dome_key() const {
+    if (diagram.x != "T" && diagram.y != "T") return "T";
+    if (diagram.x != "p" && diagram.y != "p") return "p";
+    return "";
+}
+
+std::string DiagramSpec::scale_key() const {
+    bool y_scaled = diagram.y == "p" || diagram.y == "T", x_scaled = diagram.x == "p" || diagram.x == "T";
+    if (!y_scaled || x_scaled)
+        throw Error("A saturation scale needs pressure or temperature on the vertical axis and the other quantities on the "
+                    "horizontal one; a " + diagram.name() + " diagram has none.");
+    return diagram.y == "p" ? "T" : "p";
+}
+
 DiagramSpec DiagramSpec::from_json(const json& data) {
     DiagramSpec spec;
     spec.diagram = DiagramType::parse(data.value("diagram", "ph"));
     spec.units = UnitSystem::from_json(data.contains("units") ? data.at("units") : json("engineering"));
     spec.settings = Settings::from_json(data.value("settings", json::object()));
+    // The marked points in a fixed order, each once, as coolplot.spec.diagram keeps them
+    std::vector<std::string> marked;
+    for (const json& point : data.value("marked_points", json::array())) {
+        std::string name = point.get<std::string>();
+        if (name != "critical" && name != "triple") throw Error("A chart marks the points 'critical', 'triple', not '" + name + "'.");
+        marked.push_back(name);
+    }
+    for (const char* name : {"critical", "triple"})
+        if (std::find(marked.begin(), marked.end(), name) != marked.end()) spec.marked_points.push_back(name);
+    if (data.contains("saturation_scale") && !data.at("saturation_scale").is_null()) {
+        spec.has_saturation_scale = true;
+        spec.saturation_scale_Q = data.at("saturation_scale").value("Q", 1.0);
+        spec.scale_key();  // refuses a chart without a scale
+    }
     for (const json& iso : data.value("isolines", json::array())) {
         IsolineSet set;
         set.key = quantity_key(iso.at("key").get<std::string>());
