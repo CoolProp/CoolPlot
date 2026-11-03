@@ -249,7 +249,7 @@ an item in place:
 | `cycle/<name>/states` | the markers of all states of a cycle, in ascending state number |
 | `cycle/<name>/number/<n>` | the number of state n |
 | `process/<name>/line`, `process/<name>/points` | a legacy process |
-| `line/<name>` | a single line (1.6), also the item id of its curve request |
+| `line/<name>` | a single line (1.5), also the item id of its curve request |
 | `line/<name>/label` | its label |
 
 Groups collect what is styled and toggled together (`iso/T`,

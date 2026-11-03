@@ -118,7 +118,7 @@ def compose_record(spec, domain, curves, plot_size_pt=None, previous_labels=None
         # Only written when there are some, so the record of a chart without badge is the same as before 1.5
         record["sources"] = list(sources)
     if spec.marked_points and domain.points:
-        # The same for the states of the marked critical and triple points (1.6)
+        # The same for the states of the marked critical and triple points (1.5)
         record["domain"]["points"] = {name: dict(values) for name, values in domain.points}
     if spec.saturation_scale is not None and domain.scale:
         record["domain"]["scale"] = [list(pair) for pair in domain.scale]

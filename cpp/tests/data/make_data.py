@@ -185,7 +185,7 @@ def main():
     restyled.set_line_style("Q", color="#7a3cc8", dash="dotted")
     compose_case("compose_r290_ph_restyled_dome", restyled)
 
-    # Single lines (1.6): a highlighted isotherm and quality line in the
+    # Single lines (1.5): a highlighted isotherm and quality line in the
     # style of their families, a line of each axis quantity, one with its own
     # style and text, one without a label; labels in the colour of the lines
     single = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
@@ -216,7 +216,7 @@ def main():
 
 
 def marked_point_cases():
-    """The critical and triple points marked with a dot (1.6), the axes widened to show the triple points whole."""
+    """The critical and triple points marked with a dot (1.5), the axes widened to show the triple points whole."""
     water = PropertyDiagram("Water", "Ts", tp_limits=[None, None, None, None], settings="interactive")
     water.set_lines("p", num=5, labels=True)
     water.marked_points = ("critical", "triple")
@@ -224,7 +224,7 @@ def marked_point_cases():
 
 
 def saturation_scale_cases():
-    """The saturation scale (1.6): T_sat on a pressure axis with a cycle, p_sat on a temperature axis, crowded."""
+    """The saturation scale (1.5): T_sat on a pressure axis with a cycle, p_sat on a temperature axis, crowded."""
     r290 = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
     r290.set_default_lines(labels=True)
     r290.add_cycle("heat pump", [{"p": 3.0, "T": 0.0}, {"p": 15.0, "via": "compression", "eta_is": 0.7},
@@ -328,7 +328,7 @@ if __name__ == "__main__":
 
 
 def dome_label_cases():
-    """Labels inside the dome (1.6): isotherms of a p-h chart with a cycle and the scale, isobars of a T-s chart,
+    """Labels inside the dome (1.5): isotherms of a p-h chart with a cycle and the scale, isobars of a T-s chart,
     the sloped isotherms of a blend in edge mode."""
     r290 = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
     r290.set_default_lines(labels=True)
