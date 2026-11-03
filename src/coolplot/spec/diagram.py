@@ -611,10 +611,10 @@ class DiagramSpec:
         if self.lines:   # left out when empty, so records without single lines stay as they were
             record["lines"] = [line.to_dict() for line in self.lines]
         if self.marked_points:
-            # Only written when set, so the record of a chart without them is the same as before 1.6
+            # Only written when set, so the record of a chart without them is the same as before 1.5
             record["marked_points"] = list(self.marked_points)
         if self.saturation_scale is not None:
-            record["saturation_scale"] = self.saturation_scale.to_dict()   # the same (1.6)
+            record["saturation_scale"] = self.saturation_scale.to_dict()   # the same (1.5)
         return record
 
     @classmethod

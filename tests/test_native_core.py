@@ -480,8 +480,8 @@ def test_unicode_symbols_compose_the_same_through_the_port():
 @needs_core
 def test_single_lines_compose_the_same_through_the_port():
     pytest.importorskip("CoolProp")
-    if native.core_version() < (1, 6):
-        pytest.skip("coolplot-core 1.6 draws single lines; an older one is refused (next test)")
+    if native.core_version() < (1, 5):
+        pytest.skip("coolplot-core 1.5 draws single lines; an older one is refused (next test)")
     from coolplot import LineStyle, PropertyDiagram, PsychrometricChart
     diagram = PropertyDiagram("R290", "ph", tp_limits="ACHP", settings="interactive")
     diagram.set_default_lines(labels=True)
@@ -508,7 +508,7 @@ def test_single_lines_compose_the_same_through_the_port():
 
 @needs_core
 def test_an_older_core_refuses_single_lines(monkeypatch):
-    """A core from before 1.6 would ignore the single lines and draw the chart without them."""
+    """A core from before 1.5 would ignore the single lines and draw the chart without them."""
     pytest.importorskip("CoolProp")
     from coolplot import PropertyDiagram
     from coolplot.compose import compose
@@ -519,9 +519,9 @@ def test_an_older_core_refuses_single_lines(monkeypatch):
     spec = chart.spec
     domain = chart.engine.domain(spec)
     curves = chart.engine.curves(spec, domain, plan(spec, domain))
-    monkeypatch.setattr(native, "core_version", lambda: (1, 5, 0))
+    monkeypatch.setattr(native, "core_version", lambda: (1, 4, 0))
     monkeypatch.setenv("COOLPLOT_NATIVE", "1")
-    with pytest.warns(native.CoreFallbackWarning, match="older than 1.6"):
+    with pytest.warns(native.CoreFallbackWarning, match="older than 1.5"):
         items, _ = compose(spec, domain, curves)
     assert any(i.id == "line/Relief valve" for i in items)   # drawn by the Python composer
 
@@ -748,8 +748,8 @@ def test_the_pdf_page_draws_the_badge_without_a_warning(tmp_path):
 ])
 def test_marked_points_compose_the_same_through_the_port(fluid, diagram_type, limits):
     pytest.importorskip("CoolProp")
-    if native.core_version() < (1, 6):
-        pytest.skip("coolplot-core 1.6 marks the critical and triple points; an older one is refused (next test)")
+    if native.core_version() < (1, 5):
+        pytest.skip("coolplot-core 1.5 marks the critical and triple points; an older one is refused (next test)")
     from coolplot import PropertyDiagram
     chart = PropertyDiagram(fluid, diagram_type, tp_limits=limits, settings="interactive")
     chart.set_default_lines(labels=True)
@@ -764,7 +764,7 @@ def test_marked_points_compose_the_same_through_the_port(fluid, diagram_type, li
 
 @needs_core
 def test_an_older_core_refuses_marked_points(monkeypatch):
-    """A core from before 1.6 would ignore the marked points and draw the chart without them."""
+    """A core from before 1.5 would ignore the marked points and draw the chart without them."""
     pytest.importorskip("CoolProp")
     from coolplot import PropertyDiagram
     from coolplot.compose import compose
@@ -774,9 +774,9 @@ def test_an_older_core_refuses_marked_points(monkeypatch):
     spec = chart.spec
     domain = chart.engine.domain(spec)
     curves = chart.engine.curves(spec, domain, plan(spec, domain))
-    monkeypatch.setattr(native, "core_version", lambda: (1, 5, 0))
+    monkeypatch.setattr(native, "core_version", lambda: (1, 4, 0))
     monkeypatch.setenv("COOLPLOT_NATIVE", "1")
-    with pytest.warns(native.CoreFallbackWarning, match="older than 1.6"):
+    with pytest.warns(native.CoreFallbackWarning, match="older than 1.5"):
         items, _ = compose(spec, domain, curves)
     assert [i.id for i in items if i.role == "marked_point"] == ["point/critical"]   # drawn by Python
 
@@ -789,8 +789,8 @@ def test_an_older_core_refuses_marked_points(monkeypatch):
 ])
 def test_a_saturation_scale_composes_the_same_through_the_port(fluid, diagram_type, scale):
     pytest.importorskip("CoolProp")
-    if native.core_version() < (1, 6):
-        pytest.skip("coolplot-core 1.6 draws the saturation scale; an older one is refused (next test)")
+    if native.core_version() < (1, 5):
+        pytest.skip("coolplot-core 1.5 draws the saturation scale; an older one is refused (next test)")
     from coolplot import PropertyDiagram
     chart = PropertyDiagram(fluid, diagram_type, tp_limits="ACHP", settings="interactive")
     chart.set_default_lines(labels=True)
@@ -803,7 +803,7 @@ def test_a_saturation_scale_composes_the_same_through_the_port(fluid, diagram_ty
 
 @needs_core
 def test_an_older_core_refuses_a_saturation_scale(monkeypatch):
-    """A core from before 1.6 would ignore the scale and draw the chart without it."""
+    """A core from before 1.5 would ignore the scale and draw the chart without it."""
     pytest.importorskip("CoolProp")
     from coolplot import PropertyDiagram
     from coolplot.compose import compose
@@ -813,9 +813,9 @@ def test_an_older_core_refuses_a_saturation_scale(monkeypatch):
     spec = chart.spec
     domain = chart.engine.domain(spec)
     curves = chart.engine.curves(spec, domain, plan(spec, domain))
-    monkeypatch.setattr(native, "core_version", lambda: (1, 5, 0))
+    monkeypatch.setattr(native, "core_version", lambda: (1, 4, 0))
     monkeypatch.setenv("COOLPLOT_NATIVE", "1")
-    with pytest.warns(native.CoreFallbackWarning, match="older than 1.6"):
+    with pytest.warns(native.CoreFallbackWarning, match="older than 1.5"):
         items, _ = compose(spec, domain, curves)
     assert any(i.id == "scale/title" for i in items)   # drawn by Python
 
@@ -828,8 +828,8 @@ def test_an_older_core_refuses_a_saturation_scale(monkeypatch):
 ])
 def test_dome_labels_compose_the_same_through_the_port(fluid, diagram_type, family, mode):
     pytest.importorskip("CoolProp")
-    if native.core_version() < (1, 6):
-        pytest.skip("coolplot-core 1.6 labels lines inside the dome; an older one is refused (next test)")
+    if native.core_version() < (1, 5):
+        pytest.skip("coolplot-core 1.5 labels lines inside the dome; an older one is refused (next test)")
     from coolplot import PropertyDiagram
     chart = PropertyDiagram(fluid, diagram_type, tp_limits="ACHP", settings="interactive")
     chart.set_lines(family, num=10, rounding=True, labels=True)
@@ -842,7 +842,7 @@ def test_dome_labels_compose_the_same_through_the_port(fluid, diagram_type, fami
 
 @needs_core
 def test_an_older_core_refuses_dome_labels(monkeypatch):
-    """A core from before 1.6 would ignore the setting and draw the chart without the labels inside the dome."""
+    """A core from before 1.5 would ignore the setting and draw the chart without the labels inside the dome."""
     pytest.importorskip("CoolProp")
     from coolplot import PropertyDiagram
     from coolplot.compose import compose
@@ -853,8 +853,8 @@ def test_an_older_core_refuses_dome_labels(monkeypatch):
     spec = chart.spec
     domain = chart.engine.domain(spec)
     curves = chart.engine.curves(spec, domain, plan(spec, domain))
-    monkeypatch.setattr(native, "core_version", lambda: (1, 5, 0))
+    monkeypatch.setattr(native, "core_version", lambda: (1, 4, 0))
     monkeypatch.setenv("COOLPLOT_NATIVE", "1")
-    with pytest.warns(native.CoreFallbackWarning, match="older than 1.6"):
+    with pytest.warns(native.CoreFallbackWarning, match="older than 1.5"):
         items, _ = compose(spec, domain, curves)
     assert any("/dome/" in i.id for i in items)   # drawn by Python

@@ -158,7 +158,7 @@ class LabelSettings:
         Significant digits of tick labels; every backend writes them with
         :func:`coolplot.core.numbers.format_number`.
     dome : bool
-        Since 1.6: label each labelled line that crosses the two-phase
+        Since 1.5: label each labelled line that crosses the two-phase
         region once more inside the dome, just right of the bubble line
         and just left of the dew line, in addition to the labels of
         ``mode``. The isotherms of a chart without temperature on an axis
@@ -258,7 +258,7 @@ class BrandingSettings:
 
     By default the badge names the equation of state of the fluid
     (``references="short"``) and the CoolProp and CoolPlot versions
-    (``versions=True``, since 1.6), so that a chart says where its
+    (``versions=True``, since 1.5), so that a chart says where its
     properties come from and what drew it; everything else is off.
     ``references="none"`` with ``versions=False`` removes the badge. A change only affects the layout of the page, like
     :class:`PageSettings`; nothing is recalculated.
@@ -286,7 +286,7 @@ class BrandingSettings:
         humid air that of ASHRAE RP-1485.
     versions : bool
         Add a line with the CoolProp and CoolPlot versions (the default
-        since 1.6).
+        since 1.5).
     lines : tuple of str
         Further lines, for example a web address and a date.
     location : str
@@ -404,7 +404,7 @@ class Settings:
         """The settings record of docs/reference/contracts.md."""
         labels = asdict(self.labels)
         if not labels["dome"]:
-            del labels["dome"]   # written only when set, so a record without it is the same as before 1.6
+            del labels["dome"]   # written only when set, so a record without it is the same as before 1.5
         return {"calc": asdict(self.calc), "look": self.look.to_dict(),
                 "labels": labels, "page": asdict(self.page),
                 "branding": asdict(self.branding)}
