@@ -9,7 +9,8 @@
 
 namespace coolplot {
 
-const double Z_ISOLINE = 1.0, Z_SATURATION = 2.0, Z_SCALE = 2.5, Z_POINT = 3.0, Z_LABEL = 4.0, Z_PROCESS = 5.0, Z_STATES = 6.0;
+const double Z_ISOLINE = 1.0, Z_SATURATION = 2.0, Z_SCALE = 2.5, Z_LINE = 3.0, Z_POINT = 3.5, Z_LABEL = 4.0, Z_PROCESS = 5.0,
+             Z_STATES = 6.0;
 
 namespace {
 
@@ -278,6 +279,8 @@ AxesSpec axes_spec(const DiagramSpec& spec, const Domain& domain, const Theme& t
                 const std::vector<double>& v = axis == 0 ? item.x : item.y;
                 values.insert(values.end(), v.begin(), v.end());
             }
+            for (const LineSpec& line : spec.lines)
+                if (line.key == key) values.push_back(unit.from_SI(line.value_SI));  // a single line of this axis
             lo_hi = include(lo_hi, values, log);
             std::vector<double> points;
             for (const Item& item : marked) {
@@ -325,6 +328,14 @@ std::vector<Item> isoline_items(const DiagramSpec& spec, const Theme& theme, con
     return items;
 }
 
+/// The style of a label on a line of colour `line_color`: the theme's, in the colour of the line when the
+/// theme asks for that.
+TextStyle label_style(const Theme& theme, const Color& line_color) {
+    TextStyle style = theme.isoline_label;
+    if (theme.isoline_label_color == "line" && line_color.present) style.color = line_color;
+    return style;
+}
+
 /// The lines that get a label, most important first.
 std::vector<LabelRequest> label_requests(const DiagramSpec& spec, const Theme& theme, const std::vector<CurveInput>& curves,
                                          const std::vector<Item>& lines) {
@@ -367,9 +378,7 @@ std::vector<LabelRequest> label_requests(const DiagramSpec& spec, const Theme& t
             if (spec.settings.labels.mode == "rails")
                 r.text = spec.settings.labels.format_value(r.value);  // the bare value; symbol and unit are in the legend
             r.line_color = line->line_style.color;
-            r.style = theme.isoline_label;
-            if (theme.isoline_label_color == "line" && line->line_style.color.present)
-                r.style.color = line->line_style.color;   // the label in its line's colour
+            r.style = label_style(theme, line->line_style.color);
             r.x = line->x;
             r.y = line->y;
             requests.push_back(r);
@@ -378,35 +387,58 @@ std::vector<LabelRequest> label_requests(const DiagramSpec& spec, const Theme& t
     return requests;
 }
 
+/// Where a label sits on a line, in display units, and the direction of the line there.
+struct Spot
+{
+    double x = 0.0, y = 0.0;
+    bool has_direction = false;
+    double direction_x = 0.0, direction_y = 0.0;
+};
+
+/// The point at `position` (0 to 1) along the visible points of a line, with the direction of the line
+/// there; false when fewer than `min_points` are visible.
+bool label_spot(const std::vector<double>& x, const std::vector<double>& y, const AxesSpec& axes, double position, Spot& spot,
+                size_t min_points = 3) {
+    double x_lo = axes.x_limits.lo, x_hi = axes.x_limits.hi, y_lo = axes.y_limits.lo, y_hi = axes.y_limits.hi;
+    std::vector<size_t> inside;
+    for (size_t i = 0; i < x.size(); ++i)
+        if (std::isfinite(x[i]) && std::isfinite(y[i]) && x[i] >= x_lo && x[i] <= x_hi && y[i] >= y_lo && y[i] <= y_hi)
+            inside.push_back(i);
+    if (inside.size() < min_points) return false;
+    size_t pick = static_cast<size_t>(position * inside.size());
+    size_t i = inside[std::min(pick, inside.size() - 1)];
+    size_t i0 = i > 0 ? i - 1 : 0, i1 = std::min(i + 1, x.size() - 1);
+    double dx = x[i1] - x[i0], dy = y[i1] - y[i0];
+    spot = {x[i], y[i], std::isfinite(dx) && std::isfinite(dy), dx, dy};
+    return true;
+}
+
+/// A label on a line, at `spot`.
+Item label_item(const std::string& id, const std::string& group, const std::string& role, const Spot& spot, const std::string& text,
+                const TextStyle& style) {
+    Item t;
+    t.type = ItemType::Text;
+    t.id = id;
+    t.group = group;
+    t.role = role;
+    t.text_x = spot.x;
+    t.text_y = spot.y;
+    t.text = text;
+    t.has_direction = spot.has_direction;
+    t.direction_x = spot.direction_x;
+    t.direction_y = spot.direction_y;
+    t.text_style = style;
+    t.z_order = Z_LABEL;
+    return t;
+}
+
 /// Labels at Settings.labels.position along the visible part of each line.
 std::vector<Item> inline_labels(const DiagramSpec& spec, const std::vector<LabelRequest>& requests, const AxesSpec& axes) {
-    double x_lo = axes.x_limits.lo, x_hi = axes.x_limits.hi, y_lo = axes.y_limits.lo, y_hi = axes.y_limits.hi;
-    double position = spec.settings.labels.position;
     std::vector<Item> labels;
     for (const LabelRequest& r : requests) {
-        std::vector<size_t> inside;
-        for (size_t i = 0; i < r.x.size(); ++i)
-            if (std::isfinite(r.x[i]) && std::isfinite(r.y[i]) && r.x[i] >= x_lo && r.x[i] <= x_hi && r.y[i] >= y_lo && r.y[i] <= y_hi)
-                inside.push_back(i);
-        if (inside.size() < 3) continue;
-        size_t pick = static_cast<size_t>(position * inside.size());
-        size_t i = inside[std::min(pick, inside.size() - 1)];
-        size_t i0 = i > 0 ? i - 1 : 0, i1 = std::min(i + 1, r.x.size() - 1);
-        double dx = r.x[i1] - r.x[i0], dy = r.y[i1] - r.y[i0];
-        Item t;
-        t.type = ItemType::Text;
-        t.id = r.id;
-        t.group = r.group;
-        t.role = "isoline_label";
-        t.text_x = r.x[i];
-        t.text_y = r.y[i];
-        t.text = r.text;
-        t.has_direction = std::isfinite(dx) && std::isfinite(dy);
-        t.direction_x = dx;
-        t.direction_y = dy;
-        t.text_style = r.style;
-        t.z_order = Z_LABEL;
-        labels.push_back(t);
+        Spot spot;
+        if (label_spot(r.x, r.y, axes, spec.settings.labels.position, spot))
+            labels.push_back(label_item(r.id, r.group, "isoline_label", spot, r.text, r.style));
     }
     return labels;
 }
@@ -427,6 +459,97 @@ std::vector<Item> labels_for(const DiagramSpec& spec, const std::vector<LabelReq
     for (const LabelRequest& r : requests)
         if (!edges.count(r.family)) edges[r.family] = settings.preferred_edges(r.family, spec.diagram.family(r.family)->edges);
     return place_edge_labels(requests, frame, keep_out, settings.keep_out_pt, edges, previous, settings.fallback, occupied);
+}
+
+// Single lines (coolplot.compose.builder.line_items)
+
+/// (style, role, legend text, z order) of a single line, as isoline_look for a family. The style is the
+/// line's own, or else its family's at twice the width. A line of an axis quantity has no family; it takes
+/// the colour of the saturation curve (with the changes of set_line_style("saturation")), the darkest line
+/// of the theme.
+Look line_look(const DiagramSpec& spec, const Theme& theme, const LineSpec& line) {
+    LineStyle style = line.line_style;
+    if (!line.has_line_style) {
+        if (spec.diagram.is_axis(line.key)) {
+            json overrides = spec.style_override("saturation");
+            LineStyle saturation = overrides.empty() ? theme.saturation : with_overrides(theme.saturation, overrides);
+            style = theme.isoline;
+            style.color = saturation.color;
+        } else {
+            style = isoline_look(spec, theme, line.key, line.value_SI).style;
+        }
+        style.width_pt = 2.0 * style.width_pt;
+    }
+    return {style, "line", line.name, Z_LINE};
+}
+
+/// A single line of an axis quantity in display units, straight from one limit of the other axis to the
+/// other. Its label spot sits at Settings.labels.position along it, evenly on a logarithmic axis too;
+/// has_spot is false when the line lies outside the view.
+struct AxisLine
+{
+    std::vector<double> x, y;
+    bool has_spot = false;
+    Spot spot;
+};
+
+AxisLine axis_line(const DiagramSpec& spec, const LineSpec& line, const AxesSpec& axes) {
+    double value = spec.units.at(line.key).from_SI(line.value_SI);
+    double position = spec.settings.labels.position;
+    bool vertical = line.key == spec.diagram.x;
+    Range limits = vertical ? axes.y_limits : axes.x_limits;
+    Range own = vertical ? axes.x_limits : axes.y_limits;
+    bool log = vertical ? axes.y_log : axes.x_log;
+    double lo = limits.lo, hi = limits.hi;
+    double along = log ? lo * std::pow(hi / lo, position) : lo + position * (hi - lo);
+    AxisLine out;
+    out.has_spot = own.lo <= value && value <= own.hi;
+    if (vertical) {
+        out.x = {value, value};
+        out.y = {lo, hi};
+        out.spot = {value, along, true, 0.0, 1.0};
+    } else {
+        out.x = {lo, hi};
+        out.y = {value, value};
+        out.spot = {along, value, true, 1.0, 0.0};
+    }
+    return out;
+}
+
+/// The single lines of the spec and their labels. A line of an axis quantity is straight (axis_line); any
+/// other line follows its curve and is left out while it has none. The label sits at
+/// Settings.labels.position along the visible part of the line, whatever the label mode.
+std::vector<Item> line_items(const DiagramSpec& spec, const Theme& theme, const std::vector<CurveInput>& curves, const AxesSpec& axes) {
+    const Unit& ux = spec.units.at(spec.diagram.x);
+    const Unit& uy = spec.units.at(spec.diagram.y);
+    std::map<std::string, const CurveInput*> by_id;
+    for (const CurveInput& c : curves) by_id[c.request.item_id] = &c;
+    std::vector<Item> items;
+    for (const LineSpec& line : spec.lines) {
+        std::vector<double> x, y;
+        Spot spot;
+        bool has_spot = false;
+        if (spec.diagram.is_axis(line.key)) {
+            AxisLine straight = axis_line(spec, line, axes);
+            x = straight.x;
+            y = straight.y;
+            spot = straight.spot;
+            has_spot = straight.has_spot;
+        } else {
+            auto found = by_id.find(line.item_id());
+            if (found == by_id.end()) continue;
+            x = converted(ux, found->second->x);
+            y = converted(uy, found->second->y);
+            has_spot = label_spot(x, y, axes, spec.settings.labels.position, spot, 2);  // a line may have only 2 points
+        }
+        Look look = line_look(spec, theme, line);
+        items.push_back(line_item(line.item_id(), line.item_id(), look.role, true, look.legend, x, y, look.style, look.z_order));
+        if (!line.has_label || !has_spot) continue;
+        std::string text = line.label_is_value ? label_text(spec, line.key, line.value_SI) : line.label;
+        items.push_back(label_item(line.item_id() + "/label", line.item_id() + "/label", "line_label", spot, text,
+                                   label_style(theme, look.style.color)));
+    }
+    return items;
 }
 
 // Corners for a legend inside the plot area and for the badge (coolplot.compose.corners)
@@ -908,7 +1031,10 @@ Scene compose(const json& input) {
         domain.scale.push_back({tick.at(0).get<double>(), tick.at(1).get<double>()});
     for (const json& line : input.at("domain").value("dome", json::array()))
         domain.dome.push_back({line.at(0).get<double>(), state_from(line.at(1)), state_from(line.at(2))});
-    std::vector<CurveInput> curves;
+    // The curves of the single lines come with those of the families; they are drawn apart
+    std::set<std::string> single_ids;
+    for (const LineSpec& line : spec.lines) single_ids.insert(line.item_id());
+    std::vector<CurveInput> curves, line_curves;
     for (const json& entry : input.value("curves", json::array())) {
         const json& r = entry.at("request");
         CurveInput c;
@@ -921,7 +1047,7 @@ Scene compose(const json& input) {
         c.x = numbers_from(entry.at("curve").at("x"));
         c.y = numbers_from(entry.at("curve").at("y"));
         if (c.x.size() != c.y.size()) throw Error("Curve '" + c.request.item_id + "': x and y need the same length.");
-        curves.push_back(c);
+        (single_ids.count(c.request.item_id) ? line_curves : curves).push_back(c);
     }
     std::vector<CycleInput> cycles;
     for (const json& entry : input.value("cycles", json::array())) {
@@ -962,11 +1088,15 @@ Scene compose(const json& input) {
     // The legend, the badge and the labels keep clear of the saturation scale as of a cycle
     ScaleParts scale = saturation_scale_parts(spec, theme, domain, frame);
     keep_out.insert(keep_out.end(), scale.overlays.begin(), scale.overlays.end());
+    std::vector<Item> single_lines = line_items(spec, theme, line_curves, axes);
+    std::vector<Item> all_lines = lines;
+    for (const Item& item : single_lines)
+        if (item.type == ItemType::Line) all_lines.push_back(item);
     std::vector<std::string> sources;
     for (const json& line : input.value("sources", json::array())) sources.push_back(line.get<std::string>());
     Badge badge;
     bool has_badge = make_badge(spec, theme, sources, badge);
-    std::vector<TakenBox> boxes = place_corners(axes, spec, theme, frame, lines, process_parts, keep_out, has_badge ? &badge : nullptr,
+    std::vector<TakenBox> boxes = place_corners(axes, spec, theme, frame, all_lines, process_parts, keep_out, has_badge ? &badge : nullptr,
                                                 spec.settings.branding.location);
     if (has_badge) {
         axes.has_badge = true;
@@ -987,6 +1117,7 @@ Scene compose(const json& input) {
         std::vector<Item> dome = dome_labels(spec, domain, requests, label_frame, keep_out, boxes, labels);
         scene.items.insert(scene.items.end(), dome.begin(), dome.end());
     }
+    scene.items.insert(scene.items.end(), single_lines.begin(), single_lines.end());
     scene.items.insert(scene.items.end(), process_parts.begin(), process_parts.end());
     return scene;
 }

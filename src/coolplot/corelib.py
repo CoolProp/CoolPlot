@@ -172,6 +172,7 @@ _NEEDS_A_NEWER_CORE = (
     ((1, 4), lambda spec: spec.settings.labels.symbols == "unicode", "write symbols and units with their own "
      "characters (rho, deg C, m3)"),
     ((1, 5), lambda spec: spec.settings.branding.has_badge, "draw the badge of the branding"),
+    ((1, 6), lambda spec: bool(spec.lines), "draw single lines (add_line)"),
     ((1, 6), lambda spec: bool(spec.marked_points), "mark the critical and triple points"),
     ((1, 6), lambda spec: spec.saturation_scale is not None, "draw a saturation scale"),
     ((1, 6), lambda spec: spec.settings.labels.dome, "label lines inside the dome"),

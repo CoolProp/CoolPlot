@@ -171,7 +171,9 @@ class PsychrometricChart(Chart):
         ``m_dot_a_kg_s`` and ``m_dot_b_kg_s`` are their mass flows of dry
         air; only the ratio matters. The mixed state lies on the straight
         line between the two states, closer to the larger stream; it can
-        be given to :meth:`add_cycle` as it is.
+        be given to :meth:`add_cycle` as it is. ``units`` applies to ``a``
+        and ``b`` only; the StatePoint returned is always in SI units
+        (``mixed.in_units(...)`` converts it).
 
         >>> chart = PsychrometricChart()
         >>> mixed = chart.mix({"T": 32, "RH": 40}, {"T": 24, "RH": 50}, m_dot_a_kg_s=0.3, m_dot_b_kg_s=0.7)

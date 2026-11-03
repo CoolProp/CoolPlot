@@ -26,9 +26,9 @@ import numpy as np
 from ..core.quantities import get_quantity
 from ..core.symbols import symbol_text, unit_text
 from ..scene import AxesSpec, SceneItem, Line, Markers, Text, drawable_limits
-from ..spec.diagram import SATURATION_KEY, CycleSpec, DiagramSpec, ProcessSpec, dome_key, scale_key
+from ..spec.diagram import SATURATION_KEY, CycleSpec, DiagramSpec, LineSpec, ProcessSpec, dome_key, scale_key
 from ..style.theme import Theme
-from ..style.values import Font, LineStyle, MarkerStyle
+from ..style.values import Font, LineStyle, MarkerStyle, TextStyle
 from .branding import branding
 from .corners import legend_size_pt, place_corners
 from .layout import (Box, Frame, LabelRequest, place_dome_labels, place_edge_labels, place_margin_labels,
@@ -36,10 +36,10 @@ from .layout import (Box, Frame, LabelRequest, place_dome_labels, place_edge_lab
 from .rails import place_rail_labels
 from ..core.floats import is_zero, same_number
 
-# Drawing order: isolines, saturation dome, the saturation scale, marked
-# critical and triple points, labels (and those of the scale), processes
-# and cycles, state points, state numbers.
-Z_ISOLINE, Z_SATURATION, Z_SCALE, Z_POINT, Z_LABEL, Z_PROCESS, Z_STATES = 1.0, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0
+# Drawing order: isolines, saturation dome, the saturation scale, single
+# lines, marked critical and triple points, labels (and those of the
+# scale), processes and cycles, state points, state numbers.
+Z_ISOLINE, Z_SATURATION, Z_SCALE, Z_LINE, Z_POINT, Z_LABEL, Z_PROCESS, Z_STATES = 1.0, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0
 
 
 def _scaled(value, factor: float):
@@ -102,8 +102,9 @@ def axes_spec(spec: DiagramSpec, domain, theme: Theme, shown=(), marked=()) -> A
 
     Without a zoom window the axes cover the calculation domain, widened
     where needed so that every point in ``shown`` (display-unit (x, y)
-    arrays of processes and cycles) is visible, and every point in
-    ``marked`` (the critical and triple points) with a smaller margin.
+    arrays of processes and cycles) and every single line of an axis
+    quantity is visible, and every point in ``marked`` (the critical and
+    triple points) with a smaller margin.
     """
     diagram = spec.diagram
     limits = []
@@ -112,7 +113,9 @@ def axes_spec(spec: DiagramSpec, domain, theme: Theme, shown=(), marked=()) -> A
         lo_hi = view if view is not None else domain.range_SI(key)
         lo_hi = tuple(sorted(spec.units[key].from_SI(lo_hi).tolist()))
         if view is None:
-            lo_hi = _include(lo_hi, [v for xy in shown for v in np.asarray(xy[axis], dtype=float)], log)
+            values = [v for xy in shown for v in np.asarray(xy[axis], dtype=float)]
+            values += [float(spec.units[key].from_SI(line.value_SI)) for line in spec.lines if line.key == key]
+            lo_hi = _include(lo_hi, values, log)
             lo_hi = _include(lo_hi, [v for xy in marked for v in np.asarray(xy[axis], dtype=float)], log,
                              MARKED_POINT_PAD)
         # What the backends will draw, so that labels are laid out in that frame
@@ -257,9 +260,7 @@ def label_requests(spec: DiagramSpec, theme: Theme, curves, lines: Sequence[Line
     requests = []
     for key in order:
         for request, line in by_family[key][::every]:
-            style = theme.isoline_label
-            if theme.isoline_label_color == "line" and line.style.color is not None:
-                style = style.with_(color=line.style.color)   # the label in its line's colour
+            style = label_style(theme, line.style.color)
             text = label_text(spec, key, request.value_SI, request.anchor_SI)
             value = spec.units[key].label_value(request.value_SI)
             anchor = _saturation_anchor(spec, key)
@@ -273,23 +274,44 @@ def label_requests(spec: DiagramSpec, theme: Theme, curves, lines: Sequence[Line
     return requests
 
 
+def label_style(theme: Theme, line_color: Optional[str]) -> TextStyle:
+    """The style of a label on a line of colour ``line_color``: the theme's,
+    in the colour of the line when the theme asks for that."""
+    style = theme.isoline_label
+    if theme.isoline_label_color == "line" and line_color is not None:
+        style = style.with_(color=line_color)
+    return style
+
+
+# Where a label sits on a line: (x, y, direction) in display units, see label_spot.
+Spot = Tuple[float, float, Optional[Tuple[float, float]]]
+
+
+def label_spot(x, y, frame: Frame, position: float, min_points: int = 3) -> Optional[Spot]:
+    """The point at ``position`` (0 to 1) along the visible points of a line,
+    with the direction of the line there; None when fewer than ``min_points``
+    are visible."""
+    (x_lo, x_hi), (y_lo, y_hi) = frame.x_limits, frame.y_limits
+    inside = np.flatnonzero(np.isfinite(x) & np.isfinite(y) &
+                            (x >= x_lo) & (x <= x_hi) & (y >= y_lo) & (y <= y_hi))
+    if len(inside) < min_points:
+        return None
+    i = int(inside[min(int(position * len(inside)), len(inside) - 1)])
+    i0, i1 = max(i - 1, 0), min(i + 1, len(x) - 1)
+    dx, dy = float(x[i1] - x[i0]), float(y[i1] - y[i0])
+    direction = (dx, dy) if math.isfinite(dx) and math.isfinite(dy) else None
+    return float(x[i]), float(y[i]), direction
+
+
 def inline_labels(spec: DiagramSpec, requests: Sequence[LabelRequest], frame: Frame) -> List[Text]:
     """Labels at ``Settings.labels.position`` along the visible part of each line."""
-    (x_lo, x_hi), (y_lo, y_hi) = frame.x_limits, frame.y_limits
     position = spec.settings.labels.position
     labels = []
     for r in requests:
-        x, y = r.x, r.y
-        inside = np.flatnonzero(np.isfinite(x) & np.isfinite(y) &
-                                (x >= x_lo) & (x <= x_hi) & (y >= y_lo) & (y <= y_hi))
-        if len(inside) < 3:
-            continue
-        i = int(inside[min(int(position * len(inside)), len(inside) - 1)])
-        i0, i1 = max(i - 1, 0), min(i + 1, len(x) - 1)
-        dx, dy = float(x[i1] - x[i0]), float(y[i1] - y[i0])
-        direction = (dx, dy) if math.isfinite(dx) and math.isfinite(dy) else None
-        labels.append(Text(id=r.id, group=r.group, role="isoline_label", x=float(x[i]), y=float(y[i]),
-                           text=r.text, direction=direction, style=r.style, z_order=Z_LABEL))
+        spot = label_spot(r.x, r.y, frame, position)
+        if spot is not None:
+            labels.append(Text(id=r.id, group=r.group, role="isoline_label", x=spot[0], y=spot[1],
+                               text=r.text, direction=spot[2], style=r.style, z_order=Z_LABEL))
     return labels
 
 
@@ -510,6 +532,81 @@ def saturation_scale_parts(spec: DiagramSpec, theme: Theme, domain, frame: Frame
     return items, [(np.array([x_line, x_line]), np.array([y_low, y_high]))], [box]
 
 
+def line_look(spec: DiagramSpec, theme: Theme, line: LineSpec):
+    """(style, role, legend text, z order) of a single line, as :func:`isoline_look` for a family.
+
+    The style is the line's own, or else its family's at twice the width.
+    A line of an axis quantity has no family; it takes the colour of the
+    saturation curve (with the changes of ``set_line_style("saturation")``),
+    the darkest line of the theme.
+    """
+    style = line.line_style
+    if style is None:
+        if spec.diagram.is_axis(line.key):
+            saturation = theme.saturation.with_(**spec.style_override(SATURATION_KEY))
+            base = theme.isoline.with_(color=saturation.color)
+        else:
+            base = isoline_look(spec, theme, line.key, line.value_SI)[0]
+        style = base.with_(width_pt=2.0 * base.width_pt)
+    return style, "line", line.name, Z_LINE
+
+
+def axis_line(spec: DiagramSpec, line: LineSpec, frame: Frame):
+    """(x, y, spot) of a single line of an axis quantity, in display units.
+
+    The line runs straight from one limit of the other axis to the other;
+    its label spot (see :func:`label_spot`) sits at
+    ``Settings.labels.position`` along it, evenly on a logarithmic axis too,
+    and is None when the line lies outside the view.
+    """
+    value = float(spec.units[line.key].from_SI(line.value_SI))
+    position = spec.settings.labels.position
+    vertical = line.key == spec.diagram.x
+    (lo, hi), log = (frame.y_limits, frame.y_log) if vertical else (frame.x_limits, frame.x_log)
+    along = lo * (hi / lo) ** position if log else lo + position * (hi - lo)
+    own_lo, own_hi = frame.x_limits if vertical else frame.y_limits
+    if vertical:
+        spot = (value, along, (0.0, 1.0)) if own_lo <= value <= own_hi else None
+        return np.array([value, value]), np.array([lo, hi]), spot
+    spot = (along, value, (1.0, 0.0)) if own_lo <= value <= own_hi else None
+    return np.array([lo, hi]), np.array([value, value]), spot
+
+
+def line_items(spec: DiagramSpec, theme: Theme, curves, frame: Frame) -> List[SceneItem]:
+    """The single lines of the spec (:class:`coolplot.spec.LineSpec`) and their labels.
+
+    A line of an axis quantity is straight (:func:`axis_line`). Any other
+    line follows its curve from ``curves`` ((CurveRequest, Curve) pairs)
+    and is left out while it has none: it lies outside the calculation
+    region, or a background engine has not computed it yet. The label sits
+    at ``Settings.labels.position`` along the visible part of the line,
+    whatever the label mode.
+    """
+    ux, uy = spec.units[spec.diagram.x], spec.units[spec.diagram.y]
+    by_id = {request.item_id: curve for request, curve in curves}
+    position = spec.settings.labels.position
+    items: List[SceneItem] = []
+    for line in spec.lines:
+        if spec.diagram.is_axis(line.key):
+            x, y, spot = axis_line(spec, line, frame)
+        else:
+            curve = by_id.get(line.item_id)
+            if curve is None:
+                continue
+            x, y = ux.from_SI(curve.x), uy.from_SI(curve.y)
+            spot = label_spot(x, y, frame, position, min_points=2)   # a line may have only 2 points
+        style, role, legend, z_order = line_look(spec, theme, line)
+        items.append(Line(id=line.item_id, group=line.item_id, role=role, legend=legend, x=x, y=y,
+                          style=style, z_order=z_order))
+        if line.label is False or spot is None:
+            continue
+        text = label_text(spec, line.key, line.value_SI) if line.label is True else line.label
+        items.append(Text(id=line.item_id + "/label", group=line.item_id + "/label", role="line_label",
+                          x=spot[0], y=spot[1], text=text, direction=spot[2],
+                          style=label_style(theme, style.color), z_order=Z_LABEL))
+    return items
+
+
 def process_items(spec: DiagramSpec, theme: Theme, process: ProcessSpec, index: int) -> List[SceneItem]:
     """The line and the state markers of one process."""
     ux, uy = spec.units[spec.diagram.x], spec.units[spec.diagram.y]
@@ -587,7 +684,8 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Optional[
     """All scene items and the axes for a diagram.
 
     ``curves`` are (CurveRequest, Curve) pairs as returned by
-    :meth:`coolplot.engine.Engine.curves`. ``plot_size_pt`` is the size of
+    :meth:`coolplot.engine.Engine.curves`, for the families and for the
+    single lines (``LineSpec.item_id``) alike. ``plot_size_pt`` is the size of
     the plot area as a renderer reports it, needed to place labels; without
     it the size is estimated from ``Settings.page``. ``previous_labels``
     maps label ids to the label items of the previous scene, so that labels
@@ -598,6 +696,10 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Optional[
     :meth:`coolplot.engine.Engine.source_lines`.
     """
     theme = scaled_theme(spec.settings.look, spec.settings.page.font_scale)
+    # The curves of the single lines come with those of the families; they are drawn apart
+    single_ids = {line.item_id for line in spec.lines}
+    line_curves = [(r, c) for r, c in curves if r.item_id in single_ids]
+    curves = [(r, c) for r, c in curves if r.item_id not in single_ids]
     process_parts = overlay_items(spec, theme, cycles or ())
     drawn = [(p.x, p.y, isinstance(p, Line)) for p in process_parts if not isinstance(p, Text)]
     axes = axes_spec(spec, domain, theme, drawn, marked_points_shown(spec, domain))
@@ -607,8 +709,11 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Optional[
     lines = isoline_items(spec, theme, curves)
     scale_items, scale_lines, scale_boxes = saturation_scale_parts(spec, theme, domain, frame)
     drawn = drawn + scale_lines   # the legend, the badge and the labels keep clear of the scale as of a cycle
+    single_lines = line_items(spec, theme, line_curves, frame)
     badge, watermark = branding(spec, theme, frame, sources)
-    axes, badge, boxes = corners_for(spec, theme, axes, frame, badge, lines, process_parts, drawn)
+    axes, badge, boxes = corners_for(spec, theme, axes, frame, badge,
+                                     lines + [item for item in single_lines if isinstance(item, Line)],
+                                     process_parts, drawn)
     if badge is not None or watermark is not None:
         axes = replace(axes, badge=badge, watermark=watermark)
     items: List[SceneItem] = list(lines)
@@ -621,6 +726,7 @@ def compose(spec: DiagramSpec, domain, curves: Sequence, plot_size_pt: Optional[
         items.extend(placed)
         items.extend(dome_labels(spec, domain, requests, Frame.from_axes(axes, size), drawn, boxes + scale_boxes,
                                  [t for t in placed if isinstance(t, Text)]))   # rails also give tick lines
+    items.extend(single_lines)
     items.extend(process_parts)
     return items, axes
 

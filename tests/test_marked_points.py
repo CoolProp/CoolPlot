@@ -51,7 +51,7 @@ def test_the_critical_point_sits_on_top_of_the_dome():
     point = _marked(diagram)["point/critical"]
     assert point.x.tolist() == pytest.approx([critical["h"]])
     assert point.y.tolist() == pytest.approx([critical["p"]])
-    assert point.legend is None and point.z_order == 3.0
+    assert point.legend is None and point.z_order == 3.5   # above the dome and single lines, below labels
 
 
 def test_the_triple_point_marks_both_ends_of_the_dome():

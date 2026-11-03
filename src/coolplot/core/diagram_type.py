@@ -250,6 +250,10 @@ class DiagramType:
         family = self.family(iso_key)
         return None if family is None else family.sweep
 
+    def is_axis(self, key: str) -> bool:
+        """Whether ``key`` is the quantity of one of the two axes, e.g. "p" or "h" in a ph diagram."""
+        return quantity_key(key) in (self.x, self.y)
+
     def supports(self, iso_key: str) -> bool:
         """Whether lines of constant ``iso_key`` can be drawn in this diagram."""
         return self.family(iso_key) is not None

@@ -43,8 +43,9 @@
 <text class="cp-x-label" x="430" y="592" text-anchor="middle" dominant-baseline="text-after-edge" font-family="Inter, 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif" font-size="12.667" font-weight="normal" font-style="normal" fill="#0b0b0b" fill-opacity="1">Specific entropy s / kJ/kg/K</text>
 <text class="cp-y-label" x="18" y="290" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 18 290)" font-family="Inter, 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif" font-size="12.667" font-weight="normal" font-style="normal" fill="#0b0b0b" fill-opacity="1">Temperature T / &#176;C</text>
 <g class="cp-badge">
-<rect class="cp-badge-box" x="630.031" y="511.333" width="141.969" height="20.667" fill="#fcfcfb" fill-opacity="0.85" stroke="#c3c2b7" stroke-width="0.667"/>
-<text class="cp-badge-text" x="635.364" y="524.267" text-anchor="start" font-family="Inter, 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif" font-size="8" font-weight="normal" font-style="normal" fill="#52514e" fill-opacity="1">Water: Wagner and Pru&#223; (2002)</text>
+<rect class="cp-badge-box" x="630.031" y="501.333" width="141.969" height="30.667" fill="#fcfcfb" fill-opacity="0.85" stroke="#c3c2b7" stroke-width="0.667"/>
+<text class="cp-badge-text" x="635.364" y="514.267" text-anchor="start" font-family="Inter, 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif" font-size="8" font-weight="normal" font-style="normal" fill="#52514e" fill-opacity="1">Water: Wagner and Pru&#223; (2002)</text>
+<text class="cp-badge-text" x="635.364" y="524.267" text-anchor="start" font-family="Inter, 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif" font-size="8" font-weight="normal" font-style="normal" fill="#52514e" fill-opacity="1">CoolProp 8.0.0, CoolPlot 1.5.0</text>
 </g>
 <g class="cp-legend">
 <rect class="cp-legend-box" x="88" y="48" width="146.4" height="42.133" fill="#fcfcfb" stroke="none"/>

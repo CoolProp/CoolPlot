@@ -13,7 +13,8 @@
 //               "scale": [[saturation_SI, axis_SI], ...] (optional, since 1.6)},
 //    "curves": [{"request": {"item_id", "key", "value_SI", "points", "labels", "anchor_SI"}, "curve": <curve record>}],
 //    (anchor_SI, since 1.1: the saturation temperature or pressure the line passes through when its
-//    family is placed by saturation states, null otherwise; the label shows it)
+//    family is placed by saturation states, null otherwise; the label shows it. Since 1.6 the curves
+//    of the single lines of the spec come here too, with the item id "line/<name>")
 //    "cycles": [{"states": {"1": {key: value}}, "chains": [[{key: value}, ...]]}],
 //    "plot_size_pt": [width, height] or null,
 //    "previous_labels": [<text item>] or null,
@@ -42,7 +43,7 @@
 
 namespace coolplot {
 
-extern const double Z_ISOLINE, Z_SATURATION, Z_SCALE, Z_POINT, Z_LABEL, Z_PROCESS, Z_STATES;
+extern const double Z_ISOLINE, Z_SATURATION, Z_SCALE, Z_LINE, Z_POINT, Z_LABEL, Z_PROCESS, Z_STATES;
 
 /// The scene of a chart from the compose record above.
 Scene compose(const json& input);
