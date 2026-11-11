@@ -1,0 +1,11 @@
+# The sdist carries everything needed to run the test suite from it, as
+# conda-forge and other distributions do: by default setuptools takes only
+# tests/test*.py, without conftest.py (the markers that skip the browser
+# tests, the fixtures) or the folders below tests/. The tests also run the
+# examples and read docs/upgrade.md. The build job in tests.yml checks that
+# the sdist holds every tracked file of these folders.
+graft tests
+graft examples
+graft docs
+prune docs/_build
+global-exclude __pycache__ *.py[cod] .DS_Store

@@ -137,6 +137,22 @@ jobs:
           if len(found) != 2:
               sys.exit("py.typed is missing from the wheel or the sdist: {0}".format(found))
           print("py.typed in", found)
+      - name: The sdist carries the tests, the examples and the documentation
+        # Distributions such as conda-forge run the test suite from the sdist;
+        # MANIFEST.in decides what goes in, and this compares it with git.
+        shell: python
+        run: |
+          import glob, subprocess, sys, tarfile
+          (sdist,) = glob.glob("dist/*.tar.gz")
+          with tarfile.open(sdist) as tar:
+              # Drop the leading "coolplot-1.5.1/" of every name
+              shipped = {name.split("/", 1)[1] for name in tar.getnames() if "/" in name}
+          tracked = subprocess.run(["git", "ls-files", "tests", "examples", "docs"],
+                                   capture_output=True, text=True, check=True).stdout.split()
+          missing = sorted(set(tracked) - shipped)
+          if missing:
+              sys.exit("Missing from the sdist (see MANIFEST.in):\n  " + "\n  ".join(missing))
+          print(len(tracked), "files of tests/, examples/ and docs/ in", sdist)
 
   docs:
     runs-on: ubuntu-latest
