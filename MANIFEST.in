@@ -7,5 +7,11 @@
 graft tests
 graft examples
 graft docs
+# Output of a local documentation build or of the examples, as in .gitignore
 prune docs/_build
+prune docs/gallery
+prune docs/_generated
+prune docs/reference/generated
+exclude docs/reference/tables.md docs/sg_execution_times.rst
+exclude examples/*.svg examples/*.png examples/*.pdf examples/*.html
 global-exclude __pycache__ *.py[cod] .DS_Store
