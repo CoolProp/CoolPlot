@@ -28,6 +28,9 @@ def test_node_writes_the_golden_svg_files():
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
+    # The golden files belong to coolplot-core and stay out of the sdist (12 MB)
+    if not os.path.isdir(os.path.join(ROOT, "cpp", "tests", "data")):
+        pytest.skip("the golden files in cpp/tests/data are not here (an sdist)")
     script = os.path.join(ROOT, "tests", "js", "check_scene_svg.js")
     out = subprocess.run([node, script], capture_output=True, text=True)
     assert out.returncode == 0, out.stdout + out.stderr

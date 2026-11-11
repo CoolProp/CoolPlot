@@ -16,7 +16,9 @@ guide in the documentation says what to change in your code.
   `tests/typing_checks`, the examples and the documentation. Before, only
   `tests/test*.py` went in, and the suite failed there for want of them.
   A new check in the build job of `tests.yml` compares the sdist with
-  the files tracked in git.
+  the files tracked in git. The Node check of the JavaScript writer
+  against the golden SVG files of coolplot-core skips itself where those
+  files are not (they stay out of the sdist, 12 MB).
 
 ### Changed
 - The package metadata states the license as an SPDX expression
