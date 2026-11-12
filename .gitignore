@@ -108,3 +108,5 @@ docs/reference/tables.md
 docs/_generated/
 cpp/build/
 cpp/build_py/
+/.vscode/
+/.pytest_cache/
