@@ -498,7 +498,7 @@ def _text(request: LabelRequest, frame: Frame, box: Box, direction_pt) -> Text:
 
 
 # ---------------------------------------------------------------------------
-# Labels inside the dome (LabelSettings.dome, 1.6)
+# Labels inside the dome (LabelSettings.dome, 1.5)
 # ---------------------------------------------------------------------------
 #: Distance of a dome label from the bubble or dew line, in points
 DOME_GAP_PT = 3.0

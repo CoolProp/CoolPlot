@@ -28,7 +28,7 @@ struct LabelSettings
     int tick_digits = 6;
     /// "unicode" (rho, deg C and m3 with their own characters) or "ascii"; a labels record without it is "ascii"
     std::string symbols = "unicode";
-    /// Label the lines of the dome family once more inside the dome, next to the bubble and dew lines (since 1.6)
+    /// Label the lines of the dome family once more inside the dome, next to the bubble and dew lines (since 1.5)
     bool dome = false;
 
     /// The edges set for a family, or the family's own.
@@ -143,9 +143,9 @@ struct DiagramSpec
     bool has_y_view = false;
     Range y_view_SI;
     std::string title;
-    /// The special states marked with a dot: "critical" and or "triple", in that order (since 1.6)
+    /// The special states marked with a dot: "critical" and or "triple", in that order (since 1.5)
     std::vector<std::string> marked_points;
-    /// A scale of saturation states right of the vertical axis (since 1.6): T_sat next to a pressure axis,
+    /// A scale of saturation states right of the vertical axis (since 1.5): T_sat next to a pressure axis,
     /// p_sat next to a temperature axis; its ticks come with the domain
     bool has_saturation_scale = false;
     double saturation_scale_Q = 1.0;  ///< vapour quality of the saturation states the scale shows

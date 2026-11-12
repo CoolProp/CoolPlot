@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Labels inside the dome, next to the bubble and dew lines (LabelSettings.dome, 1.6)."""
+"""Labels inside the dome, next to the bubble and dew lines (LabelSettings.dome, 1.5)."""
 import json
 import math
 

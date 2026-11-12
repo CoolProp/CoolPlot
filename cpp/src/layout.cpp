@@ -1205,7 +1205,7 @@ std::vector<Item> place_state_numbers(const std::vector<Item>& numbers, const Fr
     return out;
 }
 
-// Labels inside the dome (LabelSettings.dome, 1.6) -----------------------------
+// Labels inside the dome (LabelSettings.dome, 1.5) -----------------------------
 
 namespace {
 

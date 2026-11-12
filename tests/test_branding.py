@@ -69,7 +69,7 @@ def test_other_files_are_refused(tmp_path):
 def test_branding_settings_validate_and_round_trip(logo_files):
     assert BrandingSettings().has_badge and BrandingSettings().references == "short"   # the default since 1.5
     assert not BrandingSettings(references="none", versions=False).has_badge
-    assert BrandingSettings(references="none").has_badge   # the versions line alone (the default since 1.6)
+    assert BrandingSettings(references="none").has_badge   # the versions line alone (the default since 1.5)
     with pytest.raises(ValueError, match="badge location"):
         BrandingSettings(location="middle")
     with pytest.raises(ValueError, match="references style"):
