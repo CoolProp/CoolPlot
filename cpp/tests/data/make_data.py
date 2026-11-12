@@ -323,10 +323,6 @@ def badge_cases():
     compose_case("compose_badge_r290_ph_upper_left", chart, size)
 
 
-if __name__ == "__main__":
-    sys.exit(main())
-
-
 def dome_label_cases():
     """Labels inside the dome (1.5): isotherms of a p-h chart with a cycle and the scale, isobars of a T-s chart,
     the sloped isotherms of a blend in edge mode."""
@@ -345,3 +341,7 @@ def dome_label_cases():
     blend.set_lines("T", num=10, rounding=True, labels=True)
     blend.settings = blend.settings.with_(labels={"mode": "edge", "dome": True})
     compose_case("compose_rails_blend_ph_dome_labels_edge", blend)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
