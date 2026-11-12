@@ -35,6 +35,22 @@ starting with an underscore, the helpers in `coolplot.core`,
 `coolplot.testing`, the scene item ids, and the exact coordinates of a
 chart (better numerics may move points).
 
+## From 1.5 to 1.6
+
+Nothing to change in your code. Two things are new or look different:
+
+**Cycle paths bend exactly on the dome.** Every path between two states
+of a cycle gets the state where it meets the bubble or dew line, so the
+line has a sharp corner there instead of a rounded one. A cycle line
+therefore has one or two more points than in 1.5 where it crosses the
+dome. Before, only isobars had them.
+
+**`"isochoric"` is a path kind.** Two states of equal density are joined
+by an isochore with `"auto"`, as a state given with
+`"via": "isochoric"` is. In 1.5 that line was a polytropic path that cut
+across the dome. It can also be set by hand with
+`paths={(1, 2): "isochoric"}`.
+
 ## From 1.4 to 1.5
 
 Nothing to change in your code, but new charts look different in two

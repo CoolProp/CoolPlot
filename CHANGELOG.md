@@ -6,7 +6,7 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
-## [1.5.2] - 2026-11-12
+## [1.6.0] - 2026-11-12
 
 ### Fixed
 - Where an isoline of a mixture crosses the phase envelope and

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""The critical and triple points marked with a dot (DiagramSpec.marked_points, 1.6)."""
+"""The critical and triple points marked with a dot (DiagramSpec.marked_points, 1.5)."""
 import json
 
 import pytest

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""The saturation scale next to the vertical axis (DiagramSpec.saturation_scale, 1.6)."""
+"""The saturation scale next to the vertical axis (DiagramSpec.saturation_scale, 1.5)."""
 import json
 
 import pytest

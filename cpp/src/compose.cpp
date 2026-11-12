@@ -44,16 +44,16 @@ struct Domain
 {
     std::map<std::string, Range> ranges_SI;
     double tp_box[4] = {0.0, 0.0, 0.0, 0.0};  ///< T_min, T_max, p_min, p_max (read when points are marked)
-    /// States of the marked points by name: "critical", "triple_liquid", "triple_vapour" (since 1.6)
+    /// States of the marked points by name: "critical", "triple_liquid", "triple_vapour" (since 1.5)
     std::map<std::string, std::map<std::string, double>> points;
-    /// Ticks of the saturation scale: (saturation value, value on the vertical axis) in SI units (since 1.6)
+    /// Ticks of the saturation scale: (saturation value, value on the vertical axis) in SI units (since 1.5)
     std::vector<std::pair<double, double>> scale;
     struct DomeLine
     {
         double value_SI;
         std::map<std::string, double> bubble, dew;
     };
-    /// Where the labelled lines of the dome family meet the bubble and dew lines (since 1.6)
+    /// Where the labelled lines of the dome family meet the bubble and dew lines (since 1.5)
     std::vector<DomeLine> dome;
 
     Range range_SI(const std::string& key) const {
@@ -789,7 +789,7 @@ std::vector<Item> cycle_items(const DiagramSpec& spec, const Theme& theme, const
     return items;
 }
 
-// The marked critical and triple points (since 1.6) ----------------------------
+// The marked critical and triple points (since 1.5) ----------------------------
 
 /// The marker of the critical and triple points: a dot in the colour of the saturation curve, with its casing as edge.
 MarkerStyle marked_point_style(const DiagramSpec& spec, const Theme& theme) {
@@ -849,7 +849,7 @@ std::vector<Item> marked_point_items(const DiagramSpec& spec, const Theme& theme
     return items;
 }
 
-// The saturation scale (since 1.6) ----------------------------------------------
+// The saturation scale (since 1.5) ----------------------------------------------
 
 const double SCALE_INSET_PT = 10.0;  ///< distance of the scale from the left edge of the plot area
 const double SCALE_GAP_PT = 2.0;     ///< gap between a tick of the scale and its label
