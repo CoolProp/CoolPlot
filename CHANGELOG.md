@@ -6,6 +6,27 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-11-11
+
+### Fixed
+- The sdist carries what the test suite needs, so it runs from the sdist
+  as distributions such as conda-forge run it: `tests/conftest.py` (the
+  markers that skip the browser and Kaleido tests unless asked, and the
+  fixtures), the folders `tests/js`, `tests/numerics` and
+  `tests/typing_checks`, the examples and the documentation. Before, only
+  `tests/test*.py` went in, and the suite failed there for want of them.
+  A new check in the build job of `tests.yml` compares the sdist with
+  the files tracked in git. The Node check of the JavaScript writer
+  against the golden SVG files of coolplot-core skips itself where those
+  files are not (they stay out of the sdist, 12 MB).
+
+### Changed
+- The package metadata states the license as an SPDX expression
+  (`license = "MIT"`, `license-files = ["LICENSE"]`) instead of the table
+  and the license classifier, which setuptools deprecated and stops
+  building after 2027-02-18. Building CoolPlot now needs setuptools 77 or
+  newer; installing it is unchanged.
+
 ## [1.5.0] - 2026-11-03
 
 ### Added
