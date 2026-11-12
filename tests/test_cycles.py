@@ -113,6 +113,62 @@ def test_auto_kinds(r290):
     assert auto_kind(a, state_point(r290, "p", 2e5, "h", a.h)) == "isenthalpic"
     assert auto_kind(a, state_point(r290, "p", 10e5, "T", 350.0)) == "polytropic"
     assert len(path_states(r290, a, state_point(r290, "p", 10e5, "T", 350.0), "straight")) == 2
+    b = state_point(r290, "T", 350.0, "rho", a.rho)
+    assert auto_kind(a, b) == "isochoric"
+
+
+def _on_the_dome(path, Q):
+    """The states of a path that are saturated at quality Q, to a tight tolerance."""
+    return [s for s in path if abs(s.Q - Q) < 1e-6]
+
+
+def test_isochoric_path_bends_on_the_dome(r290):
+    # Issue 47: heating a two-phase mixture at constant volume leaves the dome on the dew line
+    a = state_point(r290, "T", 300.0, "Q", 0.3)
+    b = state_point(r290, "T", 380.0, "rho", a.rho)
+    path = path_states(r290, a, b, steps=10)
+    assert path[0] == a and path[-1] == b
+    assert all(s.rho == pytest.approx(a.rho, rel=1e-6) for s in path)
+    assert np.all(np.diff([s.T for s in path]) > 0.0)
+    (dew,) = _on_the_dome(path, 1.0)
+    assert dew.T == pytest.approx(PropsSI("T", "D", a.rho, "Q", 1, "R290"), abs=1e-4)
+
+
+def test_isothermal_path_bends_on_the_dome(r290):
+    a = state_point(r290, "T", 300.0, "p", 5e5)        # superheated vapour
+    b = state_point(r290, "T", 300.0, "p", 30e5)       # subcooled liquid
+    path = path_states(r290, a, b, steps=10)
+    for Q in (0.0, 1.0):
+        (sat,) = [s for s in path if abs(s.s - PropsSI("S", "T", 300.0, "Q", Q, "R290")) < 1e-6 * abs(s.s)]
+        assert sat.p == pytest.approx(PropsSI("P", "T", 300.0, "Q", Q, "R290"), rel=1e-6)
+    assert all(s.T == pytest.approx(300.0) for s in path)
+    assert np.all(np.diff([s.s for s in path]) < 0.0)
+
+
+@pytest.mark.parametrize("kind", ["isentropic", "polytropic"])
+def test_expansion_bends_where_it_enters_the_dome(kind):
+    water = Fluid("HEOS::Water")
+    a = state_point(water, "p", 50e5, "T", 600.0)
+    b = state_point(water, "p", 0.1e5, "s", a.s) if kind == "isentropic" else \
+        state_point(water, "p", 0.1e5, "Q", 0.85)
+    path = path_states(water, a, b, kind, steps=10)
+    assert len(_on_the_dome(path, 1.0)) == 1
+    assert np.all(np.diff([s.p for s in path]) < 0.0)
+
+
+def test_isenthalpic_path_bends_where_it_enters_the_dome(r290):
+    a = state_point(r290, "p", 30e5, "T", 300.0)        # subcooled liquid
+    b = state_point(r290, "p", 3e5, "h", a.h)
+    path = path_states(r290, a, b, steps=10)
+    (bubble,) = _on_the_dome(path, 0.0)
+    assert bubble.p == pytest.approx(PropsSI("P", "T", bubble.T, "Q", 0, "R290"), rel=1e-6)
+    assert bubble.h == pytest.approx(a.h, rel=1e-9)
+
+
+def test_a_state_on_the_dome_gets_no_second_point(r290):
+    a = state_point(r290, "p", 30e5, "Q", 0.0)          # a throttle from saturated liquid
+    path = path_states(r290, a, state_point(r290, "p", 3e5, "h", a.h), steps=10)
+    assert len(path) == 11
 
 
 # ---------------------------------------------------------------------------

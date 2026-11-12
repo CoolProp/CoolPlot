@@ -40,7 +40,7 @@ exclude_patterns = ["_build", "_generated", "Thumbs.db", ".DS_Store"]
 suppress_warnings = ["config.cache"]
 
 # MyST: tables, definition lists, admonitions and $math$
-myst_enable_extensions = ["colon_fence", "deflist", "dollarmath", "fieldlist"]
+myst_enable_extensions = ["colon_fence", "deflist", "dollarmath", "fieldlist", "tasklist"]
 myst_heading_anchors = 3
 
 # API reference: one page per module, generated into reference/generated
