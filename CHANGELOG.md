@@ -24,6 +24,20 @@ guide in the documentation says what to change in your code.
   `test_blend_lines_meet_the_dome_near_the_critical_point` failed on
   macOS, where the bubble flash of R32/R125 converges at 340 K, against
   a straight-line reference that was itself off by 2e-4.
+- Cycle paths bend exactly where they meet the saturation dome, for every
+  path kind (#47). Before, only an isobar had its saturation states added.
+  An isotherm now gets them too, from T and Q. An isentrope, an isenthalp,
+  a polytropic path (a turbine expanding into the dome) and an isochore
+  get the state where they cross the dome by bisection on the phase,
+  since CoolProp cannot flash s, h or rho together with the quality on
+  both sides of the dome.
+- A path between two states of equal density is drawn as an isochore. It
+  was drawn as a polytropic path (linear in log p and s), which cut
+  across the dome, so a state given with `"via": "isochoric"` was
+  followed by a line that was not an isochore.
+
+### Added
+- `"isochoric"` is a path kind for `paths={(from, to): kind}`.
 
 ## [1.5.1] - 2026-11-11
 

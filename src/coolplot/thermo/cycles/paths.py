@@ -119,20 +119,29 @@ def _same(a: float, b: float) -> bool:
 
 def auto_kind(a: StatePoint, b: StatePoint) -> str:
     """The process between two states, judged from what they have in common."""
-    for key, kind in (("p", "isobaric"), ("h", "isenthalpic"), ("s", "isentropic"), ("T", "isothermal")):
+    for key, kind in (("p", "isobaric"), ("h", "isenthalpic"), ("s", "isentropic"), ("T", "isothermal"),
+                      ("rho", "isochoric")):
         if _same(a[key], b[key]):
             return kind
     return "polytropic"
 
 
-def _log_or_linear(lo: float, hi: float, n: int) -> np.ndarray:
-    if lo > 0.0 and hi > 0.0:
-        return np.geomspace(lo, hi, n)
-    return np.linspace(lo, hi, n)
+#: For the paths that keep a property CoolProp can flash together with the
+#: quality Q, the property kept and the property that changes evenly along
+#: the path. Their saturation states are found exactly; on the other paths
+#: the dome is found by bisection, see :func:`_dome_crossings`.
+_EXACT_SATURATION = {"isobaric": ("p", "h"), "isothermal": ("T", "s")}
+
+#: A dome crossing is located to within this fraction of the path.
+CROSSING_TOL = 1e-9
 
 
 def path_states(fluid, a: StatePoint, b: StatePoint, kind: str = "auto", steps: int = 20) -> List[StatePoint]:
     """States along the process from ``a`` to ``b``, both included.
+
+    Where the path enters or leaves the saturation dome, the state on the
+    dome is added, so that the line bends exactly there instead of cutting
+    the corner between two samples.
 
     The provider may replace the kind (humid air draws every path
     straight). Points that CoolProp cannot compute are left out; the path
@@ -144,48 +153,125 @@ def path_states(fluid, a: StatePoint, b: StatePoint, kind: str = "auto", steps: 
         kind = auto_kind(a, b)
     if kind == "straight" or steps < 2:
         return [a, b]
-    out = [a]
-    for k1, v1, k2, v2 in _inner_inputs(fluid, a, b, kind, steps):
+    if kind not in _PATH_INPUTS:
+        raise ValueError("Unknown path kind '{0}'.".format(kind))
+    # Each point is the fraction t along the path (0 at a, 1 at b) and its state
+    inner = sorted(set(np.linspace(0.0, 1.0, steps + 1)[1:-1]) | set(_saturation_fractions(fluid, a, b, kind)))
+    points = [(0.0, a)]
+    for t in inner:
+        state = _state_at(fluid, a, b, kind, t)
+        if state is not None:
+            points.append((t, state))
+    points.append((1.0, b))
+    if kind not in _EXACT_SATURATION:
+        points = _dome_crossings(fluid, a, b, kind, points)
+    return [state for _, state in points]
+
+
+def _path_inputs(a: StatePoint, b: StatePoint, kind: str, t: float) -> Tuple[str, float, str, float]:
+    """The (key, value, key, value) inputs of the state a fraction t along the path from a to b.
+
+    The pressure changes on a log scale (evenly in log p), the other
+    properties linearly.
+    """
+    return _PATH_INPUTS[kind](a, b, t)
+
+
+def _linear(x_a: float, x_b: float, t: float) -> float:
+    return x_a + t * (x_b - x_a)
+
+
+def _log_or_linear(x_a: float, x_b: float, t: float) -> float:
+    if x_a > 0.0 and x_b > 0.0:
+        return x_a * (x_b / x_a) ** t
+    return _linear(x_a, x_b, t)
+
+
+# For each path kind, the inputs of the state a fraction t along the path
+_PATH_INPUTS = {
+    "isobaric": lambda a, b, t: ("p", a.p, "h", _linear(a.h, b.h, t)),
+    "isothermal": lambda a, b, t: ("T", a.T, "s", _linear(a.s, b.s, t)),
+    "isochoric": lambda a, b, t: ("rho", a.rho, "T", _linear(a.T, b.T, t)),
+    "isenthalpic": lambda a, b, t: ("p", _log_or_linear(a.p, b.p, t), "h", a.h),
+    "isentropic": lambda a, b, t: ("p", _log_or_linear(a.p, b.p, t), "s", a.s),
+    # Entropy changed evenly with log p
+    "polytropic": lambda a, b, t: ("p", _log_or_linear(a.p, b.p, t), "s", _linear(a.s, b.s, t)),
+}
+
+
+def _state_at(fluid, a: StatePoint, b: StatePoint, kind: str, t: float) -> Optional[StatePoint]:
+    """The state a fraction t along the path, or None where CoolProp cannot compute it."""
+    try:
+        state = state_point(fluid, *_path_inputs(a, b, kind, t))
+    except Exception:
+        return None
+    if all(math.isfinite(state[k]) for k in ("T", "p", "h", "s")):
+        return state
+    return None
+
+
+def _saturation_fractions(fluid, a: StatePoint, b: StatePoint, kind: str) -> List[float]:
+    """Where an isobar or an isotherm meets the bubble and dew lines, as fractions of the path."""
+    if kind not in _EXACT_SATURATION:
+        return []
+    kept, varied = _EXACT_SATURATION[kind]
+    if b[varied] == a[varied]:
+        return []
+    out = []
+    for q in (0.0, 1.0):
         try:
-            state = state_point(fluid, k1, v1, k2, v2)
+            x_sat = state_point(fluid, kept, a[kept], "Q", q)[varied]
         except Exception:
-            continue
-        if all(math.isfinite(state[k]) for k in ("T", "p", "h", "s")):
-            out.append(state)
-    out.append(b)
+            continue    # e.g. above the critical point
+        t = (x_sat - a[varied]) / (b[varied] - a[varied])
+        if 0.0 < t < 1.0:
+            out.append(t)
     return out
 
 
-def _inner_inputs(fluid, a: StatePoint, b: StatePoint, kind: str, steps: int) -> List[Tuple[str, float, str, float]]:
-    """The (key, value, key, value) inputs of the states between a and b along a path kind."""
-    t = np.linspace(0.0, 1.0, steps + 1)[1:-1]
-    if kind == "isobaric":
-        return [("p", a.p, "h", h) for h in _isobar_enthalpies(fluid, a, b, t)]
-    if kind == "isothermal":
-        return [("T", a.T, "s", s) for s in a.s + t * (b.s - a.s)]
-    if kind not in ("isenthalpic", "isentropic", "polytropic"):
-        raise ValueError("Unknown path kind '{0}'.".format(kind))
-    p_values = _log_or_linear(a.p, b.p, steps + 1)[1:-1]
-    if kind == "isenthalpic":
-        return [("p", p, "h", a.h) for p in p_values]
-    # Entropy kept (isentropic), or changed evenly with pressure (polytropic)
-    s_values = [a.s] * len(t) if kind == "isentropic" else a.s + t * (b.s - a.s)
-    return [("p", p, "s", s) for p, s in zip(p_values, s_values)]
+def _in_dome(state: StatePoint) -> bool:
+    """Whether a state is two-phase; CoolProp gives Q = -1 for a single phase."""
+    return 0.0 <= state.Q <= 1.0
 
 
-def _isobar_enthalpies(fluid, a: StatePoint, b: StatePoint, t) -> List[float]:
-    """Enthalpies along an isobar from a to b, with the saturation states
-    added so that the path bends exactly on the dome."""
-    h_values = list(a.h + t * (b.h - a.h))
-    for q in (0.0, 1.0):
-        try:
-            h_sat = state_point(fluid, "p", a.p, "Q", q).h
-        except Exception:
-            continue
-        if min(a.h, b.h) < h_sat < max(a.h, b.h):
-            h_values.append(h_sat)
-    h_values.sort(reverse=b.h < a.h)
-    return h_values
+def _dome_crossings(fluid, a: StatePoint, b: StatePoint, kind: str, points):
+    """``points`` with a state added on the dome between each pair of
+    neighbours of which one is two-phase and the other is not.
+
+    The crossing is found by bisection on the fraction along the path, since
+    CoolProp cannot flash, say, an entropy together with the quality. A path
+    that enters and leaves the dome between two neighbours is not seen; a
+    finer ``steps`` finds it.
+    """
+    out = [points[0]]
+    for (t_a, s_a), (t_b, s_b) in zip(points[:-1], points[1:]):
+        if _in_dome(s_a) != _in_dome(s_b) and not (_on_dome(s_a) or _on_dome(s_b)):
+            crossing = _bisect_dome(fluid, a, b, kind, t_a, t_b, _in_dome(s_a))
+            if crossing is not None:
+                out.append(crossing)
+        out.append((t_b, s_b))
+    return out
+
+
+def _on_dome(state: StatePoint) -> bool:
+    """Whether a state is saturated liquid or saturated vapour (a state given with Q = 0 or 1)."""
+    return state.Q == 0.0 or state.Q == 1.0
+
+
+def _bisect_dome(fluid, a: StatePoint, b: StatePoint, kind: str, t_lo: float, t_hi: float, inside_lo: bool):
+    """(t, state) on the dome between the fractions t_lo and t_hi, or None if CoolProp fails on the way."""
+    crossing = None
+    while t_hi - t_lo > CROSSING_TOL:
+        t_mid = 0.5 * (t_lo + t_hi)
+        state = _state_at(fluid, a, b, kind, t_mid)
+        if state is None:
+            return None
+        crossing = (t_mid, state)
+        if _in_dome(state) == inside_lo:
+            t_lo = t_mid
+        else:
+            t_hi = t_mid
+    return crossing
 
 
 def cycle_paths(fluid, states: Dict[int, StatePoint], loops, paths: Dict[Tuple[int, int], str],

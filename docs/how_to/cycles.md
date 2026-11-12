@@ -28,9 +28,10 @@ the values in another system; `closed=False` leaves the chain open (a
 process rather than a cycle).
 
 The path between two states follows the process: equal pressure gives
-an isobar that bends on the dome, equal enthalpy an isenthalp, equal
-entropy an isentrope, anything else a polytropic path. Set a path
-yourself with `paths={(1, 2): "straight"}`.
+an isobar, equal enthalpy an isenthalp, equal entropy an isentrope,
+equal temperature an isotherm, equal density an isochore, anything else
+a polytropic path. Each of them bends exactly where it meets the
+saturation dome. Set a path yourself with `paths={(1, 2): "straight"}`.
 
 ## Split and two-stage cycles
 
