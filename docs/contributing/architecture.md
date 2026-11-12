@@ -329,10 +329,12 @@ diagram.add_cycle("measured", p=[...], h=[...])                           # from
   humid air. The proposal used "polytropic" here; a pressure alone does
   not fix a compressor outlet, so "polytropic" is a path shape only.
 * Paths between states follow the physics ("auto"): equal pressure gives
-  an isobar (with the saturation states inserted, so heat exchangers bend
-  exactly on the dome), equal enthalpy an isenthalp, equal entropy an
-  isentrope, equal temperature an isotherm, anything else a polytropic
-  path (linear in log p and s). Each connection can be set explicitly
+  an isobar, equal enthalpy an isenthalp, equal entropy an isentrope,
+  equal temperature an isotherm, equal density an isochore, anything
+  else a polytropic path (linear in log p and s). The state where a path
+  meets the saturation dome is inserted, so the line bends exactly there:
+  from (p, Q) or (T, Q) for isobars and isotherms, by bisection on the
+  phase for the other kinds. Each connection can be set explicitly
   with `paths={(from, to): kind}`, including "straight".
 * The cycle gets theme styles, markers, state numbers (shown by default,
   `numbers=False` hides them, moved around their marker so they do not

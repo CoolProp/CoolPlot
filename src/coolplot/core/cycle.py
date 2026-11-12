@@ -33,12 +33,13 @@ VIA_KINDS = ("isenthalpic", "isentropic", "isobaric", "isothermal", "isochoric",
              "sensible")
 
 #: How the path between two consecutive states is drawn. "auto" picks the
-#: process from the two states: equal pressure gives an isobar (which bends
-#: along the saturation dome), equal enthalpy an isenthalp, equal entropy
-#: an isentrope, equal temperature an isotherm, anything else a
-#: "polytropic" path (linear in log p and s). "straight" is a straight line
-#: in the diagram.
-PATH_KINDS = ("auto", "isobaric", "isenthalpic", "isentropic", "isothermal", "polytropic", "straight")
+#: process from the two states: equal pressure gives an isobar, equal
+#: enthalpy an isenthalp, equal entropy an isentrope, equal temperature an
+#: isotherm, equal density an isochore, anything else a "polytropic" path
+#: (linear in log p and s). Every one of these bends exactly where it meets
+#: the saturation dome. "straight" is a straight line in the diagram.
+PATH_KINDS = ("auto", "isobaric", "isenthalpic", "isentropic", "isothermal", "isochoric", "polytropic",
+              "straight")
 
 
 @dataclass(frozen=True)
