@@ -149,16 +149,49 @@ def test_blend_lines_meet_the_dome_near_the_critical_point(blend):
     assert isochore.n_inserted == 1
     isotherm = compute_isoline(blend, PH, "T", 340.0, box, points=40)
     assert isotherm.n_inserted == 2
-    # The two inserted states of the isotherm sit at 340 K on the envelope
+    # The two inserted states of the isotherm sit at 340 K on the envelope.
+    # The reference is a cubic fitted to the envelope points around 340 K,
+    # which follows the curved dome: a straight line between two points is
+    # off by 2e-4 here. On some platforms the bubble flash still converges
+    # at 340 K and gives the exact state; both pass.
     envelope = blend.phase_envelope()
     T_env, p_env = envelope.values("T"), envelope.values("p")
+    below_top = p_env < envelope.top("p")   # past its top the envelope runs back to 340 K at about 10 MPa
     for quality in (0.0, 1.0):
-        branch = (envelope.Q > 0.5) == (quality > 0.5)   # Q is 0 or 1: pick the branch by side
+        branch = ((envelope.Q > 0.5) == (quality > 0.5)) & below_top   # Q is 0 or 1: pick the branch by side
+        # Sorted by temperature, each point once: CoolProp's envelope repeats
+        # some, with differences in the last digits only
         order = np.argsort(T_env[branch])
-        p_sat = np.interp(340.0, T_env[branch][order], p_env[branch][order])
-        assert np.min(np.abs(isotherm.y - p_sat)) < 1e-4 * p_sat
+        T_K, p_Pa = T_env[branch][order], p_env[branch][order]
+        new = np.concatenate(([True], np.diff(T_K) > 1e-6))
+        T_K, p_Pa = T_K[new], p_Pa[new]
+        near = np.argsort(np.abs(T_K - 340.0))[:4]
+        p_sat = np.polyval(np.polyfit(T_K[near] - 340.0, p_Pa[near], 3), 0.0)
+        assert np.min(np.abs(isotherm.y - p_sat)) < 1e-5 * p_sat
     assert envelope is not None and len(envelope) > 100
     assert np.all(np.isfinite(envelope.values("h")))
+
+
+def test_envelope_crossings_follow_the_curved_dome(blend):
+    """Interpolated on the envelope, a crossing agrees with the exact flash where the flash converges.
+
+    At 339 K, 5 K below the critical point of R32/R125, the bubble flash
+    still works; a straight line between two envelope points would be off
+    by 7e-4 there.
+    """
+    from coolplot.thermo.isolines import _envelope_crossings
+    from coolplot.thermo.stepping import Metric
+    envelope = blend.phase_envelope()
+    metric = Metric((0.0, 1.0), (0.0, 1.0))
+    crossings = _envelope_crossings(envelope, PH, "T", 339.0, "h", metric)
+    bubble = [sample for _, quality, sample in crossings if quality < 0.5]
+    assert len(bubble) == 1
+    state = CoolProp.AbstractState("HEOS", "R32&R125")
+    state.set_mole_fractions([0.7, 0.3])
+    state.update(CoolProp.QT_INPUTS, 0.0, 339.0)
+    assert bubble[0].y == pytest.approx(state.p(), rel=1e-5)
+    # The enthalpy bends more steeply near the critical point: about 4e-4 here, 1.4e-3 on a straight line
+    assert bubble[0].x == pytest.approx(state.hmass(), rel=1e-3)
 
 
 def test_pure_fluids_have_no_envelope(r290):

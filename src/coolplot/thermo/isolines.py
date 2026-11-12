@@ -488,7 +488,7 @@ class _Line:
         """Insert saturation states by their value of the stepped quantity.
 
         A crossing interpolated on the phase envelope is accurate to about
-        1e-5 of the property, a hundredth of a line width; where the
+        1e-6 of the property (see :func:`_envelope_crossings`); where the
         saturation solver answers it is refined to the exact state between
         the two neighbouring points of the line.
         """
@@ -619,18 +619,29 @@ def _solve_crossing(fluid, diagram, iso_key, value_SI, sweep_key, a, b, quality,
 def _envelope_crossings(envelope, diagram, iso_key, value_SI, sweep_key, metric, sweep_range=None):
     """Where an isoline crosses the phase envelope of a mixture.
 
-    The envelope has about 300 closely spaced points. Between two
-    neighbours where the isoline quantity passes ``value_SI`` the crossing
-    is interpolated linearly, which is accurate to well below the line
-    width. Returns (sweep value, quality, Sample) triples; with
-    ``sweep_range`` only crossings inside that range of the stepped
-    quantity.
+    The envelope has about 300 points. Between two neighbours where the
+    isoline quantity passes ``value_SI`` the crossing is interpolated with
+    a cubic through the four points around it, with the isoline quantity
+    as the variable (:func:`_cubic_through`). That is close to the exact
+    saturation state (about 1e-6 relative for the pressure of R32/R125
+    at 340 K, 4 K below its critical point, where a straight line between
+    the two points is off by 2e-4), so a line gets the same crossing
+    whether CoolProp's saturation flash still converges there or not.
+    Where the isoline quantity does not run one way over the four points
+    (around the top of the dome) the crossing is interpolated linearly.
+    Returns (sweep value, quality, Sample) triples; with ``sweep_range``
+    only crossings inside that range of the stepped quantity.
     """
-    k = envelope.values(iso_key)
-    columns = [envelope.values(key) for key in (sweep_key, diagram.x, diagram.y, "T", "p", "rho")]
+    # CoolProp's envelope repeats some points where its pieces join; each
+    # point is taken once, so that the cubic gets four different neighbours
+    distinct = _distinct_points(envelope.values("T"), envelope.values("p"))
+    k = envelope.values(iso_key)[distinct]
+    columns = [envelope.values(key)[distinct] for key in (sweep_key, diagram.x, diagram.y, "T", "p", "rho")]
+    Q = envelope.Q[distinct]
     found = []
     f = k - value_SI
-    for i in range(len(f) - 1):
+    n = len(f)
+    for i in range(n - 1):
         a, b = f[i], f[i + 1]
         if not (np.isfinite(a) and np.isfinite(b)):
             continue
@@ -641,15 +652,72 @@ def _envelope_crossings(envelope, diagram, iso_key, value_SI, sweep_key, metric,
         if sb == 0 and i + 1 < len(f) - 1:
             continue   # an exact hit on a point is counted once, by the next pair
         t = a / (a - b)
-        w, x, y, T_K, p_Pa, rho = [v[i] + t * (v[i + 1] - v[i]) for v in columns]
+        # The four points around the crossing: i - 1 to i + 2, moved inwards at the ends
+        j = min(max(i - 1, 0), n - 4)
+        stencil = slice(j, j + 4)
+        straight = [v[i] + t * (v[i + 1] - v[i]) for v in columns]
+        w, x, y, T_K, p_Pa, rho = straight
+        if j >= 0 and _spaced_one_way(k[stencil]) and all(np.all(np.isfinite(v[stencil])) for v in columns):
+            cubic = [_cubic_through(k[stencil], v[stencil], value_SI) for v in columns]
+            # A cubic further from the straight line than the step between
+            # the two points is not following the dome: keep the straight line
+            if all(abs(c - s) <= abs(v[i + 1] - v[i]) for c, s, v in zip(cubic, straight, columns)):
+                w, x, y, T_K, p_Pa, rho = cubic
         if not all(np.isfinite((w, x, y, T_K, p_Pa, rho))):
             continue
         if sweep_range is not None and not sweep_range[0] <= w <= sweep_range[1]:
             continue
-        quality = envelope.Q[i] if t < 0.5 else envelope.Q[i + 1]
+        quality = Q[i] if t < 0.5 else Q[i + 1]
         found.append((w, quality, Sample(x, y, _inside(metric, x, y), None,
                                          (w, T_K, p_Pa, quality, rho, "envelope"))))
     return found
+
+
+def _distinct_points(T_K, p_Pa) -> np.ndarray:
+    """Indices of the envelope points, leaving out each point that repeats the one before it.
+
+    A repeat has the same temperature and pressure to 1e-9 relative.
+    """
+    keep = [0]
+    for m in range(1, len(T_K)):
+        last = keep[-1]
+        same_T = abs(T_K[m] - T_K[last]) <= 1e-9 * abs(T_K[last])
+        same_p = abs(p_Pa[m] - p_Pa[last]) <= 1e-9 * abs(p_Pa[last])
+        if not (same_T and same_p):
+            keep.append(m)
+    return np.array(keep, dtype=int)
+
+
+def _spaced_one_way(k) -> bool:
+    """Whether the values can serve as the variable of a cubic through them.
+
+    They have to rise or fall throughout, with no step below a hundredth
+    of the largest: CoolProp's envelope repeats some points, sometimes
+    with a difference in the last digits, and the cubic through two
+    nearly equal values swings far off the dome.
+    """
+    if not np.all(np.isfinite(k)):
+        return False
+    steps = np.diff(k)
+    if not (np.all(steps > 0.0) or np.all(steps < 0.0)):
+        return False
+    return bool(np.min(np.abs(steps)) >= 0.01 * np.max(np.abs(steps)))
+
+
+def _cubic_through(k, v, k0: float) -> float:
+    """The value at ``k0`` of the cubic through the four points (k, v), in the Lagrange form.
+
+    Each point contributes its value times a weight that is 1 at its own
+    k and 0 at the other three, so the cubic passes through all four.
+    """
+    total = 0.0
+    for m in range(4):
+        weight = 1.0
+        for other in range(4):
+            if other != m:
+                weight *= (k0 - k[other]) / (k[m] - k[other])
+        total += weight * v[m]
+    return float(total)
 
 
 # ---------------------------------------------------------------------------

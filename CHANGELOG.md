@@ -6,6 +6,25 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-11-12
+
+### Fixed
+- Where an isoline of a mixture crosses the phase envelope and
+  CoolProp's saturation flash does not converge (near the critical
+  point), the crossing is interpolated on the envelope with a cubic
+  through the four points around it instead of a straight line between
+  two. For R32/R125 the pressure there is now within about 1e-6 of the
+  exact saturation state instead of up to 2e-3, the enthalpy within
+  4e-4 instead of 1.5e-3. CoolProp repeats some points of its envelope
+  where its pieces join; they are taken once. Where the cubic cannot be
+  trusted (the isoline quantity turns over the four points, or the
+  cubic strays from the straight line) the crossing stays a straight
+  line interpolation. A line therefore gets nearly the same crossing
+  whether the flash converges or not, which differs between platforms:
+  `test_blend_lines_meet_the_dome_near_the_critical_point` failed on
+  macOS, where the bubble flash of R32/R125 converges at 340 K, against
+  a straight-line reference that was itself off by 2e-4.
+
 ## [1.5.1] - 2026-11-11
 
 ### Fixed
