@@ -128,8 +128,10 @@ the people listed in the recipe; they need no rights in conda-forge
 otherwise. CoolPlot is pure Python, so the recipe is `noarch: python`
 and builds one package for every platform and Python version.
 
-As of 1.5.1 CoolPlot is not on conda-forge yet; the first submission is
-described at the end of this section.
+The first submission is under review
+(https://github.com/conda-forge/staged-recipes/pull/35603), see the end
+of this section. Until it is merged there is no feedstock: a new version
+is put into that pull request by hand (version and sha256 of the sdist).
 
 ### Every release
 
