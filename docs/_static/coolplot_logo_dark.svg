@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 4 64 64" width="64" height="64">
+  <title>CoolPlot</title>
+  <!-- Saturation dome of a log(p)-h chart: liquid line on the left, vapour
+       line on the right, critical point at the top. The two-phase region
+       is shaded. -->
+  <path d="M4 56 C8 36 20 16 32 15 C44 14 50 34 51 56"
+        fill="#7aa7e0" fill-opacity="0.12" stroke="#7aa7e0" stroke-width="4"
+        stroke-linecap="round"/>
+  <!-- Heat pump cycle: compression (right), condensation (top), expansion
+       (left, vertical) and evaporation (bottom), with its four states -->
+  <path d="M53 45 L58 27 L13 27 L13 45 Z"
+        fill="none" stroke="#ffa500" stroke-width="3" stroke-linejoin="round"/>
+  <g fill="#ffa500">
+    <circle cx="53" cy="45" r="3"/>
+    <circle cx="58" cy="27" r="3"/>
+    <circle cx="13" cy="27" r="3"/>
+    <circle cx="13" cy="45" r="3"/>
+  </g>
+</svg>

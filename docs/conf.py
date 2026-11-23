@@ -93,10 +93,18 @@ sphinx_gallery_conf = {
 
 html_theme = "pydata_sphinx_theme"
 html_static_path = ["_static"]
-html_logo = None
+html_favicon = "_static/coolplot_logo.svg"
 html_title = "CoolPlot {0}".format(__version__)
 html_theme_options = {
     "github_url": "https://github.com/CoolProp/CoolPlot",
+    # The logo in the top bar: a log(p)-h chart with a heat pump cycle, in
+    # CoolProp's blue and orange, with a lighter blue for the dark mode
+    "logo": {
+        "image_light": "_static/coolplot_logo.svg",
+        "image_dark": "_static/coolplot_logo_dark.svg",
+        "text": "CoolPlot",
+        "alt_text": "CoolPlot",
+    },
     "show_toc_level": 2,
     # The top bar shows the pages of the main toctree in its order, the first
     # six as links (from Getting started to Reference), the rest under "More"

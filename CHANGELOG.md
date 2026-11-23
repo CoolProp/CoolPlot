@@ -6,6 +6,20 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-11-23
+
+### Added
+- A logo: the saturation dome of a log(p)-h chart with a heat pump cycle,
+  in CoolProp's blue and orange (`docs/_static/coolplot_logo.svg`, and
+  `coolplot_logo_dark.svg` for a dark background). The documentation
+  shows it in the top bar and as the favicon, and the README at the top.
+- Links to the documentation on Read the Docs: a badge and a link in the
+  README, and a "Documentation" link on the PyPI page.
+
+### Changed
+- The default branch of the repository is `main`, no longer `master`;
+  the test workflow and the release guide follow it.
+
 ## [1.7.0] - 2026-11-23
 
 ### Added
