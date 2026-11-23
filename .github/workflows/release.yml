@@ -54,7 +54,7 @@ jobs:
       - name: Install the wheel in a fresh environment and draw a chart
         run: |
           python -m venv /tmp/try
-          /tmp/try/bin/python -m pip install --quiet "coolprop==8.0.0" dist/*.whl
+          /tmp/try/bin/python -m pip install --quiet "coolprop==8.1.0" dist/*.whl
           cd /tmp
           /tmp/try/bin/python -c "
           import coolplot

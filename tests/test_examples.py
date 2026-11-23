@@ -50,6 +50,15 @@ def test_refrigerant_blend(tmp_path):
     assert (tmp_path / "R32_R125_ph.svg").stat().st_size > 10000
 
 
+def test_wide_glide_blend(tmp_path):
+    """R436A: on CoolProp 8.1 its lines of intermediate quality stopped with
+    their evaluation budget used up, a UserWarning, which fails the run."""
+    out = _run("wide_glide_blend.py", tmp_path)
+    assert "Evaporator: 2.29 bar, -12.8 to -5.0 deg C, glide 7.8 K" in out
+    assert "Condenser:  11.49 bar, 51.3 to 45.0 deg C, glide 6.3 K" in out
+    assert (tmp_path / "R436A_ph.svg").stat().st_size > 10000
+
+
 def test_saturation_lines(tmp_path):
     assert "s: through the saturated vapour every 10 K" in _run("saturation_lines.py", tmp_path)
     svg = (tmp_path / "R290_saturation.svg").read_text()
@@ -230,7 +239,7 @@ BOTH_PATHS = ["quickstart.py", "two_stage_cycles.py", "refrigerant_blend.py", "p
               "steam_rankine_ts.py", "steam_turbine_hs.py", "co2_transcritical.py", "co2_phase_diagram.py",
               "h2o_phase_diagram.py", "orc_ts.py",
                "refrigerant_comparison.py", "ip_units.py", "themes.py", "label_modes.py", "branding_chp.py",
-               "coolpack.py"]
+               "coolpack.py", "wide_glide_blend.py"]
 
 #: Examples whose charts are all composed by Python also with coolplot-core:
 #: coolplot-core composes a badge of text lines but no logo or watermark (see coolplot.compose.compose).

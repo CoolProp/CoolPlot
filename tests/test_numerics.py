@@ -209,6 +209,97 @@ def test_a_straight_line_across_the_chart_gets_about_half_the_resolution():
         assert abs(n - points / 2) <= 0.1 * points / 2
 
 
+@pytest.mark.xfail(strict=True, reason="next_step has no floor at MIN_STEP; to be fixed together with "
+                   "CoolProp's port of the stepping, which has to step point for point the same "
+                   "(CoolProp issue 3586)")
+def test_a_line_that_jumps_between_two_roots_reaches_its_end():
+    """A solver that returns one of two roots depending on the last bits of
+    its input (CoolProp 8.1 does this on some lines of constant quality of
+    R436A between 97 and 155 K) makes the line jump back and forth. The step
+    shrinks by a factor of four at every such turn, below MIN_STEP, until the
+    parameter stops moving and the whole evaluation budget goes into one
+    point. The lines of constant quality of a mixture no longer meet such
+    roots (test_wrong_mixture_roots_are_refused), but the stepping itself
+    still has the weakness: https://github.com/CoolProp/CoolProp/issues/3586"""
+    import struct
+    from coolplot.thermo.stepping import MIN_STEP, Metric, Sample, trace
+
+    def evaluate(u, careful):
+        # One root or the other by the parity of the bits of u: a different
+        # choice for neighbouring floats, as CoolProp makes it
+        parity = bin(struct.unpack("<Q", struct.pack("<d", u))[0]).count("1") & 1
+        jumps = 0.3 < u < 0.5     # a band of two roots in an otherwise straight line
+        return Sample(u, 0.5 + 0.002 * parity * jumps)
+
+    found = trace(evaluate, Metric((0.0, 1.0), (0.0, 1.0)), 100)
+    assert found.stopped == "the end of the range"
+    # The band is crossed in steps of MIN_STEP; a rejected step halves once below it
+    u = np.array([s.x for s in found.samples if s is not None])
+    assert np.min(np.diff(u)) >= 0.5 * MIN_STEP * (1.0 - 1e-9)
+
+
+class _TwoPhaseState:
+    """A stand-in for a two-phase state of a binary mixture z = (0.6, 0.4)."""
+
+    def __init__(self, x, y, Q=0.5):
+        self.x, self.y, self.quality = x, y, Q
+
+    def Q(self):
+        return self.quality
+
+    def mole_fractions_liquid(self):
+        return list(self.x)
+
+    def mole_fractions_vapor(self):
+        return list(self.y)
+
+    def get_mole_fractions(self):
+        return [0.6, 0.4]
+
+    def saturated_liquid_keyed_output(self, key):
+        return 10000.0
+
+    def saturated_vapor_keyed_output(self, key):
+        return 100.0
+
+
+def test_wrong_mixture_roots_are_refused():
+    """A two-phase state counts only if its phases add up to the mixture:
+    (1 - Q) x + Q y = z. CoolProp 8.0 and, at some temperatures, 8.1 return
+    states that miss that by 1e-2 for R436A."""
+    from coolplot.thermo.isolines import _is_saturation_state
+    assert _is_saturation_state(_TwoPhaseState((0.5, 0.5), (0.7, 0.3)))
+    assert _is_saturation_state(_TwoPhaseState((0.5, 0.5), (0.7 + 1e-7, 0.3 - 1e-7)))
+    assert not _is_saturation_state(_TwoPhaseState((0.5, 0.5), (0.7 + 2e-5, 0.3 - 2e-5)))   # misses by 1e-5
+    assert not _is_saturation_state(_TwoPhaseState((0.5, 0.5), (0.72, 0.28)))
+    assert not _is_saturation_state(_TwoPhaseState((0.5, 0.5), (0.7, 0.3), Q=0.6))
+    assert not _is_saturation_state(_TwoPhaseState((0.5, float("nan")), (0.7, 0.3)))
+    assert not _is_saturation_state(_TwoPhaseState((0.5, 0.5), (0.7, 0.3), Q=float("nan")))
+    collapsed = _TwoPhaseState((0.6, 0.4), (0.6, 0.4))
+    collapsed.saturated_vapor_keyed_output = lambda key: 10000.0
+    assert not _is_saturation_state(collapsed)     # the trivial solution is still refused
+
+
+def test_a_wide_glide_blend_gets_whole_lines_of_constant_quality():
+    """R436A (propane/isobutane, about 7 K of glide): on CoolProp 8.1 the
+    lines of intermediate quality ran out of their evaluation budget below
+    155 K, where the flash alternates between the right root and a wrong one
+    3 % lower in pressure. The wrong roots are now left out, so the pressure
+    rises along the line up to its last point, the top of the phase envelope
+    (the cricondentherm, a little lower in pressure than the state before)."""
+    fluid = Fluid("HEOS::R436A.mix")
+    envelope = fluid.phase_envelope()
+    for quality in (0.2, 0.4, 0.6, 0.8):
+        curve = compute_quality_line(fluid, PH, quality)
+        assert curve.reason == ""
+        p = curve.y[np.isfinite(curve.y)]
+        assert len(p) >= 50
+        assert np.all(np.diff(p[:-1]) > 0.0)
+        assert curve.y[-1] == envelope.top("p") and curve.x[-1] == envelope.top("h")
+        # No point repeats (a walk stuck in place would)
+        assert len(np.unique(curve.x[np.isfinite(curve.x)])) == len(p)
+
+
 def test_a_line_where_no_state_can_be_computed_says_so(r290):
     """A failed look while scanning outside counts as outside, so the reason
     has to come from the evaluations that worked: here none did."""

@@ -35,6 +35,24 @@ starting with an underscore, the helpers in `coolplot.core`,
 `coolplot.testing`, the scene item ids, and the exact coordinates of a
 chart (better numerics may move points).
 
+## From 1.6 to 1.7
+
+Nothing to change in your code. CoolProp 8.1 is recommended, and 8.0
+still works. `Fluid.phase(state)` is new: it names the phase of a state
+as CoolProp's PhaseSI does (see {doc}`how_to/cycles`). Two things can
+look different on charts of mixtures:
+
+**Lines of constant quality leave out wrong states.** A state on such a
+line is drawn only if its liquid and vapour add up to the mixture.
+CoolProp's flash misses that for some blends at low temperatures (8.0
+more often than 8.1), so a line can have fewer points there, or start
+at a higher temperature, than in 1.6. Most of the points left out were
+off, for R436A by about 3 % in pressure at 140 K; a few near the
+cricondenbar of a natural gas were nearly right and now leave gaps.
+
+**These lines are computed in Python** also where CoolProp has its port
+of the numerics (8.1 and later), see the changelog.
+
 ## From 1.5 to 1.6
 
 Nothing to change in your code. Two things are new or look different:

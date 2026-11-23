@@ -2,8 +2,8 @@
 """The lines CoolProp's C++ port of the numerics computes (CoolProp.Plot).
 
 The tests marked ``needs_port`` run only with a CoolProp that carries the
-port; the released wheels up to 8.0.0 do not, and then they are skipped
-(in CI too). They mirror the checks of test_numerics.py on the Python
+port, which the released wheels have from 8.1.0 on; with 8.0.0 they are
+skipped (in the CI job that tests that version too). They mirror the checks of test_numerics.py on the Python
 reference and compare the two. The tests of the provider's choice, the
 switch and the fluid strings run everywhere, with a stand-in for the port.
 """
@@ -23,6 +23,17 @@ needs_port = pytest.mark.skipif(not native.available(), reason="this CoolProp ha
 
 TS = DiagramType.parse("Ts")
 PH = DiagramType.parse("ph")
+
+#: How closely the port's points have to match the Python reference. They
+#: run the same algorithm, but some points amplify the last bits of
+#: CoolProp's arithmetic: point 12 of the R32/R125 isenthalp of 300 kJ/kg
+#: in a T-s chart moves by 3.1e-9 when glibc's FMA variants of the maths
+#: functions are switched off (GLIBC_TUNABLES=glibc.cpu.hwcaps=-FMA,-FMA4).
+#: On the GitHub runners, with CoolProp 8.1.0, the port and Python differ
+#: there by that much, and on a point of an R290 isentrope by 1.5e-8; on the
+#: Intel Xeon these were measured on, they agree to the last bit. 1e-7 leaves
+#: room for that and is still far below anything a chart shows.
+PORT_RTOL = 1e-7
 
 
 @pytest.fixture(scope="module")
@@ -206,7 +217,7 @@ def test_pure_quality_lines_end_at_the_critical_point(r290):
     ("blend", "Q", 0.5, PH)])
 def test_the_port_agrees_with_the_python_reference(request, fluid_name, key, value, diagram):
     """The port steps exactly as the Python numerics do: the same points,
-    the same gaps, the same diagnostics, to the rounding of the solvers."""
+    the same gaps and the same diagnostics, the values to PORT_RTOL."""
     fluid = request.getfixturevalue(fluid_name)
     box = resolve_tp_box(fluid, get_tp_limits("ACHP"))
     python = compute_isoline(fluid, diagram, key, value, box, points=40)
@@ -215,8 +226,28 @@ def test_the_port_agrees_with_the_python_reference(request, fluid_name, key, val
     assert len(port.x) == len(python.x) >= 10
     assert np.array_equal(np.isnan(port.x), np.isnan(python.x))
     finite = np.isfinite(python.x)
-    assert port.x[finite] == pytest.approx(python.x[finite], rel=1e-9)
-    assert port.y[finite] == pytest.approx(python.y[finite], rel=1e-9)
+    assert port.x[finite] == pytest.approx(python.x[finite], rel=PORT_RTOL)
+    assert port.y[finite] == pytest.approx(python.y[finite], rel=PORT_RTOL)
+
+
+def test_lines_of_intermediate_quality_of_a_mixture_stay_in_python(r290, blend, monkeypatch):
+    """The port in CoolProp 8.1 lacks the mass balance check of the Python
+    numerics (CoolProp issue 3586), so the provider does not ask it
+    for those lines; it does for everything else."""
+    calls = []
+
+    def stand_in(fluid, diagram, key, value, *args):
+        calls.append((fluid.name, key, value))
+        return Curve([1.0, 2.0], [3.0, 4.0], method="port")
+    monkeypatch.setattr(native, "available", lambda: True)
+    monkeypatch.setattr(native, "compute_curve", stand_in)
+    monkeypatch.setenv("COOLPLOT_NATIVE", "1")
+    box = resolve_tp_box(blend, get_tp_limits("ACHP"))
+    python = compute_curve(blend, PH, "Q", 0.5, box, 20, "auto", 1e-7, "critical")
+    assert calls == [] and python.method != "port" and len(python.x) > 2
+    for fluid, key, value in ((blend, "Q", 0.0), (blend, "Q", 1.0), (blend, "T", 280.0), (r290, "Q", 0.5)):
+        assert compute_curve(fluid, PH, key, value, box, 20, "auto", 1e-7, "critical").method == "port"
+    assert [c[1:] for c in calls] == [("Q", 0.0), ("Q", 1.0), ("T", 280.0), ("Q", 0.5)]
 
 
 @needs_port
@@ -226,7 +257,7 @@ def test_the_provider_uses_the_port_when_enabled(r290, monkeypatch):
     port = compute_curve(r290, TS, "p", 5e5, box, 20, "auto", 1e-7, "critical")
     monkeypatch.setenv("COOLPLOT_NATIVE", "0")
     python = compute_curve(r290, TS, "p", 5e5, box, 20, "auto", 1e-7, "critical")
-    assert port.x == pytest.approx(python.x, rel=1e-9, nan_ok=True)
+    assert port.x == pytest.approx(python.x, rel=PORT_RTOL, nan_ok=True)
     assert port.n_inserted == python.n_inserted == 2
 
 

@@ -22,7 +22,14 @@ T with p, rho or Q. A state given by T and h, say, raises a
 returns for a mixture is checked against the saturated densities at its
 temperature, because CoolProp 8 answers some inputs inside the two-phase
 region with a "gas" at a wrong pressure; such points are left out rather
-than drawn.
+than drawn. A two-phase state on a line of constant quality is drawn
+only if its liquid and vapour add up to the blend: CoolProp's quality
+flash returns a state that does not now and then, more often with 8.0
+than with 8.1, mostly at the cold end of the lines
+([CoolProp#3585](https://github.com/CoolProp/CoolProp/issues/3585)).
+
+A blend with a wide glide, R436A (propane and isobutane), in a heat pump:
+{doc}`../gallery/wide_glide_blend`.
 
 For charts of blends in an interactive application use
 `background="processes"`, see {doc}`web`; a blend chart then never blocks

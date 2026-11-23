@@ -132,6 +132,55 @@ SOLVERS = ("auto", "tracer", "flash")
 EDGE_TOLERANCE = 1e-7
 
 
+#: A two-phase state of a mixture whose phase compositions, weighted by the
+#: vapour quality, miss the overall composition by more than this (in mole
+#: fraction) is not drawn. Mostly it is the state CoolProp's QT flash
+#: returns when its two-phase solver fails and it falls back to the
+#: bubble/dew solver, which has no mass balance (CoolProp issue 3585,
+#: https://github.com/CoolProp/CoolProp/issues/3585). Some refused states are nearly right, though: the line of quality 0.1 of
+#: Ekofisk (a natural gas) gets five gaps between 6.6 and 6.8 MPa, below
+#: the top of its envelope at 7.5 MPa. A tolerance relative to the
+#: difference of the phase compositions |x - y| would not spare them: they
+#: miss by about 1e-2 of it, R436A's wrong states by 4e-2. CoolProp's
+#: warnstring flags each fallback, but would not do instead: on 8.1, 80
+#: fallback states of the predefined blends are right to 1e-6.
+#:
+#: Calibrated on CoolProp 8.1, at 39 temperatures and the qualities 0.1, 0.5
+#: and 0.9 of each of the 113 predefined blends with a phase envelope: 97 %
+#: of the 12221 states balance to better than 1e-12, and 16 lie between
+#: 1e-9 and 1e-6, which are kept. 299 states of 32 blends (R436A, R454B
+#: and R433B among them) miss by more: 14 between 1e-6 and 1e-4, the rest
+#: by 1e-4 to 1e-1. For R436A this is the root CoolProp 8.0 gave throughout
+#: the cold part of the line (for R407C too, which 8.1 fixed) and 8.1 still
+#: gives at some temperatures: it misses by 1e-2, which puts the line of
+#: quality 0.4 about 3 % off in pressure at 140 K.
+_MASS_BALANCE_TOL = 1e-6
+
+
+def _is_saturation_state(state) -> bool:
+    """Whether a two-phase state of a mixture is a genuine saturation state
+
+    Two checks: the phases are distinct (not the trivial solution, see
+    :func:`coolplot.thermo.tracer._phases_are_distinct`) and they add up to
+    the mixture, i.e. ``(1 - Q) * x + Q * y = z`` for the mole fractions of
+    the liquid x, the vapour y and the mixture z at the molar quality Q.
+    A backend that cannot report the phase compositions fails the check.
+    """
+    if not _phases_are_distinct(state):
+        return False
+    try:
+        Q = state.Q()
+        x = np.asarray(state.mole_fractions_liquid(), dtype=float)
+        y = np.asarray(state.mole_fractions_vapor(), dtype=float)
+        z = np.asarray(state.get_mole_fractions(), dtype=float)
+    except Exception:
+        return False
+    if not (np.isfinite(Q) and x.shape == y.shape == z.shape):
+        return False
+    error = np.max(np.abs((1.0 - Q) * x + Q * y - z))
+    return bool(error <= _MASS_BALANCE_TOL)   # False for NaN as well
+
+
 def _quality_or_nan(state) -> float:
     """The vapour quality of a state, NaN where the backend has none (incompressibles)."""
     try:
@@ -272,8 +321,8 @@ def _saturation_sample(fluid: Fluid, key: str, value_SI: float, quality: float, 
     """
     try:
         state = fluid.update(key, value_SI, "Q", quality)
-        if not fluid.is_pure and not _phases_are_distinct(state):
-            return None   # the trivial solution of the mixture solver, not a saturation state
+        if not fluid.is_pure and not _is_saturation_state(state):
+            return None   # the trivial solution, or a state that misses the mass balance
         x, y, T_K, p_Pa = (state.keyed_output(parameter_index(k)) for k in (diagram.x, diagram.y, "T", "p"))
     except Exception:
         return None
@@ -542,11 +591,12 @@ def _saturation_state(fluid: Fluid, sat_key: str, sat_value: float, quality: flo
 
     Through :meth:`Fluid.update`, which retries a mixture on the scratch
     state with the phase envelope built; a mixture's trivial solution
-    (both phases at one density) is refused.
+    (both phases at one density) and a state whose phases do not add up to
+    the mixture are refused (:func:`_is_saturation_state`).
     """
     try:
         state = fluid.update(sat_key, sat_value, "Q", quality)
-        if not fluid.is_pure and not _phases_are_distinct(state):
+        if not fluid.is_pure and not _is_saturation_state(state):
             return None
         result = tuple(state.keyed_output(parameter_index(k))
                        for k in (iso_key, diagram.x, diagram.y, "T", "p", "rho"))
@@ -814,8 +864,8 @@ def _saturation_states(fluid: Fluid, diagram: DiagramType, quality: float, T_K: 
         try:
             # update() retries a mixture on the envelope-built scratch state
             state = fluid.update("T", T, "Q", quality)
-            if not fluid.is_pure and not _phases_are_distinct(state):
-                raise ValueError("trivial solution")
+            if not fluid.is_pure and not _is_saturation_state(state):
+                raise ValueError("not a saturation state of the mixture")
             x[i] = state.keyed_output(x_index)
             y[i] = state.keyed_output(y_index)
         except Exception:
