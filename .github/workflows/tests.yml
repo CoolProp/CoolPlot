@@ -2,17 +2,17 @@ name: tests
 
 # A branch is tested through its pull request, which runs on the merge
 # commit GitHub prepares. Running on every push as well tested each commit
-# twice. Pushes to master are still tested, and any other branch can be run
+# twice. Pushes to main are still tested, and any other branch can be run
 # by hand (Actions tab, "Run workflow").
 on:
   push:
-    branches: [master]   # a version tag runs these tests through release.yml instead
+    branches: [main]   # a version tag runs these tests through release.yml instead
   pull_request:
   workflow_dispatch:
   workflow_call:         # release.yml runs the whole workflow before it publishes
 
 # One run per pull request at a time: a new push to a pull request cancels
-# the run of the commit it replaces. Runs on master are never cancelled,
+# the run of the commit it replaces. Runs on main are never cancelled,
 # so every merged commit keeps its result.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

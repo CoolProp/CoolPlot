@@ -10,8 +10,8 @@ first; conda-forge picks it up from there.
 
 Before:
 
-- [ ] Every change of the release is merged into master, and CI on
-      master is green.
+- [ ] Every change of the release is merged into main, and CI on
+      main is green.
 - [ ] `CHANGELOG.md`: the `[Unreleased]` section becomes the version with
       its date, and a new, empty `[Unreleased]` goes above it.
 - [ ] `docs/upgrade.md` says what to change in your code, if a change
@@ -61,12 +61,12 @@ Nothing is uploaded unless every step before it passed.
 
 ```bash
 # 1. Set the version and date the changelog in a pull request
-#    "Release 1.1.0", and merge it into master once CI is green
+#    "Release 1.1.0", and merge it into main once CI is green
 #    src/coolplot/__version__.py:  VERSION = (1, 1, 0, '')
 #    CHANGELOG.md:                 the section of this version
 
-# 2. Tag the merge commit on master; the tag starts the release
-git switch master && git pull --ff-only
+# 2. Tag the merge commit on main; the tag starts the release
+git switch main && git pull --ff-only
 git tag -a v1.1.0 -m "CoolPlot 1.1.0"
 git push origin v1.1.0
 ```
@@ -89,7 +89,7 @@ makes no GitHub release.
 ### When something fails
 
 * Tests or the build fail: nothing was uploaded. Fix the problem on
-  master, move the tag to the new commit
+  main, move the tag to the new commit
   (`git tag -d v1.1.0 && git push origin :refs/tags/v1.1.0`, then tag and
   push again).
 * "Tag ... does not match the version that was built": the tag and
