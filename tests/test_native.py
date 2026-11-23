@@ -2,8 +2,8 @@
 """The lines CoolProp's C++ port of the numerics computes (CoolProp.Plot).
 
 The tests marked ``needs_port`` run only with a CoolProp that carries the
-port; the released wheels up to 8.0.0 do not, and then they are skipped
-(in CI too). They mirror the checks of test_numerics.py on the Python
+port, which the released wheels have from 8.1.0 on; with 8.0.0 they are
+skipped (in the CI job that tests that version too). They mirror the checks of test_numerics.py on the Python
 reference and compare the two. The tests of the provider's choice, the
 switch and the fluid strings run everywhere, with a stand-in for the port.
 """
@@ -217,6 +217,26 @@ def test_the_port_agrees_with_the_python_reference(request, fluid_name, key, val
     finite = np.isfinite(python.x)
     assert port.x[finite] == pytest.approx(python.x[finite], rel=1e-9)
     assert port.y[finite] == pytest.approx(python.y[finite], rel=1e-9)
+
+
+def test_lines_of_intermediate_quality_of_a_mixture_stay_in_python(r290, blend, monkeypatch):
+    """The port in CoolProp 8.1 has neither the smallest step nor the mass
+    balance check of the Python numerics, so the provider does not ask it
+    for those lines; it does for everything else."""
+    calls = []
+
+    def stand_in(fluid, diagram, key, value, *args):
+        calls.append((fluid.name, key, value))
+        return Curve([1.0, 2.0], [3.0, 4.0], method="port")
+    monkeypatch.setattr(native, "available", lambda: True)
+    monkeypatch.setattr(native, "compute_curve", stand_in)
+    monkeypatch.setenv("COOLPLOT_NATIVE", "1")
+    box = resolve_tp_box(blend, get_tp_limits("ACHP"))
+    python = compute_curve(blend, PH, "Q", 0.5, box, 20, "auto", 1e-7, "critical")
+    assert calls == [] and python.method != "port" and len(python.x) > 2
+    for fluid, key, value in ((blend, "Q", 0.0), (blend, "Q", 1.0), (blend, "T", 280.0), (r290, "Q", 0.5)):
+        assert compute_curve(fluid, PH, key, value, box, 20, "auto", 1e-7, "critical").method == "port"
+    assert [c[1:] for c in calls] == [("Q", 0.0), ("Q", 1.0), ("T", 280.0), ("Q", 0.5)]
 
 
 @needs_port

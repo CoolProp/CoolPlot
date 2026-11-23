@@ -72,4 +72,8 @@ check, and do the work when the port is absent, when the native mode is
 `COOLPLOT_NATIVE=0`), or for a model the port cannot take
 (binary interaction parameters set on the state, mass fractions on a
 Helmholtz backend). Humid-air lines and the states of cycles are not
-part of the port.
+part of the port. Nor are the lines of intermediate quality of a mixture:
+the port in CoolProp 8.1 has neither the smallest step of the stepping
+nor the check that the two phases of a state add up to the mixture,
+which the Python numerics apply there (see
+{func}`coolplot.thermo.native.port_draws`).

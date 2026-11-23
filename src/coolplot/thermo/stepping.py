@@ -289,6 +289,11 @@ class _Walk:
 
         A step that would be rejected costs an evaluation, so the step is
         shrunk ahead of a bend and grown only moderately on a straight.
+        It never drops below MIN_STEP of the range: a line that jumps back
+        and forth (a solver alternating between two roots) turns by nearly
+        180 degrees at every point, and without the floor each step would
+        be a quarter of the last one until the parameter no longer moved
+        and the walk spent its whole budget in one place.
         """
         factor = 1.5
         if self.last_length > 0.0:
@@ -296,7 +301,8 @@ class _Walk:
         turn = math.degrees(math.acos(min(max(self.last_turn, -1.0), 1.0)))
         if turn > 0.0:
             factor = min(factor, 0.8 * self.max_angle / turn)
-        return min(max(du * factor, du * 0.25), self.span * MAX_STEP)
+        shrunk = max(du * factor, du * 0.25, self.span * MIN_STEP)
+        return min(shrunk, self.span * MAX_STEP)
 
     def leave_domain(self, u_in: float, u_out: float):
         """The line left the domain between u_in and u_out: put its last point on the edge."""

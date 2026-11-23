@@ -253,14 +253,16 @@ def compute_curve(provider, diagram, key: str, value_SI: float, tp_box, points: 
     the installed CoolProp has it, see :mod:`coolplot.thermo.native`.
     ``use_native`` decides that explicitly (the engine passes the flag of
     its cache key); None asks :func:`coolplot.thermo.native.enabled`. The
-    port is used only when it is installed, whatever ``use_native`` says.
+    port is used only when it is installed, whatever ``use_native`` says,
+    and not for the lines :func:`coolplot.thermo.native.port_draws` keeps
+    in Python (intermediate quality of a mixture).
     """
     key = quantity_key(key)
     if provider.kind == "humid_air":
         return provider.line(key, value_SI, tp_box, points, diagram, ranges)
     if use_native is None:
         use_native = native.enabled()
-    if use_native and native.available():
+    if use_native and native.available() and native.port_draws(provider, key, value_SI):
         curve = native.compute_curve(provider, diagram, key, value_SI, tp_box, points, solver, margin, spacing)
         if curve is not None:
             return curve

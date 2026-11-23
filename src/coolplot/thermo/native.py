@@ -27,8 +27,9 @@ are drawn with the equation of state the tables came from, as in
 The mode is read when a line is computed, and the engine's curve cache
 keys curves by it, so the two implementations never share an entry.
 Change the mode before building a chart, not while one is being computed.
-CoolProp's released wheels up to 8.0.0 have no port, so the tests that
-need it skip there and in CI.
+CoolProp's released wheels have the port from 8.1.0 on; with 8.0.0 the
+tests that need it skip. :func:`port_draws` keeps the lines of
+intermediate quality of a mixture in Python.
 """
 from __future__ import annotations
 
@@ -177,6 +178,24 @@ def compute_curve(fluid, diagram, key: str, value_SI: float, tp_box, points: int
                      n_evaluated=line.n_evaluated, n_outside=line.n_outside)
     except (AttributeError, TypeError):
         return None   # a port of another vintage, without this part of the API: Python does it
+
+
+def port_draws(fluid, key: str, value_SI: float) -> bool:
+    """Whether the provider asks the port for this line at all.
+
+    Not for a line of intermediate quality of a mixture. The port in
+    CoolProp 8.1 lacks two safeguards the Python numerics have for those:
+    the stepping keeps no smallest step (MIN_STEP in
+    :mod:`coolplot.thermo.stepping`), and states whose phases do not add up
+    to the mixture are not refused (``_is_saturation_state`` in
+    :mod:`coolplot.thermo.isolines`). Where CoolProp's flash switches
+    between two roots, as it does for R436A below 155 K, the port's line
+    stops with its evaluation budget used up. The bubble and dew lines of a
+    mixture come from the phase envelope and stay with the port.
+    """
+    if key != "Q" or fluid.is_pure:
+        return True
+    return not 0.0 < value_SI < 1.0
 
 
 def port_fluid_string(fluid, key: str) -> Optional[str]:

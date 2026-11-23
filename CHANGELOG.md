@@ -6,6 +6,35 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### Changed
+- Tested with CoolProp 8.1.0, which CI now uses throughout; one job
+  keeps 8.0.0, still the oldest version CoolPlot accepts. CoolProp 8.1.0
+  is the first release with `CoolProp.CoolProp.Plot`, so fluid lines are
+  computed by that port by default from now on (see
+  `docs/explanation/numerics.md`), and the tests of the port run in CI.
+- The lines of intermediate quality of a mixture are always computed by
+  the Python numerics, not by CoolProp's port: the port in 8.1.0 has
+  neither of the two fixes below (`coolplot.thermo.native.port_draws`).
+
+### Fixed
+- A state of a mixture on a line of constant quality is drawn only if its
+  liquid and vapour add up to the mixture, (1 - Q) x + Q y = z to 1e-6
+  in mole fraction. CoolProp's quality flash can converge on a wrong
+  root: 8.0.0 does so on the cold part of such lines of several blends
+  (R436A 3 % off in pressure at 140 K, R407C), and 8.1.0, which fixes
+  most of them, still does at some temperatures for 32 of its 113
+  predefined blends, among them R436A, R454B and R433B.
+- Where the flash switches between two roots from one temperature to the
+  next, the stepping no longer gets stuck. Its step shrank by a factor of
+  four at every turn of the line, below the smallest step it documents,
+  until the temperature stopped changing: the lines of quality 0.3 to 0.9
+  of R436A stopped at 140 K with their evaluation budget used up, and the
+  chart took five times as long.
+
+### Added
+- Example `wide_glide_blend.py`: a heat pump with R436A in a p-h chart,
+  with the glide in the evaporator (7.8 K) and the condenser (6.3 K).
+
 ## [1.6.0] - 2026-11-12
 
 ### Fixed
