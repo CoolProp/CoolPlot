@@ -96,6 +96,32 @@ States you computed yourself, for example with
 `coolplot.thermo.process_path`, go into `add_cycle` as `StatePoint`
 values.
 
+## Phases and tables
+
+`diagram.fluid.phase(state)` (since 1.7) names the phase of a state as
+CoolProp's `PhaseSI` does: "liquid", "gas", "twophase",
+"supercritical", "supercritical_gas", "supercritical_liquid" or
+"unknown". The vapour quality `Q` cannot tell these apart, since it lies
+outside 0 to 1 for every single-phase state.
+
+The states of all cycles as one pandas DataFrame, with their phases (an
+example, pandas is not needed by CoolPlot):
+
+```python
+import pandas as pd
+
+def states_to_df(diagram, units="engineering"):
+    """All states of all cycles in the diagram as one DataFrame."""
+    rows = []
+    for cycle in diagram.spec.cycles:
+        for number, state in diagram.cycle_states(cycle.name).items():   # SI values
+            row = {"cycle": cycle.name, "state": number}
+            row.update(state.in_units(units))
+            row["phase"] = diagram.fluid.phase(state)
+            rows.append(row)
+    return pd.DataFrame(rows)
+```
+
 ## In the gallery
 
 Cycles on other charts and with other fluids: a steam Rankine cycle on a
