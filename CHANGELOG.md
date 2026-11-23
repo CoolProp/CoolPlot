@@ -6,6 +6,8 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-11-23
+
 ### Changed
 - Tested with CoolProp 8.1.0, which CI now uses throughout; one job
   keeps 8.0.0, still the oldest version CoolPlot accepts. CoolProp 8.1.0
@@ -13,8 +15,8 @@ guide in the documentation says what to change in your code.
   computed by that port by default from now on (see
   `docs/explanation/numerics.md`), and the tests of the port run in CI.
 - The lines of intermediate quality of a mixture are always computed by
-  the Python numerics, not by CoolProp's port: the port in 8.1.0 has
-  neither of the two fixes below (`coolplot.thermo.native.port_draws`).
+  the Python numerics, not by CoolProp's port: the port in 8.1.0 lacks
+  the fix below (`coolplot.thermo.native.port_draws`).
 
 ### Fixed
 - A state of a mixture on a line of constant quality is drawn only if its
@@ -23,13 +25,23 @@ guide in the documentation says what to change in your code.
   root: 8.0.0 does so on the cold part of such lines of several blends
   (R436A 3 % off in pressure at 140 K, R407C), and 8.1.0, which fixes
   most of them, still does at some temperatures for 32 of its 113
-  predefined blends, among them R436A, R454B and R433B.
-- Where the flash switches between two roots from one temperature to the
-  next, the stepping no longer gets stuck. Its step shrank by a factor of
-  four at every turn of the line, below the smallest step it documents,
-  until the temperature stopped changing: the lines of quality 0.3 to 0.9
-  of R436A stopped at 140 K with their evaluation budget used up, and the
-  chart took five times as long.
+  predefined blends, among them R436A, R454B and R433B. On 8.1.0 the
+  line zig-zagged between the two roots, and its step shrank at every
+  turn until the temperature stopped changing: the lines of quality 0.3
+  to 0.9 of R436A stopped at 140 K with their evaluation budget used up,
+  and the chart took five times as long.
+- `coolplot.thermo.native` type-checks with CoolProp 8.1, whose type
+  stubs declare `CoolProp.CoolProp.Plot`, as well as with 8.0.
+
+### Known issues
+- The stepping can still shrink its step below `MIN_STEP` where a line
+  jumps back and forth between two values, and spend its evaluation
+  budget in one place. The lines of constant quality of mixtures, where
+  it happened, no longer meet such jumps. The fix has to go into
+  CoolProp's port of the stepping at the same time,
+  so that both compute the same points
+  (`test_a_line_that_jumps_between_two_roots_reaches_its_end`, expected
+  to fail).
 
 ### Added
 - Example `wide_glide_blend.py`: a heat pump with R436A in a p-h chart,
