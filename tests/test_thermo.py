@@ -17,6 +17,19 @@ def r290():
     return Fluid("HEOS::R290")
 
 
+def test_phase_of_a_state(r290):
+    for p_Pa, key, value in ((5e5, "T", 250.0), (5e5, "Q", 0.5), (5e5, "T", 300.0), (60e5, "T", 400.0)):
+        state = r290.state_point("p", p_Pa, key, value)
+        expected = CoolProp.CoolProp.PhaseSI("P", p_Pa, key if key == "Q" else "T", value, "HEOS::R290")
+        assert r290.phase(state) == expected
+    co2 = Fluid("CO2")
+    assert co2.phase(co2.state_point("p", 100e5, "T", 303.15)) == "supercritical_liquid"
+    blend = Fluid("HEOS::R32[0.7]&R125[0.3]")
+    assert blend.phase(blend.state_point("p", 10e5, "Q", 0.5)) == "twophase"
+    brine = Fluid("INCOMP::MEG[0.3]")
+    assert brine.phase(brine.state_point("p", 2e5, "T", 290.0)) == "unknown"
+
+
 def test_diagram_type_parsing():
     ph = DiagramType.parse("ph")
     assert (ph.y, ph.x) == ("p", "h")

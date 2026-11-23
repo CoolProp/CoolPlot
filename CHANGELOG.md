@@ -6,6 +6,13 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### Added
+- `Fluid.phase(state)` names the phase of a state ("liquid", "gas",
+  "twophase", "supercritical", ...) as CoolProp's PhaseSI does, e.g.
+  `diagram.fluid.phase(diagram.cycle_states("hp")[2])` (#53). The how-to
+  on cycles has an example that collects the states of all cycles, with
+  their phases, in a pandas DataFrame.
+
 ## [1.6.0] - 2026-11-12
 
 ### Fixed

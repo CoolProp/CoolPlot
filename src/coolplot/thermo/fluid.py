@@ -31,6 +31,19 @@ from ..core.state import STATE_KEYS, StatePoint
 from ..core.floats import is_zero, same_result
 
 
+#: CoolProp's phase indices and the names PhaseSI gives them, for Fluid.phase.
+_PHASE_NAMES = {
+    int(CoolProp.iphase_liquid): "liquid",
+    int(CoolProp.iphase_gas): "gas",
+    int(CoolProp.iphase_twophase): "twophase",
+    int(CoolProp.iphase_supercritical): "supercritical",
+    int(CoolProp.iphase_supercritical_gas): "supercritical_gas",
+    int(CoolProp.iphase_supercritical_liquid): "supercritical_liquid",
+    int(CoolProp.iphase_critical_point): "critical_point",
+    int(CoolProp.iphase_unknown): "unknown",
+}
+
+
 @lru_cache(maxsize=None)
 def parameter_index(key: str) -> CP.parameters:
     """CoolProp parameter index for a CoolPlot quantity key, e.g. "p" -> iP."""
@@ -449,6 +462,29 @@ class Fluid:
         """The full state from two quantities, e.g. state_point("p", 1e5, "T", 300)."""
         self.update(key1, value1_SI, key2, value2_SI)
         return StatePoint(**{k: self.get(k) for k in STATE_KEYS})
+
+    def phase(self, state: StatePoint) -> str:
+        """The phase of a state as CoolProp names it, e.g. "twophase".
+
+        One of "liquid", "gas", "twophase", "supercritical",
+        "supercritical_gas", "supercritical_liquid", "critical_point" or
+        "unknown", the same names as CoolProp's PhaseSI. The phase is
+        found by a new lookup from the pressure and enthalpy of the state
+        (from T and rho if that fails), so ``state`` can come from
+        :meth:`coolplot.Chart.cycle_states` or any other calculation with
+        this fluid. The vapour quality Q of the state cannot tell a liquid
+        from a gas or a supercritical fluid, since CoolProp reports a value
+        outside 0 to 1 for all of them.
+        """
+        try:
+            current = self.update("p", state["p"], "h", state["h"])
+        except (PropertyError, ValueError):
+            current = self.update("T", state["T"], "rho", state["rho"])
+        try:
+            index = current.phase()
+        except ValueError:
+            return "unknown"   # a backend without phases, e.g. INCOMP
+        return _PHASE_NAMES.get(int(index), "unknown")
 
     def path_kind(self, a: StatePoint, b: StatePoint, kind: str) -> str:
         """How the path between two states of a cycle is drawn; "auto" is
