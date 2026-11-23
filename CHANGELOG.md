@@ -6,14 +6,16 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-23
+
 ### Added
 - `Fluid.phase(state)` names the phase of a state ("liquid", "gas",
   "twophase", "supercritical", ...) as CoolProp's PhaseSI does, e.g.
   `diagram.fluid.phase(diagram.cycle_states("hp")[2])` (#53). The how-to
   on cycles has an example that collects the states of all cycles, with
   their phases, in a pandas DataFrame.
-
-## [1.6.1] - 2026-11-23
+- Example `wide_glide_blend.py`: a heat pump with R436A in a p-h chart,
+  with the glide in the evaporator (7.8 K) and the condenser (6.3 K).
 
 ### Changed
 - Tested with CoolProp 8.1.0, which CI now uses throughout; one job
@@ -56,10 +58,6 @@ guide in the documentation says what to change in your code.
   the same points ([CoolProp#3586](https://github.com/CoolProp/CoolProp/issues/3586);
   `test_a_line_that_jumps_between_two_roots_reaches_its_end`, expected
   to fail).
-
-### Added
-- Example `wide_glide_blend.py`: a heat pump with R436A in a p-h chart,
-  with the glide in the evaporator (7.8 K) and the condenser (6.3 K).
 
 ## [1.6.0] - 2026-11-12
 

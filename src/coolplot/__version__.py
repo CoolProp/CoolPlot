@@ -1,4 +1,4 @@
 # CoolPlot version information
-VERSION = (1, 6, 1, '')
+VERSION = (1, 7, 0, '')
 
 __version__ = '.'.join(map(str, VERSION[:3])) + ''.join(VERSION[3:])

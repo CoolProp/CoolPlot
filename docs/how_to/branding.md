@@ -8,7 +8,7 @@ plot area and, if you like, a faint picture behind the lines.
 Since 1.5 every chart names its equation of state by default
 (`references="short"`), so a chart never reaches a reader without its
 source, and the versions of CoolProp and CoolPlot that drew it
-(`versions=True`, "CoolProp 8.1.0, CoolPlot 1.6.1"). To draw a chart
+(`versions=True`, "CoolProp 8.1.0, CoolPlot 1.7.0"). To draw a chart
 without the badge:
 
 ```python
@@ -26,7 +26,7 @@ diagram.settings = diagram.settings.with_(branding={
     "logo": ("logo.svg", "logo.png"),       # variants of one picture, see below
     "logo_width_pt": 60,
     "references": "short",                  # "R290: Lemmon et al. (2009)"
-    "versions": True,                       # "CoolProp 8.1.0, CoolPlot 1.6.1"
+    "versions": True,                       # "CoolProp 8.1.0, CoolPlot 1.7.0"
     "lines": ("example.com | 2026-10-19",),
     "watermark": ("mark.svg", "mark.png"),
 })
