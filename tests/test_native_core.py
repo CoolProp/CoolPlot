@@ -47,17 +47,17 @@ def _both_scenes(chart):
     return Scene(axes, items), Scene(native_axes, native_items)
 
 
-def _same(a, b, path=""):
-    """Plain data compared with numbers within 1e-9 relative; returns the first difference."""
+def _same(a, b, path="", rel_tol=1e-9):
+    """Plain data compared with numbers within rel_tol relative; returns the first difference."""
     if isinstance(a, (int, float)) and isinstance(b, (int, float)) and not isinstance(a, bool):
         if a is None or b is None:
             return "" if a is b else path
-        return "" if math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-12) else "{0}: {1} vs {2}".format(path, a, b)
+        return "" if math.isclose(a, b, rel_tol=rel_tol, abs_tol=1e-12) else "{0}: {1} vs {2}".format(path, a, b)
     if isinstance(a, dict) and isinstance(b, dict):
         if set(a) != set(b):
             return "{0}: keys {1} vs {2}".format(path, sorted(set(a) ^ set(b)), "")
         for k in a:
-            d = _same(a[k], b[k], path + "." + str(k))
+            d = _same(a[k], b[k], path + "." + str(k), rel_tol)
             if d:
                 return d
         return ""
@@ -65,7 +65,7 @@ def _same(a, b, path=""):
         if len(a) != len(b):
             return "{0}: {1} vs {2} entries".format(path, len(a), len(b))
         for i, (x, y) in enumerate(zip(a, b)):
-            d = _same(x, y, "{0}[{1}]".format(path, i))
+            d = _same(x, y, "{0}[{1}]".format(path, i), rel_tol)
             if d:
                 return d
         return ""
@@ -205,13 +205,16 @@ def test_previous_labels_keep_their_items_through_the_port():
 
 @needs_core
 def test_the_chart_uses_the_port_and_the_scene_is_the_same(monkeypatch):
+    from tests.test_native import PORT_RTOL
     chart = _charts()[0]
     monkeypatch.setenv("COOLPLOT_NATIVE", "1")
     ported = chart.update_scene().to_dict()
     monkeypatch.setenv("COOLPLOT_NATIVE", "0")
     chart.scene.replace_all([])
     python = chart.update_scene().to_dict()
-    difference = _same(python, ported)
+    # The curves come from CoolProp's port on one side and from Python on
+    # the other, so they agree to PORT_RTOL only (see tests/test_native.py)
+    difference = _same(python, ported, rel_tol=PORT_RTOL)
     assert difference == "", difference
 
 
