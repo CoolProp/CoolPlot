@@ -134,10 +134,14 @@ EDGE_TOLERANCE = 1e-7
 
 #: A two-phase state of a mixture whose phase compositions, weighted by the
 #: vapour quality, miss the overall composition by more than this (in mole
-#: fraction) is not the state asked for: the quality flash converged on the
-#: wrong root.
+#: fraction) is not drawn. Mostly it is a wrong root of the quality flash,
+#: but some refused states are nearly right: the line of quality 0.1 of
+#: Ekofisk (a natural gas) gets five gaps between 6.6 and 6.8 MPa, below
+#: the top of its envelope at 7.5 MPa. A tolerance relative to the
+#: difference of the phase compositions |x - y| would not spare them: they
+#: miss by about 1e-2 of it, R436A's wrong roots by 4e-2.
 #:
-#: Calibrated on CoolProp 8.1, at 40 temperatures and the qualities 0.1, 0.5
+#: Calibrated on CoolProp 8.1, at 39 temperatures and the qualities 0.1, 0.5
 #: and 0.9 of each of the 113 predefined blends with a phase envelope: 97 %
 #: of the 12221 states balance to better than 1e-12, and 16 lie between
 #: 1e-9 and 1e-6, which are kept. 299 states of 32 blends (R436A, R454B

@@ -44,8 +44,9 @@ still works. Two things can look different on charts of mixtures:
 line is drawn only if its liquid and vapour add up to the mixture.
 CoolProp's flash misses that for some blends at low temperatures (8.0
 more often than 8.1), so a line can have fewer points there, or start
-at a higher temperature, than in 1.6.0. Where it had points before, they
-were off, for R436A by about 3 % in pressure at 140 K.
+at a higher temperature, than in 1.6.0. Most of the points left out were
+off, for R436A by about 3 % in pressure at 140 K; a few near the
+cricondenbar of a natural gas were nearly right and now leave gaps.
 
 **These lines are computed in Python** also where CoolProp has its port
 of the numerics (8.1 and later), see the changelog.

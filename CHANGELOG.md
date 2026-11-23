@@ -25,11 +25,14 @@ guide in the documentation says what to change in your code.
   root: 8.0.0 does so on the cold part of such lines of several blends
   (R436A 3 % off in pressure at 140 K, R407C), and 8.1.0, which fixes
   most of them, still does at some temperatures for 32 of its 113
-  predefined blends, among them R436A, R454B and R433B. On 8.1.0 the
-  line zig-zagged between the two roots, and its step shrank at every
+  predefined blends, among them R436A, R454B and R433B. The check also
+  refuses a few states that are nearly right, which leaves gaps: on the
+  line of quality 0.1 of Ekofisk (a natural gas), five between 6.6 and
+  6.8 MPa. On 8.1.0 the line zig-zagged between the two roots, and its step shrank at every
   turn until the temperature stopped changing: the lines of quality 0.3
-  to 0.9 of R436A stopped at 140 K with their evaluation budget used up,
-  and the chart took five times as long.
+  to 0.9 of R436A stopped between 129 and 146 K with their evaluation
+  budget used up, and the example `wide_glide_blend.py` took 15 s
+  instead of about 1.3 s.
 - `coolplot.thermo.native` type-checks with CoolProp 8.1, whose type
   stubs declare `CoolProp.CoolProp.Plot`, as well as with 8.0.
 

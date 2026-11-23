@@ -269,6 +269,7 @@ def test_wrong_mixture_roots_are_refused():
     from coolplot.thermo.isolines import _is_saturation_state
     assert _is_saturation_state(_TwoPhaseState((0.5, 0.5), (0.7, 0.3)))
     assert _is_saturation_state(_TwoPhaseState((0.5, 0.5), (0.7 + 1e-7, 0.3 - 1e-7)))
+    assert not _is_saturation_state(_TwoPhaseState((0.5, 0.5), (0.7 + 2e-5, 0.3 - 2e-5)))   # misses by 1e-5
     assert not _is_saturation_state(_TwoPhaseState((0.5, 0.5), (0.72, 0.28)))
     assert not _is_saturation_state(_TwoPhaseState((0.5, 0.5), (0.7, 0.3), Q=0.6))
     assert not _is_saturation_state(_TwoPhaseState((0.5, float("nan")), (0.7, 0.3)))
@@ -282,17 +283,18 @@ def test_a_wide_glide_blend_gets_whole_lines_of_constant_quality():
     """R436A (propane/isobutane, about 7 K of glide): on CoolProp 8.1 the
     lines of intermediate quality ran out of their evaluation budget below
     155 K, where the flash alternates between the right root and a wrong one
-    3 % lower in pressure. Every point of the line is now a state whose
-    phases add up to the mixture, so the pressure rises along it up to the
-    last point, which is the top of the phase envelope (the cricondentherm,
-    a little lower in pressure than the state just before it)."""
+    3 % lower in pressure. The wrong roots are now left out, so the pressure
+    rises along the line up to its last point, the top of the phase envelope
+    (the cricondentherm, a little lower in pressure than the state before)."""
     fluid = Fluid("HEOS::R436A.mix")
+    envelope = fluid.phase_envelope()
     for quality in (0.2, 0.4, 0.6, 0.8):
         curve = compute_quality_line(fluid, PH, quality)
         assert curve.reason == ""
         p = curve.y[np.isfinite(curve.y)]
         assert len(p) >= 50
         assert np.all(np.diff(p[:-1]) > 0.0)
+        assert curve.y[-1] == envelope.top("p") and curve.x[-1] == envelope.top("h")
         # No point repeats (a walk stuck in place would)
         assert len(np.unique(curve.x[np.isfinite(curve.x)])) == len(p)
 
