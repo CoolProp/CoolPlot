@@ -41,6 +41,7 @@ typing = ["mypy>=2.4", "matplotlib>=3.8"]
 
 [project.urls]
 Homepage = "https://github.com/CoolProp/CoolPlot"
+Documentation = "https://coolplot.readthedocs.io"
 
 [tool.setuptools.dynamic]
 version = {attr = "coolplot.__version__.__version__"}

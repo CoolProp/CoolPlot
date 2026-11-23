@@ -4,7 +4,13 @@
 ![Coverage - Coveralls](https://img.shields.io/coveralls/github/CoolProp/coolplot.svg)
 ![PyPI - Version](https://img.shields.io/pypi/v/coolplot.svg)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/coolplot.svg)
+[![Documentation](https://readthedocs.org/projects/coolplot/badge/?version=latest)](https://coolplot.readthedocs.io)
 
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/CoolProp/CoolPlot/main/docs/_static/coolplot_logo_dark.svg">
+  <img alt="CoolPlot logo: a log(p)-h chart with a heat pump cycle" src="https://raw.githubusercontent.com/CoolProp/CoolPlot/main/docs/_static/coolplot_logo.svg" width="96">
+</picture>
 
 CoolPlot
 ========
@@ -56,7 +62,7 @@ What else it does:
 
 The documentation (getting started, tutorials, how-to pages, the API
 reference and a gallery of the examples) is built from `docs/` and
-published on Read the Docs; `make docs` builds it locally.
+published on [Read the Docs](https://coolplot.readthedocs.io); `make docs` builds it locally.
 
 The code was forked from the main [CoolProp repository] at v6.3.0 with
 its history preserved, hence the old commits. Version 0.2 replaced the
