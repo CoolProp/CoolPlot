@@ -15,7 +15,7 @@ log(p)-h, T-s, h-s, p-s, p-rho, T-rho and p-T diagrams for pure fluids
 and refrigerant blends, cycles drawn on top of them, and psychrometric
 charts for humid air.
 
-![A log(p)-h chart of propane with a heat pump cycle](https://raw.githubusercontent.com/CoolProp/CoolPlot/master/docs/_static/R290_ph.png)
+![A log(p)-h chart of propane with a heat pump cycle](https://raw.githubusercontent.com/CoolProp/CoolPlot/main/docs/_static/R290_ph.png)
 
 ```python
 from coolplot import PropertyDiagram
