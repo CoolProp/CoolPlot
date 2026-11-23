@@ -75,4 +75,5 @@ Helmholtz backend). Humid-air lines and the states of cycles are not
 part of the port. Nor are the lines of intermediate quality of a mixture:
 the port in CoolProp 8.1 lacks the check that the two phases of a state
 add up to the mixture, which the Python numerics apply there (see
-{func}`coolplot.thermo.native.port_draws`).
+{func}`coolplot.thermo.native.port_draws` and
+[CoolProp#3586](https://github.com/CoolProp/CoolProp/issues/3586)).

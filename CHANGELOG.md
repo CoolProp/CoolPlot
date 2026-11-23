@@ -23,20 +23,24 @@ guide in the documentation says what to change in your code.
   `docs/explanation/numerics.md`), and the tests of the port run in CI.
 - The lines of intermediate quality of a mixture are always computed by
   the Python numerics, not by CoolProp's port: the port in 8.1.0 lacks
-  the fix below (`coolplot.thermo.native.port_draws`).
+  the fix below (`coolplot.thermo.native.port_draws`,
+  [CoolProp#3586](https://github.com/CoolProp/CoolProp/issues/3586)).
 
 ### Fixed
 - A state of a mixture on a line of constant quality is drawn only if its
   liquid and vapour add up to the mixture, (1 - Q) x + Q y = z to 1e-6
-  in mole fraction. CoolProp's quality flash can converge on a wrong
-  root: 8.0.0 does so on the cold part of such lines of several blends
-  (R436A 3 % off in pressure at 140 K, R407C), and 8.1.0, which fixes
-  most of them, still does at some temperatures for 32 of its 113
-  predefined blends, among them R436A, R454B and R433B. The check also
+  in mole fraction. CoolProp's quality flash of a mixture can return a
+  state that misses it: 8.0.0 does so on the cold part of such lines of
+  several blends (R436A 3 % off in pressure at 140 K, R407C). 8.1.0
+  enforces the mass balance, but where its two-phase solver fails it
+  falls back to the bubble/dew solver, which does not; that happens at
+  some temperatures for 32 of its 113 predefined blends, among them
+  R436A, R454B and R433B
+  ([CoolProp#3585](https://github.com/CoolProp/CoolProp/issues/3585)). The check also
   refuses a few states that are nearly right, which leaves gaps: on the
   line of quality 0.1 of Ekofisk (a natural gas), five between 6.6 and
-  6.8 MPa. On 8.1.0 the line zig-zagged between the two roots, and its step shrank at every
-  turn until the temperature stopped changing: the lines of quality 0.3
+  6.8 MPa. On 8.1.0 the line zig-zagged between the two solutions, and
+  its step shrank at every turn until the temperature stopped changing: the lines of quality 0.3
   to 0.9 of R436A stopped between 129 and 146 K with their evaluation
   budget used up, and the example `wide_glide_blend.py` took 15 s
   instead of about 1.3 s.
@@ -48,9 +52,9 @@ guide in the documentation says what to change in your code.
   jumps back and forth between two values, and spend its evaluation
   budget in one place. The lines of constant quality of mixtures, where
   it happened, no longer meet such jumps. The fix has to go into
-  CoolProp's port of the stepping at the same time,
-  so that both compute the same points
-  (`test_a_line_that_jumps_between_two_roots_reaches_its_end`, expected
+  CoolProp's port of the stepping at the same time, so that both compute
+  the same points ([CoolProp#3586](https://github.com/CoolProp/CoolProp/issues/3586);
+  `test_a_line_that_jumps_between_two_roots_reaches_its_end`, expected
   to fail).
 
 ### Added

@@ -24,8 +24,9 @@ temperature, because CoolProp 8 answers some inputs inside the two-phase
 region with a "gas" at a wrong pressure; such points are left out rather
 than drawn. A two-phase state on a line of constant quality is drawn
 only if its liquid and vapour add up to the blend: CoolProp's quality
-flash converges on a wrong root now and then, more often with 8.0 than
-with 8.1, mostly at the cold end of the lines.
+flash returns a state that does not now and then, more often with 8.0
+than with 8.1, mostly at the cold end of the lines
+([CoolProp#3585](https://github.com/CoolProp/CoolProp/issues/3585)).
 
 A blend with a wide glide, R436A (propane and isobutane), in a heat pump:
 {doc}`../gallery/wide_glide_blend`.

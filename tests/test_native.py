@@ -221,7 +221,7 @@ def test_the_port_agrees_with_the_python_reference(request, fluid_name, key, val
 
 def test_lines_of_intermediate_quality_of_a_mixture_stay_in_python(r290, blend, monkeypatch):
     """The port in CoolProp 8.1 lacks the mass balance check of the Python
-    numerics, so the provider does not ask it
+    numerics (CoolProp issue 3586), so the provider does not ask it
     for those lines; it does for everything else."""
     calls = []
 

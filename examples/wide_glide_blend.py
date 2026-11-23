@@ -13,9 +13,10 @@ The isotherms slope down through the dome instead of running along the
 isobars, and the lines of constant quality fan out between the bubble
 and the dew line. Every saturation state on those lines is checked to
 be one whose liquid and vapour add up to the blend: CoolProp 8.0 gave a
-wrong root on the cold part of the lines of intermediate quality of
+wrong state on the cold part of the lines of intermediate quality of
 R436A (3 % off in pressure at 140 K), which CoolProp 8.1 fixes for most
-temperatures and CoolPlot leaves out where it does not. CoolProp 8.1 is
+temperatures and CoolPlot leaves out where it does not (CoolProp issue
+3585). CoolProp 8.1 is
 recommended for blends.
 
 Run with:  python examples/wide_glide_blend.py

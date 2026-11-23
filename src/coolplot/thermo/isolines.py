@@ -134,12 +134,16 @@ EDGE_TOLERANCE = 1e-7
 
 #: A two-phase state of a mixture whose phase compositions, weighted by the
 #: vapour quality, miss the overall composition by more than this (in mole
-#: fraction) is not drawn. Mostly it is a wrong root of the quality flash,
-#: but some refused states are nearly right: the line of quality 0.1 of
+#: fraction) is not drawn. Mostly it is the state CoolProp's QT flash
+#: returns when its two-phase solver fails and it falls back to the
+#: bubble/dew solver, which has no mass balance (CoolProp issue 3585,
+#: https://github.com/CoolProp/CoolProp/issues/3585). Some refused states are nearly right, though: the line of quality 0.1 of
 #: Ekofisk (a natural gas) gets five gaps between 6.6 and 6.8 MPa, below
 #: the top of its envelope at 7.5 MPa. A tolerance relative to the
 #: difference of the phase compositions |x - y| would not spare them: they
-#: miss by about 1e-2 of it, R436A's wrong roots by 4e-2.
+#: miss by about 1e-2 of it, R436A's wrong states by 4e-2. CoolProp's
+#: warnstring flags each fallback, but would not do instead: on 8.1, 80
+#: fallback states of the predefined blends are right to 1e-6.
 #:
 #: Calibrated on CoolProp 8.1, at 39 temperatures and the qualities 0.1, 0.5
 #: and 0.9 of each of the 113 predefined blends with a phase envelope: 97 %
@@ -318,7 +322,7 @@ def _saturation_sample(fluid: Fluid, key: str, value_SI: float, quality: float, 
     try:
         state = fluid.update(key, value_SI, "Q", quality)
         if not fluid.is_pure and not _is_saturation_state(state):
-            return None   # the trivial solution or a wrong root of the mixture solver
+            return None   # the trivial solution, or a state that misses the mass balance
         x, y, T_K, p_Pa = (state.keyed_output(parameter_index(k)) for k in (diagram.x, diagram.y, "T", "p"))
     except Exception:
         return None

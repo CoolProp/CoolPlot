@@ -191,10 +191,12 @@ def port_draws(fluid, key: str, value_SI: float) -> bool:
     CoolProp 8.1 does not refuse states whose phases do not add up to the
     mixture, as the Python numerics do (``_is_saturation_state`` in
     :mod:`coolplot.thermo.isolines`). Where CoolProp's flash switches
-    between a right and a wrong root, as it does for R436A below 155 K, the
-    port's line zig-zags between them and its step shrinks until the line
-    stops with its evaluation budget used up. The bubble and dew lines of a
-    mixture come from the phase envelope and stay with the port.
+    between a right state and one that misses the mass balance, as it does
+    for R436A below 155 K (CoolProp issue 3585), the port's line zig-zags
+    between them and its step shrinks until the line stops with its
+    evaluation budget used up (CoolProp issue 3586,
+    https://github.com/CoolProp/CoolProp/issues/3586). The bubble and dew lines of
+    a mixture come from the phase envelope and stay with the port.
     """
     if key != "Q" or fluid.is_pure:
         return True
