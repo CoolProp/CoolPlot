@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Sequence, Tuple, Union
+from typing import Iterable, Iterator, Mapping, Sequence, Tuple, Union
 
+from .cycle import Cycle
 from .quantities import quantity_key
+from .state import StatePoint
 
 
 @dataclass(frozen=True)
@@ -44,6 +46,111 @@ class TpLimits:
     T_max: Bound = None
     p_min: Bound = None
     p_max: Bound = None
+
+    @classmethod
+    def around(cls, *sources: object, dT_margin_K: float = 40.0, p_factor: float = 2.0) -> "TpLimits":
+        """The region around the states of cycles, with a margin
+
+        The presets cover the whole fluid or a typical application; a
+        region around the states of the cycles on a chart keeps the lines
+        where the cycles are, with round values at a step that suits them.
+
+        Parameters
+        ----------
+        *sources
+            Cycles (:class:`coolplot.core.cycle.Cycle`), states
+            (:class:`coolplot.core.state.StatePoint` or dicts with ``T`` in
+            K and ``p`` in Pa), or collections of them, by number or by
+            name, e.g. what :meth:`coolplot.Chart.cycle_states` returns
+            without ``units``. The values are SI: states converted to the
+            units of a chart (``cycle_states(name, units=...)``) are not.
+        dT_margin_K : float
+            Kelvin below the lowest and above the highest temperature.
+        p_factor : float
+            The lowest pressure is divided by it, the highest multiplied.
+
+        Returns
+        -------
+        TpLimits
+            Absolute bounds; the equation of state still limits them when
+            the lines are computed.
+
+        Examples
+        --------
+        >>> from coolplot import StatePoint, TpLimits
+        >>> TpLimits.around([StatePoint(T=270.0, p=4e5), StatePoint(T=330.0, p=20e5)])
+        TpLimits(T_min=230.0, T_max=370.0, p_min=200000.0, p_max=4000000.0)
+
+        On a chart, around the cycles drawn on it:
+
+        >>> diagram.tp_limits = TpLimits.around(diagram.cycle_states("hp"))  # doctest: +SKIP
+        """
+        if not dT_margin_K >= 0:
+            raise ValueError("dT_margin_K has to be zero or positive, not {0}.".format(dT_margin_K))
+        if not p_factor >= 1:
+            raise ValueError("p_factor has to be 1 or more, not {0}.".format(p_factor))
+        states = list(_states(sources))
+        if not states:
+            raise ValueError("Give at least one state or a cycle with states.")
+        T_K = [_checked_value(state, "T") for state in states]
+        p_Pa = [_checked_value(state, "p") for state in states]
+        T_lo_K, T_hi_K = min(T_K) - dT_margin_K, max(T_K) + dT_margin_K
+        p_lo_Pa, p_hi_Pa = min(p_Pa) / p_factor, max(p_Pa) * p_factor
+        if not (T_lo_K < T_hi_K and p_lo_Pa < p_hi_Pa):
+            raise ValueError("Empty region T=[{0}, {1}] K, p=[{2}, {3}] Pa around the states; give a margin.".format(
+                T_lo_K, T_hi_K, p_lo_Pa, p_hi_Pa))
+        return cls(T_min=T_lo_K, T_max=T_hi_K, p_min=p_lo_Pa, p_max=p_hi_Pa)
+
+
+# A state as around takes it: a StatePoint, or a dict of quantities in SI units
+_State = Union[StatePoint, Mapping[str, object]]
+
+
+def _is_source(value: object) -> bool:
+    """Whether a value of a mapping is a cycle, a state or a collection, not the number of a quantity."""
+    return isinstance(value, (Cycle, StatePoint, Mapping)) or (
+        isinstance(value, Iterable) and not isinstance(value, str))
+
+
+def _states(sources: Iterable[object]) -> Iterator[_State]:
+    """The states of cycles, states and collections of them, one by one."""
+    for source in sources:
+        if isinstance(source, Cycle):
+            yield from (state for _, state in source.states)
+        elif isinstance(source, StatePoint):
+            yield source
+        elif isinstance(source, Mapping):
+            # A mapping is one state given by its quantities, or a collection
+            # by number or name; what it holds decides, not its keys
+            if not source or any(_is_source(value) for value in source.values()):
+                yield from _states(source.values())
+            else:
+                yield source
+        elif isinstance(source, Iterable) and not isinstance(source, str):
+            yield from _states(source)
+        else:
+            raise TypeError("Expected cycles, states or collections of them, not {0!r}; the margins are given "
+                            "by keyword (dT_margin_K, p_factor).".format(source))
+
+
+def _checked_value(state: _State, key: str) -> float:
+    """The temperature or pressure of a state as it is given, in SI units: a positive finite number."""
+    values: dict = {}
+    for name in state.keys():
+        try:
+            values[quantity_key(name)] = state[name]   # aliases such as "P" are accepted on input
+        except (KeyError, AttributeError):
+            pass   # not a quantity, e.g. the "via" of a cycle state
+    if key not in values:
+        raise ValueError("Every state needs a temperature and a pressure, one has no {0!r}.".format(key))
+    try:
+        value = float(values[key])
+    except (TypeError, ValueError):
+        raise ValueError("The {0!r} of a state is not a number: {1!r}.".format(key, values[key])) from None
+    if not (math.isfinite(value) and value > 0.0):
+        raise ValueError("The {0!r} of a state is {1}; temperatures are in K and pressures in Pa, positive and "
+                         "finite. States in the units of a chart are not SI.".format(key, value))
+    return value
 
 
 TP_LIMITS = {

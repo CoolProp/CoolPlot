@@ -6,6 +6,14 @@ guide in the documentation says what to change in your code.
 
 ## [Unreleased]
 
+### Added
+- `TpLimits.around(*sources, dT_margin_K=40.0, p_factor=2.0)`:
+  the calculation region around the states of cycles (cycles, states in
+  SI units or collections of them), so that the lines
+  stay where the cycles are and come at a step that suits them, e.g.
+  `PropertyDiagram("R290", "ph", tp_limits=TpLimits.around(cycle))`.
+  The how-to on isolines shows it.
+
 ## [1.7.1] - 2026-11-23
 
 ### Added
