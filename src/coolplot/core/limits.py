@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Sequence, Tuple, Union
+from typing import Iterable, Mapping, Sequence, Tuple, Union
 
 from .quantities import quantity_key
 
@@ -44,6 +44,81 @@ class TpLimits:
     T_max: Bound = None
     p_min: Bound = None
     p_max: Bound = None
+
+    @classmethod
+    def around(cls, *sources: object, T_margin_K: float = 40.0, p_factor: float = 2.0) -> "TpLimits":
+        """The region around the states of cycles, with a margin
+
+        The presets cover the whole fluid or a typical application; a
+        region around the states of the cycles on a chart keeps the lines
+        where the cycles are, with round values at a step that suits them.
+
+        Parameters
+        ----------
+        *sources
+            Cycles (:class:`coolplot.core.cycle.Cycle`), states
+            (:class:`coolplot.core.state.StatePoint` or dicts with ``T`` in
+            K and ``p`` in Pa), or collections of them, e.g. the values of
+            :meth:`coolplot.Chart.cycle_states`.
+        T_margin_K : float
+            Kelvin below the lowest and above the highest temperature.
+        p_factor : float
+            The lowest pressure is divided by it, the highest multiplied.
+
+        Returns
+        -------
+        TpLimits
+            Absolute bounds; the equation of state still limits them when
+            the lines are computed.
+
+        Examples
+        --------
+        >>> from coolplot import StatePoint, TpLimits
+        >>> TpLimits.around([StatePoint(T=270.0, p=4e5), StatePoint(T=330.0, p=20e5)])
+        TpLimits(T_min=230.0, T_max=370.0, p_min=200000.0, p_max=4000000.0)
+
+        On a chart, around the cycles drawn on it:
+
+        >>> diagram.tp_limits = TpLimits.around(diagram.cycle_states("hp").values())  # doctest: +SKIP
+        """
+        if not T_margin_K >= 0:
+            raise ValueError("T_margin_K has to be zero or positive, not {0}.".format(T_margin_K))
+        if not p_factor >= 1:
+            raise ValueError("p_factor has to be 1 or more, not {0}.".format(p_factor))
+        states = list(_states(sources))
+        if not states:
+            raise ValueError("Give at least one state or a cycle with states.")
+        values = {}
+        for key in ("T", "p"):
+            try:
+                values[key] = [float(state[key]) for state in states]
+            except KeyError:
+                raise ValueError("Every state needs a temperature and a pressure, one has no {0!r}.".format(
+                    key)) from None
+        return cls(T_min=min(values["T"]) - T_margin_K, T_max=max(values["T"]) + T_margin_K,
+                   p_min=min(values["p"]) / p_factor, p_max=max(values["p"]) * p_factor)
+
+
+def _states(sources):
+    """The states of cycles, states and collections of them, one by one."""
+    from .cycle import Cycle
+    from .state import StatePoint
+
+    for source in sources:
+        if isinstance(source, Cycle):
+            yield from (state for _, state in source.states)
+        elif isinstance(source, StatePoint):
+            yield source
+        elif isinstance(source, Mapping):
+            # A state is read by quantity keys, cycle_states gives states by number
+            if all(isinstance(key, str) for key in source):
+                yield source
+            else:
+                yield from _states(source.values())
+        elif isinstance(source, Iterable) and not isinstance(source, str):
+            yield from _states(source)
+        else:
+            raise TypeError("Expected cycles, states or collections of them, not {0!r}.".format(source))
 
 
 TP_LIMITS = {

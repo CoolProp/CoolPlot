@@ -175,6 +175,25 @@ from coolplot import TpLimits, Relative
 diagram.tp_limits = TpLimits(T_min=233.15, T_max=Relative(1.2), p_min=1e5, p_max=Relative(2.0))
 ```
 
+`TpLimits.around` puts the region around the states of cycles: 40 K
+below the lowest and above the highest temperature, half the lowest and
+twice the highest pressure (`T_margin_K` and `p_factor` change that).
+The lines then stay where the cycles are, and their round values come at
+a step that suits them, e.g. every 10 K for a heat pump:
+
+```python
+from coolplot.thermo.cycles import simple_compression
+cycle = simple_compression("R290", T_evap_C=0, T_cond_C=50, dT_sh_K=5)
+diagram = PropertyDiagram("R290", "ph", units="engineering", tp_limits=TpLimits.around(cycle))
+diagram.set_default_lines(rounding=True)
+diagram.add_cycle(cycle)
+```
+
+It takes cycles, states, or collections of them, such as
+`diagram.cycle_states("hp").values()` for a cycle given state by state.
+The region is fixed once it is set: moving a state outside it does not
+widen it, set it again for that.
+
 The axes show the ranges of the two axis quantities over that region.
 `diagram.set_view(x_limits, y_limits)` zooms into it (in the chart's
 units) without any new calculation; `set_view()` resets.
