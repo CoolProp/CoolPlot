@@ -177,7 +177,7 @@ diagram.tp_limits = TpLimits(T_min=233.15, T_max=Relative(1.2), p_min=1e5, p_max
 
 `TpLimits.around` puts the region around the states of cycles: 40 K
 below the lowest and above the highest temperature, half the lowest and
-twice the highest pressure (`T_margin_K` and `p_factor` change that).
+twice the highest pressure (`dT_margin_K` and `p_factor` change that).
 The lines then stay where the cycles are, and their round values come at
 a step that suits them, e.g. every 10 K for a heat pump:
 
@@ -190,7 +190,9 @@ diagram.add_cycle(cycle)
 ```
 
 It takes cycles, states, or collections of them, such as
-`diagram.cycle_states("hp").values()` for a cycle given state by state.
+`diagram.cycle_states("hp")` for a cycle given state by state. The states
+are in SI units (K and Pa): pass what `cycle_states` returns without
+`units`, not states converted to the units of the chart.
 The region is fixed once it is set: moving a state outside it does not
 widen it, set it again for that.
 

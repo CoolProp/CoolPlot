@@ -18,8 +18,8 @@ from typing import Dict, Optional, Tuple, Union, assert_type
 import numpy as np
 
 import coolplot
-from coolplot import (Chart, Cycle, PropertyDiagram, PsychrometricChart, Settings, StatePoint, Theme, UnitSystem,
-                      save_pdf)
+from coolplot import (Chart, Cycle, PropertyDiagram, PsychrometricChart, Settings, StatePoint, Theme, TpLimits,
+                      UnitSystem, save_pdf)
 from coolplot.render.mpl import MatplotlibRenderer
 from coolplot.render.svg import SvgRenderer
 from coolplot.thermo.cycles import simple_compression
@@ -29,6 +29,8 @@ def property_diagram() -> None:
     diagram = PropertyDiagram("HEOS::R290", "ph", units="engineering", tp_limits="ACHP", theme="print")
     assert_type(diagram, PropertyDiagram)
     assert_type(PropertyDiagram("R290", "Ts", tp_limits=[200.0, 400.0, 1e5, 4e6]), PropertyDiagram)
+    assert_type(TpLimits.around({"T": 270.0, "p": 4e5}, [{"T": 330.0, "p": 20e5}], dT_margin_K=20.0), TpLimits)
+    assert_type(PropertyDiagram("R290", "ph", tp_limits=TpLimits.around(diagram.cycle_states("hp"))), PropertyDiagram)
 
     # Lines: values as a list, a tuple or a numpy array; the key comes back
     assert_type(diagram.set_lines("T", values=[-20.0, 0.0, 20.0], labels=True), str)
